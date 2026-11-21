@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ISRAELI_FOOD_CATALOG } from '@/data/israeliFoodCatalog';
 import { FoodCatalogItem, FoodUnit } from '@/types/nutrition';
+import { getSessionFromRequest, sanitizeText } from '@/lib/serverAuth';
 
 const MOH_RESOURCE_ID = 'c3cb0630-0650-46c1-a068-82d575c094b2';
 
@@ -22,8 +23,13 @@ function inferSmartUnits(name: string): FoodUnit[] {
 }
 
 export async function GET(request: NextRequest) {
+  const session = getSessionFromRequest(request);
+  if (!session) {
+    return NextResponse.json({ error: 'נדרשת התחברות' }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
-  const query = (searchParams.get('q') || '').trim();
+  const query = sanitizeText(searchParams.get('q') || '', 80);
 
   if (!query) {
     return NextResponse.json({

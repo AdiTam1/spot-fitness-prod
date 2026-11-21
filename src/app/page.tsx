@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Modal, TextInput } from '@mantine/core';
 import {
   KeyRound,
@@ -8,10 +8,6 @@ import {
   ShieldCheck,
   User,
 } from 'lucide-react';
-import {
-  DEFAULT_TEMPLATES,
-  createInitialTrainees,
-} from '@/data/israeliFoodCatalog';
 import {
   AccountStatus,
   AuthSessionUser,
@@ -24,65 +20,63 @@ import { TraineeMobileView } from '@/components/TraineeMobileView';
 import { CoachDashboardView } from '@/components/CoachDashboardView';
 import { AuthGateView } from '@/components/AuthGateView';
 
-const STORAGE_KEY_TRAINEES = 'spot_fitness_trainees_v2';
-const STORAGE_KEY_TEMPLATES = 'spot_fitness_templates_v2';
-const STORAGE_KEY_GEMINI = 'spot_fitness_gemini_key_v1';
-const STORAGE_KEY_INVITE_CODE = 'spot_fitness_invite_code_v1';
-
 export default function HomePage() {
   const [currentUser, setCurrentUser] = useState<AuthSessionUser | null>(null);
   const [coachPreviewTraineeId, setCoachPreviewTraineeId] = useState<
     string | null
   >(null);
 
-  const [templates, setTemplates] =
-    useState<NutritionTemplate[]>(DEFAULT_TEMPLATES);
-  const [trainees, setTrainees] = useState<TraineeProfile[]>(() =>
-    createInitialTrainees()
-  );
+  // הנתונים נטענים אך ורק מהשרת (/api/data) לאחר אימות HttpOnly Cookie (אפס מידע רגיש ב-localStorage!)
+  const [templates, setTemplates] = useState<NutritionTemplate[]>([]);
+  const [trainees, setTrainees] = useState<TraineeProfile[]>([]);
   const [coachInviteCode, setCoachInviteCode] = useState<string>('SPOT2026');
   const [hydrated, setHydrated] = useState(false);
 
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [geminiApiKey, setGeminiApiKey] = useState('');
 
+  const fetchAuthorizedData = useCallback(async () => {
+    try {
+      const dataRes = await fetch('/api/data', { cache: 'no-store' });
+      if (dataRes.status === 401 || dataRes.status === 403) {
+        setCurrentUser(null);
+        setTrainees([]);
+        setTemplates([]);
+        return;
+      }
+      if (dataRes.ok) {
+        const remoteData = await dataRes.json();
+        if (Array.isArray(remoteData.trainees)) {
+          setTrainees(remoteData.trainees);
+        }
+        if (Array.isArray(remoteData.templates)) {
+          setTemplates(remoteData.templates);
+        }
+        if (remoteData.coachInviteCode) {
+          setCoachInviteCode(remoteData.coachInviteCode);
+        }
+      }
+    } catch {
+      // ignore network error
+    }
+  }, []);
+
   useEffect(() => {
-    async function initSessionAndData() {
+    async function initSecureSession() {
       try {
-        const savedTemplates = localStorage.getItem(STORAGE_KEY_TEMPLATES);
-        const savedTrainees = localStorage.getItem(STORAGE_KEY_TRAINEES);
-        const savedGemini = localStorage.getItem(STORAGE_KEY_GEMINI);
-        const savedInvite = localStorage.getItem(STORAGE_KEY_INVITE_CODE);
+        // ניקוי שאריות ישנות מ-localStorage אם היו מגרסאות קודמות
+        localStorage.removeItem('spot_fitness_trainees_v1');
+        localStorage.removeItem('spot_fitness_trainees_v2');
+        localStorage.removeItem('spot_fitness_auth_session_v1');
 
-        if (savedTemplates) setTemplates(JSON.parse(savedTemplates));
-        if (savedTrainees) setTrainees(JSON.parse(savedTrainees));
-        if (savedGemini) setGeminiApiKey(savedGemini);
-        if (savedInvite) setCoachInviteCode(savedInvite);
-
-        // 1. אימות העוגייה החתומה קריפטוגרפית בשרת (HttpOnly Cookie)
-        const sessionRes = await fetch('/api/auth/session');
+        const sessionRes = await fetch('/api/auth/session', {
+          cache: 'no-store',
+        });
         if (sessionRes.ok) {
           const sessionData = await sessionRes.json();
           if (sessionData.user) {
             setCurrentUser(sessionData.user);
-
-            // 2. טעינת נתונים מאובטחת לפי ההרשאה מהשרת (/api/data)
-            const dataRes = await fetch('/api/data');
-            if (dataRes.ok) {
-              const remoteData = await dataRes.json();
-              if (
-                Array.isArray(remoteData.trainees) &&
-                remoteData.trainees.length > 0
-              ) {
-                setTrainees(remoteData.trainees);
-              }
-              if (
-                Array.isArray(remoteData.templates) &&
-                remoteData.templates.length > 0
-              ) {
-                setTemplates(remoteData.templates);
-              }
-            }
+            await fetchAuthorizedData();
           }
         }
       } catch {
@@ -91,152 +85,51 @@ export default function HomePage() {
         setHydrated(true);
       }
     }
-    initSessionAndData();
-  }, []);
+    initSecureSession();
+  }, [fetchAuthorizedData]);
 
-  // סנכרון מאובטח מול שער הנתונים בשרת (/api/data)
-  useEffect(() => {
-    if (!hydrated) return;
-    try {
-      localStorage.setItem(STORAGE_KEY_TEMPLATES, JSON.stringify(templates));
-      localStorage.setItem(STORAGE_KEY_TRAINEES, JSON.stringify(trainees));
-    } catch {
-      // ignore
+  const syncTraineeSelfToServer = async (updatedProfile: TraineeProfile) => {
+    const res = await fetch('/api/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'trainee-self-update',
+        trainee: updatedProfile,
+      }),
+    });
+    if (res.status === 401 || res.status === 403) {
+      setCurrentUser(null);
+      setTrainees([]);
     }
+  };
 
-    if (!currentUser) return;
-
-    if (currentUser.role === 'trainee') {
-      const myProfile = trainees.find((t) => t.id === currentUser.id);
-      if (myProfile) {
-        fetch('/api/data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'trainee-self-update',
-            trainee: myProfile,
-          }),
-        }).catch(() => {});
-      }
-    } else if (currentUser.role === 'coach') {
-      fetch('/api/data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'coach-sync',
-          trainees,
-          templates,
-        }),
-      }).catch(() => {});
-    }
-  }, [templates, trainees, hydrated, currentUser]);
+  const syncCoachDataToServer = async (
+    nextTrainees: TraineeProfile[],
+    nextTemplates: NutritionTemplate[]
+  ) => {
+    await fetch('/api/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'coach-sync',
+        trainees: nextTrainees,
+        templates: nextTemplates,
+      }),
+    });
+  };
 
   const handleLoginSuccess = async (user: AuthSessionUser) => {
     setCurrentUser(user);
     setCoachPreviewTraineeId(null);
-
-    try {
-      const dataRes = await fetch('/api/data');
-      if (dataRes.ok) {
-        const remoteData = await dataRes.json();
-        if (
-          Array.isArray(remoteData.trainees) &&
-          remoteData.trainees.length > 0
-        ) {
-          setTrainees(remoteData.trainees);
-        }
-        if (
-          Array.isArray(remoteData.templates) &&
-          remoteData.templates.length > 0
-        ) {
-          setTemplates(remoteData.templates);
-        }
-      }
-    } catch {
-      // fallback to local
-    }
+    await fetchAuthorizedData();
   };
 
   const handleLogout = async () => {
     await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {});
     setCurrentUser(null);
+    setTrainees([]);
+    setTemplates([]);
     setCoachPreviewTraineeId(null);
-  };
-
-  const handleRegisterTrainee = async (data: {
-    name: string;
-    email: string;
-    password: string;
-    phone: string;
-    goal: string;
-    currentWeight: number;
-    inviteCode?: string;
-  }): Promise<
-    { user: AuthSessionUser; isPending: boolean } | { error: string }
-  > => {
-    const emailExists =
-      data.email.toLowerCase() === 'coach@spot.co.il' ||
-      trainees.some((t) => (t.email || '').toLowerCase() === data.email);
-
-    if (emailExists) {
-      return { error: 'כתובת האימייל הזו כבר רשומה במערכת' };
-    }
-
-    const hasValidInvite =
-      Boolean(data.inviteCode) &&
-      data.inviteCode?.toUpperCase() === coachInviteCode.toUpperCase();
-
-    const initialStatus: AccountStatus = hasValidInvite ? 'active' : 'pending';
-    const defaultTpl = templates[0] || DEFAULT_TEMPLATES[0];
-
-    const newTrainee: TraineeProfile = {
-      id: `trainee-${Date.now()}`,
-      email: data.email,
-      password: data.password,
-      status: initialStatus,
-      name: data.name,
-      avatar: data.name.charAt(0) || 'מ',
-      phone: data.phone || '',
-      goal: data.goal || 'חיטוב ותזונה מותאמת',
-      currentWeight: data.currentWeight || 75,
-      targetWeight: Math.max(45, (data.currentWeight || 75) - 4),
-      tolerancePercent: 10,
-      workoutTemplate: JSON.parse(JSON.stringify(defaultTpl)),
-      restTemplate: JSON.parse(JSON.stringify(defaultTpl)),
-      favoriteFoodIds: [
-        'cottage-tnuva-5',
-        'chicken-breast-grilled',
-        'krembo-strauss',
-      ],
-      weightHistory: [{ date: 'התחלה', weight: data.currentWeight || 75 }],
-      logs: {},
-    };
-
-    setTrainees((prev) => [...prev, newTrainee]);
-
-    const sessionUser: AuthSessionUser = {
-      id: newTrainee.id,
-      email: newTrainee.email,
-      name: newTrainee.name,
-      role: 'trainee',
-      status: initialStatus,
-    };
-
-    if (initialStatus === 'active') {
-      await fetch('/api/auth/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'register-session',
-          registeredUser: sessionUser,
-        }),
-      });
-    }
-
-    return {
-      user: sessionUser,
-      isPending: initialStatus === 'pending',
-    };
   };
 
   const handleSaveMeal = (
@@ -256,8 +149,8 @@ export default function HomePage() {
       minute: '2-digit',
     });
 
-    setTrainees((prev) =>
-      prev.map((t) => {
+    setTrainees((prev) => {
+      const next = prev.map((t) => {
         if (t.id !== traineeId) return t;
         const currentLog = t.logs[date] || {
           date,
@@ -268,7 +161,7 @@ export default function HomePage() {
           meals: {},
         };
         const existingMeal = currentLog.meals[mealSlotId];
-        return {
+        const updatedTrainee: TraineeProfile = {
           ...t,
           logs: {
             ...t.logs,
@@ -289,8 +182,17 @@ export default function HomePage() {
             },
           },
         };
-      })
-    );
+        if (currentUser?.role === 'trainee') {
+          syncTraineeSelfToServer(updatedTrainee);
+        }
+        return updatedTrainee;
+      });
+
+      if (currentUser?.role === 'coach') {
+        syncCoachDataToServer(next, templates);
+      }
+      return next;
+    });
   };
 
   const handleUpdateDayType = (
@@ -299,8 +201,8 @@ export default function HomePage() {
     dayType: DayType
   ) => {
     if (currentUser?.role === 'trainee' && currentUser.id !== traineeId) return;
-    setTrainees((prev) =>
-      prev.map((t) => {
+    setTrainees((prev) => {
+      const next = prev.map((t) => {
         if (t.id !== traineeId) return t;
         const currentLog = t.logs[date] || {
           date,
@@ -310,7 +212,7 @@ export default function HomePage() {
           weightKg: t.currentWeight,
           meals: {},
         };
-        return {
+        const updatedTrainee: TraineeProfile = {
           ...t,
           logs: {
             ...t.logs,
@@ -320,14 +222,22 @@ export default function HomePage() {
             },
           },
         };
-      })
-    );
+        if (currentUser?.role === 'trainee') {
+          syncTraineeSelfToServer(updatedTrainee);
+        }
+        return updatedTrainee;
+      });
+      if (currentUser?.role === 'coach') {
+        syncCoachDataToServer(next, templates);
+      }
+      return next;
+    });
   };
 
   const handleUpdateWater = (traineeId: string, date: string, cups: number) => {
     if (currentUser?.role === 'trainee' && currentUser.id !== traineeId) return;
-    setTrainees((prev) =>
-      prev.map((t) => {
+    setTrainees((prev) => {
+      const next = prev.map((t) => {
         if (t.id !== traineeId) return t;
         const currentLog = t.logs[date] || {
           date,
@@ -337,7 +247,7 @@ export default function HomePage() {
           weightKg: t.currentWeight,
           meals: {},
         };
-        return {
+        const updatedTrainee: TraineeProfile = {
           ...t,
           logs: {
             ...t.logs,
@@ -347,8 +257,16 @@ export default function HomePage() {
             },
           },
         };
-      })
-    );
+        if (currentUser?.role === 'trainee') {
+          syncTraineeSelfToServer(updatedTrainee);
+        }
+        return updatedTrainee;
+      });
+      if (currentUser?.role === 'coach') {
+        syncCoachDataToServer(next, templates);
+      }
+      return next;
+    });
   };
 
   const handleUpdateWeight = (
@@ -357,44 +275,61 @@ export default function HomePage() {
     weightKg: number
   ) => {
     if (currentUser?.role === 'trainee' && currentUser.id !== traineeId) return;
-    setTrainees((prev) =>
-      prev.map((t) => {
+    setTrainees((prev) => {
+      const next = prev.map((t) => {
         if (t.id !== traineeId) return t;
-        return {
+        const updatedTrainee: TraineeProfile = {
           ...t,
           currentWeight: weightKg,
           weightHistory: [...t.weightHistory, { date, weight: weightKg }],
         };
-      })
-    );
+        if (currentUser?.role === 'trainee') {
+          syncTraineeSelfToServer(updatedTrainee);
+        }
+        return updatedTrainee;
+      });
+      if (currentUser?.role === 'coach') {
+        syncCoachDataToServer(next, templates);
+      }
+      return next;
+    });
   };
 
   const handleToggleFavorite = (traineeId: string, foodId: string) => {
     if (currentUser?.role === 'trainee' && currentUser.id !== traineeId) return;
-    setTrainees((prev) =>
-      prev.map((t) => {
+    setTrainees((prev) => {
+      const next = prev.map((t) => {
         if (t.id !== traineeId) return t;
         const exists = t.favoriteFoodIds.includes(foodId);
-        return {
+        const updatedTrainee: TraineeProfile = {
           ...t,
           favoriteFoodIds: exists
             ? t.favoriteFoodIds.filter((id) => id !== foodId)
             : [...t.favoriteFoodIds, foodId],
         };
-      })
-    );
+        if (currentUser?.role === 'trainee') {
+          syncTraineeSelfToServer(updatedTrainee);
+        }
+        return updatedTrainee;
+      });
+      if (currentUser?.role === 'coach') {
+        syncCoachDataToServer(next, templates);
+      }
+      return next;
+    });
   };
 
   const handleSaveTemplate = (updatedTemplate: NutritionTemplate) => {
     if (currentUser?.role !== 'coach') return;
     setTemplates((prev) => {
       const exists = prev.some((t) => t.id === updatedTemplate.id);
-      if (exists) {
-        return prev.map((t) =>
-          t.id === updatedTemplate.id ? updatedTemplate : t
-        );
-      }
-      return [...prev, updatedTemplate];
+      const next = exists
+        ? prev.map((t) =>
+            t.id === updatedTemplate.id ? updatedTemplate : t
+          )
+        : [...prev, updatedTemplate];
+      syncCoachDataToServer(trainees, next);
+      return next;
     });
   };
 
@@ -405,14 +340,16 @@ export default function HomePage() {
   ) => {
     if (currentUser?.role !== 'coach') return;
     const cloned: NutritionTemplate = JSON.parse(JSON.stringify(template));
-    setTrainees((prev) =>
-      prev.map((t) => {
+    setTrainees((prev) => {
+      const next = prev.map((t) => {
         if (t.id !== traineeId) return t;
         return dayType === 'workout'
           ? { ...t, workoutTemplate: cloned }
           : { ...t, restTemplate: cloned };
-      })
-    );
+      });
+      syncCoachDataToServer(next, templates);
+      return next;
+    });
   };
 
   const handleUpdateTraineePlan = (
@@ -422,8 +359,8 @@ export default function HomePage() {
     tolerancePercent: number
   ) => {
     if (currentUser?.role !== 'coach') return;
-    setTrainees((prev) =>
-      prev.map((t) => {
+    setTrainees((prev) => {
+      const next = prev.map((t) => {
         if (t.id !== traineeId) return t;
         return {
           ...t,
@@ -432,8 +369,10 @@ export default function HomePage() {
             ? { workoutTemplate: updatedTemplate }
             : { restTemplate: updatedTemplate }),
         };
-      })
-    );
+      });
+      syncCoachDataToServer(next, templates);
+      return next;
+    });
   };
 
   const handleAddCoachFeedback = (
@@ -447,8 +386,8 @@ export default function HomePage() {
       hour: '2-digit',
       minute: '2-digit',
     });
-    setTrainees((prev) =>
-      prev.map((t) => {
+    setTrainees((prev) => {
+      const next = prev.map((t) => {
         if (t.id !== traineeId) return t;
         const currentLog = t.logs[date] || {
           date,
@@ -479,11 +418,13 @@ export default function HomePage() {
             },
           },
         };
-      })
-    );
+      });
+      syncCoachDataToServer(next, templates);
+      return next;
+    });
   };
 
-  const handleAddTraineeByCoach = (data: {
+  const handleAddTraineeByCoach = async (data: {
     name: string;
     email: string;
     password: string;
@@ -492,31 +433,20 @@ export default function HomePage() {
     templateId: string;
   }) => {
     if (currentUser?.role !== 'coach') return;
-    const tpl =
-      templates.find((t) => t.id === data.templateId) || DEFAULT_TEMPLATES[0];
-    const newTrainee: TraineeProfile = {
-      id: `trainee-${Date.now()}`,
-      email: data.email,
-      password: data.password || '123456',
-      status: 'active',
-      name: data.name,
-      avatar: data.name.trim().charAt(0) || 'מ',
-      phone: data.phone || '050-0000000',
-      goal: data.goal || 'חיטוב ותזונה מותאמת',
-      currentWeight: 75,
-      targetWeight: 70,
-      tolerancePercent: 10,
-      workoutTemplate: JSON.parse(JSON.stringify(tpl)),
-      restTemplate: JSON.parse(JSON.stringify(tpl)),
-      favoriteFoodIds: [
-        'cottage-tnuva-5',
-        'chicken-breast-grilled',
-        'krembo-strauss',
-      ],
-      weightHistory: [{ date: 'התחלה', weight: 75 }],
-      logs: {},
-    };
-    setTrainees((prev) => [...prev, newTrainee]);
+    const res = await fetch('/api/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'coach-create-trainee',
+        ...data,
+      }),
+    });
+    if (res.ok) {
+      const result = await res.json();
+      if (Array.isArray(result.trainees)) {
+        setTrainees(result.trainees);
+      }
+    }
   };
 
   const handleUpdateTraineeStatus = (
@@ -524,20 +454,34 @@ export default function HomePage() {
     status: AccountStatus
   ) => {
     if (currentUser?.role !== 'coach') return;
-    setTrainees((prev) =>
-      prev.map((t) => (t.id === traineeId ? { ...t, status } : t))
-    );
+    setTrainees((prev) => {
+      const next = prev.map((t) =>
+        t.id === traineeId ? { ...t, status } : t
+      );
+      syncCoachDataToServer(next, templates);
+      return next;
+    });
   };
 
-  const handleUpdateTraineeCredentials = (
+  const handleUpdateTraineeCredentials = async (
     traineeId: string,
     email: string,
     password: string
   ) => {
     if (currentUser?.role !== 'coach') return;
     setTrainees((prev) =>
-      prev.map((t) => (t.id === traineeId ? { ...t, email, password } : t))
+      prev.map((t) => (t.id === traineeId ? { ...t, email } : t))
     );
+    await fetch('/api/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'coach-update-credentials',
+        traineeId,
+        email,
+        password,
+      }),
+    });
   };
 
   const handleDeleteTrainee = (traineeId: string) => {
@@ -558,14 +502,7 @@ export default function HomePage() {
   }
 
   if (!currentUser) {
-    return (
-      <AuthGateView
-        trainees={trainees}
-        coachInviteCode={coachInviteCode}
-        onLoginSuccess={handleLoginSuccess}
-        onRegisterTrainee={handleRegisterTrainee}
-      />
-    );
+    return <AuthGateView onLoginSuccess={handleLoginSuccess} />;
   }
 
   const loggedInTraineeProfile =
@@ -790,9 +727,16 @@ export default function HomePage() {
             trainees={trainees}
             templates={templates}
             coachInviteCode={coachInviteCode}
-            onUpdateCoachInviteCode={(code) => {
+            onUpdateCoachInviteCode={async (code) => {
               setCoachInviteCode(code);
-              localStorage.setItem(STORAGE_KEY_INVITE_CODE, code);
+              await fetch('/api/data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'coach-update-invite-code',
+                  inviteCode: code,
+                }),
+              });
             }}
             onSaveTemplate={handleSaveTemplate}
             onAssignTemplateToTrainee={handleAssignTemplateToTrainee}
@@ -845,7 +789,6 @@ export default function HomePage() {
               className="btn-volt"
               style={{ padding: '10px', fontSize: 13, cursor: 'pointer' }}
               onClick={() => {
-                localStorage.setItem(STORAGE_KEY_GEMINI, geminiApiKey.trim());
                 setAiSettingsOpen(false);
               }}
             >

@@ -11,31 +11,13 @@ import {
   KeyRound,
   CheckCircle2,
 } from 'lucide-react';
-import { AuthSessionUser, TraineeProfile } from '@/types/nutrition';
+import { AuthSessionUser } from '@/types/nutrition';
 
 interface AuthGateViewProps {
-  trainees: TraineeProfile[];
-  coachInviteCode: string;
   onLoginSuccess: (user: AuthSessionUser) => void;
-  onRegisterTrainee: (data: {
-    name: string;
-    email: string;
-    password: string;
-    phone: string;
-    goal: string;
-    currentWeight: number;
-    inviteCode?: string;
-  }) => Promise<
-    { user: AuthSessionUser; isPending: boolean } | { error: string }
-  >;
 }
 
-export function AuthGateView({
-  trainees,
-  coachInviteCode,
-  onLoginSuccess,
-  onRegisterTrainee,
-}: AuthGateViewProps) {
+export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
 
   // שדות התחברות
@@ -45,7 +27,7 @@ export function AuthGateView({
   const [error, setError] = useState<string | null>(null);
   const [pendingNotice, setPendingNotice] = useState<string | null>(null);
 
-  // שדות הרשמת מתאמן
+  // שדות הרשמת מתאמן (מאומתים בצד השרת בלבד - ללא חשיפת מתאמנים או קוד מאמן לדפדפן)
   const [regName, setRegName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
@@ -76,7 +58,6 @@ export function AuthGateView({
           action: 'login',
           email: cleanEmail,
           password: cleanPass,
-          clientTrainees: trainees,
         }),
       });
 
@@ -118,31 +99,40 @@ export function AuthGateView({
 
     setLoading(true);
     try {
-      const res = await onRegisterTrainee({
-        name: regName.trim(),
-        email: regEmail.trim().toLowerCase(),
-        password: regPassword.trim(),
-        phone: regPhone.trim(),
-        goal: regGoal.trim(),
-        currentWeight: regWeight,
-        inviteCode: regInviteCode.trim(),
+      const res = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'register',
+          name: regName.trim(),
+          email: regEmail.trim().toLowerCase(),
+          password: regPassword.trim(),
+          phone: regPhone.trim(),
+          goal: regGoal.trim(),
+          currentWeight: regWeight,
+          inviteCode: regInviteCode.trim(),
+        }),
       });
 
-      if ('error' in res) {
-        setError(res.error);
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || 'שגיאה בהרשמה');
         return;
       }
 
-      if (res.isPending) {
+      if (data.isPending) {
         setPendingNotice(
-          `נרשמת בהצלחה ${res.user.name}! מכיוון שלא הוזן קוד מאמן, החשבון שלך ממתין לאישור המאמן בדשבורד.`
+          `נרשמת בהצלחה ${data.user.name}! מכיוון שלא הוזן קוד מאמן תקף, החשבון שלך ממתין לאישור המאמן בדשבורד.`
         );
         setMode('login');
-        setEmail(res.user.email);
+        setEmail(data.user.email);
         setPassword(regPassword.trim());
-      } else {
-        onLoginSuccess(res.user);
+      } else if (data.user) {
+        onLoginSuccess(data.user);
       }
+    } catch {
+      setError('שגיאת תקשורת מול שרת ההרשמה');
     } finally {
       setLoading(false);
     }
@@ -218,7 +208,6 @@ export function AuthGateView({
           </div>
         </div>
 
-        {/* מתג התחברות / הרשמת מתאמן */}
         <div
           style={{
             display: 'grid',
@@ -382,7 +371,7 @@ export function AuthGateView({
                   textAlign: 'center',
                 }}
               >
-                מילוי מהיר לבדיקת הרשאות (סיסמת ברירת מחדל: 123456):
+                מילוי מהיר לבדיקת הרשאות (אימות בצד השרת):
               </div>
               <div
                 style={{
@@ -429,7 +418,7 @@ export function AuthGateView({
                 >
                   <div style={{ fontWeight: 700 }}>עומר (מתאמן)</div>
                   <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                    רואה רק את עצמו
+                    מבודד לעצמו
                   </div>
                 </button>
 
@@ -449,7 +438,7 @@ export function AuthGateView({
                 >
                   <div style={{ fontWeight: 700 }}>נועה (מתאמנת)</div>
                   <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                    רואה רק את עצמה
+                    מבודדת לעצמה
                   </div>
                 </button>
               </div>
@@ -521,7 +510,7 @@ export function AuthGateView({
             >
               <TextInput
                 label="קוד מאמן להפעלה מיידית (אופציונלי)"
-                description={`אם קיבלת קוד מהמאמן (למשל ${coachInviteCode}) הזן אותו לכניסה מיידית. ללא קוד, ההרשמה תמתין לאישור המאמן.`}
+                description="אם קיבלת קוד אישי מהמאמן הזן אותו לכניסה מיידית. ללא קוד, ההרשמה תמתין לאישור המאמן."
                 placeholder="הזן קוד מאמן או השאר ריק"
                 leftSection={<KeyRound size={14} />}
                 value={regInviteCode}

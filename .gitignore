@@ -23,6 +23,7 @@ yarn-error.log*
 # local env files (שומר על המפתחות הפרטיים שלך שלא יעלו ל-GitHub)
 .env
 .env*.local
+/.data/
 
 # vercel
 .vercel

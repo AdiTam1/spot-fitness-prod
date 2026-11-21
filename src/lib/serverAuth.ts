@@ -158,3 +158,52 @@ export function checkRateLimit(
   record.count += 1;
   return { allowed: true, remaining: maxRequests - record.count };
 }
+
+/**
+ * אימות כותרת Origin / Host להגנה מפני CSRF בבקשות POST / DELETE
+ */
+export function verifyCsrfOrigin(request: NextRequest): boolean {
+  const origin = request.headers.get('origin');
+  const host = request.headers.get('host');
+  if (!origin || !host) return true; // בקשות מאותו מקור ללא כותרת חיצונית
+  try {
+    const originUrl = new URL(origin);
+    return originUrl.host === host;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * סינון וניקוי טקסט מתגיות HTML/Script זדוניות והגבלת אורך
+ */
+export function sanitizeText(input: unknown, maxLength = 250): string {
+  if (typeof input !== 'string') return '';
+  return input
+    .replace(/[<>]/g, '')
+    .replace(/javascript:/gi, '')
+    .trim()
+    .slice(0, maxLength);
+}
+
+/**
+ * ולידציה של מספרים למניעת ערכים שליליים, NaN או Infinity
+ */
+export function sanitizeNumber(
+  input: unknown,
+  min = 0,
+  max = 100000,
+  fallback = 0
+): number {
+  const num = Number(input);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(max, Math.max(min, num));
+}
+
+/**
+ * יצירת מזהה UUIDv4 קריפטוגרפי בלתי ניתן לניחוש (מונע ID Enumeration)
+ */
+export function generateSecureId(prefix: string): string {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
+

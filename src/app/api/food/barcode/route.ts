@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ISRAELI_FOOD_CATALOG } from '@/data/israeliFoodCatalog';
 import { FoodCatalogItem } from '@/types/nutrition';
+import { getSessionFromRequest, sanitizeText } from '@/lib/serverAuth';
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const code = (searchParams.get('code') || '').trim();
+  const session = getSessionFromRequest(request);
+  if (!session) {
+    return NextResponse.json({ error: 'נדרשת התחברות' }, { status: 401 });
+  }
 
-  if (!code) {
-    return NextResponse.json({ error: 'חסר קוד ברקוד' }, { status: 400 });
+  const { searchParams } = new URL(request.url);
+  const code = sanitizeText(searchParams.get('code') || '', 20);
+
+  // ולידציית SSRF: ברקוד חייב להכיל ספרות בלבד (EAN-8 / UPC / EAN-13)
+  if (!code || !/^[0-9]{6,16}$/.test(code)) {
+    return NextResponse.json(
+      { error: 'קוד ברקוד לא תקין (מספרים בלבד)' },
+      { status: 400 }
+    );
   }
 
   // 1. בדיקה במאגר המוצרים הישראלי המובנה

@@ -1570,11 +1570,11 @@ export function CoachDashboardView({
                         className="num-mono"
                         style={{
                           padding: '14px 16px',
-                          fontSize: 13,
-                          color: 'var(--text-secondary)',
+                          fontSize: 12,
+                          color: 'var(--text-muted)',
                         }}
                       >
-                        {t.password || '123456'}
+                        •••••••• (מוצפן בשרת)
                       </td>
                       <td style={{ padding: '14px 16px' }}>
                         {t.status === 'active' && (
@@ -1672,7 +1672,7 @@ export function CoachDashboardView({
                             onClick={() => {
                               setCredModalTrainee(t);
                               setEditEmail(t.email);
-                              setEditPassword(t.password || '123456');
+                              setEditPassword('');
                             }}
                             className="btn-surface"
                             style={{
@@ -1685,7 +1685,7 @@ export function CoachDashboardView({
                             }}
                           >
                             <KeyRound size={13} />
-                            <span>סיסמה</span>
+                            <span>איפוס סיסמה</span>
                           </button>
 
                           <button
@@ -1835,7 +1835,8 @@ export function CoachDashboardView({
             onChange={(e) => setEditEmail(e.currentTarget.value)}
           />
           <TextInput
-            label="סיסמה חדשה"
+            label="סיסמה חדשה (הזן סיסמה חדשה לאיפוס)"
+            placeholder="הקלד סיסמה חדשה עבור המתאמן"
             value={editPassword}
             onChange={(e) => setEditPassword(e.currentTarget.value)}
           />

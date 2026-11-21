@@ -1,59 +1,71 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionFromRequest, hashPassword } from '@/lib/serverAuth';
 import {
-  deleteTraineeFromSupabase,
-  isSupabaseConfigured,
-  loadSingleTraineeFromSupabase,
-  loadStateFromSupabase,
-  saveTemplatesToSupabase,
-  saveTraineesToSupabase,
-} from '@/lib/supabase';
+  clearSessionCookie,
+  generateSecureId,
+  getSessionFromRequest,
+  hashPassword,
+  sanitizeNumber,
+  sanitizeText,
+  verifyCsrfOrigin,
+} from '@/lib/serverAuth';
+import {
+  deleteTraineeOnServer,
+  getServerDbState,
+  getSingleTraineeFromServer,
+  sanitizeTraineeForClient,
+  updateServerDbState,
+} from '@/lib/serverStore';
+import { DEFAULT_TEMPLATES } from '@/data/israeliFoodCatalog';
 import { NutritionTemplate, TraineeProfile } from '@/types/nutrition';
 
-/**
- * שער נתונים מאובטח בצד השרת (Role-Based Data Gateway)
- * מוודא שמתאמן מקבל ומעדכן אך ורק את הפרופיל של עצמו (ללא חשיפת מתאמנים אחרים ברשת או בדפדפן)
- */
 export async function GET(request: NextRequest) {
   const session = getSessionFromRequest(request);
   if (!session) {
-    return NextResponse.json({ error: 'לא מחובר' }, { status: 401 });
+    return NextResponse.json(
+      { error: 'לא מחובר' },
+      { status: 401, headers: { 'Cache-Control': 'no-store, max-age=0' } }
+    );
   }
 
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({
-      mode: 'local',
-      role: session.role,
-    });
-  }
-
-  // אם המשתמש המחובר הוא מתאמן -> מחזיר אך ורק את הרשומה האישית שלו וללא שדה סיסמה!
+  // 1. מתאמן מחובר: מקבל אך ורק את הרשומה הבודדת של עצמו (ללא גיבוב סיסמה וללא מתאמנים אחרים!)
   if (session.role === 'trainee') {
-    const myProfile = await loadSingleTraineeFromSupabase(session.id);
-    if (!myProfile) {
-      return NextResponse.json({ trainees: [], templates: [] });
+    const myProfile = await getSingleTraineeFromServer(session.id);
+    if (!myProfile || myProfile.status !== 'active') {
+      const res = NextResponse.json(
+        { error: 'החשבון אינו פעיל' },
+        { status: 403, headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      );
+      return clearSessionCookie(res);
     }
-    const sanitized: TraineeProfile = {
-      ...myProfile,
-      password: '', // לעולם לא מחזיר סיסמה לדפדפן של המתאמן
-    };
-    return NextResponse.json({
-      trainees: [sanitized],
-      templates: [],
-      role: 'trainee',
-    });
+
+    return NextResponse.json(
+      {
+        trainees: [sanitizeTraineeForClient(myProfile)],
+        templates: [],
+        role: 'trainee',
+      },
+      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+    );
   }
 
-  // אם המשתמש המחובר הוא המאמן (חתום ב-HMAC בשרת) -> מחזיר את כל המתאמנים והטמפלייטים
-  const remote = await loadStateFromSupabase();
-  return NextResponse.json({
-    trainees: remote.trainees || [],
-    templates: remote.templates || [],
-    role: 'coach',
-  });
+  // 2. מאמן מחובר: מקבל את מצבת המתאמנים (ללא חשיפת Hash הסיסמה), הטמפלייטים וקוד ההזמנה
+  const state = await getServerDbState();
+  return NextResponse.json(
+    {
+      trainees: state.trainees.map((t) => sanitizeTraineeForClient(t)),
+      templates: state.templates,
+      coachInviteCode: state.coachInviteCode,
+      role: 'coach',
+    },
+    { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+  );
 }
 
 export async function POST(request: NextRequest) {
+  if (!verifyCsrfOrigin(request)) {
+    return NextResponse.json({ error: 'CSRF Blocked' }, { status: 403 });
+  }
+
   const session = getSessionFromRequest(request);
   if (!session) {
     return NextResponse.json({ error: 'לא מחובר' }, { status: 401 });
@@ -61,72 +73,200 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { action, trainee, trainees, templates, deleteTraineeId } = body as {
+    const { action } = body as {
       action:
         | 'trainee-self-update'
         | 'coach-sync'
+        | 'coach-create-trainee'
+        | 'coach-update-credentials'
+        | 'coach-update-invite-code'
         | 'coach-delete-trainee';
-      trainee?: TraineeProfile;
-      trainees?: TraineeProfile[];
-      templates?: NutritionTemplate[];
-      deleteTraineeId?: string;
     };
 
-    // 1. מתאמן יכול לעדכן אך ורק את היומן, המשקל והמועדפים של עצמו!
+    // =========================================================================
+    // הרשאות מתאמן: עדכון יומן הארוחות, המים והמשקל של עצמו בלבד (נעילת יעדים!)
+    // =========================================================================
     if (session.role === 'trainee') {
-      if (action !== 'trainee-self-update' || !trainee || trainee.id !== session.id) {
+      const traineeInput = body.trainee as TraineeProfile | undefined;
+      if (
+        action !== 'trainee-self-update' ||
+        !traineeInput ||
+        traineeInput.id !== session.id
+      ) {
         return NextResponse.json(
-          { error: 'אין הרשאה לבצע פעולה זו' },
+          { error: 'אין הרשאה לבצע פעולה זו (IDOR / BFLA Blocked)' },
           { status: 403 }
         );
       }
 
-      if (isSupabaseConfigured) {
-        const existing = await loadSingleTraineeFromSupabase(session.id);
-        if (existing) {
-          // שומר על יעדי המאמן (workoutTemplate, restTemplate, tolerancePercent, status) נעולים מהשרת!
-          const lockedTrainee: TraineeProfile = {
-            ...existing,
-            logs: trainee.logs,
-            currentWeight: trainee.currentWeight,
-            weightHistory: trainee.weightHistory,
-            favoriteFoodIds: trainee.favoriteFoodIds,
-          };
-          await saveTraineesToSupabase([lockedTrainee]);
-        }
+      const liveTrainee = await getSingleTraineeFromServer(session.id);
+      if (!liveTrainee || liveTrainee.status !== 'active') {
+        const res = NextResponse.json(
+          { error: 'החשבון אינו פעיל' },
+          { status: 403 }
+        );
+        return clearSessionCookie(res);
       }
+
+      const safeWeight = sanitizeNumber(
+        traineeInput.currentWeight,
+        30,
+        300,
+        liveTrainee.currentWeight
+      );
+
+      await updateServerDbState((prev) => ({
+        ...prev,
+        trainees: prev.trainees.map((existing) => {
+          if (existing.id !== session.id) return existing;
+          // שומר את כל הגדרות המאמן והסיסמה נעולים מהשרת!
+          return {
+            ...existing,
+            currentWeight: safeWeight,
+            weightHistory: Array.isArray(traineeInput.weightHistory)
+              ? traineeInput.weightHistory.slice(-60)
+              : existing.weightHistory,
+            favoriteFoodIds: Array.isArray(traineeInput.favoriteFoodIds)
+              ? traineeInput.favoriteFoodIds.slice(0, 50)
+              : existing.favoriteFoodIds,
+            logs: traineeInput.logs || existing.logs,
+          };
+        }),
+      }));
+
       return NextResponse.json({ ok: true });
     }
 
-    // 2. פעולות מאמן בלבד (נבדק שהחתימה הקריפטוגרפית היא role === 'coach')
+    // =========================================================================
+    // הרשאות מאמן בלבד (מאומת ע"י חתימת HMAC של role === 'coach')
+    // =========================================================================
     if (session.role === 'coach') {
-      if (action === 'coach-delete-trainee' && deleteTraineeId) {
-        if (isSupabaseConfigured) {
-          await deleteTraineeFromSupabase(deleteTraineeId);
-        }
+      if (action === 'coach-delete-trainee' && body.deleteTraineeId) {
+        await deleteTraineeOnServer(String(body.deleteTraineeId));
+        return NextResponse.json({ ok: true });
+      }
+
+      if (action === 'coach-update-invite-code') {
+        const cleanCode = sanitizeText(body.inviteCode, 40) || 'SPOT2026';
+        await updateServerDbState((prev) => ({
+          ...prev,
+          coachInviteCode: cleanCode,
+        }));
+        return NextResponse.json({ ok: true, coachInviteCode: cleanCode });
+      }
+
+      if (action === 'coach-create-trainee') {
+        const name = sanitizeText(body.name, 80);
+        const email = sanitizeText(body.email, 120).toLowerCase();
+        const rawPassword =
+          typeof body.password === 'string' && body.password.trim()
+            ? body.password.trim()
+            : '123456';
+        const phone = sanitizeText(body.phone, 30);
+        const goal = sanitizeText(body.goal, 120) || 'חיטוב ותזונה מותאמת';
+        const templateId = String(body.templateId || '');
+
+        const state = await getServerDbState();
+        const tpl =
+          state.templates.find((t) => t.id === templateId) ||
+          state.templates[0] ||
+          DEFAULT_TEMPLATES[0];
+
+        const newTrainee: TraineeProfile = {
+          id: generateSecureId('trainee'),
+          email,
+          password: hashPassword(rawPassword),
+          status: 'active',
+          name,
+          avatar: name.charAt(0) || 'מ',
+          phone,
+          goal,
+          currentWeight: 75,
+          targetWeight: 70,
+          tolerancePercent: 10,
+          workoutTemplate: JSON.parse(JSON.stringify(tpl)),
+          restTemplate: JSON.parse(JSON.stringify(tpl)),
+          favoriteFoodIds: [
+            'cottage-tnuva-5',
+            'chicken-breast-grilled',
+            'krembo-strauss',
+          ],
+          weightHistory: [{ date: 'התחלה', weight: 75 }],
+          logs: {},
+        };
+
+        const updated = await updateServerDbState((prev) => ({
+          ...prev,
+          trainees: [...prev.trainees, newTrainee],
+        }));
+
+        return NextResponse.json({
+          ok: true,
+          trainees: updated.trainees.map((t) => sanitizeTraineeForClient(t)),
+        });
+      }
+
+      if (action === 'coach-update-credentials') {
+        const traineeId = String(body.traineeId || '');
+        const newEmail = sanitizeText(body.email, 120).toLowerCase();
+        const rawPassword =
+          typeof body.password === 'string' ? body.password.trim() : '';
+
+        await updateServerDbState((prev) => ({
+          ...prev,
+          trainees: prev.trainees.map((t) => {
+            if (t.id !== traineeId) return t;
+            return {
+              ...t,
+              email: newEmail || t.email,
+              password: rawPassword ? hashPassword(rawPassword) : t.password,
+            };
+          }),
+        }));
+
         return NextResponse.json({ ok: true });
       }
 
       if (action === 'coach-sync') {
-        if (isSupabaseConfigured) {
-          if (templates && templates.length > 0) {
-            await saveTemplatesToSupabase(templates);
-          }
-          if (trainees && trainees.length > 0) {
-            // גיבוב סיסמאות חדשות לפני שמירה אם נדרש
-            const prepared = trainees.map((t) => ({
-              ...t,
-              password: t.password || hashPassword('123456'),
-            }));
-            await saveTraineesToSupabase(prepared);
-          }
-        }
+        const incomingTrainees = body.trainees as TraineeProfile[] | undefined;
+        const incomingTemplates = body.templates as
+          | NutritionTemplate[]
+          | undefined;
+
+        await updateServerDbState((prev) => {
+          const mergedTrainees = Array.isArray(incomingTrainees)
+            ? incomingTrainees.map((inc) => {
+                const existing = prev.trainees.find((e) => e.id === inc.id);
+                return {
+                  ...inc,
+                  // שומר על גיבוב הסיסמה הקיים בשרת גם כשהלקוח שולח password ריק!
+                  password:
+                    inc.password && inc.password.trim()
+                      ? hashPassword(inc.password)
+                      : existing?.password || hashPassword('123456'),
+                };
+              })
+            : prev.trainees;
+
+          return {
+            ...prev,
+            templates:
+              Array.isArray(incomingTemplates) && incomingTemplates.length > 0
+                ? incomingTemplates
+                : prev.templates,
+            trainees: mergedTrainees,
+          };
+        });
+
         return NextResponse.json({ ok: true });
       }
     }
 
     return NextResponse.json({ error: 'פעולה לא חוקית' }, { status: 400 });
   } catch {
-    return NextResponse.json({ error: 'שגיאת שרת בשמירת נתונים' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'שגיאת שרת בשמירת נתונים' },
+      { status: 500 }
+    );
   }
 }

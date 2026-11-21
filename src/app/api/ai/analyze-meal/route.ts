@@ -2,7 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ISRAELI_FOOD_CATALOG, calculateMacrosForGrams } from '@/data/israeliFoodCatalog';
 import { LoggedFoodItem } from '@/types/nutrition';
-import { checkRateLimit, getSessionFromRequest } from '@/lib/serverAuth';
+import {
+  checkRateLimit,
+  clearSessionCookie,
+  getSessionFromRequest,
+  sanitizeNumber,
+  sanitizeText,
+  verifyCsrfOrigin,
+} from '@/lib/serverAuth';
+import { getSingleTraineeFromServer } from '@/lib/serverStore';
 
 /**
  * מנתח טקסט עברי חכם (Fallback ללא צורך במפתח, או גיבוי מיידי)
@@ -168,6 +176,11 @@ function smartHebrewMealParser(
 
 export async function POST(request: NextRequest) {
   try {
+    // 0. הגנת CSRF
+    if (!verifyCsrfOrigin(request)) {
+      return NextResponse.json({ error: 'CSRF Blocked' }, { status: 403 });
+    }
+
     // 1. אימות סשן חתום קריפטוגרפית בשרת (HttpOnly Cookie)
     const sessionUser = getSessionFromRequest(request);
     if (!sessionUser || sessionUser.status !== 'active') {
@@ -175,6 +188,18 @@ export async function POST(request: NextRequest) {
         { error: 'גישה נדחתה: נדרשת התחברות פעילה למערכת לשימוש ב-AI' },
         { status: 401 }
       );
+    }
+
+    // אימות חי מול מסד הנתונים שחשבון המתאמן לא הושהה או נמחק
+    if (sessionUser.role === 'trainee') {
+      const liveTrainee = await getSingleTraineeFromServer(sessionUser.id);
+      if (!liveTrainee || liveTrainee.status !== 'active') {
+        const res = NextResponse.json(
+          { error: 'החשבון אינו פעיל' },
+          { status: 403 }
+        );
+        return clearSessionCookie(res);
+      }
     }
 
     // 2. הגנת Rate-Limit על מכסת ה-AI (עד 25 קריאות בשעה למשתמש)
@@ -207,7 +232,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const apiKey = (customApiKey || process.env.GEMINI_API_KEY || '').trim();
+    // שימוש במפתח חיצוני מותר אך ורק אם המשתמש המחובר הוא המאמן
+    const safeCustomKey =
+      sessionUser.role === 'coach' && customApiKey ? customApiKey : '';
+    const apiKey = (safeCustomKey || process.env.GEMINI_API_KEY || '').trim();
     const sourceType: 'ai-photo' | 'ai-text' = imageDataUrl ? 'ai-photo' : 'ai-text';
 
     // אם הוגדר מפתח Gemini API חינמי מ-Google AI Studio, נשתמש במודל gemini-2.5-flash האמיתי
@@ -270,17 +298,29 @@ export async function POST(request: NextRequest) {
           const items: LoggedFoodItem[] = parsed.items.map(
             (it: Record<string, unknown>, idx: number) => {
               const macros = (it.macros as Record<string, number>) || {};
+              const grams = sanitizeNumber(it.grams, 1, 5000, 100);
               return {
                 id: `gemini-${Date.now()}-${idx}`,
-                name: String(it.name || 'פריט מזון'),
-                unitLabel: String(it.unitLabel || `${Number(it.grams) || 100} גרם`),
-                quantity: Number(it.quantity) || 1,
-                grams: Number(it.grams) || 100,
+                name: sanitizeText(it.name, 120) || 'פריט מזון',
+                unitLabel:
+                  sanitizeText(it.unitLabel, 80) || `${grams} גרם`,
+                quantity: sanitizeNumber(it.quantity, 0.1, 100, 1),
+                grams,
                 macros: {
-                  calories: Math.round(Number(macros.calories) || 0),
-                  protein: Math.round((Number(macros.protein) || 0) * 10) / 10,
-                  carbs: Math.round((Number(macros.carbs) || 0) * 10) / 10,
-                  fat: Math.round((Number(macros.fat) || 0) * 10) / 10,
+                  calories: Math.round(
+                    sanitizeNumber(macros.calories, 0, 10000, 0)
+                  ),
+                  protein:
+                    Math.round(
+                      sanitizeNumber(macros.protein, 0, 1000, 0) * 10
+                    ) / 10,
+                  carbs:
+                    Math.round(
+                      sanitizeNumber(macros.carbs, 0, 1000, 0) * 10
+                    ) / 10,
+                  fat:
+                    Math.round(sanitizeNumber(macros.fat, 0, 1000, 0) * 10) /
+                    10,
                 },
                 source: sourceType,
               };
@@ -289,7 +329,9 @@ export async function POST(request: NextRequest) {
 
           return NextResponse.json({
             items,
-            summary: parsed.summary || 'הארוחה פוענחה בהצלחה באמצעות Gemini 2.5 Flash AI',
+            summary:
+              sanitizeText(parsed.summary, 200) ||
+              'הארוחה פוענחה בהצלחה באמצעות Gemini 2.5 Flash AI',
             engine: 'gemini-2.5-flash',
           });
         }
