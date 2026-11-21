@@ -12,13 +12,17 @@ import {
   WeeklyCheckInEntry,
 } from '@/types/nutrition';
 
-const supabaseUrl =
-  process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey =
+const cleanEnv = (v?: string) =>
+  (v || '').trim().replace(/^["']|["']$/g, '').trim();
+
+const supabaseUrl = cleanEnv(
+  process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+);
+const supabaseKey = cleanEnv(
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_ANON_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  '';
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey);
 
@@ -165,14 +169,66 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
 
 const SYSTEM_META_TEMPLATE_ID = '__spot_system_coaches_and_groups__';
 
+type SbErrorLike = {
+  message?: string;
+  code?: string;
+  details?: string;
+  hint?: string;
+} | null;
+
+function formatSupabaseError(table: string, error: SbErrorLike): string {
+  if (!error) return '';
+  const code = error.code ? `[${error.code}] ` : '';
+  const hint = error.hint ? ` (${error.hint})` : '';
+  return `${table}: ${code}${error.message || 'Unknown error'}${hint}`;
+}
+
+export function diagnoseSupabaseError(rawMessage: string): string {
+  const lower = rawMessage.toLowerCase();
+  if (lower.includes('row-level security') || lower.includes('42501')) {
+    return `חסימת הרשאות במסד הנתונים (RLS): יש להריץ את פקודות ה-POLICY מתוך supabase/schema.sql ב-SQL Editor של Supabase, או להגדיר SUPABASE_SERVICE_ROLE_KEY בהגדרות Vercel. (${rawMessage})`;
+  }
+  if (
+    lower.includes('invalid api key') ||
+    lower.includes('jwt') ||
+    lower.includes('permission denied')
+  ) {
+    return `מפתח ה-Supabase שמוגדר בשרת אינו תקין או חסר הרשאות כתיבה — בדוק את SUPABASE_URL ו-SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY ב-Vercel. (${rawMessage})`;
+  }
+  if (
+    lower.includes('column') ||
+    lower.includes('pgrst204') ||
+    lower.includes('42703') ||
+    lower.includes('schema cache')
+  ) {
+    return `מבנה הטבלאות ב-Supabase אינו מעודכן — יש להריץ את supabase/schema.sql המלא ב-SQL Editor. (${rawMessage})`;
+  }
+  if (lower.includes('duplicate key') || lower.includes('23505')) {
+    return `ערך כפול במאגר (אימייל או קוד הזמנה כבר קיימים במסד הנתונים). (${rawMessage})`;
+  }
+  if (lower.includes('fetch failed') || lower.includes('enotfound')) {
+    return `כשל בחיבור הרשת ל-Supabase — בדוק את SUPABASE_URL בהגדרות השרת. (${rawMessage})`;
+  }
+  return `שגיאה בשמירת נתונים מול Supabase: ${rawMessage}`;
+}
+
+let metaWriteQueue: Promise<unknown> = Promise.resolve();
+
 export async function loadStateFromSupabase(): Promise<{
   coaches: CoachProfile[];
   groups: TraineeGroup[];
   templates: NutritionTemplate[];
   trainees: TraineeProfile[];
+  readErrors: string[];
 }> {
   if (!supabase) {
-    return { coaches: [], groups: [], templates: [], trainees: [] };
+    return {
+      coaches: [],
+      groups: [],
+      templates: [],
+      trainees: [],
+      readErrors: [],
+    };
   }
 
   const [coachesRes, groupsRes, tplRes, trRes] = await Promise.all([
@@ -182,6 +238,20 @@ export async function loadStateFromSupabase(): Promise<{
     supabase.from('trainees').select('*'),
   ]);
 
+  const readErrors: string[] = [];
+  if (coachesRes.error) {
+    readErrors.push(formatSupabaseError('coaches', coachesRes.error));
+  }
+  if (groupsRes.error) {
+    readErrors.push(formatSupabaseError('trainee_groups', groupsRes.error));
+  }
+  if (tplRes.error) {
+    readErrors.push(formatSupabaseError('nutrition_templates', tplRes.error));
+  }
+  if (trRes.error) {
+    readErrors.push(formatSupabaseError('trainees', trRes.error));
+  }
+
   const rawTemplates = Array.isArray(tplRes.data) ? tplRes.data : [];
   const systemMetaRow = rawTemplates.find(
     (r) => r.id === SYSTEM_META_TEMPLATE_ID
@@ -189,7 +259,11 @@ export async function loadStateFromSupabase(): Promise<{
   let fallbackCoaches: CoachProfile[] = [];
   let fallbackGroups: TraineeGroup[] = [];
 
-  if (systemMetaRow && systemMetaRow.meals && typeof systemMetaRow.meals === 'object') {
+  if (
+    systemMetaRow &&
+    systemMetaRow.meals &&
+    typeof systemMetaRow.meals === 'object'
+  ) {
     const metaObj = systemMetaRow.meals as {
       coaches?: CoachProfile[];
       groups?: TraineeGroup[];
@@ -248,7 +322,7 @@ export async function loadStateFromSupabase(): Promise<{
     ? trRes.data.map((row) => mapRowToTrainee(row))
     : [];
 
-  return { coaches, groups, templates, trainees };
+  return { coaches, groups, templates, trainees, readErrors };
 }
 
 export async function loadSingleTraineeFromSupabase(
@@ -281,28 +355,49 @@ export async function loadSingleCoachFromSupabase(
   return fullState.coaches.find((c) => c.id === coachId) || null;
 }
 
-async function saveSystemMetaBackup(
-  partial: { coaches?: CoachProfile[]; groups?: TraineeGroup[] }
-): Promise<boolean> {
-  if (!supabase) return false;
-  const { data: existing } = await supabase
-    .from('nutrition_templates')
-    .select('*')
-    .eq('id', SYSTEM_META_TEMPLATE_ID)
-    .maybeSingle();
+export async function saveSystemMetaBackup(partial: {
+  coaches?: CoachProfile[];
+  groups?: TraineeGroup[];
+}): Promise<{ ok: boolean; error?: string }> {
+  const run = async (): Promise<{ ok: boolean; error?: string }> => {
+    if (!supabase) return { ok: false, error: 'Supabase client not configured' };
 
-  const currentMeta =
-    existing && existing.meals && typeof existing.meals === 'object'
-      ? (existing.meals as { coaches?: CoachProfile[]; groups?: TraineeGroup[] })
-      : {};
+    const { data: existing, error: readErr } = await supabase
+      .from('nutrition_templates')
+      .select('*')
+      .eq('id', SYSTEM_META_TEMPLATE_ID)
+      .maybeSingle();
 
-  const mergedMeta = {
-    coaches: partial.coaches !== undefined ? partial.coaches : currentMeta.coaches || [],
-    groups: partial.groups !== undefined ? partial.groups : currentMeta.groups || [],
-  };
+    const currentMeta =
+      existing && existing.meals && typeof existing.meals === 'object'
+        ? (existing.meals as {
+            coaches?: CoachProfile[];
+            groups?: TraineeGroup[];
+          })
+        : {};
 
-  const { error } = await supabase.from('nutrition_templates').upsert(
-    [
+    const mergedMeta = {
+      coaches:
+        partial.coaches !== undefined
+          ? partial.coaches
+          : currentMeta.coaches || [],
+      groups:
+        partial.groups !== undefined
+          ? partial.groups
+          : currentMeta.groups || [],
+    };
+
+    const attempts: Record<string, unknown>[] = [
+      {
+        id: SYSTEM_META_TEMPLATE_ID,
+        name: '__SYSTEM_META__',
+        description: 'System backup for coaches and groups',
+        day_type: 'workout',
+        tolerance_percent: 10,
+        owner_coach_id: 'coach-admin',
+        meals: mergedMeta,
+        updated_at: new Date().toISOString(),
+      },
       {
         id: SYSTEM_META_TEMPLATE_ID,
         name: '__SYSTEM_META__',
@@ -312,18 +407,53 @@ async function saveSystemMetaBackup(
         meals: mergedMeta,
         updated_at: new Date().toISOString(),
       },
-    ],
-    { onConflict: 'id' }
+      {
+        id: SYSTEM_META_TEMPLATE_ID,
+        name: '__SYSTEM_META__',
+        day_type: 'workout',
+        tolerance_percent: 10,
+        meals: mergedMeta,
+      },
+    ];
+
+    let lastErr: SbErrorLike = readErr;
+    for (const row of attempts) {
+      const { error } = await supabase
+        .from('nutrition_templates')
+        .upsert([row], { onConflict: 'id' });
+      if (!error) {
+        return { ok: true };
+      }
+      lastErr = error;
+    }
+
+    return {
+      ok: false,
+      error: formatSupabaseError('nutrition_templates(meta)', lastErr),
+    };
+  };
+
+  const queued = metaWriteQueue.then(run, run);
+  metaWriteQueue = queued.then(
+    () => undefined,
+    () => undefined
   );
-  return !error;
+  return queued;
 }
 
-export async function saveCoachesToSupabase(coaches: CoachProfile[]) {
+export async function saveCoachesToSupabase(
+  coaches: CoachProfile[],
+  options?: { skipMetaBackup?: boolean }
+) {
   if (!supabase) return;
-  const backupOk = await saveSystemMetaBackup({ coaches });
+
+  const backupRes = options?.skipMetaBackup
+    ? { ok: false, error: undefined }
+    : await saveSystemMetaBackup({ coaches });
 
   if (coaches.length === 0) return;
-  const rows = coaches.map((c) => ({
+
+  const fullRows = coaches.map((c) => ({
     id: c.id,
     email: c.email,
     password: c.password || '',
@@ -335,27 +465,55 @@ export async function saveCoachesToSupabase(coaches: CoachProfile[]) {
     onboarding: c.onboarding || {},
     updated_at: new Date().toISOString(),
   }));
-  const { error } = await supabase
+
+  const first = await supabase
     .from('coaches')
-    .upsert(rows, { onConflict: 'id' });
-  if (error) {
-    const legacyRows = coaches.map((c) => ({
-      id: c.id,
-      email: c.email,
-      password: c.password || '',
-      name: c.name,
-      avatar: c.avatar,
-      phone: c.phone,
-      invite_code: c.inviteCode,
-      status: c.status,
-      updated_at: new Date().toISOString(),
-    }));
-    const legacyRes = await supabase
-      .from('coaches')
-      .upsert(legacyRows, { onConflict: 'id' });
-    if (legacyRes.error && !backupOk) {
-      throw new Error(`Supabase coaches upsert failed: ${legacyRes.error.message}`);
-    }
+    .upsert(fullRows, { onConflict: 'id' });
+  if (!first.error) return;
+
+  const legacyRows = coaches.map((c) => ({
+    id: c.id,
+    email: c.email,
+    password: c.password || '',
+    name: c.name,
+    avatar: c.avatar,
+    phone: c.phone,
+    invite_code: c.inviteCode,
+    status: c.status,
+    updated_at: new Date().toISOString(),
+  }));
+
+  const second = await supabase
+    .from('coaches')
+    .upsert(legacyRows, { onConflict: 'id' });
+  if (!second.error) return;
+
+  const minimalRows = coaches.map((c) => ({
+    id: c.id,
+    email: c.email,
+    password: c.password || '',
+    name: c.name,
+    invite_code: c.inviteCode,
+    status: c.status,
+  }));
+
+  const third = await supabase
+    .from('coaches')
+    .upsert(minimalRows, { onConflict: 'id' });
+  if (!third.error) return;
+
+  const finalBackup = options?.skipMetaBackup
+    ? await saveSystemMetaBackup({ coaches })
+    : backupRes;
+
+  if (!finalBackup.ok) {
+    const details = [
+      formatSupabaseError('coaches', third.error),
+      finalBackup.error,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+    throw new Error(details || 'Supabase coaches upsert failed');
   }
 }
 
@@ -367,10 +525,16 @@ export async function deleteCoachFromSupabase(coachId: string) {
   await saveSystemMetaBackup({ coaches: remaining });
 }
 
-export async function saveGroupsToSupabase(groups: TraineeGroup[]) {
+export async function saveGroupsToSupabase(
+  groups: TraineeGroup[],
+  options?: { skipMetaBackup?: boolean }
+) {
   if (!supabase) return;
-  await saveSystemMetaBackup({ groups });
+  const backupRes = options?.skipMetaBackup
+    ? { ok: false, error: undefined }
+    : await saveSystemMetaBackup({ groups });
   if (groups.length === 0) return;
+
   const rows = groups.map((g) => ({
     id: g.id,
     name: g.name,
@@ -378,7 +542,35 @@ export async function saveGroupsToSupabase(groups: TraineeGroup[]) {
     owner_coach_id: g.ownerCoachId,
     updated_at: new Date().toISOString(),
   }));
-  await supabase.from('trainee_groups').upsert(rows, { onConflict: 'id' });
+  const first = await supabase
+    .from('trainee_groups')
+    .upsert(rows, { onConflict: 'id' });
+  if (!first.error) return;
+
+  const legacyRows = groups.map((g) => ({
+    id: g.id,
+    name: g.name,
+    color: g.color,
+    updated_at: new Date().toISOString(),
+  }));
+  const second = await supabase
+    .from('trainee_groups')
+    .upsert(legacyRows, { onConflict: 'id' });
+  if (!second.error) return;
+
+  const finalBackup = options?.skipMetaBackup
+    ? await saveSystemMetaBackup({ groups })
+    : backupRes;
+
+  if (!finalBackup.ok) {
+    const details = [
+      formatSupabaseError('trainee_groups', second.error),
+      finalBackup.error,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+    throw new Error(details || 'Supabase groups upsert failed');
+  }
 }
 
 export async function deleteGroupFromSupabase(groupId: string) {
@@ -414,15 +606,24 @@ export async function saveTemplatesToSupabase(templates: NutritionTemplate[]) {
       meals: t.meals,
       updated_at: new Date().toISOString(),
     }));
-    await supabase
+    const legacy = await supabase
       .from('nutrition_templates')
       .upsert(legacyRows, { onConflict: 'id' });
+    if (legacy.error) {
+      throw new Error(formatSupabaseError('nutrition_templates', legacy.error));
+    }
   }
 }
 
 export async function deleteTemplateFromSupabase(templateId: string) {
   if (!supabase) return;
-  await supabase.from('nutrition_templates').delete().eq('id', templateId);
+  const { error } = await supabase
+    .from('nutrition_templates')
+    .delete()
+    .eq('id', templateId);
+  if (error) {
+    throw new Error(formatSupabaseError('nutrition_templates', error));
+  }
 }
 
 export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
@@ -498,7 +699,12 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
       logs: packLogsWithMeta(t),
       updated_at: new Date().toISOString(),
     }));
-    await supabase.from('trainees').upsert(legacyRows, { onConflict: 'id' });
+    const legacy = await supabase
+      .from('trainees')
+      .upsert(legacyRows, { onConflict: 'id' });
+    if (legacy.error) {
+      throw new Error(formatSupabaseError('trainees', legacy.error));
+    }
   }
 }
 

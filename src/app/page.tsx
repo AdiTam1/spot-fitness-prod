@@ -117,6 +117,9 @@ export default function HomePage() {
         if (remoteData.coachInviteCode) {
           setCoachInviteCode(remoteData.coachInviteCode);
         }
+        if (remoteData.dbError) {
+          setSyncError(remoteData.dbError);
+        }
       }
     } catch {
       // ignore network error

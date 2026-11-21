@@ -33,6 +33,7 @@ export interface ServerDatabaseState {
   groups: TraineeGroup[];
   templates: NutritionTemplate[];
   trainees: TraineeProfile[];
+  readErrors?: string[];
 }
 
 const LOCAL_DB_DIR = path.join(process.cwd(), '.data');
@@ -134,13 +135,25 @@ export async function getServerDbState(): Promise<ServerDatabaseState> {
     let templates = remote.templates;
     if (templates.length === 0) {
       templates = DEFAULT_TEMPLATES;
-      await saveTemplatesToSupabase(templates);
+      if (remote.readErrors.length === 0) {
+        try {
+          await saveTemplatesToSupabase(templates);
+        } catch {
+          // ignore auto-seed errors on initial read
+        }
+      }
     }
 
     let groups = remote.groups;
     if (groups.length === 0) {
       groups = DEFAULT_GROUPS;
-      await saveGroupsToSupabase(groups);
+      if (remote.readErrors.length === 0) {
+        try {
+          await saveGroupsToSupabase(groups);
+        } catch {
+          // ignore auto-seed errors on initial read
+        }
+      }
     }
 
     return {
@@ -151,6 +164,7 @@ export async function getServerDbState(): Promise<ServerDatabaseState> {
       groups,
       templates,
       trainees: remote.trainees,
+      readErrors: remote.readErrors,
     };
   }
 
@@ -188,12 +202,22 @@ export async function updateServerDbState(
   const next = updater(current);
 
   if (isSupabaseConfigured) {
-    await Promise.all([
-      saveCoachesToSupabase(next.coaches),
-      saveGroupsToSupabase(next.groups),
-      saveTemplatesToSupabase(next.templates),
-      saveTraineesToSupabase(next.trainees),
-    ]);
+    const tasks: Promise<unknown>[] = [];
+    if (next.coaches !== current.coaches) {
+      tasks.push(saveCoachesToSupabase(next.coaches));
+    }
+    if (next.groups !== current.groups) {
+      tasks.push(saveGroupsToSupabase(next.groups));
+    }
+    if (next.templates !== current.templates) {
+      tasks.push(saveTemplatesToSupabase(next.templates));
+    }
+    if (next.trainees !== current.trainees) {
+      tasks.push(saveTraineesToSupabase(next.trainees));
+    }
+    if (tasks.length > 0) {
+      await Promise.all(tasks);
+    }
   } else {
     saveLocalServerFile(next);
   }

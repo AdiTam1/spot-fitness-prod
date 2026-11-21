@@ -28,6 +28,7 @@ import {
   updateServerDbState,
 } from '@/lib/serverStore';
 import { DEFAULT_TEMPLATES, getTodayIso } from '@/data/israeliFoodCatalog';
+import { diagnoseSupabaseError } from '@/lib/supabase';
 import {
   AccountStatus,
   CoachProfile,
@@ -111,6 +112,11 @@ export async function GET(request: NextRequest) {
   }
 
   // 3. מנהל ראשי (Super Admin): גישה מלאה לכל המאמנים, המתאמנים, הקבוצות והטמפלייטים
+  const dbError =
+    state.readErrors && state.readErrors.length > 0
+      ? diagnoseSupabaseError(state.readErrors.join(' | '))
+      : undefined;
+
   return NextResponse.json(
     {
       trainees: state.trainees.map((t) => sanitizeTraineeForClient(t)),
@@ -120,6 +126,7 @@ export async function GET(request: NextRequest) {
       coachDirectory: buildCoachDirectory(state),
       coachInviteCode: state.coachInviteCode,
       role: 'admin',
+      dbError,
     },
     { headers: { 'Cache-Control': 'no-store, max-age=0' } }
   );
@@ -1134,9 +1141,15 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ error: 'פעולה לא חוקית' }, { status: 400 });
-  } catch {
+  } catch (err) {
+    console.error('[POST /api/data Error]:', err);
+    const rawMsg = err instanceof Error ? err.message : '';
     return NextResponse.json(
-      { error: 'שגיאת שרת בשמירת נתונים' },
+      {
+        error: rawMsg
+          ? diagnoseSupabaseError(rawMsg)
+          : 'שגיאת שרת בשמירת נתונים',
+      },
       { status: 500 }
     );
   }

@@ -171,6 +171,14 @@ a:focus-visible {
   border-color: var(--accent-volt) !important;
 }
 
+/* מניעת חפיפה של כפתור הצגת סיסמה בשדות LTR בתוך ממשק RTL */
+.mantine-PasswordInput-innerInput {
+  padding-left: 40px !important;
+  padding-right: 12px !important;
+  direction: ltr;
+  text-align: left;
+}
+
 .mantine-Drawer-content,
 .mantine-Modal-content {
   background-color: #101218 !important;
