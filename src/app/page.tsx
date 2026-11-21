@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Modal, TextInput } from '@mantine/core';
 import {
   Crown,
@@ -8,6 +8,9 @@ import {
   LogOut,
   ShieldCheck,
   User,
+  Loader2,
+  WifiOff,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   AccountStatus,
@@ -55,6 +58,28 @@ export default function HomePage() {
 
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [syncingCount, setSyncingCount] = useState(0);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const traineesRef = useRef<TraineeProfile[]>([]);
+  useEffect(() => {
+    traineesRef.current = trainees;
+  }, [trainees]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setIsOffline(!window.navigator.onLine);
+    const goOnline = () => setIsOffline(false);
+    const goOffline = () => setIsOffline(true);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
 
   const fetchAuthorizedData = useCallback(async () => {
     try {
@@ -121,16 +146,41 @@ export default function HomePage() {
   }, [fetchAuthorizedData]);
 
   const postDataAction = async (payload: Record<string, unknown>) => {
-    const res = await fetch('/api/data', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (res.status === 401) {
-      setCurrentUser(null);
-      setTrainees([]);
+    setSyncingCount((c) => c + 1);
+    setSyncError(null);
+    try {
+      const res = await fetch('/api/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.status === 401) {
+        setCurrentUser(null);
+        setTrainees([]);
+      }
+      return res;
+    } catch {
+      setSyncError('אין תקשורת עם השרת – השינויים האחרונים לא נשמרו');
+      return null;
+    } finally {
+      setSyncingCount((c) => Math.max(0, c - 1));
     }
-    return res;
+  };
+
+  const extractApiError = async (
+    res: Response | null,
+    fallbackMsg: string
+  ): Promise<string> => {
+    if (!res) return 'שגיאת רשת – בדוק את החיבור לאינטרנט ונסה שוב';
+    try {
+      const json = await res.json();
+      if (json && typeof json.error === 'string' && json.error) {
+        return json.error;
+      }
+    } catch {
+      // ignore
+    }
+    return fallbackMsg;
   };
 
   const syncTraineeLogUpdate = async (updatedProfile: TraineeProfile) => {
@@ -138,32 +188,61 @@ export default function HomePage() {
       currentUser?.role === 'trainee'
         ? 'trainee-self-update'
         : 'coach-update-trainee-log';
-    await postDataAction({
+    const res = await postDataAction({
       action,
       trainee: updatedProfile,
     });
+    if (!res || !res.ok) {
+      const msg = await extractApiError(res, 'שגיאה בשמירת הנתונים בשרת');
+      setSyncError(msg);
+      await fetchAuthorizedData();
+      throw new Error(msg);
+    }
+  };
+
+  const commitTraineeMutation = async (
+    traineeId: string,
+    mutate: (t: TraineeProfile) => TraineeProfile
+  ) => {
+    const target = traineesRef.current.find((t) => t.id === traineeId);
+    if (!target) return;
+    const updatedTrainee = mutate(target);
+    const nextList = traineesRef.current.map((t) =>
+      t.id === traineeId ? updatedTrainee : t
+    );
+    traineesRef.current = nextList;
+    setTrainees(nextList);
+    await syncTraineeLogUpdate(updatedTrainee);
   };
 
   const handleLoginSuccess = async (user: AuthSessionUser) => {
     setCurrentUser(user);
     setCoachPreviewTraineeId(null);
     setSkippedCoachOnboarding(false);
+    setSyncError(null);
     await fetchAuthorizedData();
   };
 
   const handleLogout = async () => {
-    await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {});
-    setCurrentUser(null);
-    setTrainees([]);
-    setTemplates([]);
-    setGroups([]);
-    setCoaches([]);
-    setMyCoachProfile(null);
-    setCoachDirectory([]);
-    setCoachPreviewTraineeId(null);
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {});
+      setCurrentUser(null);
+      setTrainees([]);
+      traineesRef.current = [];
+      setTemplates([]);
+      setGroups([]);
+      setCoaches([]);
+      setMyCoachProfile(null);
+      setCoachDirectory([]);
+      setCoachPreviewTraineeId(null);
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
-  const handleCompleteTraineeOnboarding = (
+  const handleCompleteTraineeOnboarding = async (
     traineeId: string,
     data: {
       name: string;
@@ -173,55 +252,43 @@ export default function HomePage() {
       measurement?: BodyMeasurementEntry;
     }
   ) => {
-    setTrainees((prev) =>
-      prev.map((t) => {
-        if (t.id !== traineeId) return t;
-        const nextMeas = data.measurement
-          ? [...(t.measurementsHistory || []), data.measurement]
-          : t.measurementsHistory || [];
-        const updatedTrainee: TraineeProfile = {
-          ...t,
-          name: data.name || t.name,
-          currentWeight: data.currentWeight,
-          targetWeight: data.targetWeight,
-          onboarding: data.onboarding,
-          measurementsHistory: nextMeas,
-          weightHistory: [
-            ...t.weightHistory,
-            { date: data.onboarding.completedAt || 'היום', weight: data.currentWeight },
-          ],
-        };
-        syncTraineeLogUpdate(updatedTrainee);
-        return updatedTrainee;
-      })
-    );
+    await commitTraineeMutation(traineeId, (t) => {
+      const nextMeas = data.measurement
+        ? [...(t.measurementsHistory || []), data.measurement]
+        : t.measurementsHistory || [];
+      return {
+        ...t,
+        name: data.name || t.name,
+        currentWeight: data.currentWeight,
+        targetWeight: data.targetWeight,
+        onboarding: data.onboarding,
+        measurementsHistory: nextMeas,
+        weightHistory: [
+          ...t.weightHistory,
+          { date: data.onboarding.completedAt || 'היום', weight: data.currentWeight },
+        ],
+      };
+    });
   };
 
-  const handleSaveBodyMeasurement = (
+  const handleSaveBodyMeasurement = async (
     traineeId: string,
     measurement: BodyMeasurementEntry
   ) => {
-    setTrainees((prev) =>
-      prev.map((t) => {
-        if (t.id !== traineeId) return t;
-        const updatedTrainee: TraineeProfile = {
-          ...t,
-          measurementsHistory: [...(t.measurementsHistory || []), measurement],
-          onboarding: t.onboarding
-            ? { ...t.onboarding, measurementsCompleted: true }
-            : {
-                completed: true,
-                measurementsCompleted: true,
-                dietaryPreferences: [],
-                favoriteMustHaveFoods: [],
-                dislikedOrAllergies: [],
-                eatingChallenges: [],
-              },
-        };
-        syncTraineeLogUpdate(updatedTrainee);
-        return updatedTrainee;
-      })
-    );
+    await commitTraineeMutation(traineeId, (t) => ({
+      ...t,
+      measurementsHistory: [...(t.measurementsHistory || []), measurement],
+      onboarding: t.onboarding
+        ? { ...t.onboarding, measurementsCompleted: true }
+        : {
+            completed: true,
+            measurementsCompleted: true,
+            dietaryPreferences: [],
+            favoriteMustHaveFoods: [],
+            dislikedOrAllergies: [],
+            eatingChallenges: [],
+          },
+    }));
   };
 
   const handleCompleteCoachOnboarding = async (data: {
@@ -236,13 +303,16 @@ export default function HomePage() {
       action: 'coach-complete-onboarding',
       ...data,
     });
-    if (res.ok) {
+    if (res && res.ok) {
       setEditingCoachOnboarding(false);
       await fetchAuthorizedData();
+    } else {
+      const msg = await extractApiError(res, 'שגיאה בשמירת הגדרות המאמן');
+      setSyncError(msg);
     }
   };
 
-  const handleUpdateDailyActivity = (
+  const handleUpdateDailyActivity = async (
     traineeId: string,
     date: string,
     payload: {
@@ -252,56 +322,56 @@ export default function HomePage() {
     }
   ) => {
     if (currentUser?.role === 'trainee' && currentUser.id !== traineeId) return;
-    setTrainees((prev) =>
-      prev.map((t) => {
-        if (t.id !== traineeId) return t;
-        const currentLog = t.logs[date] || {
-          date,
-          dayType: 'workout',
-          waterCups: 0,
-          waterGoal: 12,
-          weightKg: t.currentWeight,
-          meals: {},
-        };
-        const updatedTrainee: TraineeProfile = {
-          ...t,
-          logs: {
-            ...t.logs,
-            [date]: {
-              ...currentLog,
-              ...(payload.sleepHours !== undefined
-                ? { sleepHours: payload.sleepHours }
-                : {}),
-              ...(payload.workoutLog !== undefined
-                ? { workoutLog: payload.workoutLog }
-                : {}),
-              ...(payload.cardioLog !== undefined
-                ? { cardioLog: payload.cardioLog }
-                : {}),
-            },
+    await commitTraineeMutation(traineeId, (t) => {
+      const currentLog = t.logs[date] || {
+        date,
+        dayType: 'workout',
+        waterCups: 0,
+        waterGoal: 12,
+        weightKg: t.currentWeight,
+        meals: {},
+      };
+      return {
+        ...t,
+        logs: {
+          ...t.logs,
+          [date]: {
+            ...currentLog,
+            ...(payload.sleepHours !== undefined
+              ? { sleepHours: payload.sleepHours }
+              : {}),
+            ...(payload.workoutLog !== undefined
+              ? { workoutLog: payload.workoutLog }
+              : {}),
+            ...(payload.cardioLog !== undefined
+              ? { cardioLog: payload.cardioLog }
+              : {}),
           },
-        };
-        syncTraineeLogUpdate(updatedTrainee);
-        return updatedTrainee;
-      })
-    );
+        },
+      };
+    });
   };
 
   const handleUpdateActivityTargets = async (
     traineeId: string,
     activityTargets: TraineeActivityTargets
-  ) => {
-    if (!currentUser || currentUser.role === 'trainee') return;
+  ): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
     setTrainees((prev) =>
       prev.map((t) =>
         t.id === traineeId ? { ...t, activityTargets } : t
       )
     );
-    await postDataAction({
+    const res = await postDataAction({
       action: 'coach-update-activity-targets',
       traineeId,
       activityTargets,
     });
+    if (!res || !res.ok) {
+      await fetchAuthorizedData();
+      return { error: await extractApiError(res, 'שגיאה בעדכון יעדי פעילות') };
+    }
+    return {};
   };
 
   const handleUpdateAiNotesAndSplit = async (
@@ -311,8 +381,8 @@ export default function HomePage() {
       coachAiNotes?: string;
       aiLearnedPreferences?: string[];
     }
-  ) => {
-    if (!currentUser || currentUser.role === 'trainee') return;
+  ): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
     setTrainees((prev) =>
       prev.map((t) =>
         t.id === traineeId
@@ -331,29 +401,27 @@ export default function HomePage() {
           : t
       )
     );
-    await postDataAction({
+    const res = await postDataAction({
       action: 'coach-update-ai-notes-and-split',
       traineeId,
       ...payload,
     });
+    if (!res || !res.ok) {
+      await fetchAuthorizedData();
+      return { error: await extractApiError(res, 'שגיאה בשמירת הנחיות AI') };
+    }
+    return {};
   };
 
-  const handleSaveWeeklyCheckIn = (
+  const handleSaveWeeklyCheckIn = async (
     traineeId: string,
     checkIn: WeeklyCheckInEntry
   ) => {
     if (currentUser?.role === 'trainee' && currentUser.id !== traineeId) return;
-    setTrainees((prev) =>
-      prev.map((t) => {
-        if (t.id !== traineeId) return t;
-        const updatedTrainee: TraineeProfile = {
-          ...t,
-          weeklyCheckIns: [...(t.weeklyCheckIns || []), checkIn],
-        };
-        syncTraineeLogUpdate(updatedTrainee);
-        return updatedTrainee;
-      })
-    );
+    await commitTraineeMutation(traineeId, (t) => ({
+      ...t,
+      weeklyCheckIns: [...(t.weeklyCheckIns || []), checkIn],
+    }));
   };
 
   const handlePreferenceLearned = (traineeId: string, prefs: string[]) => {
@@ -372,32 +440,33 @@ export default function HomePage() {
       clearAll?: boolean;
       countObservationInStats?: boolean;
     }
-  ) => {
+  ): Promise<{ error?: string }> => {
     const res = await postDataAction({
       action: 'coach-manage-observation-days',
       traineeId,
       ...payload,
     });
-    if (res.ok) {
-      const json = await res.json();
-      setTrainees((prev) =>
-        prev.map((t) =>
-          t.id === traineeId
-            ? {
-                ...t,
-                observationDates:
-                  json.observationDates ?? t.observationDates,
-                countObservationInStats:
-                  json.countObservationInStats ??
-                  t.countObservationInStats,
-              }
-            : t
-        )
-      );
+    if (!res || !res.ok) {
+      return { error: await extractApiError(res, 'שגיאה בעדכון ימי תשקיף') };
     }
+    const json = await res.json();
+    setTrainees((prev) =>
+      prev.map((t) =>
+        t.id === traineeId
+          ? {
+              ...t,
+              observationDates:
+                json.observationDates ?? t.observationDates,
+              countObservationInStats:
+                json.countObservationInStats ?? t.countObservationInStats,
+            }
+          : t
+      )
+    );
+    return {};
   };
 
-  const handleSaveMeal = (
+  const handleSaveMeal = async (
     traineeId: string,
     date: string,
     mealSlotId: string,
@@ -414,185 +483,172 @@ export default function HomePage() {
       minute: '2-digit',
     });
 
-    setTrainees((prev) =>
-      prev.map((t) => {
-        if (t.id !== traineeId) return t;
-        const currentLog = t.logs[date] || {
-          date,
-          dayType: 'workout',
-          waterCups: 0,
-          waterGoal: 12,
-          weightKg: t.currentWeight,
-          meals: {},
-        };
-        const existingMeal = currentLog.meals[mealSlotId];
-        const updatedTrainee: TraineeProfile = {
-          ...t,
-          logs: {
-            ...t.logs,
-            [date]: {
-              ...currentLog,
-              meals: {
-                ...currentLog.meals,
-                [mealSlotId]: {
-                  mealSlotId,
-                  items,
-                  photoDataUrl,
-                  photoNote,
-                  coachFeedback: existingMeal?.coachFeedback,
-                  coachFeedbackAuthor: existingMeal?.coachFeedbackAuthor,
-                  coachFeedbackAt: existingMeal?.coachFeedbackAt,
-                  updatedAt: nowTime,
-                },
+    await commitTraineeMutation(traineeId, (t) => {
+      const currentLog = t.logs[date] || {
+        date,
+        dayType: 'workout',
+        waterCups: 0,
+        waterGoal: 12,
+        weightKg: t.currentWeight,
+        meals: {},
+      };
+      const existingMeal = currentLog.meals[mealSlotId];
+      return {
+        ...t,
+        logs: {
+          ...t.logs,
+          [date]: {
+            ...currentLog,
+            meals: {
+              ...currentLog.meals,
+              [mealSlotId]: {
+                mealSlotId,
+                items,
+                photoDataUrl,
+                photoNote,
+                coachFeedback: existingMeal?.coachFeedback,
+                coachFeedbackAuthor: existingMeal?.coachFeedbackAuthor,
+                coachFeedbackAt: existingMeal?.coachFeedbackAt,
+                updatedAt: nowTime,
               },
             },
           },
-        };
-        syncTraineeLogUpdate(updatedTrainee);
-        return updatedTrainee;
-      })
-    );
+        },
+      };
+    });
   };
 
-  const handleUpdateDayType = (
+  const handleUpdateDayType = async (
     traineeId: string,
     date: string,
     dayType: DayType
   ) => {
     if (currentUser?.role === 'trainee' && currentUser.id !== traineeId) return;
-    setTrainees((prev) =>
-      prev.map((t) => {
-        if (t.id !== traineeId) return t;
-        const currentLog = t.logs[date] || {
-          date,
-          dayType,
-          waterCups: 0,
-          waterGoal: 12,
-          weightKg: t.currentWeight,
-          meals: {},
-        };
-        const updatedTrainee: TraineeProfile = {
-          ...t,
-          logs: {
-            ...t.logs,
-            [date]: {
-              ...currentLog,
-              dayType,
-            },
+    await commitTraineeMutation(traineeId, (t) => {
+      const currentLog = t.logs[date] || {
+        date,
+        dayType,
+        waterCups: 0,
+        waterGoal: 12,
+        weightKg: t.currentWeight,
+        meals: {},
+      };
+      return {
+        ...t,
+        logs: {
+          ...t.logs,
+          [date]: {
+            ...currentLog,
+            dayType,
           },
-        };
-        syncTraineeLogUpdate(updatedTrainee);
-        return updatedTrainee;
-      })
-    );
+        },
+      };
+    });
   };
 
-  const handleUpdateWater = (traineeId: string, date: string, cups: number) => {
+  const handleUpdateWater = async (
+    traineeId: string,
+    date: string,
+    cups: number
+  ) => {
     if (currentUser?.role === 'trainee' && currentUser.id !== traineeId) return;
-    setTrainees((prev) =>
-      prev.map((t) => {
-        if (t.id !== traineeId) return t;
-        const currentLog = t.logs[date] || {
-          date,
-          dayType: 'workout',
-          waterCups: 0,
-          waterGoal: 12,
-          weightKg: t.currentWeight,
-          meals: {},
-        };
-        const updatedTrainee: TraineeProfile = {
-          ...t,
-          logs: {
-            ...t.logs,
-            [date]: {
-              ...currentLog,
-              waterCups: cups,
-            },
+    await commitTraineeMutation(traineeId, (t) => {
+      const currentLog = t.logs[date] || {
+        date,
+        dayType: 'workout',
+        waterCups: 0,
+        waterGoal: 12,
+        weightKg: t.currentWeight,
+        meals: {},
+      };
+      return {
+        ...t,
+        logs: {
+          ...t.logs,
+          [date]: {
+            ...currentLog,
+            waterCups: cups,
           },
-        };
-        syncTraineeLogUpdate(updatedTrainee);
-        return updatedTrainee;
-      })
-    );
+        },
+      };
+    });
   };
 
-  const handleUpdateWeight = (
+  const handleUpdateWeight = async (
     traineeId: string,
     date: string,
     weightKg: number
   ) => {
     if (currentUser?.role === 'trainee' && currentUser.id !== traineeId) return;
-    setTrainees((prev) =>
-      prev.map((t) => {
-        if (t.id !== traineeId) return t;
-        const updatedTrainee: TraineeProfile = {
-          ...t,
-          currentWeight: weightKg,
-          weightHistory: [...t.weightHistory, { date, weight: weightKg }],
-        };
-        syncTraineeLogUpdate(updatedTrainee);
-        return updatedTrainee;
-      })
-    );
+    await commitTraineeMutation(traineeId, (t) => ({
+      ...t,
+      currentWeight: weightKg,
+      weightHistory: [...t.weightHistory, { date, weight: weightKg }],
+    }));
   };
 
-  const handleToggleFavorite = (traineeId: string, foodId: string) => {
+  const handleToggleFavorite = async (traineeId: string, foodId: string) => {
     if (currentUser?.role === 'trainee' && currentUser.id !== traineeId) return;
-    setTrainees((prev) =>
-      prev.map((t) => {
-        if (t.id !== traineeId) return t;
-        const exists = t.favoriteFoodIds.includes(foodId);
-        const updatedTrainee: TraineeProfile = {
-          ...t,
-          favoriteFoodIds: exists
-            ? t.favoriteFoodIds.filter((id) => id !== foodId)
-            : [...t.favoriteFoodIds, foodId],
-        };
-        syncTraineeLogUpdate(updatedTrainee);
-        return updatedTrainee;
-      })
-    );
+    await commitTraineeMutation(traineeId, (t) => {
+      const exists = t.favoriteFoodIds.includes(foodId);
+      return {
+        ...t,
+        favoriteFoodIds: exists
+          ? t.favoriteFoodIds.filter((id) => id !== foodId)
+          : [...t.favoriteFoodIds, foodId],
+      };
+    });
   };
 
-  const handleSaveTemplate = async (updatedTemplate: NutritionTemplate) => {
-    if (!currentUser || currentUser.role === 'trainee') return;
+  const handleSaveTemplate = async (
+    updatedTemplate: NutritionTemplate
+  ): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
     const res = await postDataAction({
       action: 'save-template',
       template: updatedTemplate,
     });
-    if (res.ok) {
-      const data = await res.json();
-      const saved = (data.template as NutritionTemplate) || updatedTemplate;
-      setTemplates((prev) => {
-        const exists = prev.some((t) => t.id === saved.id);
-        return exists
-          ? prev.map((t) => (t.id === saved.id ? saved : t))
-          : [...prev, saved];
-      });
+    if (!res || !res.ok) {
+      await fetchAuthorizedData();
+      return { error: await extractApiError(res, 'שגיאה בשמירת הטמפלייט') };
     }
+    const data = await res.json();
+    const saved = (data.template as NutritionTemplate) || updatedTemplate;
+    setTemplates((prev) => {
+      const exists = prev.some((t) => t.id === saved.id);
+      return exists
+        ? prev.map((t) => (t.id === saved.id ? saved : t))
+        : [...prev, saved];
+    });
+    return {};
   };
 
-  const handleDeleteTemplate = async (templateId: string) => {
-    if (!currentUser || currentUser.role === 'trainee') return;
+  const handleDeleteTemplate = async (
+    templateId: string
+  ): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
     const res = await postDataAction({
       action: 'delete-template',
       templateId,
     });
-    if (res.ok) {
-      setTemplates((prev) => prev.filter((t) => t.id !== templateId));
+    if (!res || !res.ok) {
+      await fetchAuthorizedData();
+      return { error: await extractApiError(res, 'שגיאה במחיקת הטמפלייט') };
     }
+    setTemplates((prev) => prev.filter((t) => t.id !== templateId));
+    return {};
   };
 
   const handleAssignTemplateToTrainee = async (
     traineeId: string,
     dayType: DayType,
     template: NutritionTemplate
-  ) => {
-    if (!currentUser || currentUser.role === 'trainee') return;
+  ): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
     const target = trainees.find((t) => t.id === traineeId);
-    if (!target) return;
+    if (!target) return { error: 'מתאמן לא נמצא' };
     const cloned: NutritionTemplate = JSON.parse(JSON.stringify(template));
-    await handleUpdateTraineePlan(
+    return await handleUpdateTraineePlan(
       traineeId,
       dayType,
       cloned,
@@ -605,8 +661,8 @@ export default function HomePage() {
     dayType: DayType,
     updatedTemplate: NutritionTemplate,
     tolerancePercent: number
-  ) => {
-    if (!currentUser || currentUser.role === 'trainee') return;
+  ): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
     setTrainees((prev) =>
       prev.map((t) => {
         if (t.id !== traineeId) return t;
@@ -619,13 +675,18 @@ export default function HomePage() {
         };
       })
     );
-    await postDataAction({
+    const res = await postDataAction({
       action: 'update-trainee-plan',
       traineeId,
       dayType,
       updatedTemplate,
       tolerancePercent,
     });
+    if (!res || !res.ok) {
+      await fetchAuthorizedData();
+      return { error: await extractApiError(res, 'שגיאה בעדכון תוכנית המתאמן') };
+    }
+    return {};
   };
 
   const handleAddCoachFeedback = async (
@@ -633,8 +694,8 @@ export default function HomePage() {
     date: string,
     mealSlotId: string,
     feedback: string
-  ) => {
-    if (!currentUser || currentUser.role === 'trainee') return;
+  ): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
     const nowTime = new Date().toLocaleTimeString('he-IL', {
       hour: '2-digit',
       minute: '2-digit',
@@ -676,13 +737,18 @@ export default function HomePage() {
       })
     );
 
-    await postDataAction({
+    const res = await postDataAction({
       action: 'add-coach-feedback',
       traineeId,
       date,
       mealSlotId,
       feedback,
     });
+    if (!res || !res.ok) {
+      await fetchAuthorizedData();
+      return { error: await extractApiError(res, 'שגיאה בשליחת פידבק המאמן') };
+    }
+    return {};
   };
 
   const handleAddTraineeByCoach = async (data: {
@@ -694,23 +760,25 @@ export default function HomePage() {
     templateId: string;
     primaryCoachId?: string;
     groupId?: string;
-  }) => {
-    if (!currentUser || currentUser.role === 'trainee') return;
+  }): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
     const res = await postDataAction({
       action: 'coach-create-trainee',
       ...data,
     });
-    if (res.ok) {
-      await fetchAuthorizedData();
+    if (!res || !res.ok) {
+      return { error: await extractApiError(res, 'שגיאה בפתיחת חשבון המתאמן') };
     }
+    await fetchAuthorizedData();
+    return {};
   };
 
   const handleUpdateTraineeStatus = async (
     traineeId: string,
     status: AccountStatus,
     primaryCoachId?: string
-  ) => {
-    if (!currentUser || currentUser.role === 'trainee') return;
+  ): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
     setTrainees((prev) =>
       prev.map((t) =>
         t.id === traineeId
@@ -722,131 +790,171 @@ export default function HomePage() {
           : t
       )
     );
-    await postDataAction({
+    const res = await postDataAction({
       action: 'update-trainee-status',
       traineeId,
       status,
       primaryCoachId,
     });
+    if (!res || !res.ok) {
+      await fetchAuthorizedData();
+      return { error: await extractApiError(res, 'שגיאה בעדכון סטטוס המתאמן') };
+    }
+    return {};
   };
 
   const handleUpdateTraineeCredentials = async (
     traineeId: string,
     email: string,
     password: string
-  ) => {
-    if (!currentUser || currentUser.role === 'trainee') return;
+  ): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
     setTrainees((prev) =>
       prev.map((t) => (t.id === traineeId ? { ...t, email } : t))
     );
-    await postDataAction({
+    const res = await postDataAction({
       action: 'coach-update-credentials',
       traineeId,
       email,
       password,
     });
+    if (!res || !res.ok) {
+      await fetchAuthorizedData();
+      return { error: await extractApiError(res, 'שגיאה בעדכון פרטי הגישה') };
+    }
+    return {};
   };
 
   const handleUpdateTraineeSharing = async (
     traineeId: string,
     primaryCoachId: string,
     sharedCoachIds: string[]
-  ) => {
-    if (!currentUser || currentUser.role === 'trainee') return;
+  ): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
     const res = await postDataAction({
       action: 'update-trainee-sharing',
       traineeId,
       primaryCoachId,
       sharedCoachIds,
     });
-    if (res.ok) {
-      await fetchAuthorizedData();
+    if (!res || !res.ok) {
+      return { error: await extractApiError(res, 'שגיאה בשמירת הגדרות השיתוף') };
     }
+    await fetchAuthorizedData();
+    return {};
   };
 
   const handleUpdateTraineeGroup = async (
     traineeId: string,
     groupId?: string
-  ) => {
-    if (!currentUser || currentUser.role === 'trainee') return;
+  ): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
     setTrainees((prev) =>
       prev.map((t) => (t.id === traineeId ? { ...t, groupId } : t))
     );
-    await postDataAction({
+    const res = await postDataAction({
       action: 'update-trainee-group',
       traineeId,
       groupId,
     });
+    if (!res || !res.ok) {
+      await fetchAuthorizedData();
+      return { error: await extractApiError(res, 'שגיאה בשיוך הקבוצה') };
+    }
+    return {};
   };
 
-  const handleCreateGroup = async (name: string, color: string) => {
-    if (!currentUser || currentUser.role === 'trainee') return;
+  const handleCreateGroup = async (
+    name: string,
+    color: string
+  ): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
     const res = await postDataAction({
       action: 'create-group',
       name,
       color,
     });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.group) {
-        setGroups((prev) => [...prev, data.group as TraineeGroup]);
-      }
+    if (!res || !res.ok) {
+      return { error: await extractApiError(res, 'שגיאה ביצירת הקבוצה') };
     }
+    const data = await res.json();
+    if (data.group) {
+      setGroups((prev) => [...prev, data.group as TraineeGroup]);
+    }
+    return {};
   };
 
-  const handleDeleteGroup = async (groupId: string) => {
-    if (!currentUser || currentUser.role === 'trainee') return;
+  const handleDeleteGroup = async (
+    groupId: string
+  ): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
     setGroups((prev) => prev.filter((g) => g.id !== groupId));
     setTrainees((prev) =>
       prev.map((t) =>
         t.groupId === groupId ? { ...t, groupId: undefined } : t
       )
     );
-    await postDataAction({
+    const res = await postDataAction({
       action: 'delete-group',
       groupId,
     });
+    if (!res || !res.ok) {
+      await fetchAuthorizedData();
+      return { error: await extractApiError(res, 'שגיאה במחיקת הקבוצה') };
+    }
+    return {};
   };
 
   const handleBulkGroupAssignTemplate = async (
     groupId: string,
     templateId: string,
     dayType: DayType
-  ) => {
-    if (!currentUser || currentUser.role === 'trainee') return;
+  ): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
     const res = await postDataAction({
       action: 'bulk-group-assign-template',
       groupId,
       templateId,
       dayType,
     });
-    if (res.ok) {
-      await fetchAuthorizedData();
+    if (!res || !res.ok) {
+      return { error: await extractApiError(res, 'שגיאה בהחלת הטמפלייט לקבוצה') };
     }
+    await fetchAuthorizedData();
+    return {};
   };
 
   const handleBulkGroupShareCoach = async (
     groupId: string,
     targetCoachId: string
-  ) => {
-    if (!currentUser || currentUser.role === 'trainee') return;
+  ): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
     const res = await postDataAction({
       action: 'bulk-group-share-coach',
       groupId,
       targetCoachId,
     });
-    if (res.ok) {
-      await fetchAuthorizedData();
+    if (!res || !res.ok) {
+      return { error: await extractApiError(res, 'שגיאה בשיתוף הקבוצה') };
     }
+    await fetchAuthorizedData();
+    return {};
   };
 
-  const handleDeleteTrainee = async (traineeId: string) => {
-    if (!currentUser || currentUser.role === 'trainee') return;
+  const handleDeleteTrainee = async (
+    traineeId: string
+  ): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
     setTrainees((prev) => prev.filter((t) => t.id !== traineeId));
-    await postDataAction({
+    const res = await postDataAction({
       action: 'coach-delete-trainee',
       deleteTraineeId: traineeId,
     });
+    if (!res || !res.ok) {
+      await fetchAuthorizedData();
+      return { error: await extractApiError(res, 'שגיאה במחיקת המתאמן') };
+    }
+    return {};
   };
 
   const handleCreateCoach = async (data: {
@@ -863,10 +971,10 @@ export default function HomePage() {
       action: 'admin-create-coach',
       ...data,
     });
-    const json = await res.json();
-    if (!res.ok) {
-      return { error: json.error || 'שגיאה ביצירת מאמן' };
+    if (!res || !res.ok) {
+      return { error: await extractApiError(res, 'שגיאה ביצירת מאמן') };
     }
+    const json = await res.json();
     if (json.coach) {
       setCoaches((prev) => [...prev, json.coach as CoachProfile]);
     }
@@ -880,17 +988,22 @@ export default function HomePage() {
   const handleUpdateCoachStatus = async (
     coachId: string,
     status: 'active' | 'paused'
-  ) => {
-    if (currentUser?.role !== 'admin') return;
+  ): Promise<{ error?: string }> => {
+    if (currentUser?.role !== 'admin') return {};
     setCoaches((prev) =>
       prev.map((c) => (c.id === coachId ? { ...c, status } : c))
     );
-    await postDataAction({
+    const res = await postDataAction({
       action: 'admin-update-coach-status',
       coachId,
       status,
     });
+    if (!res || !res.ok) {
+      await fetchAuthorizedData();
+      return { error: await extractApiError(res, 'שגיאה בעדכון סטטוס המאמן') };
+    }
     await fetchAuthorizedData();
+    return {};
   };
 
   const handleUpdateCoachCredentials = async (
@@ -898,29 +1011,81 @@ export default function HomePage() {
     email: string,
     password: string,
     inviteCode: string
-  ) => {
-    if (currentUser?.role !== 'admin') return;
-    await postDataAction({
+  ): Promise<{ error?: string }> => {
+    if (currentUser?.role !== 'admin') return {};
+    const res = await postDataAction({
       action: 'admin-update-coach-credentials',
       coachId,
       email,
       password,
       inviteCode,
     });
+    if (!res || !res.ok) {
+      return { error: await extractApiError(res, 'שגיאה בעדכון פרטי המאמן') };
+    }
     await fetchAuthorizedData();
+    return {};
   };
 
-  const handleDeleteCoach = async (coachId: string) => {
-    if (currentUser?.role !== 'admin') return;
-    await postDataAction({
+  const handleDeleteCoach = async (
+    coachId: string
+  ): Promise<{ error?: string }> => {
+    if (currentUser?.role !== 'admin') return {};
+    const res = await postDataAction({
       action: 'admin-delete-coach',
       coachId,
     });
+    if (!res || !res.ok) {
+      return { error: await extractApiError(res, 'שגיאה במחיקת המאמן') };
+    }
     await fetchAuthorizedData();
+    return {};
   };
 
   if (!hydrated) {
-    return null;
+    return (
+      <div
+        style={{
+          minHeight: '100dvh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 14,
+          padding: 20,
+        }}
+      >
+        <div
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 12,
+            background: 'var(--accent-volt)',
+            color: '#08090c',
+            fontWeight: 900,
+            fontSize: 22,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          S
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            color: 'var(--text-secondary)',
+            fontSize: 13,
+            fontWeight: 600,
+          }}
+        >
+          <Loader2 size={16} className="spot-spinner" color="var(--accent-volt)" />
+          <span>טוען נתוני SPOT מהשרת...</span>
+        </div>
+      </div>
+    );
   }
 
   if (!currentUser) {
@@ -965,11 +1130,20 @@ export default function HomePage() {
             אנא פנה למאמן שלך להפעלת החשבון במערכת.
           </div>
           <button
+            disabled={loggingOut}
             onClick={handleLogout}
             className="btn-volt"
-            style={{ padding: '9px 20px', fontSize: 13, cursor: 'pointer' }}
+            style={{
+              padding: '9px 20px',
+              fontSize: 13,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
           >
-            התנתק
+            {loggingOut && <Loader2 size={14} className="spot-spinner" />}
+            <span>{loggingOut ? 'מתנתק...' : 'התנתק'}</span>
           </button>
         </div>
       </div>
@@ -984,7 +1158,64 @@ export default function HomePage() {
       !skippedCoachOnboarding);
 
   return (
-    <div style={{ minHeight: '100vh' }}>
+    <div style={{ minHeight: '100dvh' }}>
+      {isOffline && (
+        <div
+          role="alert"
+          style={{
+            background: '#991b1b',
+            color: '#ffffff',
+            padding: '8px 16px',
+            fontSize: 12,
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            zIndex: 120,
+            position: 'relative',
+          }}
+        >
+          <WifiOff size={15} />
+          <span>אין חיבור לאינטרנט – שינויים חדשים לא יישמרו עד לחזרת החיבור</span>
+        </div>
+      )}
+
+      {!isOffline && syncError && (
+        <div
+          role="alert"
+          style={{
+            background: 'rgba(239, 68, 68, 0.16)',
+            borderBottom: '1px solid rgba(239, 68, 68, 0.4)',
+            color: '#fca5a5',
+            padding: '8px 16px',
+            fontSize: 12,
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+          }}
+        >
+          <AlertTriangle size={15} />
+          <span>{syncError}</span>
+          <button
+            type="button"
+            onClick={() => setSyncError(null)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#fca5a5',
+              cursor: 'pointer',
+              fontWeight: 800,
+              marginRight: 8,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <header
         style={{
           position: 'sticky',
@@ -1051,7 +1282,27 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {syncingCount > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '4px 10px',
+                  borderRadius: 999,
+                  background: 'rgba(210, 255, 40, 0.12)',
+                  border: '1px solid rgba(210, 255, 40, 0.35)',
+                  color: 'var(--accent-volt)',
+                  fontSize: 11,
+                  fontWeight: 700,
+                }}
+              >
+                <Loader2 size={12} className="spot-spinner" />
+                <span>שומר...</span>
+              </div>
+            )}
+
             <div
               style={{
                 display: 'flex',
@@ -1111,6 +1362,7 @@ export default function HomePage() {
 
             <button
               title="התנתק מהחשבון"
+              disabled={loggingOut}
               onClick={handleLogout}
               className="btn-surface"
               style={{
@@ -1123,8 +1375,12 @@ export default function HomePage() {
                 cursor: 'pointer',
               }}
             >
-              <LogOut size={13} color="var(--text-secondary)" />
-              <span>התנתק</span>
+              {loggingOut ? (
+                <Loader2 size={13} className="spot-spinner" />
+              ) : (
+                <LogOut size={13} color="var(--text-secondary)" />
+              )}
+              <span>{loggingOut ? 'מתנתק...' : 'התנתק'}</span>
             </button>
           </div>
         </div>
@@ -1193,11 +1449,17 @@ export default function HomePage() {
             coachDirectory={coachDirectory}
             coachInviteCode={coachInviteCode}
             onUpdateCoachInviteCode={async (code) => {
+              const prev = coachInviteCode;
               setCoachInviteCode(code);
-              await postDataAction({
+              const res = await postDataAction({
                 action: 'coach-update-invite-code',
                 inviteCode: code,
               });
+              if (!res || !res.ok) {
+                setCoachInviteCode(prev);
+                return { error: await extractApiError(res, 'שגיאה בעדכון קוד ההזמנה') };
+              }
+              return {};
             }}
             onSaveTemplate={handleSaveTemplate}
             onDeleteTemplate={handleDeleteTemplate}
@@ -1239,7 +1501,13 @@ export default function HomePage() {
           centered
           radius="lg"
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              setAiSettingsOpen(false);
+            }}
+            style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
+          >
             <div
               style={{
                 fontSize: 12,
@@ -1256,21 +1524,20 @@ export default function HomePage() {
               AI Studio:
             </div>
             <TextInput
+              dir="ltr"
               label="מפתח Gemini API"
               placeholder="AIzaSy..."
               value={geminiApiKey}
               onChange={(e) => setGeminiApiKey(e.currentTarget.value)}
             />
             <button
+              type="submit"
               className="btn-volt"
               style={{ padding: '10px', fontSize: 13, cursor: 'pointer' }}
-              onClick={() => {
-                setAiSettingsOpen(false);
-              }}
             >
               שמור הגדרות
             </button>
-          </div>
+          </form>
         </Modal>
       )}
     </div>

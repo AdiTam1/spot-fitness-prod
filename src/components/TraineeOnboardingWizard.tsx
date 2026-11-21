@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TextInput, NumberInput, Textarea } from '@mantine/core';
 import {
   User,
@@ -12,6 +12,7 @@ import {
   SkipForward,
   Footprints,
   Dumbbell,
+  Loader2,
 } from 'lucide-react';
 import {
   BodyMeasurementEntry,
@@ -29,7 +30,7 @@ interface TraineeOnboardingWizardProps {
     targetWeight: number;
     onboarding: TraineeOnboardingData;
     measurement?: BodyMeasurementEntry;
-  }) => void;
+  }) => void | Promise<void>;
 }
 
 const NEAT_OPTIONS = [
@@ -142,6 +143,12 @@ export function TraineeOnboardingWizard({
   const existing = trainee.onboarding;
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [step]);
+
   // שלב 1: פרטים אישיים, אורח חיים, אימונים והליכה
   const [name, setName] = useState(trainee.name || '');
   const [gender, setGender] = useState<'male' | 'female'>(
@@ -228,6 +235,7 @@ export function TraineeOnboardingWizard({
   const [scheduleAndNotes, setScheduleAndNotes] = useState(
     existing?.scheduleAndNotes || ''
   );
+  const [isFinishing, setIsFinishing] = useState(false);
 
   const toggleMultiOption = (
     list: string[],
@@ -239,69 +247,75 @@ export function TraineeOnboardingWizard({
     );
   };
 
-  const handleFinish = () => {
-    const { bmr, tdee } = calculateEstimatedBmrAndTdee({
-      gender,
-      age,
-      heightCm,
-      weightKg: currentWeight,
-      activityLevel,
-      strengthWorkouts,
-      walkingSessions,
-    });
+  const handleFinish = async () => {
+    if (isFinishing) return;
+    setIsFinishing(true);
+    try {
+      const { bmr, tdee } = calculateEstimatedBmrAndTdee({
+        gender,
+        age,
+        heightCm,
+        weightKg: currentWeight,
+        activityLevel,
+        strengthWorkouts,
+        walkingSessions,
+      });
 
-    const hasAnyMeasurement =
-      !skippedMeasurements &&
-      Boolean(
-        measurements.chestCm ||
-          measurements.waistNavelCm ||
-          measurements.armCm ||
-          measurements.thighCm
-      );
+      const hasAnyMeasurement =
+        !skippedMeasurements &&
+        Boolean(
+          measurements.chestCm ||
+            measurements.waistNavelCm ||
+            measurements.armCm ||
+            measurements.thighCm
+        );
 
-    const onboardingData: TraineeOnboardingData = {
-      completed: true,
-      measurementsCompleted: hasAnyMeasurement,
-      age,
-      gender,
-      heightCm,
-      activityLevel,
-      activityLevelNote: activityLevelNote.trim(),
-      strengthWorkoutsPerWeek: strengthWorkouts,
-      strengthWorkoutsNote: strengthWorkoutsNote.trim(),
-      walkingSessionsPerWeek: walkingSessions,
-      walkingSessionsNote: walkingSessionsNote.trim(),
-      sleepHours,
-      sleepHoursNote: sleepHoursNote.trim(),
-      dietaryPreferences,
-      dietaryPreferencesNote: dietaryPreferencesNote.trim(),
-      favoriteMustHaveFoods,
-      favoriteMustHaveFoodsNote: favoriteMustHaveFoodsNote.trim(),
-      dislikedOrAllergies,
-      dislikedOrAllergiesNote: dislikedOrAllergiesNote.trim(),
-      eatingChallenges,
-      scheduleAndNotes: scheduleAndNotes.trim(),
-      estimatedBmr: bmr,
-      estimatedTdee: tdee,
-      completedAt: getTodayIso(),
-    };
+      const onboardingData: TraineeOnboardingData = {
+        completed: true,
+        measurementsCompleted: hasAnyMeasurement,
+        age,
+        gender,
+        heightCm,
+        activityLevel,
+        activityLevelNote: activityLevelNote.trim(),
+        strengthWorkoutsPerWeek: strengthWorkouts,
+        strengthWorkoutsNote: strengthWorkoutsNote.trim(),
+        walkingSessionsPerWeek: walkingSessions,
+        walkingSessionsNote: walkingSessionsNote.trim(),
+        sleepHours,
+        sleepHoursNote: sleepHoursNote.trim(),
+        dietaryPreferences,
+        dietaryPreferencesNote: dietaryPreferencesNote.trim(),
+        favoriteMustHaveFoods,
+        favoriteMustHaveFoodsNote: favoriteMustHaveFoodsNote.trim(),
+        dislikedOrAllergies,
+        dislikedOrAllergiesNote: dislikedOrAllergiesNote.trim(),
+        eatingChallenges,
+        scheduleAndNotes: scheduleAndNotes.trim(),
+        estimatedBmr: bmr,
+        estimatedTdee: tdee,
+        completedAt: getTodayIso(),
+      };
 
-    const measurementEntry: BodyMeasurementEntry | undefined =
-      hasAnyMeasurement
-        ? {
-            date: getTodayIso(),
-            ...measurements,
-            weightKg: currentWeight,
-          }
-        : undefined;
+      const measurementEntry: BodyMeasurementEntry | undefined =
+        hasAnyMeasurement
+          ? {
+              date: getTodayIso(),
+              ...measurements,
+              weightKg: currentWeight,
+            }
+          : undefined;
 
-    onCompleteOnboarding({
-      name: name.trim() || trainee.name,
-      currentWeight,
-      targetWeight,
-      onboarding: onboardingData,
-      measurement: measurementEntry,
-    });
+      await onCompleteOnboarding({
+        name: name.trim() || trainee.name,
+        currentWeight,
+        targetWeight,
+        onboarding: onboardingData,
+        measurement: measurementEntry,
+      });
+    } finally {
+      setIsFinishing(false);
+    }
   };
 
   return (
@@ -391,7 +405,7 @@ export function TraineeOnboardingWizard({
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: '1.4fr 1fr',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
                 gap: 10,
               }}
             >
@@ -453,7 +467,7 @@ export function TraineeOnboardingWizard({
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(4, 1fr)',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(108px, 1fr))',
                 gap: 8,
               }}
             >
@@ -1136,6 +1150,7 @@ export function TraineeOnboardingWizard({
 
               <button
                 type="button"
+                disabled={isFinishing}
                 onClick={handleFinish}
                 className="btn-volt"
                 style={{
@@ -1149,8 +1164,14 @@ export function TraineeOnboardingWizard({
                   cursor: 'pointer',
                 }}
               >
-                <Check size={17} />
-                <span>שמור פרופיל וכנס לאפליקציה</span>
+                {isFinishing ? (
+                  <Loader2 size={17} className="spot-spinner" />
+                ) : (
+                  <Check size={17} />
+                )}
+                <span>
+                  {isFinishing ? 'שומר פרופיל...' : 'שמור פרופיל וכנס לאפליקציה'}
+                </span>
               </button>
             </div>
           </div>

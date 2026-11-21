@@ -605,11 +605,26 @@ export const DEFAULT_TEMPLATES: NutritionTemplate[] = [
   },
 ];
 
-export function getTodayIso(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
+export function getTodayIso(offsetDays = 0): string {
+  const target = new Date(Date.now() + offsetDays * 86400000);
+  try {
+    // סנכרון אחיד של תאריך מול שעון ישראל גם בשרת Vercel (שפועל ב-UTC) וגם בדפדפן
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Jerusalem',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(target);
+    const y = parts.find((p) => p.type === 'year')?.value;
+    const m = parts.find((p) => p.type === 'month')?.value;
+    const d = parts.find((p) => p.type === 'day')?.value;
+    if (y && m && d) return `${y}-${m}-${d}`;
+  } catch {
+    // fallback if Intl timezone is unavailable
+  }
+  const y = target.getFullYear();
+  const m = String(target.getMonth() + 1).padStart(2, '0');
+  const d = String(target.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
 

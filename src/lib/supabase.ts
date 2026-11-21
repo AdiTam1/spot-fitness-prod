@@ -283,13 +283,13 @@ export async function loadSingleCoachFromSupabase(
 
 async function saveSystemMetaBackup(
   partial: { coaches?: CoachProfile[]; groups?: TraineeGroup[] }
-) {
-  if (!supabase) return;
+): Promise<boolean> {
+  if (!supabase) return false;
   const { data: existing } = await supabase
     .from('nutrition_templates')
     .select('*')
     .eq('id', SYSTEM_META_TEMPLATE_ID)
-    .single();
+    .maybeSingle();
 
   const currentMeta =
     existing && existing.meals && typeof existing.meals === 'object'
@@ -301,7 +301,7 @@ async function saveSystemMetaBackup(
     groups: partial.groups !== undefined ? partial.groups : currentMeta.groups || [],
   };
 
-  await supabase.from('nutrition_templates').upsert(
+  const { error } = await supabase.from('nutrition_templates').upsert(
     [
       {
         id: SYSTEM_META_TEMPLATE_ID,
@@ -315,12 +315,12 @@ async function saveSystemMetaBackup(
     ],
     { onConflict: 'id' }
   );
+  return !error;
 }
 
 export async function saveCoachesToSupabase(coaches: CoachProfile[]) {
   if (!supabase) return;
-  // שומרים תמיד גם בגיבוי המערכתי בטבלת nutrition_templates כדי שגם אם RLS ב-coaches חוסם אנונימי, המאמן לעולם לא יאבד!
-  await saveSystemMetaBackup({ coaches });
+  const backupOk = await saveSystemMetaBackup({ coaches });
 
   if (coaches.length === 0) return;
   const rows = coaches.map((c) => ({
@@ -350,7 +350,12 @@ export async function saveCoachesToSupabase(coaches: CoachProfile[]) {
       status: c.status,
       updated_at: new Date().toISOString(),
     }));
-    await supabase.from('coaches').upsert(legacyRows, { onConflict: 'id' });
+    const legacyRes = await supabase
+      .from('coaches')
+      .upsert(legacyRows, { onConflict: 'id' });
+    if (legacyRes.error && !backupOk) {
+      throw new Error(`Supabase coaches upsert failed: ${legacyRes.error.message}`);
+    }
   }
 }
 

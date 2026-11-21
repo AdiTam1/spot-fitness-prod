@@ -10,6 +10,7 @@ import {
   ShieldAlert,
   KeyRound,
   CheckCircle2,
+  Loader2,
 } from 'lucide-react';
 import { AuthSessionUser } from '@/types/nutrition';
 
@@ -26,6 +27,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingNotice, setPendingNotice] = useState<string | null>(null);
+  const submittingRef = React.useRef(false);
 
   // שדות הרשמת מתאמן (מאומתים בצד השרת בלבד - ללא חשיפת מתאמנים או קוד מאמן לדפדפן)
   const [regName, setRegName] = useState('');
@@ -38,6 +40,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
     setError(null);
     setPendingNotice(null);
 
@@ -49,6 +52,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
       return;
     }
 
+    submittingRef.current = true;
     setLoading(true);
     try {
       const res = await fetch('/api/auth/session', {
@@ -78,12 +82,14 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
     } catch {
       setError('שגיאת תקשורת מול שרת האימות');
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
     setError(null);
     setPendingNotice(null);
 
@@ -97,6 +103,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
       return;
     }
 
+    submittingRef.current = true;
     setLoading(true);
     try {
       const res = await fetch('/api/auth/session', {
@@ -134,6 +141,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
     } catch {
       setError('שגיאת תקשורת מול שרת ההרשמה');
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
@@ -141,7 +149,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
   return (
     <div
       style={{
-        minHeight: '100vh',
+        minHeight: '100dvh',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -222,6 +230,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
         >
           <button
             type="button"
+            disabled={loading}
             onClick={() => {
               setMode('login');
               setError(null);
@@ -239,7 +248,8 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
               color: mode === 'login' ? '#08090c' : 'var(--text-secondary)',
               fontSize: 13,
               fontWeight: 700,
-              cursor: 'pointer',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading && mode !== 'login' ? 0.5 : 1,
             }}
           >
             <LogIn size={14} />
@@ -248,6 +258,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
 
           <button
             type="button"
+            disabled={loading}
             onClick={() => {
               setMode('register');
               setError(null);
@@ -266,7 +277,8 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
               color: mode === 'register' ? '#08090c' : 'var(--text-secondary)',
               fontSize: 13,
               fontWeight: 700,
-              cursor: 'pointer',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading && mode !== 'register' ? 0.5 : 1,
             }}
           >
             <UserPlus size={14} />
@@ -323,23 +335,32 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
             style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
           >
             <TextInput
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              dir="ltr"
               label="כתובת אימייל"
               placeholder="name@example.com"
               value={email}
               onChange={(e) => setEmail(e.currentTarget.value)}
+              disabled={loading}
               required
             />
             <PasswordInput
+              autoComplete="current-password"
+              dir="ltr"
               label="סיסמה"
               placeholder="הזן סיסמה"
               value={password}
               onChange={(e) => setPassword(e.currentTarget.value)}
+              disabled={loading}
               required
             />
 
             <button
               type="submit"
               disabled={loading}
+              aria-busy={loading}
               className="btn-volt"
               style={{
                 marginTop: 6,
@@ -352,7 +373,11 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
                 cursor: 'pointer',
               }}
             >
-              <Lock size={15} />
+              {loading ? (
+                <Loader2 size={16} className="spot-spinner" />
+              ) : (
+                <Lock size={15} />
+              )}
               <span>{loading ? 'מאמת מול השרת...' : 'כניסה למערכת'}</span>
             </button>
           </form>
@@ -362,24 +387,34 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
             style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
           >
             <TextInput
+              autoComplete="name"
               label="שם מלא"
               placeholder="למשל: דניאל כהן"
               value={regName}
               onChange={(e) => setRegName(e.currentTarget.value)}
+              disabled={loading}
               required
             />
             <TextInput
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              dir="ltr"
               label="אימייל לכניסה"
               placeholder="daniel@gmail.com"
               value={regEmail}
               onChange={(e) => setRegEmail(e.currentTarget.value)}
+              disabled={loading}
               required
             />
             <PasswordInput
+              autoComplete="new-password"
+              dir="ltr"
               label="בחירת סיסמה"
               placeholder="לפחות 4 תווים"
               value={regPassword}
               onChange={(e) => setRegPassword(e.currentTarget.value)}
+              disabled={loading}
               required
             />
 
@@ -391,10 +426,15 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
               }}
             >
               <TextInput
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                dir="ltr"
                 label="טלפון"
                 placeholder="054-0000000"
                 value={regPhone}
                 onChange={(e) => setRegPhone(e.currentTarget.value)}
+                disabled={loading}
               />
               <NumberInput
                 label="משקל נוכחי (ק״ג)"
@@ -403,6 +443,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
                 min={35}
                 max={220}
                 step={0.5}
+                disabled={loading}
               />
             </div>
 
@@ -410,6 +451,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
               label="מטרת האימון והתזונה"
               value={regGoal}
               onChange={(e) => setRegGoal(e.currentTarget.value)}
+              disabled={loading}
             />
 
             <div
@@ -421,18 +463,21 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
               }}
             >
               <TextInput
+                dir="ltr"
                 label="קוד מאמן להפעלה מיידית (אופציונלי)"
                 description="אם קיבלת קוד אישי מהמאמן הזן אותו לכניסה מיידית. ללא קוד, ההרשמה תמתין לאישור המאמן."
                 placeholder="הזן קוד מאמן או השאר ריק"
                 leftSection={<KeyRound size={14} />}
                 value={regInviteCode}
                 onChange={(e) => setRegInviteCode(e.currentTarget.value)}
+                disabled={loading}
               />
             </div>
 
             <button
               type="submit"
               disabled={loading}
+              aria-busy={loading}
               className="btn-volt"
               style={{
                 marginTop: 4,
@@ -445,7 +490,11 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
                 cursor: 'pointer',
               }}
             >
-              <CheckCircle2 size={16} />
+              {loading ? (
+                <Loader2 size={16} className="spot-spinner" />
+              ) : (
+                <CheckCircle2 size={16} />
+              )}
               <span>{loading ? 'רושם חשבון...' : 'השלמת הרשמה'}</span>
             </button>
           </form>

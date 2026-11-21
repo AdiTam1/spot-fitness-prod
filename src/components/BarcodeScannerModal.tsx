@@ -42,24 +42,28 @@ export function BarcodeScannerModal({
   const [error, setError] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const scannerRef = useRef<unknown>(null);
+  const lookingUpRef = useRef(false);
 
   const lookupBarcode = async (code: string) => {
-    if (!code.trim()) return;
+    const clean = code.trim();
+    if (!clean || lookingUpRef.current) return;
+    lookingUpRef.current = true;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/food/barcode?code=${encodeURIComponent(code.trim())}`);
+      const res = await fetch(`/api/food/barcode?code=${encodeURIComponent(clean)}`);
       const data = await res.json();
       if (!res.ok || !data.item) {
         setError(data.error || 'המוצר לא נמצא לפי הברקוד שהוזן');
       } else {
-        stopCamera();
+        await stopCamera();
         onProductFound(data.item);
         onClose();
       }
     } catch {
       setError('שגיאה בחיפוש הברקוד');
     } finally {
+      lookingUpRef.current = false;
       setLoading(false);
     }
   };
@@ -113,6 +117,9 @@ export function BarcodeScannerModal({
       setError(null);
       setManualCode('');
     }
+    return () => {
+      stopCamera();
+    };
   }, [opened]);
 
   return (
@@ -174,21 +181,28 @@ export function BarcodeScannerModal({
         <Group align="flex-end" gap="xs">
           <TextInput
             style={{ flex: 1 }}
+            dir="ltr"
+            inputMode="numeric"
             label="או הזן מספר ברקוד ידנית"
             placeholder="למשל: 7290000066318"
             value={manualCode}
+            disabled={loading}
             onChange={(e) => setManualCode(e.currentTarget.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') lookupBarcode(manualCode);
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                lookupBarcode(manualCode);
+              }
             }}
           />
           <Button
             color="teal"
+            disabled={loading || !manualCode.trim()}
             onClick={() => lookupBarcode(manualCode)}
             loading={loading}
             leftSection={<Search size={16} />}
           >
-            חפש
+            {loading ? 'מחפש...' : 'חפש'}
           </Button>
         </Group>
 
@@ -213,6 +227,7 @@ export function BarcodeScannerModal({
                 size="xs"
                 radius="md"
                 justify="space-between"
+                disabled={loading}
                 rightSection={
                   loading ? <Loader size={12} /> : <Check size={12} color="#10b981" />
                 }

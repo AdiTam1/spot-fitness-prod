@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NumberInput } from '@mantine/core';
 import { motion } from 'framer-motion';
-import { Ruler, CheckCircle2, Info } from 'lucide-react';
+import { Ruler, CheckCircle2, Info, Loader2 } from 'lucide-react';
 import { BodyMeasurementEntry } from '@/types/nutrition';
 
 interface BodyMeasurementGuideProps {
@@ -19,7 +19,7 @@ interface BodyMeasurementGuideProps {
     waistNavelCm?: number;
     armCm?: number;
     thighCm?: number;
-  }) => void;
+  }) => void | Promise<void>;
   onSkip?: () => void;
   showSaveButtons?: boolean;
 }
@@ -100,6 +100,19 @@ export function BodyMeasurementGuide({
   const [thighCm, setThighCm] = useState<number | undefined>(
     initialValues?.thighCm
   );
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    setChestCm(initialValues?.chestCm);
+    setWaistNavelCm(initialValues?.waistNavelCm);
+    setArmCm(initialValues?.armCm);
+    setThighCm(initialValues?.thighCm);
+  }, [
+    initialValues?.chestCm,
+    initialValues?.waistNavelCm,
+    initialValues?.armCm,
+    initialValues?.thighCm,
+  ]);
 
   const emitChange = (next: {
     chestCm?: number;
@@ -175,7 +188,7 @@ export function BodyMeasurementGuide({
         style={{
           padding: 16,
           display: 'grid',
-          gridTemplateColumns: '145px 1fr',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
           gap: 16,
           alignItems: 'center',
           background: 'rgba(255,255,255,0.02)',
@@ -186,6 +199,7 @@ export function BodyMeasurementGuide({
           style={{
             width: 145,
             height: 200,
+            margin: '0 auto',
             borderRadius: 16,
             background: '#0b0d13',
             border: '1px solid rgba(210, 255, 40, 0.25)',
@@ -591,18 +605,30 @@ export function BodyMeasurementGuide({
           {onSave && (
             <button
               type="button"
-              onClick={() =>
-                onSave({ chestCm, waistNavelCm, armCm, thighCm })
-              }
+              disabled={isSaving}
+              onClick={async () => {
+                if (isSaving) return;
+                setIsSaving(true);
+                try {
+                  await onSave({ chestCm, waistNavelCm, armCm, thighCm });
+                } finally {
+                  setIsSaving(false);
+                }
+              }}
               className="btn-volt"
               style={{
                 flex: 1,
                 padding: '10px 18px',
                 fontSize: 13,
                 cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
               }}
             >
-              שמור מדידת היקפים
+              {isSaving && <Loader2 size={14} className="spot-spinner" />}
+              <span>{isSaving ? 'שומר מדידות...' : 'שמור מדידת היקפים'}</span>
             </button>
           )}
         </div>

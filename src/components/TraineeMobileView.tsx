@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Modal } from '@mantine/core';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -21,6 +21,7 @@ import {
   Lightbulb,
   Share2,
   Check,
+  Loader2,
 } from 'lucide-react';
 import {
   BodyMeasurementEntry,
@@ -50,9 +51,9 @@ interface TraineeMobileViewProps {
     items: LoggedFoodItem[],
     photoDataUrl?: string,
     photoNote?: string
-  ) => void;
-  onUpdateWater: (traineeId: string, date: string, cups: number) => void;
-  onUpdateWeight: (traineeId: string, date: string, weightKg: number) => void;
+  ) => void | Promise<void>;
+  onUpdateWater: (traineeId: string, date: string, cups: number) => void | Promise<void>;
+  onUpdateWeight: (traineeId: string, date: string, weightKg: number) => void | Promise<void>;
   onToggleFavorite: (traineeId: string, foodId: string) => void;
   onCompleteOnboarding: (
     traineeId: string,
@@ -63,11 +64,11 @@ interface TraineeMobileViewProps {
       onboarding: TraineeOnboardingData;
       measurement?: BodyMeasurementEntry;
     }
-  ) => void;
+  ) => void | Promise<void>;
   onSaveBodyMeasurement: (
     traineeId: string,
     measurement: BodyMeasurementEntry
-  ) => void;
+  ) => void | Promise<void>;
   onUpdateDailyActivity: (
     traineeId: string,
     date: string,
@@ -76,11 +77,11 @@ interface TraineeMobileViewProps {
       workoutLog?: DailyWorkoutLog;
       cardioLog?: DailyCardioLog;
     }
-  ) => void;
+  ) => void | Promise<void>;
   onSaveWeeklyCheckIn?: (
     traineeId: string,
     checkIn: WeeklyCheckInEntry
-  ) => void;
+  ) => void | Promise<void>;
   onPreferenceLearned?: (traineeId: string, prefs: string[]) => void;
   geminiApiKey?: string;
 }
@@ -154,6 +155,27 @@ export function TraineeMobileView({
   const [checkInNote, setCheckInNote] = useState<string>('');
   const [checkInSavedBanner, setCheckInSavedBanner] = useState(false);
   const [reportCopiedBanner, setReportCopiedBanner] = useState(false);
+  const [reportCopyError, setReportCopyError] = useState(false);
+  const [savingWeight, setSavingWeight] = useState(false);
+  const [weightFeedback, setWeightFeedback] = useState<{ msg: string; isError?: boolean } | null>(null);
+  const [savingCheckIn, setSavingCheckIn] = useState(false);
+  const [duplicatingBreakfast, setDuplicatingBreakfast] = useState(false);
+  const [savingMeasurements, setSavingMeasurements] = useState(false);
+  const weightLockRef = useRef(false);
+  const checkInLockRef = useRef(false);
+
+  // סנכרון משקל ומדדים כאשר עוברים מתאמן (בתצוגת מאמן) או כשהנתונים מתעדכנים מהשרת
+  useEffect(() => {
+    setWeightInput(String(trainee.currentWeight));
+    setWeightFeedback(null);
+  }, [trainee.id, trainee.currentWeight]);
+
+  useEffect(() => {
+    const chk = trainee.weeklyCheckIns?.[trainee.weeklyCheckIns.length - 1];
+    setEnergyLevel(chk?.energyLevel || 4);
+    setHungerLevel(chk?.hungerLevel || 3);
+    setSleepQuality(chk?.sleepQuality || 4);
+  }, [trainee.id, trainee.weeklyCheckIns]);
 
   // אם המתאמן מתחבר בפעם הראשונה וטרם השלים Onboarding -> מציג את אשף ה-Onboarding
   if (
@@ -227,37 +249,43 @@ export function TraineeMobileView({
     setDrawerTab(tab);
   };
 
-  const duplicateSampleBreakfast = (slot: MealTemplateSlot) => {
-    const sampleItems: LoggedFoodItem[] = [
-      {
-        id: `dup-${Date.now()}-1`,
-        name: "קוטג' 5% תנובה",
-        unitLabel: 'חצי גביע (125 גרם)',
-        quantity: 1,
-        grams: 125,
-        macros: { calories: 116, protein: 13.8, carbs: 1.9, fat: 6.3 },
-        source: 'catalog',
-      },
-      {
-        id: `dup-${Date.now()}-2`,
-        name: 'ביצים מקושקשות',
-        unitLabel: '2 ביצים L (120 גרם)',
-        quantity: 1,
-        grams: 120,
-        macros: { calories: 172, protein: 15.1, carbs: 0.8, fat: 11.4 },
-        source: 'catalog',
-      },
-      {
-        id: `dup-${Date.now()}-3`,
-        name: 'לחם כוסמין מלא פרוס',
-        unitLabel: '2 פרוסות (64 גרם)',
-        quantity: 1,
-        grams: 64,
-        macros: { calories: 150, protein: 6.7, carbs: 25.6, fat: 1.8 },
-        source: 'catalog',
-      },
-    ];
-    onSaveMeal(trainee.id, selectedDate, slot.id, sampleItems);
+  const duplicateSampleBreakfast = async (slot: MealTemplateSlot) => {
+    if (duplicatingBreakfast) return;
+    setDuplicatingBreakfast(true);
+    try {
+      const sampleItems: LoggedFoodItem[] = [
+        {
+          id: `dup-${Date.now()}-1`,
+          name: "קוטג' 5% תנובה",
+          unitLabel: 'חצי גביע (125 גרם)',
+          quantity: 1,
+          grams: 125,
+          macros: { calories: 116, protein: 13.8, carbs: 1.9, fat: 6.3 },
+          source: 'catalog',
+        },
+        {
+          id: `dup-${Date.now()}-2`,
+          name: 'ביצים מקושקשות',
+          unitLabel: '2 ביצים L (120 גרם)',
+          quantity: 1,
+          grams: 120,
+          macros: { calories: 172, protein: 15.1, carbs: 0.8, fat: 11.4 },
+          source: 'catalog',
+        },
+        {
+          id: `dup-${Date.now()}-3`,
+          name: 'לחם כוסמין מלא פרוס',
+          unitLabel: '2 פרוסות (64 גרם)',
+          quantity: 1,
+          grams: 64,
+          macros: { calories: 150, protein: 6.7, carbs: 25.6, fat: 1.8 },
+          source: 'catalog',
+        },
+      ];
+      await onSaveMeal(trainee.id, selectedDate, slot.id, sampleItems);
+    } finally {
+      setDuplicatingBreakfast(false);
+    }
   };
 
   const latestMeasurement =
@@ -1697,6 +1725,7 @@ export function TraineeMobileView({
                       style={{
                         display: 'flex',
                         alignItems: 'center',
+                        flexWrap: 'wrap',
                         gap: 8,
                       }}
                     >
@@ -1704,7 +1733,7 @@ export function TraineeMobileView({
                         onClick={() => openMealDrawer(slot, 'catalog')}
                         className={hasItems ? 'btn-surface' : 'btn-volt'}
                         style={{
-                          flex: 1,
+                          flex: '1 1 130px',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -1772,6 +1801,7 @@ export function TraineeMobileView({
                       {!hasItems && idx === 0 && (
                         <button
                           title="שכפל ארוחת בוקר קבועה"
+                          disabled={duplicatingBreakfast}
                           onClick={() => duplicateSampleBreakfast(slot)}
                           className="btn-surface"
                           style={{
@@ -1781,7 +1811,11 @@ export function TraineeMobileView({
                             cursor: 'pointer',
                           }}
                         >
-                          <Copy size={14} color="var(--text-secondary)" />
+                          {duplicatingBreakfast ? (
+                            <Loader2 size={14} className="spot-spinner" color="var(--accent-volt)" />
+                          ) : (
+                            <Copy size={14} color="var(--text-secondary)" />
+                          )}
                         </button>
                       )}
                     </div>
@@ -2063,10 +2097,42 @@ export function TraineeMobileView({
                 ))}
               </div>
 
-              <div style={{ display: 'flex', gap: 8 }}>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (weightLockRef.current) return;
+                  const num = parseFloat(weightInput);
+                  if (isNaN(num) || num < 30 || num > 250) {
+                    setWeightFeedback({
+                      msg: 'נא להזין משקל תקין בין 30 ל-250 ק״ג',
+                      isError: true,
+                    });
+                    return;
+                  }
+                  weightLockRef.current = true;
+                  setSavingWeight(true);
+                  setWeightFeedback(null);
+                  try {
+                    await onUpdateWeight(trainee.id, selectedDate, num);
+                    setWeightFeedback({ msg: `✓ שקילה (${num} ק״ג) נשמרה בהצלחה!` });
+                    setTimeout(() => setWeightFeedback(null), 3000);
+                  } catch {
+                    setWeightFeedback({
+                      msg: 'שגיאה בשמירת השקילה – נסה שוב',
+                      isError: true,
+                    });
+                  } finally {
+                    weightLockRef.current = false;
+                    setSavingWeight(false);
+                  }
+                }}
+                style={{ display: 'flex', gap: 8 }}
+              >
                 <input
                   type="number"
                   step="0.1"
+                  dir="ltr"
+                  disabled={savingWeight}
                   value={weightInput}
                   onChange={(e) => setWeightInput(e.target.value)}
                   style={{
@@ -2081,18 +2147,33 @@ export function TraineeMobileView({
                   }}
                 />
                 <button
+                  type="submit"
+                  disabled={savingWeight}
                   className="btn-volt"
-                  style={{ padding: '10px 18px', cursor: 'pointer' }}
-                  onClick={() => {
-                    const num = parseFloat(weightInput);
-                    if (!isNaN(num) && num > 30) {
-                      onUpdateWeight(trainee.id, selectedDate, num);
-                    }
+                  style={{
+                    padding: '10px 18px',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
                   }}
                 >
-                  תיעוד שקילה
+                  {savingWeight && <Loader2 size={14} className="spot-spinner" />}
+                  <span>{savingWeight ? 'שומר...' : 'תיעוד שקילה'}</span>
                 </button>
-              </div>
+              </form>
+              {weightFeedback && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: weightFeedback.isError ? '#f87171' : '#4ade80',
+                  }}
+                >
+                  {weightFeedback.msg}
+                </div>
+              )}
             </div>
 
             {/* כרטיס צ'ק-אין שבועי וייצוא דו"ח סיכום לוואטסאפ */}
@@ -2102,6 +2183,8 @@ export function TraineeMobileView({
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 10,
                   marginBottom: 12,
                 }}
               >
@@ -2115,7 +2198,7 @@ export function TraineeMobileView({
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     const actTargets = trainee.activityTargets || {
                       weeklyWorkoutsTarget: 4,
                       weeklyCardioTarget: 3,
@@ -2153,10 +2236,27 @@ export function TraineeMobileView({
                       .filter(Boolean)
                       .join('\n');
 
-                    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-                      navigator.clipboard.writeText(reportLines);
+                    setReportCopyError(false);
+                    try {
+                      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+                        await navigator.clipboard.writeText(reportLines);
+                      } else if (typeof document !== 'undefined') {
+                        const ta = document.createElement('textarea');
+                        ta.value = reportLines;
+                        ta.style.position = 'fixed';
+                        ta.style.opacity = '0';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(ta);
+                      } else {
+                        throw new Error('Clipboard unavailable');
+                      }
                       setReportCopiedBanner(true);
                       setTimeout(() => setReportCopiedBanner(false), 3500);
+                    } catch {
+                      setReportCopyError(true);
+                      setTimeout(() => setReportCopyError(false), 4000);
                     }
                   }}
                   className="btn-surface"
@@ -2194,6 +2294,23 @@ export function TraineeMobileView({
                 </div>
               )}
 
+              {reportCopyError && (
+                <div
+                  style={{
+                    marginBottom: 12,
+                    padding: '8px 12px',
+                    borderRadius: 10,
+                    background: 'rgba(239, 68, 68, 0.12)',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    color: '#f87171',
+                    fontSize: 11,
+                    fontWeight: 700,
+                  }}
+                >
+                  לא ניתן להעתיק ללוח בדפדפן זה – בדוק הרשאות העתקה.
+                </div>
+              )}
+
               <div
                 style={{
                   display: 'flex',
@@ -2224,6 +2341,7 @@ export function TraineeMobileView({
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
+                      flexWrap: 'wrap',
                       gap: 8,
                       background: 'var(--bg-surface-2)',
                       padding: '8px 12px',
@@ -2285,9 +2403,13 @@ export function TraineeMobileView({
 
                 <button
                   type="button"
-                  onClick={() => {
-                    if (onSaveWeeklyCheckIn) {
-                      onSaveWeeklyCheckIn(trainee.id, {
+                  disabled={savingCheckIn}
+                  onClick={async () => {
+                    if (!onSaveWeeklyCheckIn || checkInLockRef.current) return;
+                    checkInLockRef.current = true;
+                    setSavingCheckIn(true);
+                    try {
+                      await onSaveWeeklyCheckIn(trainee.id, {
                         id: `chk-${Date.now()}`,
                         date: todayIso,
                         weightKg: trainee.currentWeight,
@@ -2296,8 +2418,12 @@ export function TraineeMobileView({
                         sleepQuality,
                         note: checkInNote.trim() || undefined,
                       });
+                      setCheckInNote('');
                       setCheckInSavedBanner(true);
                       setTimeout(() => setCheckInSavedBanner(false), 3000);
+                    } finally {
+                      checkInLockRef.current = false;
+                      setSavingCheckIn(false);
                     }
                   }}
                   className="btn-volt"
@@ -2311,8 +2437,16 @@ export function TraineeMobileView({
                     cursor: 'pointer',
                   }}
                 >
-                  <Check size={15} />
-                  <span>שמור צ׳ק-אין שבועי למאמן</span>
+                  {savingCheckIn ? (
+                    <Loader2 size={15} className="spot-spinner" />
+                  ) : (
+                    <Check size={15} />
+                  )}
+                  <span>
+                    {savingCheckIn
+                      ? 'שומר צ׳ק-אין למאמן...'
+                      : 'שמור צ׳ק-אין שבועי למאמן'}
+                  </span>
                 </button>
 
                 {checkInSavedBanner && (
@@ -2426,7 +2560,7 @@ export function TraineeMobileView({
       {/* מודאל מדידת היקפים מונפש */}
       <Modal
         opened={measurementModalOpen}
-        onClose={() => setMeasurementModalOpen(false)}
+        onClose={() => !savingMeasurements && setMeasurementModalOpen(false)}
         title={
           <span style={{ fontWeight: 800, fontSize: 16 }}>
             מדידת היקפי גוף מודרכת (חזה, בטן, זרוע, ירך)
@@ -2440,13 +2574,18 @@ export function TraineeMobileView({
           initialValues={latestMeasurement}
           showSaveButtons
           onSkip={() => setMeasurementModalOpen(false)}
-          onSave={(vals) => {
-            onSaveBodyMeasurement(trainee.id, {
-              date: todayIso,
-              ...vals,
-              weightKg: trainee.currentWeight,
-            });
-            setMeasurementModalOpen(false);
+          onSave={async (vals) => {
+            setSavingMeasurements(true);
+            try {
+              await onSaveBodyMeasurement(trainee.id, {
+                date: todayIso,
+                ...vals,
+                weightKg: trainee.currentWeight,
+              });
+              setMeasurementModalOpen(false);
+            } finally {
+              setSavingMeasurements(false);
+            }
           }}
         />
       </Modal>

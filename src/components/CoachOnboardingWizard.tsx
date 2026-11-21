@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TextInput, PasswordInput, Textarea, Checkbox } from '@mantine/core';
 import {
   ShieldCheck,
@@ -9,6 +9,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from 'lucide-react';
 import {
   CoachOnboardingData,
@@ -28,7 +29,7 @@ interface CoachOnboardingWizardProps {
     onboarding: CoachOnboardingData;
     starterTemplates: NutritionTemplate[];
     starterGroupNames: string[];
-  }) => void;
+  }) => void | Promise<void>;
   onSkip?: () => void;
 }
 
@@ -169,6 +170,12 @@ export function CoachOnboardingWizard({
 }: CoachOnboardingWizardProps) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [step]);
+
   const [name, setName] = useState(coachName);
   const [phone, setPhone] = useState(coachPhone);
   const [title, setTitle] = useState(
@@ -214,8 +221,11 @@ export function CoachOnboardingWizard({
     'עלייה במסת שריר',
   ]);
   const [customGroupName, setCustomGroupName] = useState('');
+  const [isFinishing, setIsFinishing] = useState(false);
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
+    if (isFinishing) return;
+    setIsFinishing(true);
     const onboarding: CoachOnboardingData = {
       completed: true,
       title: title.trim(),
@@ -245,14 +255,18 @@ export function CoachOnboardingWizard({
       ...(customGroupName.trim() ? [customGroupName.trim()] : []),
     ];
 
-    onCompleteCoachOnboarding({
-      name: name.trim() || coachName,
-      phone: phone.trim(),
-      newPassword: newPassword.trim() || undefined,
-      onboarding,
-      starterTemplates,
-      starterGroupNames: Array.from(new Set(finalGroups)),
-    });
+    try {
+      await onCompleteCoachOnboarding({
+        name: name.trim() || coachName,
+        phone: phone.trim(),
+        newPassword: newPassword.trim() || undefined,
+        onboarding,
+        starterTemplates,
+        starterGroupNames: Array.from(new Set(finalGroups)),
+      });
+    } finally {
+      setIsFinishing(false);
+    }
   };
 
   return (
@@ -286,6 +300,7 @@ export function CoachOnboardingWizard({
             {onSkip && (
               <button
                 type="button"
+                disabled={isFinishing}
                 onClick={onSkip}
                 className="btn-surface"
                 style={{
@@ -350,7 +365,7 @@ export function CoachOnboardingWizard({
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
                 gap: 10,
               }}
             >
@@ -369,17 +384,22 @@ export function CoachOnboardingWizard({
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
                 gap: 10,
               }}
             >
               <TextInput
+                dir="ltr"
+                type="tel"
+                inputMode="tel"
                 label="טלפון / וואטסאפ"
                 placeholder="052-0000000"
                 value={phone}
                 onChange={(e) => setPhone(e.currentTarget.value)}
               />
               <PasswordInput
+                dir="ltr"
+                autoComplete="new-password"
                 label="החלפת סיסמה אישית (אופציונלי)"
                 placeholder="השאר ריק לשמירת הקיימת"
                 value={newPassword}
@@ -900,6 +920,7 @@ export function CoachOnboardingWizard({
 
               <button
                 type="button"
+                disabled={isFinishing}
                 onClick={handleFinish}
                 className="btn-volt"
                 style={{
@@ -913,8 +934,16 @@ export function CoachOnboardingWizard({
                   cursor: 'pointer',
                 }}
               >
-                <Check size={17} />
-                <span>סיום והפעלת סביבת המאמן</span>
+                {isFinishing ? (
+                  <Loader2 size={17} className="spot-spinner" />
+                ) : (
+                  <Check size={17} />
+                )}
+                <span>
+                  {isFinishing
+                    ? 'שומר ומקים סביבת מאמן...'
+                    : 'סיום והפעלת סביבת המאמן'}
+                </span>
               </button>
             </div>
           </div>

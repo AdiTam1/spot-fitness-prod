@@ -38,11 +38,35 @@ html,
 body {
   margin: 0;
   padding: 0;
+  min-height: 100dvh;
   background-color: var(--bg-canvas) !important;
   color: var(--text-primary) !important;
   font-family: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif !important;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+[role='button'] {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent-volt) !important;
+  outline-offset: 2px;
+}
+
+@keyframes spot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spot-spinner {
+  animation: spot-spin 0.75s linear infinite;
 }
 
 .num-mono {
@@ -92,6 +116,8 @@ body {
   opacity: 0.45 !important;
   transform: none !important;
   box-shadow: none !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
 }
 
 .btn-surface {
@@ -106,6 +132,12 @@ body {
 .btn-surface:hover {
   background: var(--bg-surface-3) !important;
   border-color: var(--border-strong) !important;
+}
+
+.btn-surface:disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
 }
 
 /* סרגל תחתון צף למובייל (Floating Glass Dock) */

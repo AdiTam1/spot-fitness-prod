@@ -27,7 +27,7 @@ import {
   sanitizeTraineeForClient,
   updateServerDbState,
 } from '@/lib/serverStore';
-import { DEFAULT_TEMPLATES } from '@/data/israeliFoodCatalog';
+import { DEFAULT_TEMPLATES, getTodayIso } from '@/data/israeliFoodCatalog';
 import {
   AccountStatus,
   CoachProfile,
@@ -424,14 +424,8 @@ export async function POST(request: NextRequest) {
           nextDates.push(toggleDate);
         }
       } else if (addFutureDays > 0 && addFutureDays <= 30) {
-        const now = new Date();
         for (let i = 0; i < addFutureDays; i++) {
-          const d = new Date(now);
-          d.setDate(now.getDate() + i);
-          const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
-            2,
-            '0'
-          )}-${String(d.getDate()).padStart(2, '0')}`;
+          const iso = getTodayIso(i);
           if (!nextDates.includes(iso)) {
             nextDates.push(iso);
           }

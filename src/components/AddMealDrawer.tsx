@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Drawer,
   TextInput,
@@ -27,6 +27,7 @@ import {
   MicOff,
   FileText,
   Brain,
+  Loader2,
 } from 'lucide-react';
 import {
   AiMealSuggestionOption,
@@ -55,7 +56,7 @@ interface AddMealDrawerProps {
     items: LoggedFoodItem[],
     photoDataUrl?: string,
     photoNote?: string
-  ) => void;
+  ) => void | Promise<void>;
   geminiApiKey?: string;
   initialTab?: string;
   traineeId?: string;
@@ -115,41 +116,80 @@ export function AddMealDrawer({
 
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [barcodeModalOpen, setBarcodeModalOpen] = useState(false);
+  const [savingMeal, setSavingMeal] = useState(false);
+  const [addingOptionIdx, setAddingOptionIdx] = useState<number | null>(null);
+
+  const recognitionRef = useRef<{ stop?: () => void } | null>(null);
+  const aiLockRef = useRef(false);
+  const recLockRef = useRef(false);
+  const prefLockRef = useRef(false);
+  const saveLockRef = useRef(false);
+
+  const stopVoiceRecording = () => {
+    try {
+      recognitionRef.current?.stop?.();
+    } catch {
+      // ignore
+    }
+    recognitionRef.current = null;
+    setIsRecordingVoice(false);
+  };
 
   useEffect(() => {
     if (opened && mealSlot) {
       setItems(existingEntry?.items ? [...existingEntry.items] : []);
       setPhotoDataUrl(existingEntry?.photoDataUrl);
+      setPhotoSizeKB(null);
       setPhotoNote(existingEntry?.photoNote || '');
+      setFreeTextPrompt('');
+      setSearchQuery('');
+      setAiRecommendations([]);
+      setLearnedFeedbackBanner(null);
+      setPreferenceFeedbackText('');
+      setEditingItemId(null);
       setAiSummary(null);
       setActiveTab(initialTab);
+      stopVoiceRecording();
+    } else if (!opened) {
+      stopVoiceRecording();
     }
+    return () => {
+      stopVoiceRecording();
+    };
   }, [opened, mealSlot, existingEntry, initialTab]);
 
   useEffect(() => {
+    const controller = new AbortController();
     const timer = setTimeout(async () => {
       if (!searchQuery.trim()) {
         setSearchResults(ISRAELI_FOOD_CATALOG);
         setMohCount(0);
+        setSearchLoading(false);
         return;
       }
       setSearchLoading(true);
       try {
         const res = await fetch(
-          `/api/food/search?q=${encodeURIComponent(searchQuery.trim())}`
+          `/api/food/search?q=${encodeURIComponent(searchQuery.trim())}`,
+          { signal: controller.signal }
         );
         if (res.ok) {
           const data = await res.json();
           setSearchResults(data.items || []);
           setMohCount(data.mohCount || 0);
         }
-      } catch {
-        // fallback local
+      } catch (err) {
+        if ((err as { name?: string })?.name === 'AbortError') return;
       } finally {
-        setSearchLoading(false);
+        if (!controller.signal.aborted) {
+          setSearchLoading(false);
+        }
       }
     }, 260);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [searchQuery]);
 
   const handleSelectCatalogFood = (food: FoodCatalogItem) => {
@@ -213,25 +253,49 @@ export function AddMealDrawer({
     setItems((prev) => [...prev, newItem]);
   };
 
+  const [photoUploading, setPhotoUploading] = useState(false);
+
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setAiSummary('נא לבחור קובץ תמונה תקין (JPG, PNG, WebP)');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setAiSummary('קובץ התמונה גדול מדי (מקסימום 20MB)');
+      e.target.value = '';
+      return;
+    }
+    setPhotoUploading(true);
+    setAiSummary(null);
     try {
       const compressed = await compressMealImage(file, 800, 0.75);
       setPhotoDataUrl(compressed.dataUrl);
       setPhotoSizeKB(compressed.sizeKB);
     } catch {
-      // ignore
+      setAiSummary('לא ניתן לקרוא את התמונה – נסה לצלם שוב');
+    } finally {
+      setPhotoUploading(false);
+      e.target.value = '';
     }
   };
 
-  const runAiAnalysis = async (mode: 'photo' | 'text', customTextOverride?: string) => {
+  const runAiAnalysis = async (
+    mode: 'photo' | 'text',
+    customTextOverride?: string,
+    optionIndex?: number
+  ) => {
+    if (aiLockRef.current) return;
     const rawPrompt = customTextOverride ?? (mode === 'photo' ? photoNote : freeTextPrompt);
     const promptToUse =
       mode === 'photo' && photoMode === 'nutrition-label'
         ? `קרא את טבלת הערכים התזונתיים מהתמונה וחלץ את המוצר והערכים שלו למנה/100 גרם: ${rawPrompt}`
         : rawPrompt;
+    aiLockRef.current = true;
     setAiLoading(true);
+    if (optionIndex !== undefined) setAddingOptionIdx(optionIndex);
     setAiSummary(null);
     try {
       const res = await fetch('/api/ai/analyze-meal', {
@@ -246,33 +310,41 @@ export function AddMealDrawer({
           customApiKey: geminiApiKey,
         }),
       });
+      if (!res.ok) {
+        setAiSummary('שגיאה בפענוח ה-AI – נסה שוב');
+        return;
+      }
       const data = await res.json();
       if (Array.isArray(data.items) && data.items.length > 0) {
         setItems((prev) => [...prev, ...data.items]);
         setAiSummary(
           `זוהו ${data.items.length} מרכיבים ונוספו לארוחה (ניתן לערוך כמויות וערכים למטה)`
         );
+      } else {
+        setAiSummary('לא זוהו מרכיבים – נסה לתאר בצורה מפורטת יותר');
       }
     } catch {
       setAiSummary('שגיאה בפענוח ה-AI');
     } finally {
+      aiLockRef.current = false;
       setAiLoading(false);
+      setAddingOptionIdx(null);
     }
   };
 
   const toggleVoiceRecording = () => {
     if (typeof window === 'undefined') return;
-    const SpeechRec =
-      (window as unknown as { SpeechRecognition?: new () => { lang: string; interimResults: boolean; onresult: (e: { results: { [k: number]: { [k: number]: { transcript: string } } } }) => void; onend: () => void; onerror: () => void; start: () => void } }).SpeechRecognition ||
-      (window as unknown as { webkitSpeechRecognition?: new () => { lang: string; interimResults: boolean; onresult: (e: { results: { [k: number]: { [k: number]: { transcript: string } } } }) => void; onend: () => void; onerror: () => void; start: () => void } }).webkitSpeechRecognition;
-
-    if (!SpeechRec) {
-      setAiSummary('הדפדפן שלך אינו תומך בהקלטה קולית (נסה Chrome או Safari)');
+    if (isRecordingVoice) {
+      stopVoiceRecording();
       return;
     }
 
-    if (isRecordingVoice) {
-      setIsRecordingVoice(false);
+    const SpeechRec =
+      (window as unknown as { SpeechRecognition?: new () => { lang: string; interimResults: boolean; onresult: (e: { results: { [k: number]: { [k: number]: { transcript: string } } } }) => void; onend: () => void; onerror: () => void; start: () => void; stop: () => void } }).SpeechRecognition ||
+      (window as unknown as { webkitSpeechRecognition?: new () => { lang: string; interimResults: boolean; onresult: (e: { results: { [k: number]: { [k: number]: { transcript: string } } } }) => void; onend: () => void; onerror: () => void; start: () => void; stop: () => void } }).webkitSpeechRecognition;
+
+    if (!SpeechRec) {
+      setAiSummary('הדפדפן שלך אינו תומך בהקלטה קולית (נסה Chrome או Safari)');
       return;
     }
 
@@ -280,6 +352,7 @@ export function AddMealDrawer({
       const recognition = new SpeechRec();
       recognition.lang = 'he-IL';
       recognition.interimResults = false;
+      recognitionRef.current = recognition;
       setIsRecordingVoice(true);
       recognition.onresult = (event) => {
         const transcript = event.results?.[0]?.[0]?.transcript || '';
@@ -287,16 +360,23 @@ export function AddMealDrawer({
           setFreeTextPrompt((prev) => (prev ? `${prev} ${transcript}` : transcript));
         }
       };
-      recognition.onend = () => setIsRecordingVoice(false);
-      recognition.onerror = () => setIsRecordingVoice(false);
+      recognition.onend = () => {
+        recognitionRef.current = null;
+        setIsRecordingVoice(false);
+      };
+      recognition.onerror = () => {
+        recognitionRef.current = null;
+        setIsRecordingVoice(false);
+      };
       recognition.start();
     } catch {
+      recognitionRef.current = null;
       setIsRecordingVoice(false);
     }
   };
 
   const fetchAiRecommendations = async () => {
-    if (!mealSlot) return;
+    if (!mealSlot || recLockRef.current) return;
     const totalsNow = sumMacros(items.map((i) => i.macros));
     const remainingMacros = {
       calories: Math.max(80, mealSlot.targets.calories - totalsNow.calories),
@@ -304,8 +384,10 @@ export function AddMealDrawer({
       carbs: Math.max(5, Math.round(mealSlot.targets.carbs - totalsNow.carbs)),
       fat: Math.max(3, Math.round(mealSlot.targets.fat - totalsNow.fat)),
     };
+    recLockRef.current = true;
     setAiRecLoading(true);
     setLearnedFeedbackBanner(null);
+    setAiSummary(null);
     try {
       const res = await fetch('/api/ai/recommend-meal', {
         method: 'POST',
@@ -321,16 +403,20 @@ export function AddMealDrawer({
       const data = await res.json();
       if (Array.isArray(data.options)) {
         setAiRecommendations(data.options);
+      } else {
+        setAiSummary('לא התקבלו הצעות – נסה שוב');
       }
     } catch {
       setAiSummary('שגיאה בקבלת המלצות ארוחה מ-AI');
     } finally {
+      recLockRef.current = false;
       setAiRecLoading(false);
     }
   };
 
   const handleLearnPreference = async () => {
-    if (!preferenceFeedbackText.trim()) return;
+    if (!preferenceFeedbackText.trim() || prefLockRef.current) return;
+    prefLockRef.current = true;
     setLearningPrefLoading(true);
     setLearnedFeedbackBanner(null);
     try {
@@ -345,16 +431,19 @@ export function AddMealDrawer({
         }),
       });
       const data = await res.json();
-      if (data.learnedRule) {
+      if (res.ok && data.learnedRule) {
         setLearnedFeedbackBanner(`נלמד ונשמר לעתיד: "${data.learnedRule}"`);
         setPreferenceFeedbackText('');
         if (onPreferenceLearned && Array.isArray(data.allPreferences)) {
           onPreferenceLearned(data.allPreferences);
         }
+      } else {
+        setLearnedFeedbackBanner('שגיאה בשמירת ההעדפה');
       }
     } catch {
       setLearnedFeedbackBanner('שגיאה בשמירת ההעדפה');
     } finally {
+      prefLockRef.current = false;
       setLearningPrefLoading(false);
     }
   };
@@ -415,7 +504,9 @@ export function AddMealDrawer({
     <>
       <Drawer
         opened={opened}
-        onClose={onClose}
+        onClose={() => {
+          if (!savingMeal && !aiLoading) onClose();
+        }}
         position="bottom"
         size="92%"
         title={
@@ -449,7 +540,7 @@ export function AddMealDrawer({
           },
         }}
       >
-        <ScrollArea h="calc(90vh - 125px)" offsetScrollbars>
+        <ScrollArea h="calc(90dvh - 125px)" offsetScrollbars>
           <div
             style={{
               display: 'flex',
@@ -462,7 +553,7 @@ export function AddMealDrawer({
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(5, 1fr)',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))',
                 gap: 4,
                 background: 'var(--bg-surface-2)',
                 padding: 4,
@@ -547,7 +638,7 @@ export function AddMealDrawer({
                           <span style={{ fontSize: 12, fontWeight: 600 }}>{optText}</span>
                           <button
                             disabled={aiLoading}
-                            onClick={() => runAiAnalysis('text', optText)}
+                            onClick={() => runAiAnalysis('text', optText, idx)}
                             className="btn-surface"
                             style={{
                               padding: '5px 10px',
@@ -555,9 +646,17 @@ export function AddMealDrawer({
                               cursor: 'pointer',
                               whiteSpace: 'nowrap',
                               color: 'var(--accent-volt)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
                             }}
                           >
-                            + בחר והוסף
+                            {addingOptionIdx === idx && (
+                              <Loader2 size={12} className="spot-spinner" />
+                            )}
+                            <span>
+                              {addingOptionIdx === idx ? 'מנתח ומוסיף...' : '+ בחר והוסף'}
+                            </span>
                           </button>
                         </div>
                       ))}
@@ -610,7 +709,11 @@ export function AddMealDrawer({
                         cursor: 'pointer',
                       }}
                     >
-                      <Sparkles size={14} />
+                      {aiRecLoading ? (
+                        <Loader2 size={14} className="spot-spinner" />
+                      ) : (
+                        <Sparkles size={14} />
+                      )}
                       <span>
                         {aiRecLoading ? 'בונה 3 הצעות מותאמות...' : 'הצע לי 3 ארוחות ליתרה'}
                       </span>
@@ -735,6 +838,12 @@ export function AddMealDrawer({
                         placeholder="למשל: אני לא אוכל גבינות חוץ מגבינה צהובה..."
                         value={preferenceFeedbackText}
                         onChange={(e) => setPreferenceFeedbackText(e.currentTarget.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && preferenceFeedbackText.trim() && !learningPrefLoading) {
+                            e.preventDefault();
+                            handleLearnPreference();
+                          }
+                        }}
                       />
                       <button
                         disabled={learningPrefLoading || !preferenceFeedbackText.trim()}
@@ -747,9 +856,17 @@ export function AddMealDrawer({
                           cursor: 'pointer',
                           color: 'var(--accent-volt)',
                           whiteSpace: 'nowrap',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
                         }}
                       >
-                        {learningPrefLoading ? 'לומד...' : 'שמור העדפה לעתיד'}
+                        {learningPrefLoading && (
+                          <Loader2 size={12} className="spot-spinner" />
+                        )}
+                        <span>
+                          {learningPrefLoading ? 'לומד ושומר...' : 'שמור העדפה לעתיד'}
+                        </span>
                       </button>
                     </div>
                     {learnedFeedbackBanner && (
@@ -822,10 +939,25 @@ export function AddMealDrawer({
                 </div>
 
                 <ScrollArea.Autosize mah={180} type="always">
+                  {searchResults.length === 0 && !searchLoading ? (
+                    <div
+                      style={{
+                        padding: 18,
+                        textAlign: 'center',
+                        borderRadius: 12,
+                        background: 'var(--bg-surface-2)',
+                        border: '1px solid var(--border-subtle)',
+                        color: 'var(--text-secondary)',
+                        fontSize: 12,
+                      }}
+                    >
+                      לא נמצאו מוצרים המתאימים ל־&ldquo;{searchQuery}&rdquo;. נסה מילה אחרת, סריקת ברקוד או ניתוח AI.
+                    </div>
+                  ) : (
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(2, 1fr)',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))',
                       gap: 8,
                     }}
                   >
@@ -898,6 +1030,7 @@ export function AddMealDrawer({
                       );
                     })}
                   </div>
+                  )}
                 </ScrollArea.Autosize>
 
                 {selectedFood && (
@@ -1166,17 +1299,25 @@ export function AddMealDrawer({
                       gap: 6,
                       padding: '8px 16px',
                       fontSize: 12,
-                      cursor: 'pointer',
+                      cursor: photoUploading ? 'wait' : 'pointer',
                       marginTop: 8,
+                      opacity: photoUploading ? 0.65 : 1,
                     }}
                   >
                     <Upload size={14} />
-                    <span>{photoDataUrl ? 'החלף תמונה' : 'בחר או צלם תמונה'}</span>
+                    <span>
+                      {photoUploading
+                        ? 'מכווץ ומעבד תמונה...'
+                        : photoDataUrl
+                        ? 'החלף תמונה'
+                        : 'בחר או צלם תמונה'}
+                    </span>
                     <input
                       type="file"
                       accept="image/*"
                       capture="environment"
                       hidden
+                      disabled={photoUploading}
                       onChange={handlePhotoUpload}
                     />
                   </label>
@@ -1212,7 +1353,11 @@ export function AddMealDrawer({
                     cursor: 'pointer',
                   }}
                 >
-                  <Wand2 size={16} />
+                  {aiLoading ? (
+                    <Loader2 size={16} className="spot-spinner" />
+                  ) : (
+                    <Wand2 size={16} />
+                  )}
                   <span>
                     {aiLoading
                       ? 'מפענח מרכיבים וכמויות...'
@@ -1308,7 +1453,11 @@ export function AddMealDrawer({
                     cursor: 'pointer',
                   }}
                 >
-                  <Sparkles size={16} />
+                  {aiLoading ? (
+                    <Loader2 size={16} className="spot-spinner" />
+                  ) : (
+                    <Sparkles size={16} />
+                  )}
                   <span>
                     {aiLoading ? 'מחשב ערכים תזונתיים...' : 'פרק משפט לקלוריות ומאקרו'}
                   </span>
@@ -1318,78 +1467,98 @@ export function AddMealDrawer({
 
             {/* לשונית 4: מועדפים */}
             {activeTab === 'favorites' && (
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(2, 1fr)',
-                  gap: 8,
-                }}
-              >
+              <>
                 {ISRAELI_FOOD_CATALOG.filter((f) =>
                   favoriteIds.includes(f.id)
-                ).map((food) => {
-                  const defaultUnit = food.units[0];
-                  const macros = calculateMacrosForGrams(
-                    food.per100g,
-                    defaultUnit.grams
-                  );
-                  return (
-                    <div
-                      key={food.id}
-                      style={{
-                        background: 'var(--bg-surface-2)',
-                        border: '1px solid var(--border-subtle)',
-                        borderRadius: 12,
-                        padding: 12,
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 700 }}>
-                          {food.name}
-                        </div>
+                ).length === 0 ? (
+                  <div
+                    style={{
+                      padding: 24,
+                      textAlign: 'center',
+                      borderRadius: 14,
+                      background: 'var(--bg-surface-2)',
+                      border: '1px solid var(--border-subtle)',
+                      color: 'var(--text-secondary)',
+                      fontSize: 12,
+                    }}
+                  >
+                    טרם סימנת מאכלים מועדפים. לחץ על אייקון הלב ❤️ ליד כל מוצר בלשונית &ldquo;מאגר מזון&rdquo; כדי לשמור אותו כאן לגישה מהירה.
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))',
+                      gap: 8,
+                    }}
+                  >
+                    {ISRAELI_FOOD_CATALOG.filter((f) =>
+                      favoriteIds.includes(f.id)
+                    ).map((food) => {
+                      const defaultUnit = food.units[0];
+                      const macros = calculateMacrosForGrams(
+                        food.per100g,
+                        defaultUnit.grams
+                      );
+                      return (
                         <div
-                          className="num-mono"
+                          key={food.id}
                           style={{
-                            fontSize: 11,
-                            color: 'var(--text-secondary)',
+                            background: 'var(--bg-surface-2)',
+                            border: '1px solid var(--border-subtle)',
+                            borderRadius: 12,
+                            padding: 12,
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
                           }}
                         >
-                          {defaultUnit.label} · {macros.calories} קק״ל
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 700 }}>
+                              {food.name}
+                            </div>
+                            <div
+                              className="num-mono"
+                              style={{
+                                fontSize: 11,
+                                color: 'var(--text-secondary)',
+                              }}
+                            >
+                              {defaultUnit.label} · {macros.calories} קק״ל
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setItems((prev) => [
+                                ...prev,
+                                {
+                                  id: `fav-${Date.now()}-${Math.random()
+                                    .toString(36)
+                                    .slice(2, 6)}`,
+                                  name: food.name,
+                                  unitLabel: defaultUnit.label,
+                                  quantity: 1,
+                                  grams: defaultUnit.grams,
+                                  macros,
+                                  source: 'catalog',
+                                },
+                              ]);
+                            }}
+                            className="btn-surface"
+                            style={{
+                              padding: '6px 10px',
+                              fontSize: 11,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            + הוסף
+                          </button>
                         </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setItems((prev) => [
-                            ...prev,
-                            {
-                              id: `fav-${Date.now()}-${Math.random()
-                                .toString(36)
-                                .slice(2, 6)}`,
-                              name: food.name,
-                              unitLabel: defaultUnit.label,
-                              quantity: 1,
-                              grams: defaultUnit.grams,
-                              macros,
-                              source: 'catalog',
-                            },
-                          ]);
-                        }}
-                        className="btn-surface"
-                        style={{
-                          padding: '6px 10px',
-                          fontSize: 11,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        + הוסף
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
 
             {aiSummary && (
@@ -1557,7 +1726,7 @@ export function AddMealDrawer({
                           <div
                             style={{
                               display: 'grid',
-                              gridTemplateColumns: 'repeat(5, 1fr)',
+                              gridTemplateColumns: 'repeat(auto-fit, minmax(75px, 1fr))',
                               gap: 6,
                               marginTop: 10,
                               paddingTop: 10,
@@ -1684,9 +1853,18 @@ export function AddMealDrawer({
               </div>
 
               <button
-                onClick={() => {
-                  onSaveMeal(mealSlot.id, items, photoDataUrl, photoNote);
-                  onClose();
+                disabled={savingMeal}
+                onClick={async () => {
+                  if (saveLockRef.current) return;
+                  saveLockRef.current = true;
+                  setSavingMeal(true);
+                  try {
+                    await onSaveMeal(mealSlot.id, items, photoDataUrl, photoNote);
+                    onClose();
+                  } finally {
+                    saveLockRef.current = false;
+                    setSavingMeal(false);
+                  }
                 }}
                 className="btn-volt"
                 style={{
@@ -1698,8 +1876,12 @@ export function AddMealDrawer({
                   cursor: 'pointer',
                 }}
               >
-                <Check size={16} />
-                <span>שמור ארוחה</span>
+                {savingMeal ? (
+                  <Loader2 size={16} className="spot-spinner" />
+                ) : (
+                  <Check size={16} />
+                )}
+                <span>{savingMeal ? 'שומר ארוחה...' : 'שמור ארוחה'}</span>
               </button>
             </div>
           </div>

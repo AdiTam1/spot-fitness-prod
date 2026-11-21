@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   TextInput,
@@ -31,6 +31,9 @@ import {
   Crown,
   Layers,
   Brain,
+  Loader2,
+  AlertTriangle,
+  Search,
 } from 'lucide-react';
 import {
   AccountStatus,
@@ -58,26 +61,26 @@ interface CoachDashboardViewProps {
   coaches: CoachProfile[];
   coachDirectory: CoachDirectoryItem[];
   coachInviteCode: string;
-  onUpdateCoachInviteCode: (newCode: string) => void;
-  onSaveTemplate: (template: NutritionTemplate) => void;
-  onDeleteTemplate: (templateId: string) => void;
+  onUpdateCoachInviteCode: (newCode: string) => Promise<{ error?: string }> | void;
+  onSaveTemplate: (template: NutritionTemplate) => Promise<{ error?: string }> | void;
+  onDeleteTemplate: (templateId: string) => Promise<{ error?: string }> | void;
   onAssignTemplateToTrainee: (
     traineeId: string,
     dayType: DayType,
     template: NutritionTemplate
-  ) => void;
+  ) => Promise<{ error?: string }> | void;
   onUpdateTraineePlan: (
     traineeId: string,
     dayType: DayType,
     updatedTemplate: NutritionTemplate,
     tolerancePercent: number
-  ) => void;
+  ) => Promise<{ error?: string }> | void;
   onAddCoachFeedback: (
     traineeId: string,
     date: string,
     mealSlotId: string,
     feedback: string
-  ) => void;
+  ) => Promise<{ error?: string }> | void;
   onAddTrainee: (data: {
     name: string;
     email: string;
@@ -87,31 +90,31 @@ interface CoachDashboardViewProps {
     templateId: string;
     primaryCoachId?: string;
     groupId?: string;
-  }) => void;
+  }) => Promise<{ error?: string }> | void;
   onUpdateTraineeStatus: (
     traineeId: string,
     status: AccountStatus,
     primaryCoachId?: string
-  ) => void;
+  ) => Promise<{ error?: string }> | void;
   onUpdateTraineeCredentials: (
     traineeId: string,
     email: string,
     password: string
-  ) => void;
+  ) => Promise<{ error?: string }> | void;
   onUpdateTraineeSharing: (
     traineeId: string,
     primaryCoachId: string,
     sharedCoachIds: string[]
-  ) => void;
-  onUpdateTraineeGroup: (traineeId: string, groupId?: string) => void;
-  onCreateGroup: (name: string, color: string) => void;
-  onDeleteGroup: (groupId: string) => void;
+  ) => Promise<{ error?: string }> | void;
+  onUpdateTraineeGroup: (traineeId: string, groupId?: string) => Promise<{ error?: string }> | void;
+  onCreateGroup: (name: string, color: string) => Promise<{ error?: string }> | void;
+  onDeleteGroup: (groupId: string) => Promise<{ error?: string }> | void;
   onBulkGroupAssignTemplate: (
     groupId: string,
     templateId: string,
     dayType: DayType
-  ) => void;
-  onBulkGroupShareCoach: (groupId: string, targetCoachId: string) => void;
+  ) => Promise<{ error?: string }> | void;
+  onBulkGroupShareCoach: (groupId: string, targetCoachId: string) => Promise<{ error?: string }> | void;
   onManageObservationDays: (
     traineeId: string,
     payload: {
@@ -120,11 +123,11 @@ interface CoachDashboardViewProps {
       clearAll?: boolean;
       countObservationInStats?: boolean;
     }
-  ) => void;
+  ) => Promise<{ error?: string }> | void;
   onUpdateActivityTargets: (
     traineeId: string,
     activityTargets: TraineeActivityTargets
-  ) => void;
+  ) => Promise<{ error?: string }> | void;
   onUpdateAiNotesAndSplit?: (
     traineeId: string,
     payload: {
@@ -132,9 +135,9 @@ interface CoachDashboardViewProps {
       coachAiNotes?: string;
       aiLearnedPreferences?: string[];
     }
-  ) => void;
+  ) => Promise<{ error?: string }> | void;
   onOpenCoachOnboarding?: () => void;
-  onDeleteTrainee: (traineeId: string) => void;
+  onDeleteTrainee: (traineeId: string) => Promise<{ error?: string }> | void;
   onCreateCoach: (data: {
     name: string;
     email: string;
@@ -142,14 +145,14 @@ interface CoachDashboardViewProps {
     phone: string;
     inviteCode: string;
   }) => Promise<{ error?: string }>;
-  onUpdateCoachStatus: (coachId: string, status: 'active' | 'paused') => void;
+  onUpdateCoachStatus: (coachId: string, status: 'active' | 'paused') => Promise<{ error?: string }> | void;
   onUpdateCoachCredentials: (
     coachId: string,
     email: string,
     password: string,
     inviteCode: string
-  ) => void;
-  onDeleteCoach: (coachId: string) => void;
+  ) => Promise<{ error?: string }> | void;
+  onDeleteCoach: (coachId: string) => Promise<{ error?: string }> | void;
   onPreviewTraineeMobile: (traineeId: string) => void;
 }
 
@@ -218,6 +221,7 @@ export function CoachDashboardView({
 
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>('all');
   const [selectedCoachFilter, setSelectedCoachFilter] = useState<string>('all');
+  const [rosterSearchQuery, setRosterSearchQuery] = useState<string>('');
 
   const [selectedTraineeId, setSelectedTraineeId] = useState<string>(
     trainees[0]?.id || ''
@@ -313,12 +317,76 @@ export function CoachDashboardView({
   const [inviteCodeDraft, setInviteCodeDraft] = useState(coachInviteCode);
   const [customWorkoutTypeInput, setCustomWorkoutTypeInput] = useState('');
 
+  // סנכרון אוטומטי אם נתוני השרת (קוד הזמנה, טמפלייטים, מתאמנים) משתנים או נמחקים
+  useEffect(() => {
+    setInviteCodeDraft(coachInviteCode);
+  }, [coachInviteCode]);
+
+  useEffect(() => {
+    const found = templates.find((t) => t.id === selectedTemplateId);
+    if (!found && templates.length > 0) {
+      setSelectedTemplateId(templates[0].id);
+      setEditableTemplate(JSON.parse(JSON.stringify(templates[0])));
+    }
+  }, [templates, selectedTemplateId]);
+
+  useEffect(() => {
+    if (
+      trainees.length > 0 &&
+      !trainees.some((t) => t.id === assignTraineeId)
+    ) {
+      setAssignTraineeId(trainees[0].id);
+    }
+  }, [trainees, assignTraineeId]);
+
   const pendingTrainees = trainees.filter((t) => t.status === 'pending');
 
-  const showToast = (msg: string) => {
+  const [toastIsError, setToastIsError] = useState(false);
+  const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (msg: string, isError = false) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToastIsError(isError);
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
+    toastTimerRef.current = setTimeout(() => setToastMessage(null), 3500);
   };
+
+  // מנגנון מניעת לחיצה כפולה + מצב טעינה לכל פעולה אסינכרונית (מזוהה לפי מפתח)
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const busyRef = React.useRef<string | null>(null);
+  const isBusy = (key: string) => busyKey === key;
+
+  const runBusy = async (
+    key: string,
+    action: () => unknown,
+    successMsg?: string
+  ): Promise<boolean> => {
+    if (busyRef.current) return false; // נעילה סינכרונית – חוסם לחיצה כפולה מיידית
+    busyRef.current = key;
+    setBusyKey(key);
+    try {
+      const result = (await action()) as { error?: string } | undefined;
+      if (result && typeof result === 'object' && result.error) {
+        showToast(result.error, true);
+        return false;
+      }
+      if (successMsg) showToast(successMsg);
+      return true;
+    } catch {
+      showToast('הפעולה נכשלה – בדוק את החיבור לאינטרנט ונסה שוב', true);
+      return false;
+    } finally {
+      busyRef.current = null;
+      setBusyKey(null);
+    }
+  };
+
+  const confirmDanger = (message: string) =>
+    typeof window === 'undefined' ? false : window.confirm(message);
+
+  const BusyIcon = ({ size = 14 }: { size?: number }) => (
+    <Loader2 size={size} className="spot-spinner" />
+  );
 
   // בדיקה האם המשתמש הנוכחי הוא הבעלים הראשי של המתאמן (ולא רק מאמן שותף)
   const isOwnerOfTrainee = (t: TraineeProfile) => {
@@ -375,10 +443,17 @@ export function CoachDashboardView({
         },
       ],
     };
-    onSaveTemplate(newTpl);
-    setSelectedTemplateId(newTpl.id);
-    setEditableTemplate(JSON.parse(JSON.stringify(newTpl)));
-    showToast('נוצר טמפלייט חדש בבעלותך');
+    runBusy(
+      'create-tpl',
+      async () => {
+        const res = await onSaveTemplate(newTpl);
+        if (res && typeof res === 'object' && res.error) return res;
+        setSelectedTemplateId(newTpl.id);
+        setEditableTemplate(JSON.parse(JSON.stringify(newTpl)));
+        return undefined;
+      },
+      'נוצר טמפלייט חדש בבעלותך'
+    );
   };
 
   const handleDuplicateTemplateToPersonal = () => {
@@ -388,10 +463,17 @@ export function CoachDashboardView({
       name: `${editableTemplate.name} (עותק של ${currentUser.name})`,
       ownerCoachId: currentUser.id,
     };
-    onSaveTemplate(cloned);
-    setSelectedTemplateId(cloned.id);
-    setEditableTemplate(cloned);
-    showToast('הטמפלייט שוכפל לספרייה האישית שלך וכעת ניתן לעריכה מלאה');
+    runBusy(
+      'dup-tpl',
+      async () => {
+        const res = await onSaveTemplate(cloned);
+        if (res && typeof res === 'object' && res.error) return res;
+        setSelectedTemplateId(cloned.id);
+        setEditableTemplate(cloned);
+        return undefined;
+      },
+      'הטמפלייט שוכפל לספרייה האישית שלך וכעת ניתן לעריכה מלאה'
+    );
   };
 
   const updateTemplateMealField = (
@@ -660,6 +742,16 @@ export function CoachDashboardView({
         return false;
       }
     }
+
+    if (rosterSearchQuery.trim()) {
+      const q = rosterSearchQuery.trim().toLowerCase();
+      const hit =
+        t.name.toLowerCase().includes(q) ||
+        (t.email || '').toLowerCase().includes(q) ||
+        (t.phone || '').toLowerCase().includes(q);
+      if (!hit) return false;
+    }
+
     return true;
   });
 
@@ -731,14 +823,16 @@ export function CoachDashboardView({
                     />
                   )}
                   <button
-                    onClick={() => {
-                      onUpdateTraineeStatus(p.id, 'active', targetCoach);
-                      showToast(
+                    disabled={isBusy(`approve-${p.id}`)}
+                    onClick={() =>
+                      runBusy(
+                        `approve-${p.id}`,
+                        () => onUpdateTraineeStatus(p.id, 'active', targetCoach),
                         `${p.name} אושר ושויך למאמן ${getCoachNameById(
                           targetCoach
                         )}!`
-                      );
-                    }}
+                      )
+                    }
                     className="btn-volt"
                     style={{
                       padding: '6px 12px',
@@ -749,8 +843,14 @@ export function CoachDashboardView({
                       gap: 5,
                     }}
                   >
-                    <Check size={13} />
-                    <span>אשר ושייך</span>
+                    {isBusy(`approve-${p.id}`) ? (
+                      <BusyIcon size={13} />
+                    ) : (
+                      <Check size={13} />
+                    )}
+                    <span>
+                      {isBusy(`approve-${p.id}`) ? 'מאשר...' : 'אשר ושייך'}
+                    </span>
                   </button>
                 </div>
               );
@@ -911,20 +1011,33 @@ export function CoachDashboardView({
 
       {toastMessage && (
         <div
+          role="status"
+          aria-live="polite"
           style={{
+            position: 'fixed',
+            bottom: 24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 400,
+            maxWidth: 'calc(100% - 32px)',
             padding: '12px 18px',
             borderRadius: 14,
-            background: 'rgba(210, 255, 40, 0.12)',
-            border: '1px solid rgba(210, 255, 40, 0.35)',
-            color: 'var(--accent-volt)',
+            background: toastIsError
+              ? 'rgba(60, 14, 14, 0.96)'
+              : 'rgba(22, 28, 8, 0.96)',
+            border: toastIsError
+              ? '1px solid rgba(239, 68, 68, 0.55)'
+              : '1px solid rgba(210, 255, 40, 0.45)',
+            color: toastIsError ? '#f87171' : 'var(--accent-volt)',
             fontSize: 13,
             fontWeight: 700,
             display: 'flex',
             alignItems: 'center',
             gap: 8,
+            boxShadow: '0 12px 30px rgba(0,0,0,0.6)',
           }}
         >
-          <Check size={16} />
+          {toastIsError ? <AlertTriangle size={16} /> : <Check size={16} />}
           <span>{toastMessage}</span>
         </div>
       )}
@@ -1058,22 +1171,33 @@ export function CoachDashboardView({
               </button>
             </div>
 
-            {isSuperAdmin && coachDirectory.length > 1 && (
-              <Select
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <TextInput
                 size="xs"
-                w={190}
-                placeholder="סנן לפי מאמן אחראי"
-                value={selectedCoachFilter}
-                onChange={(val) => setSelectedCoachFilter(val || 'all')}
-                data={[
-                  { value: 'all', label: 'כל המאמנים במערכת' },
-                  ...coachDirectory.map((c) => ({
-                    value: c.id,
-                    label: `מאמן: ${c.name}`,
-                  })),
-                ]}
+                w={195}
+                placeholder="חיפוש לפי שם / אימייל / טלפון..."
+                leftSection={<Search size={13} />}
+                value={rosterSearchQuery}
+                onChange={(e) => setRosterSearchQuery(e.currentTarget.value)}
               />
-            )}
+
+              {isSuperAdmin && coachDirectory.length > 1 && (
+                <Select
+                  size="xs"
+                  w={185}
+                  placeholder="סנן לפי מאמן אחראי"
+                  value={selectedCoachFilter}
+                  onChange={(val) => setSelectedCoachFilter(val || 'all')}
+                  data={[
+                    { value: 'all', label: 'כל המאמנים במערכת' },
+                    ...coachDirectory.map((c) => ({
+                      value: c.id,
+                      label: `מאמן: ${c.name}`,
+                    })),
+                  ]}
+                />
+              )}
+            </div>
           </div>
 
           {/* סרגל פעולות קבוצתיות (מופיע כשנבחרה קבוצה ספציפית) */}
@@ -1138,24 +1262,33 @@ export function CoachDashboardView({
                   ]}
                 />
                 <button
-                  onClick={() => {
-                    onBulkGroupAssignTemplate(
-                      activeGroupObj.id,
-                      bulkTplId,
-                      bulkDayType
-                    );
-                    showToast(
+                  disabled={isBusy('bulk-assign')}
+                  onClick={() =>
+                    runBusy(
+                      'bulk-assign',
+                      () =>
+                        onBulkGroupAssignTemplate(
+                          activeGroupObj.id,
+                          bulkTplId,
+                          bulkDayType
+                        ),
                       `הטמפלייט הוחל בהצלחה על כל מתאמני קבוצת "${activeGroupObj.name}"!`
-                    );
-                  }}
+                    )
+                  }
                   className="btn-volt"
                   style={{
                     padding: '7px 14px',
                     fontSize: 12,
                     cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
                   }}
                 >
-                  החל טמפלייט לקבוצה
+                  {isBusy('bulk-assign') && <BusyIcon size={13} />}
+                  <span>
+                    {isBusy('bulk-assign') ? 'מחיל...' : 'החל טמפלייט לקבוצה'}
+                  </span>
                 </button>
 
                 {coachDirectory.length > 1 && (
@@ -1175,14 +1308,16 @@ export function CoachDashboardView({
                         }))}
                     />
                     <button
-                      disabled={!bulkShareCoachId}
+                      disabled={!bulkShareCoachId || isBusy('bulk-share')}
                       onClick={() => {
                         if (!bulkShareCoachId) return;
-                        onBulkGroupShareCoach(
-                          activeGroupObj.id,
-                          bulkShareCoachId
-                        );
-                        showToast(
+                        runBusy(
+                          'bulk-share',
+                          () =>
+                            onBulkGroupShareCoach(
+                              activeGroupObj.id,
+                              bulkShareCoachId
+                            ),
                           `כל מתאמני קבוצת "${activeGroupObj.name}" שותפו עם ${getCoachNameById(
                             bulkShareCoachId
                           )}!`
@@ -1193,9 +1328,15 @@ export function CoachDashboardView({
                         padding: '7px 12px',
                         fontSize: 12,
                         cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
                       }}
                     >
-                      שתף קבוצה
+                      {isBusy('bulk-share') && <BusyIcon size={13} />}
+                      <span>
+                        {isBusy('bulk-share') ? 'משתף...' : 'שתף קבוצה'}
+                      </span>
                     </button>
                   </>
                 )}
@@ -1204,10 +1345,21 @@ export function CoachDashboardView({
                   activeGroupObj.ownerCoachId === currentUser.id) && (
                   <button
                     title="מחק קבוצה (המתאמנים לא יימחקו)"
-                    onClick={() => {
-                      onDeleteGroup(activeGroupObj.id);
-                      setSelectedGroupFilter('all');
-                      showToast(`הקבוצה "${activeGroupObj.name}" הוסרה`);
+                    disabled={isBusy(`del-group-${activeGroupObj.id}`)}
+                    onClick={async () => {
+                      if (
+                        !confirmDanger(
+                          `למחוק את הקבוצה "${activeGroupObj.name}"? המתאמנים שבקבוצה יישארו במערכת.`
+                        )
+                      ) {
+                        return;
+                      }
+                      const ok = await runBusy(
+                        `del-group-${activeGroupObj.id}`,
+                        () => onDeleteGroup(activeGroupObj.id),
+                        `הקבוצה "${activeGroupObj.name}" הוסרה`
+                      );
+                      if (ok) setSelectedGroupFilter('all');
                     }}
                     className="btn-surface"
                     style={{
@@ -1215,7 +1367,11 @@ export function CoachDashboardView({
                       cursor: 'pointer',
                     }}
                   >
-                    <Trash2 size={14} color="#ef4444" />
+                    {isBusy(`del-group-${activeGroupObj.id}`) ? (
+                      <BusyIcon size={14} />
+                    ) : (
+                      <Trash2 size={14} color="#ef4444" />
+                    )}
                   </button>
                 )}
               </div>
@@ -1435,16 +1591,19 @@ export function CoachDashboardView({
                               <div style={{ display: 'flex', gap: 4 }}>
                                 <button
                                   title="הפעל או בטל את היום כיום תשקיף בקליק"
-                                  onClick={() => {
-                                    onManageObservationDays(t.id, {
-                                      toggleDate: today,
-                                    });
-                                    showToast(
+                                  disabled={isBusy(`obs-toggle-${t.id}`)}
+                                  onClick={() =>
+                                    runBusy(
+                                      `obs-toggle-${t.id}`,
+                                      () =>
+                                        onManageObservationDays(t.id, {
+                                          toggleDate: today,
+                                        }),
                                       st.isTodayObs
                                         ? `יום תשקיף בוטל להיום עבור ${t.name}`
                                         : `היום הוגדר כיום תשקיף עבור ${t.name}`
-                                    );
-                                  }}
+                                    )
+                                  }
                                   style={{
                                     padding: '2px 8px',
                                     borderRadius: 6,
@@ -1462,7 +1621,9 @@ export function CoachDashboardView({
                                     cursor: 'pointer',
                                   }}
                                 >
-                                  {st.isTodayObs
+                                  {isBusy(`obs-toggle-${t.id}`)
+                                    ? 'מעדכן...'
+                                    : st.isTodayObs
                                     ? '✓ תשקיף היום'
                                     : '+ תשקיף היום'}
                                 </button>
@@ -1471,13 +1632,16 @@ export function CoachDashboardView({
                                   st.isTodayObs) && (
                                   <button
                                     title="בחר בקליק זריז אם ימי תשקיף נחשבים בספירת היעדים או לא"
+                                    disabled={isBusy(`obs-count-${t.id}`)}
                                     onClick={() => {
                                       const nextVal =
                                         !t.countObservationInStats;
-                                      onManageObservationDays(t.id, {
-                                        countObservationInStats: nextVal,
-                                      });
-                                      showToast(
+                                      runBusy(
+                                        `obs-count-${t.id}`,
+                                        () =>
+                                          onManageObservationDays(t.id, {
+                                            countObservationInStats: nextVal,
+                                          }),
                                         nextVal
                                           ? `ימי תשקיף של ${t.name} נכללים כעת בספירת היעדים`
                                           : `ימי תשקיף של ${t.name} מוחרגים מחישוב חריגות (הקלוריות נספרות בתשקיף)`
@@ -1950,31 +2114,40 @@ export function CoachDashboardView({
                       })}
                     </div>
 
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const clean = customWorkoutTypeInput.trim();
+                        if (!clean) return;
+                        const nextTypes = Array.from(
+                          new Set([...(act.workoutTypes || []), clean])
+                        );
+                        runBusy(
+                          'add-wtype',
+                          () =>
+                            onUpdateActivityTargets(selectedTrainee.id, {
+                              ...act,
+                              workoutTypes: nextTypes,
+                            }),
+                          `סוג האימון "${clean}" נוסף למתאמן`
+                        );
+                        setCustomWorkoutTypeInput('');
+                      }}
+                      style={{ display: 'flex', gap: 8 }}
+                    >
                       <TextInput
                         size="xs"
                         style={{ flex: 1 }}
                         placeholder="הוסף סוג אימון מותאם אישית (למשל: אימון רגליים וישבן, קרוספיט, שחייה)..."
                         value={customWorkoutTypeInput}
+                        disabled={isBusy('add-wtype')}
                         onChange={(e) =>
                           setCustomWorkoutTypeInput(e.currentTarget.value)
                         }
                       />
                       <button
-                        type="button"
-                        onClick={() => {
-                          const clean = customWorkoutTypeInput.trim();
-                          if (!clean) return;
-                          const nextTypes = Array.from(
-                            new Set([...(act.workoutTypes || []), clean])
-                          );
-                          onUpdateActivityTargets(selectedTrainee.id, {
-                            ...act,
-                            workoutTypes: nextTypes,
-                          });
-                          setCustomWorkoutTypeInput('');
-                          showToast(`סוג האימון "${clean}" נוסף למתאמן`);
-                        }}
+                        type="submit"
+                        disabled={!customWorkoutTypeInput.trim() || isBusy('add-wtype')}
                         className="btn-surface"
                         style={{
                           padding: '6px 12px',
@@ -1982,9 +2155,9 @@ export function CoachDashboardView({
                           cursor: 'pointer',
                         }}
                       >
-                        + הוסף סוג אימון
+                        {isBusy('add-wtype') ? 'מוסיף...' : '+ הוסף סוג אימון'}
                       </button>
-                    </div>
+                    </form>
                   </div>
                 </div>
               );
@@ -2015,12 +2188,17 @@ export function CoachDashboardView({
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button
-                  onClick={() => {
-                    onManageObservationDays(selectedTrainee.id, {
-                      toggleDate: today,
-                    });
-                    showToast('סטטוס יום תשקיף להיום עודכן');
-                  }}
+                  disabled={isBusy('obs-ins-today')}
+                  onClick={() =>
+                    runBusy(
+                      'obs-ins-today',
+                      () =>
+                        onManageObservationDays(selectedTrainee.id, {
+                          toggleDate: today,
+                        }),
+                      'סטטוס יום תשקיף להיום עודכן'
+                    )
+                  }
                   className="btn-surface"
                   style={{
                     padding: '7px 12px',
@@ -2033,18 +2211,25 @@ export function CoachDashboardView({
                       : undefined,
                   }}
                 >
-                  {(selectedTrainee.observationDates || []).includes(today)
+                  {isBusy('obs-ins-today')
+                    ? 'מעדכן...'
+                    : (selectedTrainee.observationDates || []).includes(today)
                     ? '✓ היום מוגדר כיום תשקיף (לחץ לביטול)'
                     : 'הגדר את היום כיום תשקיף'}
                 </button>
 
                 <button
-                  onClick={() => {
-                    onManageObservationDays(selectedTrainee.id, {
-                      addFutureDays: 3,
-                    });
-                    showToast('נוספו 3 ימי תשקיף מהיום והלאה');
-                  }}
+                  disabled={isBusy('obs-ins-3')}
+                  onClick={() =>
+                    runBusy(
+                      'obs-ins-3',
+                      () =>
+                        onManageObservationDays(selectedTrainee.id, {
+                          addFutureDays: 3,
+                        }),
+                      'נוספו 3 ימי תשקיף מהיום והלאה'
+                    )
+                  }
                   className="btn-surface"
                   style={{
                     padding: '7px 12px',
@@ -2052,16 +2237,21 @@ export function CoachDashboardView({
                     cursor: 'pointer',
                   }}
                 >
-                  + 3 ימי תשקיף מראש
+                  {isBusy('obs-ins-3') ? 'מוסיף...' : '+ 3 ימי תשקיף מראש'}
                 </button>
 
                 <button
-                  onClick={() => {
-                    onManageObservationDays(selectedTrainee.id, {
-                      addFutureDays: 7,
-                    });
-                    showToast('נוספו 7 ימי תשקיף מראש');
-                  }}
+                  disabled={isBusy('obs-ins-7')}
+                  onClick={() =>
+                    runBusy(
+                      'obs-ins-7',
+                      () =>
+                        onManageObservationDays(selectedTrainee.id, {
+                          addFutureDays: 7,
+                        }),
+                      'נוספו 7 ימי תשקיף מראש'
+                    )
+                  }
                   className="btn-surface"
                   style={{
                     padding: '7px 12px',
@@ -2069,17 +2259,20 @@ export function CoachDashboardView({
                     cursor: 'pointer',
                   }}
                 >
-                  + 7 ימי תשקיף מראש
+                  {isBusy('obs-ins-7') ? 'מוסיף...' : '+ 7 ימי תשקיף מראש'}
                 </button>
 
                 {/* מתג קליק זריז למאמן: האם ימי תשקיף נחשבים בספירה או לא */}
                 <button
+                  disabled={isBusy('obs-ins-count')}
                   onClick={() => {
                     const nextVal = !selectedTrainee.countObservationInStats;
-                    onManageObservationDays(selectedTrainee.id, {
-                      countObservationInStats: nextVal,
-                    });
-                    showToast(
+                    runBusy(
+                      'obs-ins-count',
+                      () =>
+                        onManageObservationDays(selectedTrainee.id, {
+                          countObservationInStats: nextVal,
+                        }),
                       nextVal
                         ? 'ימי תשקיף נחשבים כעת בספירת היעדים'
                         : 'ימי תשקיף מוחרגים מחישוב חריגות היעד'
@@ -2096,18 +2289,32 @@ export function CoachDashboardView({
                     cursor: 'pointer',
                   }}
                 >
-                  {selectedTrainee.countObservationInStats
+                  {isBusy('obs-ins-count')
+                    ? 'מעדכן...'
+                    : selectedTrainee.countObservationInStats
                     ? '✓ ימי תשקיף נחשבים בספירה'
                     : 'ימי תשקיף לא נחשבים ביעד (לחץ להכללה)'}
                 </button>
 
                 {(selectedTrainee.observationDates || []).length > 0 && (
                   <button
+                    disabled={isBusy('obs-ins-clear')}
                     onClick={() => {
-                      onManageObservationDays(selectedTrainee.id, {
-                        clearAll: true,
-                      });
-                      showToast('כל ימי התשקיף נוקו');
+                      if (
+                        !confirmDanger(
+                          `לנקות את כל ימי התשקיף של ${selectedTrainee.name}?`
+                        )
+                      ) {
+                        return;
+                      }
+                      runBusy(
+                        'obs-ins-clear',
+                        () =>
+                          onManageObservationDays(selectedTrainee.id, {
+                            clearAll: true,
+                          }),
+                        'כל ימי התשקיף נוקו'
+                      );
                     }}
                     className="btn-surface"
                     style={{
@@ -2117,7 +2324,7 @@ export function CoachDashboardView({
                       cursor: 'pointer',
                     }}
                   >
-                    נקה ימי תשקיף
+                    {isBusy('obs-ins-clear') ? 'מנקה...' : 'נקה ימי תשקיף'}
                   </button>
                 )}
               </div>
@@ -2435,7 +2642,7 @@ export function CoachDashboardView({
                     </span>
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         const lastChk =
                           selectedTrainee.weeklyCheckIns?.[
                             selectedTrainee.weeklyCheckIns.length - 1
@@ -2472,12 +2679,25 @@ export function CoachDashboardView({
                         ]
                           .filter(Boolean)
                           .join('\n');
-                        if (
-                          typeof navigator !== 'undefined' &&
-                          navigator.clipboard
-                        ) {
-                          navigator.clipboard.writeText(report);
+                        try {
+                          if (
+                            typeof navigator !== 'undefined' &&
+                            navigator.clipboard?.writeText
+                          ) {
+                            await navigator.clipboard.writeText(report);
+                          } else if (typeof document !== 'undefined') {
+                            const ta = document.createElement('textarea');
+                            ta.value = report;
+                            ta.style.position = 'fixed';
+                            ta.style.opacity = '0';
+                            document.body.appendChild(ta);
+                            ta.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(ta);
+                          }
                           showToast('דו״ח הסיכום הועתק ללוח (מוכן לוואטסאפ)');
+                        } catch {
+                          showToast('לא ניתן להעתיק ללוח בדפדפן זה', true);
                         }
                       }}
                       className="btn-surface"
@@ -2558,7 +2778,7 @@ export function CoachDashboardView({
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))',
               gap: 20,
             }}
           >
@@ -2953,10 +3173,27 @@ export function CoachDashboardView({
                       </div>
                     )}
 
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        runBusy(
+                          `fb-${selectedTrainee.id}-${slot.id}`,
+                          () =>
+                            onAddCoachFeedback(
+                              selectedTrainee.id,
+                              today,
+                              slot.id,
+                              draftVal
+                            ),
+                          `הפידבק נשמר תחת השם "${currentUser.name}"`
+                        );
+                      }}
+                      style={{ display: 'flex', gap: 8 }}
+                    >
                       <input
                         placeholder={`כתוב פידבק בשם ${currentUser.name}...`}
                         value={draftVal}
+                        disabled={isBusy(`fb-${selectedTrainee.id}-${slot.id}`)}
                         onChange={(e) => {
                           const val = e.target.value;
                           setFeedbackDrafts((prev) => ({
@@ -2975,17 +3212,8 @@ export function CoachDashboardView({
                         }}
                       />
                       <button
-                        onClick={() => {
-                          onAddCoachFeedback(
-                            selectedTrainee.id,
-                            today,
-                            slot.id,
-                            draftVal
-                          );
-                          showToast(
-                            `הפידבק נשמר תחת השם "${currentUser.name}"`
-                          );
-                        }}
+                        type="submit"
+                        disabled={isBusy(`fb-${selectedTrainee.id}-${slot.id}`)}
                         className="btn-volt"
                         style={{
                           padding: '7px 14px',
@@ -2996,10 +3224,18 @@ export function CoachDashboardView({
                           cursor: 'pointer',
                         }}
                       >
-                        <Send size={12} />
-                        <span>שלח</span>
+                        {isBusy(`fb-${selectedTrainee.id}-${slot.id}`) ? (
+                          <BusyIcon size={12} />
+                        ) : (
+                          <Send size={12} />
+                        )}
+                        <span>
+                          {isBusy(`fb-${selectedTrainee.id}-${slot.id}`)
+                            ? 'שולח...'
+                            : 'שלח'}
+                        </span>
                       </button>
-                    </div>
+                    </form>
                   </div>
                 );
               })}
@@ -3036,7 +3272,7 @@ export function CoachDashboardView({
             >
               <Select
                 label="בחר טמפלייט תזונה"
-                w={320}
+                style={{ minWidth: 240, maxWidth: '100%', flex: '1 1 260px' }}
                 value={selectedTemplateId}
                 onChange={(val) => val && handleSelectTemplate(val)}
                 data={templates.map((t) => {
@@ -3052,6 +3288,7 @@ export function CoachDashboardView({
               />
 
               <button
+                disabled={isBusy('create-tpl')}
                 onClick={handleCreateNewTemplate}
                 className="btn-surface"
                 style={{
@@ -3063,12 +3300,19 @@ export function CoachDashboardView({
                   cursor: 'pointer',
                 }}
               >
-                <Plus size={14} />
-                <span>+ טמפלייט חדש</span>
+                {isBusy('create-tpl') ? (
+                  <BusyIcon size={14} />
+                ) : (
+                  <Plus size={14} />
+                )}
+                <span>
+                  {isBusy('create-tpl') ? 'יוצר טמפלייט...' : '+ טמפלייט חדש'}
+                </span>
               </button>
 
               {!canEditCurrentTemplate && (
                 <button
+                  disabled={isBusy('dup-tpl')}
                   onClick={handleDuplicateTemplateToPersonal}
                   className="btn-volt"
                   style={{
@@ -3080,8 +3324,16 @@ export function CoachDashboardView({
                     cursor: 'pointer',
                   }}
                 >
-                  <Copy size={14} />
-                  <span>שכפל לטמפלייטים האישיים שלי לעריכה</span>
+                  {isBusy('dup-tpl') ? (
+                    <BusyIcon size={14} />
+                  ) : (
+                    <Copy size={14} />
+                  )}
+                  <span>
+                    {isBusy('dup-tpl')
+                      ? 'משכפל...'
+                      : 'שכפל לטמפלייטים האישיים שלי לעריכה'}
+                  </span>
                 </button>
               )}
             </div>
@@ -3092,6 +3344,7 @@ export function CoachDashboardView({
                   display: 'flex',
                   gap: 8,
                   alignItems: 'flex-end',
+                  flexWrap: 'wrap',
                   background: 'var(--bg-surface-2)',
                   padding: '10px 14px',
                   borderRadius: 14,
@@ -3117,16 +3370,19 @@ export function CoachDashboardView({
                   ]}
                 />
                 <button
+                  disabled={isBusy('assign-tpl')}
                   onClick={() => {
-                    onAssignTemplateToTrainee(
-                      assignTraineeId,
-                      assignDayType,
-                      editableTemplate
-                    );
                     const tName =
                       trainees.find((t) => t.id === assignTraineeId)?.name ||
                       '';
-                    showToast(
+                    runBusy(
+                      'assign-tpl',
+                      () =>
+                        onAssignTemplateToTrainee(
+                          assignTraineeId,
+                          assignDayType,
+                          editableTemplate
+                        ),
                       `הטמפלייט "${editableTemplate.name}" שויך למתאמן ${tName}`
                     );
                   }}
@@ -3135,9 +3391,15 @@ export function CoachDashboardView({
                     padding: '7px 14px',
                     fontSize: 12,
                     cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
                   }}
                 >
-                  שייך למתאמן
+                  {isBusy('assign-tpl') && <BusyIcon size={13} />}
+                  <span>
+                    {isBusy('assign-tpl') ? 'משייך...' : 'שייך למתאמן'}
+                  </span>
                 </button>
               </div>
             )}
@@ -3188,7 +3450,7 @@ export function CoachDashboardView({
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr auto',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(105px, 1fr))',
                     gap: 10,
                     alignItems: 'flex-end',
                   }}
@@ -3342,25 +3604,44 @@ export function CoachDashboardView({
                 <>
                   {templates.length > 1 && (
                     <button
+                      disabled={isBusy('del-tpl')}
                       onClick={() => {
-                        onDeleteTemplate(editableTemplate.id);
-                        showToast('הטמפלייט נמחק');
+                        if (
+                          !confirmDanger(
+                            `למחוק לצמיתות את הטמפלייט "${editableTemplate.name}"?`
+                          )
+                        ) {
+                          return;
+                        }
+                        runBusy(
+                          'del-tpl',
+                          () => onDeleteTemplate(editableTemplate.id),
+                          'הטמפלייט נמחק'
+                        );
                       }}
                       className="btn-surface"
                       style={{
                         padding: '10px 14px',
                         fontSize: 12,
                         cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
                       }}
                     >
-                      מחק טמפלייט
+                      {isBusy('del-tpl') && <BusyIcon size={13} />}
+                      <span>{isBusy('del-tpl') ? 'מוחק...' : 'מחק טמפלייט'}</span>
                     </button>
                   )}
                   <button
-                    onClick={() => {
-                      onSaveTemplate(editableTemplate);
-                      showToast(`הטמפלייט "${editableTemplate.name}" נשמר`);
-                    }}
+                    disabled={isBusy('save-tpl')}
+                    onClick={() =>
+                      runBusy(
+                        'save-tpl',
+                        () => onSaveTemplate(editableTemplate),
+                        `הטמפלייט "${editableTemplate.name}" נשמר`
+                      )
+                    }
                     className="btn-volt"
                     style={{
                       padding: '10px 20px',
@@ -3371,8 +3652,14 @@ export function CoachDashboardView({
                       cursor: 'pointer',
                     }}
                   >
-                    <Check size={16} />
-                    <span>שמור טמפלייט</span>
+                    {isBusy('save-tpl') ? (
+                      <BusyIcon size={16} />
+                    ) : (
+                      <Check size={16} />
+                    )}
+                    <span>
+                      {isBusy('save-tpl') ? 'שומר טמפלייט...' : 'שמור טמפלייט'}
+                    </span>
                   </button>
                 </>
               )}
@@ -3407,29 +3694,44 @@ export function CoachDashboardView({
               </div>
 
               {isSuperAdmin && (
-                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    runBusy(
+                      'save-invite',
+                      () =>
+                        onUpdateCoachInviteCode(
+                          inviteCodeDraft.trim().toUpperCase() || 'SPOT2026'
+                        ),
+                      'קוד ההזמנה עודכן'
+                    );
+                  }}
+                  style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}
+                >
                   <TextInput
+                    dir="ltr"
                     label="קוד מנהל ראשי"
                     value={inviteCodeDraft}
+                    disabled={isBusy('save-invite')}
                     onChange={(e) => setInviteCodeDraft(e.currentTarget.value)}
                   />
                   <button
-                    onClick={() => {
-                      onUpdateCoachInviteCode(
-                        inviteCodeDraft.trim().toUpperCase() || 'SPOT2026'
-                      );
-                      showToast('קוד ההזמנה עודכן');
-                    }}
+                    type="submit"
+                    disabled={isBusy('save-invite')}
                     className="btn-volt"
                     style={{
                       padding: '9px 16px',
                       fontSize: 12,
                       cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
                     }}
                   >
-                    שמור קוד
+                    {isBusy('save-invite') && <BusyIcon size={12} />}
+                    <span>{isBusy('save-invite') ? 'שומר...' : 'שמור קוד'}</span>
                   </button>
-                </div>
+                </form>
               )}
             </div>
           </div>
@@ -3590,10 +3892,14 @@ export function CoachDashboardView({
 
                               {t.status !== 'active' ? (
                                 <button
-                                  onClick={() => {
-                                    onUpdateTraineeStatus(t.id, 'active');
-                                    showToast(`הגישה של ${t.name} הופעלה`);
-                                  }}
+                                  disabled={isBusy(`st-tr-${t.id}`)}
+                                  onClick={() =>
+                                    runBusy(
+                                      `st-tr-${t.id}`,
+                                      () => onUpdateTraineeStatus(t.id, 'active'),
+                                      `הגישה של ${t.name} הופעלה`
+                                    )
+                                  }
                                   className="btn-volt"
                                   style={{
                                     padding: '6px 10px',
@@ -3604,15 +3910,25 @@ export function CoachDashboardView({
                                     cursor: 'pointer',
                                   }}
                                 >
-                                  <PlayCircle size={13} />
-                                  <span>הפעל</span>
+                                  {isBusy(`st-tr-${t.id}`) ? (
+                                    <BusyIcon size={13} />
+                                  ) : (
+                                    <PlayCircle size={13} />
+                                  )}
+                                  <span>
+                                    {isBusy(`st-tr-${t.id}`) ? 'מפעיל...' : 'הפעל'}
+                                  </span>
                                 </button>
                               ) : (
                                 <button
-                                  onClick={() => {
-                                    onUpdateTraineeStatus(t.id, 'paused');
-                                    showToast(`המנוי של ${t.name} הושהה`);
-                                  }}
+                                  disabled={isBusy(`st-tr-${t.id}`)}
+                                  onClick={() =>
+                                    runBusy(
+                                      `st-tr-${t.id}`,
+                                      () => onUpdateTraineeStatus(t.id, 'paused'),
+                                      `המנוי של ${t.name} הושהה`
+                                    )
+                                  }
                                   className="btn-surface"
                                   style={{
                                     padding: '6px 10px',
@@ -3623,8 +3939,14 @@ export function CoachDashboardView({
                                     cursor: 'pointer',
                                   }}
                                 >
-                                  <PauseCircle size={13} />
-                                  <span>השהה</span>
+                                  {isBusy(`st-tr-${t.id}`) ? (
+                                    <BusyIcon size={13} />
+                                  ) : (
+                                    <PauseCircle size={13} />
+                                  )}
+                                  <span>
+                                    {isBusy(`st-tr-${t.id}`) ? 'משהה...' : 'השהה'}
+                                  </span>
                                 </button>
                               )}
 
@@ -3649,9 +3971,21 @@ export function CoachDashboardView({
                               </button>
 
                               <button
+                                title="מחק מתאמן לצמיתות"
+                                disabled={isBusy(`del-tr-${t.id}`)}
                                 onClick={() => {
-                                  onDeleteTrainee(t.id);
-                                  showToast(`המתאמן ${t.name} הוסר`);
+                                  if (
+                                    !confirmDanger(
+                                      `למחוק לצמיתות את המתאמן "${t.name}" וכל נתוניו? פעולה זו אינה הפיכה.`
+                                    )
+                                  ) {
+                                    return;
+                                  }
+                                  runBusy(
+                                    `del-tr-${t.id}`,
+                                    () => onDeleteTrainee(t.id),
+                                    `המתאמן ${t.name} הוסר`
+                                  );
                                 }}
                                 className="btn-surface"
                                 style={{
@@ -3659,7 +3993,11 @@ export function CoachDashboardView({
                                   cursor: 'pointer',
                                 }}
                               >
-                                <Trash2 size={13} color="#ef4444" />
+                                {isBusy(`del-tr-${t.id}`) ? (
+                                  <BusyIcon size={13} />
+                                ) : (
+                                  <Trash2 size={13} color="#ef4444" />
+                                )}
                               </button>
                             </div>
                           ) : (
@@ -3854,33 +4192,57 @@ export function CoachDashboardView({
                             <div style={{ display: 'inline-flex', gap: 6 }}>
                               {c.status === 'active' ? (
                                 <button
-                                  onClick={() => {
-                                    onUpdateCoachStatus(c.id, 'paused');
-                                    showToast(`חשבון המאמן ${c.name} הושהה`);
-                                  }}
+                                  disabled={isBusy(`st-co-${c.id}`)}
+                                  onClick={() =>
+                                    runBusy(
+                                      `st-co-${c.id}`,
+                                      () => onUpdateCoachStatus(c.id, 'paused'),
+                                      `חשבון המאמן ${c.name} הושהה`
+                                    )
+                                  }
                                   className="btn-surface"
                                   style={{
                                     padding: '6px 10px',
                                     fontSize: 11,
                                     cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 4,
                                   }}
                                 >
-                                  השהה מאמן
+                                  {isBusy(`st-co-${c.id}`) && <BusyIcon size={12} />}
+                                  <span>
+                                    {isBusy(`st-co-${c.id}`)
+                                      ? 'משהה...'
+                                      : 'השהה מאמן'}
+                                  </span>
                                 </button>
                               ) : (
                                 <button
-                                  onClick={() => {
-                                    onUpdateCoachStatus(c.id, 'active');
-                                    showToast(`חשבון המאמן ${c.name} הופעל`);
-                                  }}
+                                  disabled={isBusy(`st-co-${c.id}`)}
+                                  onClick={() =>
+                                    runBusy(
+                                      `st-co-${c.id}`,
+                                      () => onUpdateCoachStatus(c.id, 'active'),
+                                      `חשבון המאמן ${c.name} הופעל`
+                                    )
+                                  }
                                   className="btn-volt"
                                   style={{
                                     padding: '6px 10px',
                                     fontSize: 11,
                                     cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 4,
                                   }}
                                 >
-                                  הפעל מאמן
+                                  {isBusy(`st-co-${c.id}`) && <BusyIcon size={12} />}
+                                  <span>
+                                    {isBusy(`st-co-${c.id}`)
+                                      ? 'מפעיל...'
+                                      : 'הפעל מאמן'}
+                                  </span>
                                 </button>
                               )}
 
@@ -3902,9 +4264,19 @@ export function CoachDashboardView({
                               </button>
 
                               <button
+                                title="מחק מאמן והעבר את מתאמניו למנהל הראשי"
+                                disabled={isBusy(`del-co-${c.id}`)}
                                 onClick={() => {
-                                  onDeleteCoach(c.id);
-                                  showToast(
+                                  if (
+                                    !confirmDanger(
+                                      `למחוק את המאמן "${c.name}"? כל מתאמניו יעברו אוטומטית לבעלותך.`
+                                    )
+                                  ) {
+                                    return;
+                                  }
+                                  runBusy(
+                                    `del-co-${c.id}`,
+                                    () => onDeleteCoach(c.id),
                                     `המאמן ${c.name} הוסר וכל מתאמניו הועברו לבעלותך`
                                   );
                                 }}
@@ -3914,7 +4286,11 @@ export function CoachDashboardView({
                                   cursor: 'pointer',
                                 }}
                               >
-                                <Trash2 size={13} color="#ef4444" />
+                                {isBusy(`del-co-${c.id}`) ? (
+                                  <BusyIcon size={13} />
+                                ) : (
+                                  <Trash2 size={13} color="#ef4444" />
+                                )}
                               </button>
                             </div>
                           </td>
@@ -3936,7 +4312,7 @@ export function CoachDashboardView({
       {/* מודאל פתיחת מתאמן חדש */}
       <Modal
         opened={newTraineeModal}
-        onClose={() => setNewTraineeModal(false)}
+        onClose={() => !isBusy('create-trainee') && setNewTraineeModal(false)}
         title={
           <span style={{ fontWeight: 800, fontSize: 16 }}>
             פתיחת משתמש חדש למתאמן
@@ -3945,7 +4321,34 @@ export function CoachDashboardView({
         centered
         radius="lg"
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!newTraineeName.trim() || !newTraineeEmail.trim()) return;
+            const ok = await runBusy('create-trainee', () =>
+              onAddTrainee({
+                name: newTraineeName.trim(),
+                email: newTraineeEmail.trim().toLowerCase(),
+                password: newTraineePassword.trim() || '123456',
+                phone: newTraineePhone.trim(),
+                goal: newTraineeGoal.trim(),
+                templateId: newTraineeTplId,
+                primaryCoachId: isSuperAdmin
+                  ? newTraineeCoachId
+                  : currentUser.id,
+                groupId: newTraineeGroupId || undefined,
+              })
+            );
+            if (!ok) return;
+            setNewTraineeName('');
+            setNewTraineeEmail('');
+            setNewTraineePassword('123456');
+            setNewTraineePhone('');
+            setNewTraineeModal(false);
+            showToast('חשבון המתאמן נוצר והופעל!');
+          }}
+          style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+        >
           <TextInput
             label="שם מלא של המתאמן"
             placeholder="למשל: דניאל אברהם"
@@ -3954,6 +4357,8 @@ export function CoachDashboardView({
             required
           />
           <TextInput
+            type="email"
+            dir="ltr"
             label="אימייל כניסה של המתאמן"
             placeholder="daniel@gmail.com"
             value={newTraineeEmail}
@@ -3961,6 +4366,7 @@ export function CoachDashboardView({
             required
           />
           <PasswordInput
+            dir="ltr"
             label="סיסמה ראשונית למתאמן"
             value={newTraineePassword}
             onChange={(e) => setNewTraineePassword(e.currentTarget.value)}
@@ -3970,11 +4376,13 @@ export function CoachDashboardView({
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
               gap: 10,
             }}
           >
             <TextInput
+              type="tel"
+              dir="ltr"
               label="טלפון"
               placeholder="054-0000000"
               value={newTraineePhone}
@@ -4016,44 +4424,38 @@ export function CoachDashboardView({
             data={templates.map((t) => ({ value: t.id, label: t.name }))}
           />
           <button
-            disabled={!newTraineeName.trim() || !newTraineeEmail.trim()}
-            onClick={() => {
-              onAddTrainee({
-                name: newTraineeName.trim(),
-                email: newTraineeEmail.trim().toLowerCase(),
-                password: newTraineePassword.trim() || '123456',
-                phone: newTraineePhone.trim(),
-                goal: newTraineeGoal.trim(),
-                templateId: newTraineeTplId,
-                primaryCoachId: isSuperAdmin
-                  ? newTraineeCoachId
-                  : currentUser.id,
-                groupId: newTraineeGroupId || undefined,
-              });
-              setNewTraineeName('');
-              setNewTraineeEmail('');
-              setNewTraineePassword('123456');
-              setNewTraineePhone('');
-              setNewTraineeModal(false);
-              showToast('חשבון המתאמן נוצר והופעל!');
-            }}
+            type="submit"
+            disabled={
+              isBusy('create-trainee') ||
+              !newTraineeName.trim() ||
+              !newTraineeEmail.trim()
+            }
             className="btn-volt"
             style={{
               marginTop: 8,
               padding: '11px',
               fontSize: 14,
               cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
             }}
           >
-            צור והפעל חשבון מתאמן
+            {isBusy('create-trainee') && <BusyIcon size={16} />}
+            <span>
+              {isBusy('create-trainee')
+                ? 'יוצר חשבון מתאמן...'
+                : 'צור והפעל חשבון מתאמן'}
+            </span>
           </button>
-        </div>
+        </form>
       </Modal>
 
       {/* מודאל שיתוף מתאמן בין מאמנים */}
       <Modal
         opened={Boolean(sharingModalTrainee)}
-        onClose={() => setSharingModalTrainee(null)}
+        onClose={() => !isBusy('save-sharing') && setSharingModalTrainee(null)}
         title={
           <span style={{ fontWeight: 800, fontSize: 16 }}>
             ניהול מאמנים והרשאות שיתוף — {sharingModalTrainee?.name}
@@ -4063,7 +4465,23 @@ export function CoachDashboardView({
         radius="lg"
       >
         {sharingModalTrainee && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const ok = await runBusy(
+                'save-sharing',
+                () =>
+                  onUpdateTraineeSharing(
+                    sharingModalTrainee.id,
+                    sharingPrimaryId,
+                    sharingCollaboratorIds
+                  ),
+                'הרשאות השיתוף של המתאמן עודכנו!'
+              );
+              if (ok) setSharingModalTrainee(null);
+            }}
+            style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
+          >
             {isSuperAdmin && (
               <Select
                 label="מאמן ראשי של המתאמן (Owner)"
@@ -4141,32 +4559,32 @@ export function CoachDashboardView({
             </div>
 
             <button
-              onClick={() => {
-                onUpdateTraineeSharing(
-                  sharingModalTrainee.id,
-                  sharingPrimaryId,
-                  sharingCollaboratorIds
-                );
-                setSharingModalTrainee(null);
-                showToast('הרשאות השיתוף של המתאמן עודכנו!');
-              }}
+              type="submit"
+              disabled={isBusy('save-sharing')}
               className="btn-volt"
               style={{
                 padding: '10px',
                 fontSize: 13,
                 cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
               }}
             >
-              שמור הגדרות שיתוף
+              {isBusy('save-sharing') && <BusyIcon />}
+              <span>
+                {isBusy('save-sharing') ? 'שומר הרשאות...' : 'שמור הגדרות שיתוף'}
+              </span>
             </button>
-          </div>
+          </form>
         )}
       </Modal>
 
       {/* מודאל יצירת קבוצה חדשה */}
       <Modal
         opened={newGroupModal}
-        onClose={() => setNewGroupModal(false)}
+        onClose={() => !isBusy('create-group') && setNewGroupModal(false)}
         title={
           <span style={{ fontWeight: 800, fontSize: 16 }}>
             יצירת קבוצת מתאמנים חדשה
@@ -4175,7 +4593,21 @@ export function CoachDashboardView({
         centered
         radius="lg"
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!newGroupName.trim()) return;
+            const ok = await runBusy(
+              'create-group',
+              () => onCreateGroup(newGroupName.trim(), newGroupColor),
+              'הקבוצה נוצרה בהצלחה'
+            );
+            if (!ok) return;
+            setNewGroupName('');
+            setNewGroupModal(false);
+          }}
+          style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
+        >
           <TextInput
             label="שם הקבוצה"
             placeholder="למשל: חיטוב קיץ, נבחרת בוקר, ליווי VIP..."
@@ -4192,6 +4624,7 @@ export function CoachDashboardView({
                 <button
                   key={sw.value}
                   type="button"
+                  aria-label={`בחר צבע ${sw.label ?? sw.value}`}
                   onClick={() => setNewGroupColor(sw.value)}
                   style={{
                     width: 32,
@@ -4209,29 +4642,29 @@ export function CoachDashboardView({
             </div>
           </div>
           <button
-            disabled={!newGroupName.trim()}
-            onClick={() => {
-              onCreateGroup(newGroupName.trim(), newGroupColor);
-              setNewGroupName('');
-              setNewGroupModal(false);
-              showToast('הקבוצה נוצרה בהצלחה');
-            }}
+            type="submit"
+            disabled={isBusy('create-group') || !newGroupName.trim()}
             className="btn-volt"
             style={{
               padding: '10px',
               fontSize: 13,
               cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
             }}
           >
-            צור קבוצה
+            {isBusy('create-group') && <BusyIcon />}
+            <span>{isBusy('create-group') ? 'יוצר קבוצה...' : 'צור קבוצה'}</span>
           </button>
-        </div>
+        </form>
       </Modal>
 
       {/* מודאל הוספת מאמן חדש (Super Admin בלבד) */}
       <Modal
         opened={newCoachModal}
-        onClose={() => setNewCoachModal(false)}
+        onClose={() => !isBusy('create-coach') && setNewCoachModal(false)}
         title={
           <span style={{ fontWeight: 800, fontSize: 16 }}>
             הקמת מאמן חדש במערכת (מנהל ראשי בלבד)
@@ -4240,7 +4673,44 @@ export function CoachDashboardView({
         centered
         radius="lg"
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (
+              !newCoachName.trim() ||
+              !newCoachEmail.trim() ||
+              !newCoachInviteCode.trim()
+            ) {
+              return;
+            }
+            setCoachModalError(null);
+            let errorMsg: string | undefined;
+            const ok = await runBusy('create-coach', async () => {
+              const res = await onCreateCoach({
+                name: newCoachName.trim(),
+                email: newCoachEmail.trim().toLowerCase(),
+                password: newCoachPassword.trim() || '123456',
+                phone: newCoachPhone.trim(),
+                inviteCode: newCoachInviteCode.trim().toUpperCase(),
+              });
+              errorMsg = res.error;
+              return undefined;
+            });
+            if (!ok) return;
+            if (errorMsg) {
+              setCoachModalError(errorMsg);
+              return;
+            }
+            setNewCoachName('');
+            setNewCoachEmail('');
+            setNewCoachPassword('123456');
+            setNewCoachPhone('');
+            setNewCoachInviteCode('');
+            setNewCoachModal(false);
+            showToast('חשבון המאמן נוצר ונשמר בהצלחה!');
+          }}
+          style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+        >
           {coachModalError && (
             <div
               style={{
@@ -4263,6 +4733,8 @@ export function CoachDashboardView({
             required
           />
           <TextInput
+            type="email"
+            dir="ltr"
             label="אימייל כניסה למאמן"
             placeholder="dani@spot.co.il"
             value={newCoachEmail}
@@ -4270,18 +4742,22 @@ export function CoachDashboardView({
             required
           />
           <PasswordInput
+            dir="ltr"
             label="סיסמה ראשונית למאמן"
             value={newCoachPassword}
             onChange={(e) => setNewCoachPassword(e.currentTarget.value)}
             required
           />
           <TextInput
+            type="tel"
+            dir="ltr"
             label="טלפון"
             placeholder="052-0000000"
             value={newCoachPhone}
             onChange={(e) => setNewCoachPhone(e.currentTarget.value)}
           />
           <TextInput
+            dir="ltr"
             label="קוד הזמנה אישי וייחודי למתאמנים של מאמן זה"
             description="מתאמנים שיירשמו עם הקוד הזה ישויכו אוטומטית למאמן זה"
             placeholder="למשל: DANI10"
@@ -4292,49 +4768,39 @@ export function CoachDashboardView({
             required
           />
           <button
+            type="submit"
             disabled={
+              isBusy('create-coach') ||
               !newCoachName.trim() ||
               !newCoachEmail.trim() ||
               !newCoachInviteCode.trim()
             }
-            onClick={async () => {
-              setCoachModalError(null);
-              const res = await onCreateCoach({
-                name: newCoachName.trim(),
-                email: newCoachEmail.trim().toLowerCase(),
-                password: newCoachPassword.trim() || '123456',
-                phone: newCoachPhone.trim(),
-                inviteCode: newCoachInviteCode.trim().toUpperCase(),
-              });
-              if (res.error) {
-                setCoachModalError(res.error);
-                return;
-              }
-              setNewCoachName('');
-              setNewCoachEmail('');
-              setNewCoachPassword('123456');
-              setNewCoachPhone('');
-              setNewCoachInviteCode('');
-              setNewCoachModal(false);
-              showToast('חשבון המאמן נוצר בהצלחה!');
-            }}
             className="btn-volt"
             style={{
               marginTop: 8,
               padding: '11px',
               fontSize: 14,
               cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
             }}
           >
-            צור מאמן חדש
+            {isBusy('create-coach') && <BusyIcon size={16} />}
+            <span>
+              {isBusy('create-coach')
+                ? 'יוצר מאמן ושומר במסד הנתונים...'
+                : 'צור מאמן חדש'}
+            </span>
           </button>
-        </div>
+        </form>
       </Modal>
 
       {/* מודאל עדכון אימייל וסיסמה למתאמן */}
       <Modal
         opened={Boolean(credModalTrainee)}
-        onClose={() => setCredModalTrainee(null)}
+        onClose={() => !isBusy('trainee-cred') && setCredModalTrainee(null)}
         title={
           <span style={{ fontWeight: 800, fontSize: 16 }}>
             עריכת פרטי גישה — {credModalTrainee?.name}
@@ -4343,47 +4809,66 @@ export function CoachDashboardView({
         centered
         radius="lg"
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!credModalTrainee || !editEmail.trim()) return;
+            const ok = await runBusy(
+              'trainee-cred',
+              () =>
+                onUpdateTraineeCredentials(
+                  credModalTrainee.id,
+                  editEmail.trim().toLowerCase(),
+                  editPassword.trim()
+                ),
+              'פרטי ההתחברות של המתאמן עודכנו'
+            );
+            if (ok) setCredModalTrainee(null);
+          }}
+          style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+        >
           <TextInput
+            type="email"
+            dir="ltr"
             label="אימייל כניסה"
             value={editEmail}
             onChange={(e) => setEditEmail(e.currentTarget.value)}
+            required
           />
           <TextInput
+            dir="ltr"
             label="סיסמה חדשה (הזן סיסמה חדשה לאיפוס)"
             placeholder="הקלד סיסמה חדשה עבור המתאמן"
             value={editPassword}
             onChange={(e) => setEditPassword(e.currentTarget.value)}
           />
           <button
-            onClick={() => {
-              if (credModalTrainee && editEmail.trim()) {
-                onUpdateTraineeCredentials(
-                  credModalTrainee.id,
-                  editEmail.trim().toLowerCase(),
-                  editPassword.trim()
-                );
-                setCredModalTrainee(null);
-                showToast('פרטי ההתחברות של המתאמן עודכנו');
-              }
-            }}
+            type="submit"
+            disabled={isBusy('trainee-cred') || !editEmail.trim()}
             className="btn-volt"
             style={{
               marginTop: 8,
               padding: '10px',
               fontSize: 13,
               cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
             }}
           >
-            שמור סיסמה ואימייל
+            {isBusy('trainee-cred') && <BusyIcon />}
+            <span>
+              {isBusy('trainee-cred') ? 'שומר...' : 'שמור סיסמה ואימייל'}
+            </span>
           </button>
-        </div>
+        </form>
       </Modal>
 
       {/* מודאל עדכון סיסמה וקוד הזמנה למאמן (Super Admin בלבד) */}
       <Modal
         opened={Boolean(credModalCoach)}
-        onClose={() => setCredModalCoach(null)}
+        onClose={() => !isBusy('coach-cred') && setCredModalCoach(null)}
         title={
           <span style={{ fontWeight: 800, fontSize: 16 }}>
             עריכת פרטי מאמן — {credModalCoach?.name}
@@ -4392,49 +4877,74 @@ export function CoachDashboardView({
         centered
         radius="lg"
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!credModalCoach || !editCoachEmail.trim() || !editCoachInvite.trim()) {
+              return;
+            }
+            const ok = await runBusy(
+              'coach-cred',
+              () =>
+                onUpdateCoachCredentials(
+                  credModalCoach.id,
+                  editCoachEmail.trim().toLowerCase(),
+                  editCoachPassword.trim(),
+                  editCoachInvite.trim().toUpperCase()
+                ),
+              'פרטי המאמן עודכנו'
+            );
+            if (ok) setCredModalCoach(null);
+          }}
+          style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+        >
           <TextInput
+            type="email"
+            dir="ltr"
             label="אימייל כניסה של המאמן"
             value={editCoachEmail}
             onChange={(e) => setEditCoachEmail(e.currentTarget.value)}
+            required
           />
           <TextInput
+            dir="ltr"
             label="קוד הזמנה אישי למתאמנים"
             value={editCoachInvite}
             onChange={(e) =>
               setEditCoachInvite(e.currentTarget.value.toUpperCase())
             }
+            required
           />
           <TextInput
+            dir="ltr"
             label="סיסמה חדשה למאמן (אופציונלי)"
             placeholder="השאר ריק לשמירת הסיסמה הקיימת"
             value={editCoachPassword}
             onChange={(e) => setEditCoachPassword(e.currentTarget.value)}
           />
           <button
-            onClick={() => {
-              if (credModalCoach) {
-                onUpdateCoachCredentials(
-                  credModalCoach.id,
-                  editCoachEmail.trim().toLowerCase(),
-                  editCoachPassword.trim(),
-                  editCoachInvite.trim().toUpperCase()
-                );
-                setCredModalCoach(null);
-                showToast('פרטי המאמן עודכנו');
-              }
-            }}
+            type="submit"
+            disabled={
+              isBusy('coach-cred') ||
+              !editCoachEmail.trim() ||
+              !editCoachInvite.trim()
+            }
             className="btn-volt"
             style={{
               marginTop: 8,
               padding: '10px',
               fontSize: 13,
               cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
             }}
           >
-            שמור שינויים
+            {isBusy('coach-cred') && <BusyIcon />}
+            <span>{isBusy('coach-cred') ? 'שומר...' : 'שמור שינויים'}</span>
           </button>
-        </div>
+        </form>
       </Modal>
     </div>
   );
