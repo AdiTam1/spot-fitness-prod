@@ -1,0 +1,160 @@
+import crypto from 'crypto';
+import { NextRequest, NextResponse } from 'next/server';
+import { AuthSessionUser } from '@/types/nutrition';
+
+const SESSION_COOKIE_NAME = 'spot_session_token';
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 ימים (שומר חיבור גם אחרי רענון דף וסגירת דפדפן)
+
+function getServerSecret(): string {
+  return (
+    process.env.AUTH_SECRET ||
+    process.env.GEMINI_API_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    'spot-fitness-server-hmac-secret-key-2026-secure'
+  );
+}
+
+/**
+ * גיבוב סיסמה בצד השרת (SHA-256 עם Salt קבוע של המערכת)
+ */
+export function hashPassword(plainPassword: string): string {
+  const salt = 'spot-nutrition-os-salt-v1';
+  return crypto
+    .createHmac('sha256', salt)
+    .update(plainPassword.trim())
+    .digest('hex');
+}
+
+export function verifyPassword(plainInput: string, storedPasswordOrHash: string): boolean {
+  const cleanInput = plainInput.trim();
+  const hashedInput = hashPassword(cleanInput);
+  // תמיכה גם בסיסמה שכבר גובבה וגם בסיסמת התחלה לפני גיבוב
+  if (storedPasswordOrHash.length === 64 && /^[0-9a-f]+$/.test(storedPasswordOrHash)) {
+    const a = Buffer.from(hashedInput);
+    const b = Buffer.from(storedPasswordOrHash);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  }
+  return cleanInput === storedPasswordOrHash;
+}
+
+interface SignedPayload {
+  user: AuthSessionUser;
+  exp: number;
+}
+
+/**
+ * יצירת טוקן חתום קריפטוגרפית (HMAC-SHA256) בצד השרת בלבד.
+ * אם תוקף ינסה לשנות תו אחד בעוגייה (למשל לשנות role מ-trainee ל-coach),
+ * החתימה הקריפטוגרפית תישבר והשרת ידחה את הבקשה מיד!
+ */
+export function signSessionToken(user: AuthSessionUser): string {
+  const payload: SignedPayload = {
+    user,
+    exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
+  };
+  const payloadBase64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = crypto
+    .createHmac('sha256', getServerSecret())
+    .update(payloadBase64)
+    .digest('base64url');
+
+  return `${payloadBase64}.${signature}`;
+}
+
+export function verifySessionToken(token: string | undefined): AuthSessionUser | null {
+  if (!token || !token.includes('.')) return null;
+  try {
+    const [payloadBase64, providedSig] = token.split('.');
+    if (!payloadBase64 || !providedSig) return null;
+
+    const expectedSig = crypto
+      .createHmac('sha256', getServerSecret())
+      .update(payloadBase64)
+      .digest('base64url');
+
+    const sigBufferA = Buffer.from(providedSig);
+    const sigBufferB = Buffer.from(expectedSig);
+
+    // השוואה בטוחה מפני התקפות תזמון (Timing Attack)
+    if (
+      sigBufferA.length !== sigBufferB.length ||
+      !crypto.timingSafeEqual(sigBufferA, sigBufferB)
+    ) {
+      return null;
+    }
+
+    const decoded = JSON.parse(
+      Buffer.from(payloadBase64, 'base64url').toString('utf-8')
+    ) as SignedPayload;
+
+    if (!decoded.exp || decoded.exp < Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+
+    return decoded.user;
+  } catch {
+    return null;
+  }
+}
+
+export function getSessionFromRequest(request: NextRequest): AuthSessionUser | null {
+  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  return verifySessionToken(token);
+}
+
+export function attachSessionCookie(
+  response: NextResponse,
+  user: AuthSessionUser
+): NextResponse {
+  const token = signSessionToken(user);
+  response.cookies.set({
+    name: SESSION_COOKIE_NAME,
+    value: token,
+    httpOnly: true, // חוסם גישה של JavaScript / XSS לעוגייה!
+    sameSite: 'lax', // מגן מפני התקפות CSRF
+    secure: process.env.NODE_ENV === 'production', // HTTPS בלבד בפרודקשן
+    path: '/',
+    maxAge: SESSION_TTL_SECONDS,
+  });
+  return response;
+}
+
+export function clearSessionCookie(response: NextResponse): NextResponse {
+  response.cookies.set({
+    name: SESSION_COOKIE_NAME,
+    value: '',
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: 0,
+  });
+  return response;
+}
+
+// הגנת Rate-Limiting בזיכרון השרת נגד ניסיונות פריצה (Brute Force) וניצול מכסת AI
+const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+
+export function checkRateLimit(
+  key: string,
+  maxRequests: number,
+  windowSeconds: number
+): { allowed: boolean; remaining: number } {
+  const now = Date.now();
+  const record = rateLimitStore.get(key);
+
+  if (!record || now > record.resetAt) {
+    rateLimitStore.set(key, {
+      count: 1,
+      resetAt: now + windowSeconds * 1000,
+    });
+    return { allowed: true, remaining: maxRequests - 1 };
+  }
+
+  if (record.count >= maxRequests) {
+    return { allowed: false, remaining: 0 };
+  }
+
+  record.count += 1;
+  return { allowed: true, remaining: maxRequests - record.count };
+}

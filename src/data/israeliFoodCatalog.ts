@@ -603,6 +603,9 @@ export function createInitialTrainees(): TraineeProfile[] {
   return [
     {
       id: 'trainee-1',
+      email: 'omer@spot.co.il',
+      password: '123456',
+      status: 'active',
       name: 'עומר לוי',
       avatar: 'ע',
       phone: '054-4321987',
@@ -702,6 +705,9 @@ export function createInitialTrainees(): TraineeProfile[] {
     },
     {
       id: 'trainee-2',
+      email: 'noa@spot.co.il',
+      password: '123456',
+      status: 'active',
       name: 'נועה כהן',
       avatar: 'נ',
       phone: '052-8876123',
@@ -756,6 +762,9 @@ export function createInitialTrainees(): TraineeProfile[] {
     },
     {
       id: 'trainee-3',
+      email: 'itay@spot.co.il',
+      password: '123456',
+      status: 'pending',
       name: 'איתי מזרחי',
       avatar: 'א',
       phone: '050-9911223',

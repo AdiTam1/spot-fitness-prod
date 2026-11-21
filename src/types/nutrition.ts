@@ -40,7 +40,12 @@ export interface FoodCatalogItem {
   source?: 'local' | 'moh' | 'openfoodfacts';
 }
 
-export type FoodEntrySource = 'ai-photo' | 'ai-text' | 'catalog' | 'barcode' | 'manual';
+export type FoodEntrySource =
+  | 'ai-photo'
+  | 'ai-text'
+  | 'catalog'
+  | 'barcode'
+  | 'manual';
 
 export interface LoggedFoodItem {
   id: string;
@@ -71,8 +76,14 @@ export interface DailyLog {
   meals: Record<string, LoggedMealEntry>;
 }
 
+export type UserRole = 'coach' | 'trainee';
+export type AccountStatus = 'active' | 'pending' | 'paused';
+
 export interface TraineeProfile {
   id: string;
+  email: string;
+  password?: string; // מוצפן/נשמר לצורך אימות מול ה-DB
+  status: AccountStatus;
   name: string;
   avatar: string;
   phone: string;
@@ -85,4 +96,13 @@ export interface TraineeProfile {
   favoriteFoodIds: string[];
   weightHistory: { date: string; weight: number }[];
   logs: Record<string, DailyLog>;
+  createdAt?: string;
+}
+
+export interface AuthSessionUser {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  status: AccountStatus;
 }

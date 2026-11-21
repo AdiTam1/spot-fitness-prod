@@ -6,11 +6,11 @@ import {
   TextInput,
   NumberInput,
   Select,
+  PasswordInput,
 } from '@mantine/core';
 import {
   Users,
   LayoutTemplate,
-  MessageSquare,
   Plus,
   Trash2,
   Check,
@@ -18,9 +18,15 @@ import {
   Sliders,
   UserPlus,
   ArrowUpLeft,
-  Clock,
+  ShieldCheck,
+  UserCheck,
+  PauseCircle,
+  PlayCircle,
+  KeyRound,
+  Copy,
 } from 'lucide-react';
 import {
+  AccountStatus,
   DayType,
   MealTemplateSlot,
   NutritionTemplate,
@@ -31,6 +37,8 @@ import { getTodayIso, sumMacros } from '@/data/israeliFoodCatalog';
 interface CoachDashboardViewProps {
   trainees: TraineeProfile[];
   templates: NutritionTemplate[];
+  coachInviteCode: string;
+  onUpdateCoachInviteCode: (newCode: string) => void;
   onSaveTemplate: (template: NutritionTemplate) => void;
   onAssignTemplateToTrainee: (
     traineeId: string,
@@ -49,23 +57,42 @@ interface CoachDashboardViewProps {
     mealSlotId: string,
     feedback: string
   ) => void;
-  onAddTrainee: (name: string, phone: string, goal: string, templateId: string) => void;
+  onAddTrainee: (data: {
+    name: string;
+    email: string;
+    password: string;
+    phone: string;
+    goal: string;
+    templateId: string;
+  }) => void;
+  onUpdateTraineeStatus: (traineeId: string, status: AccountStatus) => void;
+  onUpdateTraineeCredentials: (
+    traineeId: string,
+    email: string,
+    password: string
+  ) => void;
+  onDeleteTrainee: (traineeId: string) => void;
   onPreviewTraineeMobile: (traineeId: string) => void;
 }
 
 export function CoachDashboardView({
   trainees,
   templates,
+  coachInviteCode,
+  onUpdateCoachInviteCode,
   onSaveTemplate,
   onAssignTemplateToTrainee,
   onUpdateTraineePlan,
   onAddCoachFeedback,
   onAddTrainee,
+  onUpdateTraineeStatus,
+  onUpdateTraineeCredentials,
+  onDeleteTrainee,
   onPreviewTraineeMobile,
 }: CoachDashboardViewProps) {
   const today = getTodayIso();
   const [activeSection, setActiveSection] = useState<
-    'roster' | 'templates' | 'inspector'
+    'roster' | 'templates' | 'inspector' | 'users'
   >('roster');
   const [selectedTraineeId, setSelectedTraineeId] = useState<string>(
     trainees[0]?.id || ''
@@ -93,9 +120,11 @@ export function CoachDashboardView({
     {}
   );
 
-  // מודאל הוספת מתאמן
+  // מודאל הוספת מתאמן חדש (כולל אימייל וסיסמה)
   const [newTraineeModal, setNewTraineeModal] = useState(false);
   const [newTraineeName, setNewTraineeName] = useState('');
+  const [newTraineeEmail, setNewTraineeEmail] = useState('');
+  const [newTraineePassword, setNewTraineePassword] = useState('123456');
   const [newTraineePhone, setNewTraineePhone] = useState('');
   const [newTraineeGoal, setNewTraineeGoal] = useState(
     'חיטוב וירידה באחוזי שומן'
@@ -103,6 +132,17 @@ export function CoachDashboardView({
   const [newTraineeTplId, setNewTraineeTplId] = useState(
     templates[0]?.id || ''
   );
+
+  // מודאל עריכת פרטי התחברות למתאמן קיים
+  const [credModalTrainee, setCredModalTrainee] =
+    useState<TraineeProfile | null>(null);
+  const [editEmail, setEditEmail] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+
+  // עריכת קוד מאמן
+  const [inviteCodeDraft, setInviteCodeDraft] = useState(coachInviteCode);
+
+  const pendingTrainees = trainees.filter((t) => t.status === 'pending');
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -311,6 +351,60 @@ export function CoachDashboardView({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* התראה בולטת אם יש מתאמנים שנרשמו לבד וממתינים לאישור מאמן */}
+      {pendingTrainees.length > 0 && (
+        <div
+          style={{
+            padding: '14px 20px',
+            borderRadius: 16,
+            background: 'rgba(245, 158, 11, 0.1)',
+            border: '1px solid rgba(245, 158, 11, 0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <UserCheck size={18} color="#fbbf24" />
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#fbbf24' }}>
+                ממתינים לאישור הרשמה ({pendingTrainees.length}):{' '}
+                {pendingTrainees.map((p) => p.name).join(', ')}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                מתאמנים אלו נרשמו ללא קוד מאמן ואינם יכולים להיכנס לאפליקציה עד שתאשר אותם
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            {pendingTrainees.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => {
+                  onUpdateTraineeStatus(p.id, 'active');
+                  showToast(`המתאמן ${p.name} אושר ויכול כעת להתחבר למערכת!`);
+                }}
+                className="btn-volt"
+                style={{
+                  padding: '7px 14px',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Check size={14} />
+                <span>אשר את {p.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* סרגל ניווט פנים-מערכת למאמן */}
       <div
         className="pro-card"
@@ -323,22 +417,27 @@ export function CoachDashboardView({
           gap: 12,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {[
             {
               id: 'roster',
-              label: `מצבת מתאמנים (${trainees.length})`,
+              label: `בקרת מתאמנים (${trainees.length})`,
               icon: Users,
             },
             {
               id: 'inspector',
-              label: `ניהול מתאמן ויומן (${selectedTrainee.name})`,
+              label: `תוכנית ויומן (${selectedTrainee?.name || ''})`,
               icon: Sliders,
             },
             {
               id: 'templates',
-              label: `ספריית טמפלייטים (${templates.length})`,
+              label: `טמפלייטים (${templates.length})`,
               icon: LayoutTemplate,
+            },
+            {
+              id: 'users',
+              label: `ניהול משתמשים והרשאות`,
+              icon: ShieldCheck,
             },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -348,7 +447,7 @@ export function CoachDashboardView({
                 key={tab.id}
                 onClick={() =>
                   setActiveSection(
-                    tab.id as 'roster' | 'templates' | 'inspector'
+                    tab.id as 'roster' | 'templates' | 'inspector' | 'users'
                   )
                 }
                 style={{
@@ -390,7 +489,7 @@ export function CoachDashboardView({
           }}
         >
           <UserPlus size={15} />
-          <span>מתאמן חדש</span>
+          <span>פתיחת משתמש למתאמן חדש</span>
         </button>
       </div>
 
@@ -431,7 +530,7 @@ export function CoachDashboardView({
                 בקרת עמידה ביעדים בזמן אמת
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                לחץ על מתאמן לעריכת מספר הארוחות, יעדי המאקרו ומתן פידבק על צילומי הארוחות
+                כל מתאמן שמתחבר רואה אך ורק את הפרופיל שלו. כאן תוכל לנהל את כולם
               </div>
             </div>
           </div>
@@ -454,9 +553,9 @@ export function CoachDashboardView({
                     textTransform: 'uppercase',
                   }}
                 >
-                  <th style={{ padding: '14px 22px' }}>מתאמן</th>
-                  <th style={{ padding: '14px 16px' }}>סטטוס יומי</th>
-                  <th style={{ padding: '14px 16px' }}>ארוחות שהוזנו</th>
+                  <th style={{ padding: '14px 22px' }}>מתאמן וחשבון</th>
+                  <th style={{ padding: '14px 16px' }}>סטטוס גישה</th>
+                  <th style={{ padding: '14px 16px' }}>ביצוע יומי</th>
                   <th style={{ padding: '14px 16px' }}>קלוריות (ביצוע / יעד)</th>
                   <th style={{ padding: '14px 16px' }}>מאקרו יומי (ח׳ / פ׳ / ש׳)</th>
                   <th style={{ padding: '14px 22px', textAlign: 'left' }}>
@@ -479,7 +578,6 @@ export function CoachDashboardView({
                       key={t.id}
                       style={{
                         borderBottom: '1px solid var(--border-subtle)',
-                        transition: 'background 0.15s ease',
                       }}
                     >
                       <td style={{ padding: '16px 22px' }}>
@@ -512,15 +610,61 @@ export function CoachDashboardView({
                               {t.name}
                             </div>
                             <div
+                              className="num-mono"
                               style={{
                                 fontSize: 11,
                                 color: 'var(--text-secondary)',
                               }}
                             >
-                              {t.goal} · משקל {t.currentWeight} ק״ג
+                              {t.email}
                             </div>
                           </div>
                         </div>
+                      </td>
+
+                      <td style={{ padding: '16px' }}>
+                        {t.status === 'active' ? (
+                          <span
+                            style={{
+                              padding: '3px 10px',
+                              borderRadius: 999,
+                              background: 'rgba(34, 197, 94, 0.12)',
+                              color: '#22c55e',
+                              fontSize: 11,
+                              fontWeight: 700,
+                            }}
+                          >
+                            פעיל
+                          </span>
+                        ) : t.status === 'pending' ? (
+                          <button
+                            onClick={() => {
+                              onUpdateTraineeStatus(t.id, 'active');
+                              showToast(`${t.name} אושר!`);
+                            }}
+                            className="btn-volt"
+                            style={{
+                              padding: '4px 10px',
+                              fontSize: 11,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            ממתין – לחץ לאישור
+                          </button>
+                        ) : (
+                          <span
+                            style={{
+                              padding: '3px 10px',
+                              borderRadius: 999,
+                              background: 'rgba(239, 68, 68, 0.12)',
+                              color: '#ef4444',
+                              fontSize: 11,
+                              fontWeight: 700,
+                            }}
+                          >
+                            מושהה
+                          </span>
+                        )}
                       </td>
 
                       <td style={{ padding: '16px' }}>
@@ -537,37 +681,11 @@ export function CoachDashboardView({
                             fontWeight: 700,
                           }}
                         >
-                          <span
-                            style={{
-                              width: 7,
-                              height: 7,
-                              borderRadius: '50%',
-                              background: st.statusColor,
-                            }}
-                          />
-                          {st.label}
+                          {st.label} ({st.loggedMealsCount}/{st.totalMeals})
                         </span>
                       </td>
 
-                      <td style={{ padding: '16px' }}>
-                        <span
-                          className="num-mono"
-                          style={{ fontSize: 13, fontWeight: 700 }}
-                        >
-                          {st.loggedMealsCount} / {st.totalMeals}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            color: 'var(--text-muted)',
-                            marginRight: 6,
-                          }}
-                        >
-                          ארוחות
-                        </span>
-                      </td>
-
-                      <td style={{ padding: '16px', minWidth: 180 }}>
+                      <td style={{ padding: '16px', minWidth: 170 }}>
                         <div
                           style={{
                             display: 'flex',
@@ -628,12 +746,7 @@ export function CoachDashboardView({
                       </td>
 
                       <td style={{ padding: '16px 22px', textAlign: 'left' }}>
-                        <div
-                          style={{
-                            display: 'inline-flex',
-                            gap: 8,
-                          }}
-                        >
+                        <div style={{ display: 'inline-flex', gap: 8 }}>
                           <button
                             onClick={() => {
                               setSelectedTraineeId(t.id);
@@ -646,7 +759,7 @@ export function CoachDashboardView({
                               cursor: 'pointer',
                             }}
                           >
-                            ניהול ארוחות ויומן
+                            ערוך ארוחות ויומן
                           </button>
                           <button
                             onClick={() => onPreviewTraineeMobile(t.id)}
@@ -660,7 +773,7 @@ export function CoachDashboardView({
                               gap: 4,
                             }}
                           >
-                            <span>מובייל</span>
+                            <span>צפה כמתאמן</span>
                             <ArrowUpLeft size={13} />
                           </button>
                         </div>
@@ -675,7 +788,7 @@ export function CoachDashboardView({
       )}
 
       {/* תצוגה 2: מסך מפוצל לניהול מתאמן (התאמת ארוחות + צפייה ופידבק ביומן) */}
-      {activeSection === 'inspector' && (
+      {activeSection === 'inspector' && selectedTrainee && (
         <div
           style={{
             display: 'grid',
@@ -700,7 +813,7 @@ export function CoachDashboardView({
                   הגדרת ארוחות ומאקרו — {selectedTrainee.name}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  כל שינוי במספר הארוחות או בערכים מתעדכן מיד באפליקציה של המתאמן
+                  המתאמן אינו יכול לערוך את היעדים האלו (קריאה בלבד עבורו)
                 </div>
               </div>
 
@@ -752,7 +865,7 @@ export function CoachDashboardView({
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {activeTraineePlan.meals.map((meal: MealTemplateSlot, idx: number) => (
+              {activeTraineePlan.meals.map((meal: MealTemplateSlot) => (
                 <div
                   key={meal.id}
                   style={{
@@ -1111,7 +1224,6 @@ export function CoachDashboardView({
               </button>
             </div>
 
-            {/* הקצאת הטמפלייט למתאמן */}
             <div
               style={{
                 display: 'flex',
@@ -1343,13 +1455,293 @@ export function CoachDashboardView({
         </div>
       )}
 
-      {/* מודאל מתאמן חדש */}
+      {/* תצוגה 4: ניהול משתמשים, הרשאות וקוד מאמן */}
+      {activeSection === 'users' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {/* כרטיס הגדרת קוד מאמן להרשמה עצמית */}
+          <div className="pro-card" style={{ padding: 20 }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 14,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 800 }}>
+                  קוד מאמן להרשמה מהירה (Invite Code)
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  מתאמן שנרשם עם הקוד הזה מופעל אוטומטית. מתאמן שנרשם בלי קוד נכנס לסטטוס &ldquo;ממתין לאישור&rdquo;
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                <TextInput
+                  label="קוד המאמן שלך"
+                  value={inviteCodeDraft}
+                  onChange={(e) => setInviteCodeDraft(e.currentTarget.value)}
+                />
+                <button
+                  onClick={() => {
+                    onUpdateCoachInviteCode(inviteCodeDraft.trim() || 'SPOT2026');
+                    showToast('קוד המאמן עודכן בהצלחה');
+                  }}
+                  className="btn-volt"
+                  style={{
+                    padding: '9px 16px',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  שמור קוד
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* טבלת ניהול חשבונות מתאמנים */}
+          <div className="pro-card" style={{ overflow: 'hidden' }}>
+            <div
+              style={{
+                padding: '18px 22px',
+                borderBottom: '1px solid var(--border-subtle)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 800 }}>
+                  ניהול חשבונות מתאמנים והרשאות כניסה
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  אישור נרשמים חדשים, השהיית מנויים, איפוס סיסמאות והעתקת פרטי גישה לוואטסאפ
+                </div>
+              </div>
+            </div>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  textAlign: 'right',
+                }}
+              >
+                <thead>
+                  <tr
+                    style={{
+                      borderBottom: '1px solid var(--border-subtle)',
+                      color: 'var(--text-muted)',
+                      fontSize: 11,
+                      fontWeight: 700,
+                    }}
+                  >
+                    <th style={{ padding: '14px 22px' }}>שם מתאמן</th>
+                    <th style={{ padding: '14px 16px' }}>אימייל התחברות</th>
+                    <th style={{ padding: '14px 16px' }}>סיסמה</th>
+                    <th style={{ padding: '14px 16px' }}>סטטוס חשבון</th>
+                    <th style={{ padding: '14px 22px', textAlign: 'left' }}>
+                      ניהול הרשאה וחשבון
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trainees.map((t) => (
+                    <tr
+                      key={t.id}
+                      style={{
+                        borderBottom: '1px solid var(--border-subtle)',
+                      }}
+                    >
+                      <td style={{ padding: '14px 22px', fontWeight: 800 }}>
+                        {t.name}
+                      </td>
+                      <td
+                        className="num-mono"
+                        style={{ padding: '14px 16px', fontSize: 13 }}
+                      >
+                        {t.email}
+                      </td>
+                      <td
+                        className="num-mono"
+                        style={{
+                          padding: '14px 16px',
+                          fontSize: 13,
+                          color: 'var(--text-secondary)',
+                        }}
+                      >
+                        {t.password || '123456'}
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        {t.status === 'active' && (
+                          <span
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: 999,
+                              background: 'rgba(34, 197, 94, 0.14)',
+                              color: '#22c55e',
+                              fontSize: 11,
+                              fontWeight: 700,
+                            }}
+                          >
+                            פעיל (מורשה)
+                          </span>
+                        )}
+                        {t.status === 'pending' && (
+                          <span
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: 999,
+                              background: 'rgba(245, 158, 11, 0.14)',
+                              color: '#fbbf24',
+                              fontSize: 11,
+                              fontWeight: 700,
+                            }}
+                          >
+                            ממתין לאישור מאמן
+                          </span>
+                        )}
+                        {t.status === 'paused' && (
+                          <span
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: 999,
+                              background: 'rgba(239, 68, 68, 0.14)',
+                              color: '#ef4444',
+                              fontSize: 11,
+                              fontWeight: 700,
+                            }}
+                          >
+                            מושהה (חסום לכניסה)
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '14px 22px', textAlign: 'left' }}>
+                        <div
+                          style={{
+                            display: 'inline-flex',
+                            gap: 8,
+                            alignItems: 'center',
+                          }}
+                        >
+                          {t.status !== 'active' ? (
+                            <button
+                              onClick={() => {
+                                onUpdateTraineeStatus(t.id, 'active');
+                                showToast(`הגישה של ${t.name} הופעלה!`);
+                              }}
+                              className="btn-volt"
+                              style={{
+                                padding: '6px 12px',
+                                fontSize: 11,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <PlayCircle size={13} />
+                              <span>אשר / הפעל</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                onUpdateTraineeStatus(t.id, 'paused');
+                                showToast(`החשבון של ${t.name} הושהה`);
+                              }}
+                              className="btn-surface"
+                              style={{
+                                padding: '6px 12px',
+                                fontSize: 11,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <PauseCircle size={13} />
+                              <span>השהה גישה</span>
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => {
+                              setCredModalTrainee(t);
+                              setEditEmail(t.email);
+                              setEditPassword(t.password || '123456');
+                            }}
+                            className="btn-surface"
+                            style={{
+                              padding: '6px 10px',
+                              fontSize: 11,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <KeyRound size={13} />
+                            <span>סיסמה</span>
+                          </button>
+
+                          <button
+                            title="העתק הודעת פרטי התחברות לוואטסאפ"
+                            onClick={() => {
+                              const text = `היי ${t.name}! הנה פרטי הכניסה האישיים שלך לאפליקציית התזונה SPOT:\nאימייל: ${t.email}\nסיסמה: ${t.password || '123456'}`;
+                              navigator.clipboard?.writeText(text);
+                              showToast(
+                                `פרטי ההתחברות של ${t.name} הועתקו לשליחה בוואטסאפ!`
+                              );
+                            }}
+                            className="btn-surface"
+                            style={{
+                              padding: '6px 10px',
+                              fontSize: 11,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Copy size={13} />
+                            <span>העתק פרטי כניסה</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              onDeleteTrainee(t.id);
+                              showToast(`המתאמן ${t.name} הוסר`);
+                            }}
+                            className="btn-surface"
+                            style={{
+                              padding: '6px 8px',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Trash2 size={13} color="#ef4444" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* מודאל פתיחת משתמש למתאמן חדש ע"י המאמן */}
       <Modal
         opened={newTraineeModal}
         onClose={() => setNewTraineeModal(false)}
         title={
           <span style={{ fontWeight: 800, fontSize: 16 }}>
-            הקמת פרופיל מתאמן חדש
+            פתיחת משתמש חדש למתאמן והקצאת תפריט
           </span>
         }
         centered
@@ -1357,10 +1749,24 @@ export function CoachDashboardView({
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <TextInput
-            label="שם מלא"
+            label="שם מלא של המתאמן"
             placeholder="למשל: דניאל אברהם"
             value={newTraineeName}
             onChange={(e) => setNewTraineeName(e.currentTarget.value)}
+            required
+          />
+          <TextInput
+            label="אימייל כניסה של המתאמן"
+            placeholder="daniel@gmail.com"
+            value={newTraineeEmail}
+            onChange={(e) => setNewTraineeEmail(e.currentTarget.value)}
+            required
+          />
+          <PasswordInput
+            label="סיסמה ראשונית למתאמן"
+            value={newTraineePassword}
+            onChange={(e) => setNewTraineePassword(e.currentTarget.value)}
+            required
           />
           <TextInput
             label="טלפון"
@@ -1380,18 +1786,22 @@ export function CoachDashboardView({
             data={templates.map((t) => ({ value: t.id, label: t.name }))}
           />
           <button
-            disabled={!newTraineeName.trim()}
+            disabled={!newTraineeName.trim() || !newTraineeEmail.trim()}
             onClick={() => {
-              onAddTrainee(
-                newTraineeName.trim(),
-                newTraineePhone.trim(),
-                newTraineeGoal.trim(),
-                newTraineeTplId
-              );
+              onAddTrainee({
+                name: newTraineeName.trim(),
+                email: newTraineeEmail.trim().toLowerCase(),
+                password: newTraineePassword.trim() || '123456',
+                phone: newTraineePhone.trim(),
+                goal: newTraineeGoal.trim(),
+                templateId: newTraineeTplId,
+              });
               setNewTraineeName('');
+              setNewTraineeEmail('');
+              setNewTraineePassword('123456');
               setNewTraineePhone('');
               setNewTraineeModal(false);
-              showToast('המתאמן נוסף והוקצה לו תפריט ארוחות');
+              showToast('חשבון המתאמן נוצר והופעל בהצלחה!');
             }}
             className="btn-volt"
             style={{
@@ -1401,7 +1811,55 @@ export function CoachDashboardView({
               cursor: 'pointer',
             }}
           >
-            צור מתאמן
+            צור והפעל חשבון מתאמן
+          </button>
+        </div>
+      </Modal>
+
+      {/* מודאל עדכון אימייל וסיסמה למתאמן */}
+      <Modal
+        opened={Boolean(credModalTrainee)}
+        onClose={() => setCredModalTrainee(null)}
+        title={
+          <span style={{ fontWeight: 800, fontSize: 16 }}>
+            עריכת פרטי גישה — {credModalTrainee?.name}
+          </span>
+        }
+        centered
+        radius="lg"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <TextInput
+            label="אימייל כניסה"
+            value={editEmail}
+            onChange={(e) => setEditEmail(e.currentTarget.value)}
+          />
+          <TextInput
+            label="סיסמה חדשה"
+            value={editPassword}
+            onChange={(e) => setEditPassword(e.currentTarget.value)}
+          />
+          <button
+            onClick={() => {
+              if (credModalTrainee && editEmail.trim() && editPassword.trim()) {
+                onUpdateTraineeCredentials(
+                  credModalTrainee.id,
+                  editEmail.trim().toLowerCase(),
+                  editPassword.trim()
+                );
+                setCredModalTrainee(null);
+                showToast('פרטי ההתחברות של המתאמן עודכנו');
+              }
+            }}
+            className="btn-volt"
+            style={{
+              marginTop: 8,
+              padding: '10px',
+              fontSize: 13,
+              cursor: 'pointer',
+            }}
+          >
+            שמור סיסמה ואימייל
           </button>
         </div>
       </Modal>

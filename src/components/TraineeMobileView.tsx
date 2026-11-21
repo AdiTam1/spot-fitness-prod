@@ -30,9 +30,9 @@ import { getTodayIso, sumMacros } from '@/data/israeliFoodCatalog';
 import { AddMealDrawer } from './AddMealDrawer';
 
 interface TraineeMobileViewProps {
-  trainees: TraineeProfile[];
-  selectedTraineeId: string;
-  onSelectTrainee: (id: string) => void;
+  trainee: TraineeProfile;
+  isCoachPreview?: boolean;
+  onExitCoachPreview?: () => void;
   onUpdateDayType: (traineeId: string, date: string, dayType: DayType) => void;
   onSaveMeal: (
     traineeId: string,
@@ -71,9 +71,9 @@ function getWeekDays(baseIso: string) {
 }
 
 export function TraineeMobileView({
-  trainees,
-  selectedTraineeId,
-  onSelectTrainee,
+  trainee,
+  isCoachPreview = false,
+  onExitCoachPreview,
   onUpdateDayType,
   onSaveMeal,
   onUpdateWater,
@@ -84,10 +84,6 @@ export function TraineeMobileView({
   const todayIso = getTodayIso();
   const [selectedDate, setSelectedDate] = useState<string>(todayIso);
   const [mobileSection, setMobileSection] = useState<'journal' | 'metrics'>('journal');
-  const [traineeMenuOpen, setTraineeMenuOpen] = useState(false);
-
-  const trainee =
-    trainees.find((t) => t.id === selectedTraineeId) || trainees[0];
 
   const [activeMealSlot, setActiveMealSlot] = useState<MealTemplateSlot | null>(
     null
@@ -186,7 +182,44 @@ export function TraineeMobileView({
         paddingBottom: 96,
       }}
     >
-      {/* כותרת אפליקציית המובייל + בורר מתאמן + מתג יום אימון/מנוחה */}
+      {/* חיווי תצוגה מקדימה למאמן בלבד (מוסתר לחלוטין ממתאמנים) */}
+      {isCoachPreview && onExitCoachPreview && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px 14px',
+            borderRadius: 14,
+            background: 'rgba(210, 255, 40, 0.12)',
+            border: '1px solid rgba(210, 255, 40, 0.35)',
+            marginBottom: 14,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: 'var(--accent-volt)',
+            }}
+          >
+            תצוגת מאמן: צופה באפליקציה של {trainee.name}
+          </span>
+          <button
+            onClick={onExitCoachPreview}
+            className="btn-volt"
+            style={{
+              padding: '5px 12px',
+              fontSize: 11,
+              cursor: 'pointer',
+            }}
+          >
+            חזרה לדשבורד מאמן
+          </button>
+        </div>
+      )}
+
+      {/* כותרת אפליקציית המובייל של המתאמן המחובר + מתג יום אימון/מנוחה */}
       <div
         style={{
           display: 'flex',
@@ -196,9 +229,8 @@ export function TraineeMobileView({
           position: 'relative',
         }}
       >
-        {/* פרופיל מתאמן עם תפריט החלפה נקי */}
-        <button
-          onClick={() => setTraineeMenuOpen((o) => !o)}
+        {/* פרופיל מתאמן אישי (ללא רשימת מתאמנים אחרים) */}
+        <div
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -206,9 +238,8 @@ export function TraineeMobileView({
             background: 'var(--bg-surface-1)',
             border: '1px solid var(--border-subtle)',
             borderRadius: 999,
-            padding: '6px 14px 6px 8px',
+            padding: '6px 14px 6px 10px',
             color: 'var(--text-primary)',
-            cursor: 'pointer',
           }}
         >
           <div
@@ -235,55 +266,7 @@ export function TraineeMobileView({
               {trainee.goal}
             </div>
           </div>
-          <ChevronDown size={14} color="var(--text-secondary)" />
-        </button>
-
-        {traineeMenuOpen && (
-          <div
-            className="pro-card"
-            style={{
-              position: 'absolute',
-              top: 48,
-              right: 0,
-              zIndex: 50,
-              width: 210,
-              padding: 6,
-              background: '#141720',
-              borderColor: 'var(--border-strong)',
-            }}
-          >
-            {trainees.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => {
-                  onSelectTrainee(t.id);
-                  setWeightInput(String(t.currentWeight));
-                  setTraineeMenuOpen(false);
-                }}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '8px 10px',
-                  background:
-                    t.id === trainee.id ? 'rgba(210, 255, 40, 0.1)' : 'transparent',
-                  border: 'none',
-                  borderRadius: 10,
-                  color:
-                    t.id === trainee.id ? 'var(--accent-volt)' : 'var(--text-primary)',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  textAlign: 'right',
-                }}
-              >
-                <span>{t.name}</span>
-                {t.id === trainee.id && <Check size={14} />}
-              </button>
-            ))}
-          </div>
-        )}
+        </div>
 
         {/* מתג קפסולה: יום אימון / יום מנוחה */}
         <div

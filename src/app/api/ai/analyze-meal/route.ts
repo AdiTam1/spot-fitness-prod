@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ISRAELI_FOOD_CATALOG, calculateMacrosForGrams } from '@/data/israeliFoodCatalog';
 import { LoggedFoodItem } from '@/types/nutrition';
+import { checkRateLimit, getSessionFromRequest } from '@/lib/serverAuth';
 
 /**
  * מנתח טקסט עברי חכם (Fallback ללא צורך במפתח, או גיבוי מיידי)
@@ -167,12 +168,44 @@ function smartHebrewMealParser(
 
 export async function POST(request: NextRequest) {
   try {
+    // 1. אימות סשן חתום קריפטוגרפית בשרת (HttpOnly Cookie)
+    const sessionUser = getSessionFromRequest(request);
+    if (!sessionUser || sessionUser.status !== 'active') {
+      return NextResponse.json(
+        { error: 'גישה נדחתה: נדרשת התחברות פעילה למערכת לשימוש ב-AI' },
+        { status: 401 }
+      );
+    }
+
+    // 2. הגנת Rate-Limit על מכסת ה-AI (עד 25 קריאות בשעה למשתמש)
+    const rl = checkRateLimit(`ai-${sessionUser.id}`, 25, 3600);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'הגעת למכסת פענוחי ה-AI לשעה זו. ניתן להזין מוצרים מהמאגר.' },
+        { status: 429 }
+      );
+    }
+
     const body = await request.json();
     const { imageDataUrl, textPrompt, customApiKey } = body as {
       imageDataUrl?: string;
       textPrompt?: string;
       customApiKey?: string;
     };
+
+    // 3. בדיקת תקינות וגודל הקלט למניעת הזרקות ועומס
+    if (textPrompt && textPrompt.length > 600) {
+      return NextResponse.json(
+        { error: 'תיאור הארוחה ארוך מדי (מקסימום 600 תווים)' },
+        { status: 400 }
+      );
+    }
+    if (imageDataUrl && imageDataUrl.length > 2_000_000) {
+      return NextResponse.json(
+        { error: 'קובץ התמונה גדול מדי' },
+        { status: 400 }
+      );
+    }
 
     const apiKey = (customApiKey || process.env.GEMINI_API_KEY || '').trim();
     const sourceType: 'ai-photo' | 'ai-text' = imageDataUrl ? 'ai-photo' : 'ai-text';
