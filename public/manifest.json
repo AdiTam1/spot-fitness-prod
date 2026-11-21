@@ -1,0 +1,12 @@
+{
+  "name": "Spot Fitness – מעקב תזונה חכם ו-AI",
+  "short_name": "Spot Fitness",
+  "description": "אפליקציית מעקב תזונה, ארוחות ופענוח AI למאמנים ומתאמנים",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0f17",
+  "theme_color": "#10b981",
+  "dir": "rtl",
+  "lang": "he-IL",
+  "orientation": "portrait"
+}

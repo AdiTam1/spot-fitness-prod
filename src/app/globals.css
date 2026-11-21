@@ -1,0 +1,168 @@
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+:root {
+  --bg-canvas: #08090c;
+  --bg-surface-1: #101218;
+  --bg-surface-2: #161922;
+  --bg-surface-3: #1e222e;
+  --bg-glass: rgba(16, 18, 24, 0.82);
+
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --border-accent: rgba(210, 255, 40, 0.35);
+
+  --text-primary: #f4f6fb;
+  --text-secondary: #949bb0;
+  --text-muted: #5e6578;
+
+  /* פלטת צבעים מקצועית בסגנון MacroFactor / Whoop / Apple Fitness */
+  --accent-volt: #d2ff28;
+  --accent-volt-soft: rgba(210, 255, 40, 0.12);
+  --macro-protein: #ff5e7e;
+  --macro-protein-soft: rgba(255, 94, 126, 0.14);
+  --macro-carbs: #ffb800;
+  --macro-carbs-soft: rgba(255, 184, 0, 0.14);
+  --macro-fat: #38bdf8;
+  --macro-fat-soft: rgba(56, 189, 248, 0.14);
+
+  --status-ok: #22c55e;
+  --status-warn: #f59e0b;
+  --status-danger: #ef4444;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-canvas) !important;
+  color: var(--text-primary) !important;
+  font-family: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.num-mono {
+  font-family: 'Space Grotesk', 'Heebo', sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
+/* כרטיס זכוכית ופחם יוקרתי */
+.pro-card {
+  background: var(--bg-surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: 20px;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 8px 24px -8px rgba(0, 0, 0, 0.5);
+  transition: border-color 0.2s ease, transform 0.2s ease, background-color 0.2s ease;
+}
+
+.pro-card-interactive:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-surface-2);
+}
+
+.pro-card-elevated {
+  background: linear-gradient(165deg, #161923 0%, #0e1016 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 20px 40px -15px rgba(0, 0, 0, 0.7);
+}
+
+/* כפתור וולט ראשי (Volt Athletic) */
+.btn-volt {
+  background: var(--accent-volt) !important;
+  color: #08090c !important;
+  font-weight: 700 !important;
+  border: none !important;
+  border-radius: 12px !important;
+  transition: all 0.18s ease !important;
+}
+
+.btn-volt:hover {
+  background: #defd56 !important;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px -4px rgba(210, 255, 40, 0.35);
+}
+
+.btn-volt:disabled {
+  opacity: 0.45 !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.btn-surface {
+  background: var(--bg-surface-2) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+  transition: all 0.15s ease !important;
+}
+
+.btn-surface:hover {
+  background: var(--bg-surface-3) !important;
+  border-color: var(--border-strong) !important;
+}
+
+/* סרגל תחתון צף למובייל (Floating Glass Dock) */
+.mobile-bottom-dock {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 90;
+  width: calc(100% - 32px);
+  max-width: 440px;
+  background: rgba(18, 21, 29, 0.88);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  padding: 6px 10px;
+  box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* התאמת שדות הקלט של Mantine למראה נקי ויוקרתי */
+.mantine-Input-input {
+  background-color: var(--bg-surface-2) !important;
+  border: 1px solid var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+  border-radius: 12px !important;
+  transition: border-color 0.15s ease !important;
+}
+
+.mantine-Input-input:focus {
+  border-color: var(--accent-volt) !important;
+}
+
+.mantine-Drawer-content,
+.mantine-Modal-content {
+  background-color: #101218 !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.mantine-Drawer-header,
+.mantine-Modal-header {
+  background-color: #101218 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* פס גלילה עדין */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
