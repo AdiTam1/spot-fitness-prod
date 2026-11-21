@@ -867,6 +867,12 @@ export default function HomePage() {
     if (!res.ok) {
       return { error: json.error || 'שגיאה ביצירת מאמן' };
     }
+    if (json.coach) {
+      setCoaches((prev) => [...prev, json.coach as CoachProfile]);
+    }
+    if (Array.isArray(json.coachDirectory)) {
+      setCoachDirectory(json.coachDirectory);
+    }
     await fetchAuthorizedData();
     return {};
   };

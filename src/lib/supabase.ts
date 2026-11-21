@@ -163,6 +163,8 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
   };
 }
 
+const SYSTEM_META_TEMPLATE_ID = '__spot_system_coaches_and_groups__';
+
 export async function loadStateFromSupabase(): Promise<{
   coaches: CoachProfile[];
   groups: TraineeGroup[];
@@ -180,25 +182,67 @@ export async function loadStateFromSupabase(): Promise<{
     supabase.from('trainees').select('*'),
   ]);
 
-  const coaches: CoachProfile[] = Array.isArray(coachesRes.data)
+  const rawTemplates = Array.isArray(tplRes.data) ? tplRes.data : [];
+  const systemMetaRow = rawTemplates.find(
+    (r) => r.id === SYSTEM_META_TEMPLATE_ID
+  );
+  let fallbackCoaches: CoachProfile[] = [];
+  let fallbackGroups: TraineeGroup[] = [];
+
+  if (systemMetaRow && systemMetaRow.meals && typeof systemMetaRow.meals === 'object') {
+    const metaObj = systemMetaRow.meals as {
+      coaches?: CoachProfile[];
+      groups?: TraineeGroup[];
+    };
+    if (Array.isArray(metaObj.coaches)) {
+      fallbackCoaches = metaObj.coaches;
+    }
+    if (Array.isArray(metaObj.groups)) {
+      fallbackGroups = metaObj.groups;
+    }
+  }
+
+  const tableCoaches: CoachProfile[] = Array.isArray(coachesRes.data)
     ? coachesRes.data.map((r) => mapRowToCoach(r))
     : [];
 
-  const groups: TraineeGroup[] = Array.isArray(groupsRes.data)
+  // מיזוג חכם: אם טבלת coaches החזירה שורות נשתמש בהן + נשלים מאמנים שנשמרו בגיבוי
+  const coachMap = new Map<string, CoachProfile>();
+  for (const fc of fallbackCoaches) {
+    coachMap.set(fc.id, fc);
+  }
+  for (const tc of tableCoaches) {
+    const existingFallback = coachMap.get(tc.id);
+    coachMap.set(tc.id, {
+      ...tc,
+      onboarding: tc.onboarding || existingFallback?.onboarding,
+    });
+  }
+  const coaches = Array.from(coachMap.values());
+
+  const tableGroups: TraineeGroup[] = Array.isArray(groupsRes.data)
     ? groupsRes.data.map((r) => mapRowToGroup(r))
     : [];
+  const groupMap = new Map<string, TraineeGroup>();
+  for (const fg of fallbackGroups) {
+    groupMap.set(fg.id, fg);
+  }
+  for (const tg of tableGroups) {
+    groupMap.set(tg.id, tg);
+  }
+  const groups = Array.from(groupMap.values());
 
-  const templates: NutritionTemplate[] = Array.isArray(tplRes.data)
-    ? tplRes.data.map((row) => ({
-        id: row.id,
-        name: row.name,
-        description: row.description || '',
-        dayType: row.day_type || 'workout',
-        tolerancePercent: Number(row.tolerance_percent) || 10,
-        ownerCoachId: String(row.owner_coach_id || 'coach-admin'),
-        meals: row.meals || [],
-      }))
-    : [];
+  const templates: NutritionTemplate[] = rawTemplates
+    .filter((row) => row.id !== SYSTEM_META_TEMPLATE_ID)
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      description: row.description || '',
+      dayType: row.day_type || 'workout',
+      tolerancePercent: Number(row.tolerance_percent) || 10,
+      ownerCoachId: String(row.owner_coach_id || 'coach-admin'),
+      meals: Array.isArray(row.meals) ? row.meals : [],
+    }));
 
   const trainees: TraineeProfile[] = Array.isArray(trRes.data)
     ? trRes.data.map((row) => mapRowToTrainee(row))
@@ -229,12 +273,56 @@ export async function loadSingleCoachFromSupabase(
     .select('*')
     .eq('id', coachId)
     .single();
-  if (error || !data) return null;
-  return mapRowToCoach(data);
+  if (!error && data) {
+    return mapRowToCoach(data);
+  }
+  // גיבוי מרשומת המערכת אם טבלת coaches חסומה ע"י RLS או חסרת עמודה
+  const fullState = await loadStateFromSupabase();
+  return fullState.coaches.find((c) => c.id === coachId) || null;
+}
+
+async function saveSystemMetaBackup(
+  partial: { coaches?: CoachProfile[]; groups?: TraineeGroup[] }
+) {
+  if (!supabase) return;
+  const { data: existing } = await supabase
+    .from('nutrition_templates')
+    .select('*')
+    .eq('id', SYSTEM_META_TEMPLATE_ID)
+    .single();
+
+  const currentMeta =
+    existing && existing.meals && typeof existing.meals === 'object'
+      ? (existing.meals as { coaches?: CoachProfile[]; groups?: TraineeGroup[] })
+      : {};
+
+  const mergedMeta = {
+    coaches: partial.coaches !== undefined ? partial.coaches : currentMeta.coaches || [],
+    groups: partial.groups !== undefined ? partial.groups : currentMeta.groups || [],
+  };
+
+  await supabase.from('nutrition_templates').upsert(
+    [
+      {
+        id: SYSTEM_META_TEMPLATE_ID,
+        name: '__SYSTEM_META__',
+        description: 'System backup for coaches and groups',
+        day_type: 'workout',
+        tolerance_percent: 10,
+        meals: mergedMeta,
+        updated_at: new Date().toISOString(),
+      },
+    ],
+    { onConflict: 'id' }
+  );
 }
 
 export async function saveCoachesToSupabase(coaches: CoachProfile[]) {
-  if (!supabase || coaches.length === 0) return;
+  if (!supabase) return;
+  // שומרים תמיד גם בגיבוי המערכתי בטבלת nutrition_templates כדי שגם אם RLS ב-coaches חוסם אנונימי, המאמן לעולם לא יאבד!
+  await saveSystemMetaBackup({ coaches });
+
+  if (coaches.length === 0) return;
   const rows = coaches.map((c) => ({
     id: c.id,
     email: c.email,
@@ -269,10 +357,15 @@ export async function saveCoachesToSupabase(coaches: CoachProfile[]) {
 export async function deleteCoachFromSupabase(coachId: string) {
   if (!supabase) return;
   await supabase.from('coaches').delete().eq('id', coachId);
+  const fullState = await loadStateFromSupabase();
+  const remaining = fullState.coaches.filter((c) => c.id !== coachId);
+  await saveSystemMetaBackup({ coaches: remaining });
 }
 
 export async function saveGroupsToSupabase(groups: TraineeGroup[]) {
-  if (!supabase || groups.length === 0) return;
+  if (!supabase) return;
+  await saveSystemMetaBackup({ groups });
+  if (groups.length === 0) return;
   const rows = groups.map((g) => ({
     id: g.id,
     name: g.name,
@@ -286,6 +379,9 @@ export async function saveGroupsToSupabase(groups: TraineeGroup[]) {
 export async function deleteGroupFromSupabase(groupId: string) {
   if (!supabase) return;
   await supabase.from('trainee_groups').delete().eq('id', groupId);
+  const fullState = await loadStateFromSupabase();
+  const remaining = fullState.groups.filter((g) => g.id !== groupId);
+  await saveSystemMetaBackup({ groups: remaining });
 }
 
 export async function saveTemplatesToSupabase(templates: NutritionTemplate[]) {
