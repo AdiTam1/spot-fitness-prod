@@ -22,8 +22,14 @@ import {
   Heart,
   Upload,
   Wand2,
+  Lightbulb,
+  Mic,
+  MicOff,
+  FileText,
+  Brain,
 } from 'lucide-react';
 import {
+  AiMealSuggestionOption,
   FoodCatalogItem,
   LoggedFoodItem,
   LoggedMealEntry,
@@ -52,6 +58,9 @@ interface AddMealDrawerProps {
   ) => void;
   geminiApiKey?: string;
   initialTab?: string;
+  traineeId?: string;
+  learnedPreferences?: string[];
+  onPreferenceLearned?: (prefs: string[]) => void;
 }
 
 export function AddMealDrawer({
@@ -64,6 +73,9 @@ export function AddMealDrawer({
   onSaveMeal,
   geminiApiKey,
   initialTab = 'catalog',
+  traineeId,
+  learnedPreferences = [],
+  onPreferenceLearned,
 }: AddMealDrawerProps) {
   const [activeTab, setActiveTab] = useState<string>(initialTab);
   const [items, setItems] = useState<LoggedFoodItem[]>([]);
@@ -72,9 +84,17 @@ export function AddMealDrawer({
   );
   const [photoSizeKB, setPhotoSizeKB] = useState<number | null>(null);
   const [photoNote, setPhotoNote] = useState('');
+  const [photoMode, setPhotoMode] = useState<'plate' | 'nutrition-label'>('plate');
   const [freeTextPrompt, setFreeTextPrompt] = useState('');
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
+
+  const [aiRecommendations, setAiRecommendations] = useState<AiMealSuggestionOption[]>([]);
+  const [aiRecLoading, setAiRecLoading] = useState(false);
+  const [preferenceFeedbackText, setPreferenceFeedbackText] = useState('');
+  const [learningPrefLoading, setLearningPrefLoading] = useState(false);
+  const [learnedFeedbackBanner, setLearnedFeedbackBanner] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] =
@@ -205,8 +225,12 @@ export function AddMealDrawer({
     }
   };
 
-  const runAiAnalysis = async (mode: 'photo' | 'text') => {
-    const promptToUse = mode === 'photo' ? photoNote : freeTextPrompt;
+  const runAiAnalysis = async (mode: 'photo' | 'text', customTextOverride?: string) => {
+    const rawPrompt = customTextOverride ?? (mode === 'photo' ? photoNote : freeTextPrompt);
+    const promptToUse =
+      mode === 'photo' && photoMode === 'nutrition-label'
+        ? `קרא את טבלת הערכים התזונתיים מהתמונה וחלץ את המוצר והערכים שלו למנה/100 גרם: ${rawPrompt}`
+        : rawPrompt;
     setAiLoading(true);
     setAiSummary(null);
     try {
@@ -233,6 +257,105 @@ export function AddMealDrawer({
       setAiSummary('שגיאה בפענוח ה-AI');
     } finally {
       setAiLoading(false);
+    }
+  };
+
+  const toggleVoiceRecording = () => {
+    if (typeof window === 'undefined') return;
+    const SpeechRec =
+      (window as unknown as { SpeechRecognition?: new () => { lang: string; interimResults: boolean; onresult: (e: { results: { [k: number]: { [k: number]: { transcript: string } } } }) => void; onend: () => void; onerror: () => void; start: () => void } }).SpeechRecognition ||
+      (window as unknown as { webkitSpeechRecognition?: new () => { lang: string; interimResults: boolean; onresult: (e: { results: { [k: number]: { [k: number]: { transcript: string } } } }) => void; onend: () => void; onerror: () => void; start: () => void } }).webkitSpeechRecognition;
+
+    if (!SpeechRec) {
+      setAiSummary('הדפדפן שלך אינו תומך בהקלטה קולית (נסה Chrome או Safari)');
+      return;
+    }
+
+    if (isRecordingVoice) {
+      setIsRecordingVoice(false);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRec();
+      recognition.lang = 'he-IL';
+      recognition.interimResults = false;
+      setIsRecordingVoice(true);
+      recognition.onresult = (event) => {
+        const transcript = event.results?.[0]?.[0]?.transcript || '';
+        if (transcript) {
+          setFreeTextPrompt((prev) => (prev ? `${prev} ${transcript}` : transcript));
+        }
+      };
+      recognition.onend = () => setIsRecordingVoice(false);
+      recognition.onerror = () => setIsRecordingVoice(false);
+      recognition.start();
+    } catch {
+      setIsRecordingVoice(false);
+    }
+  };
+
+  const fetchAiRecommendations = async () => {
+    if (!mealSlot) return;
+    const totalsNow = sumMacros(items.map((i) => i.macros));
+    const remainingMacros = {
+      calories: Math.max(80, mealSlot.targets.calories - totalsNow.calories),
+      protein: Math.max(5, Math.round(mealSlot.targets.protein - totalsNow.protein)),
+      carbs: Math.max(5, Math.round(mealSlot.targets.carbs - totalsNow.carbs)),
+      fat: Math.max(3, Math.round(mealSlot.targets.fat - totalsNow.fat)),
+    };
+    setAiRecLoading(true);
+    setLearnedFeedbackBanner(null);
+    try {
+      const res = await fetch('/api/ai/recommend-meal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'recommend',
+          traineeId,
+          mealName: mealSlot.name,
+          remainingMacros,
+          customApiKey: geminiApiKey,
+        }),
+      });
+      const data = await res.json();
+      if (Array.isArray(data.options)) {
+        setAiRecommendations(data.options);
+      }
+    } catch {
+      setAiSummary('שגיאה בקבלת המלצות ארוחה מ-AI');
+    } finally {
+      setAiRecLoading(false);
+    }
+  };
+
+  const handleLearnPreference = async () => {
+    if (!preferenceFeedbackText.trim()) return;
+    setLearningPrefLoading(true);
+    setLearnedFeedbackBanner(null);
+    try {
+      const res = await fetch('/api/ai/recommend-meal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'learn-preference',
+          traineeId,
+          feedbackText: preferenceFeedbackText.trim(),
+          customApiKey: geminiApiKey,
+        }),
+      });
+      const data = await res.json();
+      if (data.learnedRule) {
+        setLearnedFeedbackBanner(`נלמד ונשמר לעתיד: "${data.learnedRule}"`);
+        setPreferenceFeedbackText('');
+        if (onPreferenceLearned && Array.isArray(data.allPreferences)) {
+          onPreferenceLearned(data.allPreferences);
+        }
+      }
+    } catch {
+      setLearnedFeedbackBanner('שגיאה בשמירת ההעדפה');
+    } finally {
+      setLearningPrefLoading(false);
     }
   };
 
@@ -339,8 +462,8 @@ export function AddMealDrawer({
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(4, 1fr)',
-                gap: 6,
+                gridTemplateColumns: 'repeat(5, 1fr)',
+                gap: 4,
                 background: 'var(--bg-surface-2)',
                 padding: 4,
                 borderRadius: 14,
@@ -349,8 +472,9 @@ export function AddMealDrawer({
             >
               {[
                 { id: 'catalog', label: 'מאגר מזון', icon: Search },
+                { id: 'ai-recommend', label: '💡 מה לאכול?', icon: Lightbulb },
                 { id: 'ai-photo', label: 'צילום AI', icon: Camera },
-                { id: 'ai-text', label: 'טקסט AI', icon: Sparkles },
+                { id: 'ai-text', label: 'טקסט / קול', icon: Sparkles },
                 { id: 'favorites', label: 'מועדפים', icon: Heart },
               ].map((t) => {
                 const Icon = t.icon;
@@ -363,24 +487,291 @@ export function AddMealDrawer({
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: 5,
-                      padding: '9px 6px',
+                      gap: 4,
+                      padding: '9px 4px',
                       borderRadius: 10,
                       border: 'none',
                       background: active ? 'var(--accent-volt)' : 'transparent',
                       color: active ? '#08090c' : 'var(--text-secondary)',
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: 700,
                       cursor: 'pointer',
                       transition: 'all 0.15s ease',
                     }}
                   >
-                    <Icon size={14} />
+                    <Icon size={13} />
                     <span>{t.label}</span>
                   </button>
                 );
               })}
             </div>
+
+            {/* לשונית מיוחדת: 💡 מה לאכול? (המלצות המאמן + Smart Macro Finisher + למידת העדפות ללא צ'אט) */}
+            {activeTab === 'ai-recommend' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {/* אופציות מומלצות של המאמן לארוחה זו */}
+                {mealSlot.recommendedOptions && mealSlot.recommendedOptions.length > 0 && (
+                  <div
+                    style={{
+                      background: 'var(--bg-surface-2)',
+                      border: '1px solid rgba(210, 255, 40, 0.25)',
+                      borderRadius: 14,
+                      padding: 12,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 800,
+                        color: 'var(--accent-volt)',
+                        marginBottom: 8,
+                      }}
+                    >
+                      ⭐ אופציות מומלצות של המאמן ל{mealSlot.name} (הוספה בקליק):
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {mealSlot.recommendedOptions.map((optText, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '8px 10px',
+                            borderRadius: 10,
+                            background: 'rgba(255,255,255,0.03)',
+                            border: '1px solid var(--border-subtle)',
+                          }}
+                        >
+                          <span style={{ fontSize: 12, fontWeight: 600 }}>{optText}</span>
+                          <button
+                            disabled={aiLoading}
+                            onClick={() => runAiAnalysis('text', optText)}
+                            className="btn-surface"
+                            style={{
+                              padding: '5px 10px',
+                              fontSize: 11,
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                              color: 'var(--accent-volt)',
+                            }}
+                          >
+                            + בחר והוסף
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* כפתור Smart Macro Finisher */}
+                <div
+                  style={{
+                    background: 'var(--bg-surface-2)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 14,
+                    padding: 14,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: 8,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 800 }}>
+                        🤖 השלמת מאקרו חכמה (Smart Macro Finisher)
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                        יתרה להשלמה בארוחה זו:{' '}
+                        <b className="num-mono" style={{ color: 'var(--accent-volt)' }}>
+                          {Math.max(0, mealSlot.targets.calories - currentTotals.calories)} קק״ל · ח׳{' '}
+                          {Math.max(0, Math.round(mealSlot.targets.protein - currentTotals.protein))}g
+                        </b>
+                      </div>
+                    </div>
+
+                    <button
+                      disabled={aiRecLoading}
+                      onClick={fetchAiRecommendations}
+                      className="btn-volt"
+                      style={{
+                        padding: '8px 14px',
+                        fontSize: 12,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Sparkles size={14} />
+                      <span>
+                        {aiRecLoading ? 'בונה 3 הצעות מותאמות...' : 'הצע לי 3 ארוחות ליתרה'}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* הצגת העדפות שכבר נלמדו */}
+                  {learnedPreferences.length > 0 && (
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: 'var(--text-secondary)',
+                        background: 'rgba(255,255,255,0.03)',
+                        padding: '6px 10px',
+                        borderRadius: 8,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <span style={{ color: 'var(--accent-volt)', fontWeight: 700 }}>
+                        🧠 העדפות שנלמדו בחשבון שלך:{' '}
+                      </span>
+                      {learnedPreferences.join(' · ')}
+                    </div>
+                  )}
+
+                  {/* רשימת 3 ההצעות מה-AI */}
+                  {aiRecommendations.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                      {aiRecommendations.map((option) => (
+                        <div
+                          key={option.id}
+                          style={{
+                            padding: 12,
+                            borderRadius: 12,
+                            background: 'rgba(210, 255, 40, 0.05)',
+                            border: '1px solid rgba(210, 255, 40, 0.25)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 6,
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              gap: 8,
+                            }}
+                          >
+                            <div style={{ fontSize: 13, fontWeight: 800 }}>
+                              {option.title}
+                            </div>
+                            <button
+                              onClick={() => {
+                                setItems((prev) => [...prev, ...option.items]);
+                                setAiSummary(`נוספה לארוחה ההצעה: "${option.title}"`);
+                              }}
+                              className="btn-volt"
+                              style={{
+                                padding: '5px 12px',
+                                fontSize: 11,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              + הוסף ארוחה זו
+                            </button>
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                            {option.whyItFits}
+                          </div>
+                          <div
+                            className="num-mono"
+                            style={{
+                              fontSize: 11,
+                              color: 'var(--accent-volt)',
+                              fontWeight: 700,
+                            }}
+                          >
+                            {option.totals.calories} קק״ל · חלבון {option.totals.protein}g · פחמימה{' '}
+                            {option.totals.carbs}g · שומן {option.totals.fat}g
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* תיבת פידבק ללמידה שקטה ללא צ'אט */}
+                  <div
+                    style={{
+                      marginTop: 12,
+                      paddingTop: 12,
+                      borderTop: '1px solid var(--border-subtle)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontSize: 12,
+                        fontWeight: 800,
+                        marginBottom: 4,
+                      }}
+                    >
+                      <Brain size={14} color="var(--accent-volt)" />
+                      <span>משהו בהצעות לא מתאים לך? (זיכרון למידה לעתיד - ללא צ׳אט)</span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: 'var(--text-secondary)',
+                        marginBottom: 8,
+                      }}
+                    >
+                      רשום העדפה או הגבלה (למשל: &quot;אני לא אוכל גבינות חוץ מגבינה צהובה&quot; או &quot;אני לא אוכל גלוטן&quot;). המערכת תחלץ את הכלל ותזכור אותו אוטומטית בכל ההצעות הבאות.
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <TextInput
+                        style={{ flex: 1 }}
+                        size="xs"
+                        placeholder="למשל: אני לא אוכל גבינות חוץ מגבינה צהובה..."
+                        value={preferenceFeedbackText}
+                        onChange={(e) => setPreferenceFeedbackText(e.currentTarget.value)}
+                      />
+                      <button
+                        disabled={learningPrefLoading || !preferenceFeedbackText.trim()}
+                        onClick={handleLearnPreference}
+                        className="btn-surface"
+                        style={{
+                          padding: '0 12px',
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          color: 'var(--accent-volt)',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {learningPrefLoading ? 'לומד...' : 'שמור העדפה לעתיד'}
+                      </button>
+                    </div>
+                    {learnedFeedbackBanner && (
+                      <div
+                        style={{
+                          marginTop: 8,
+                          padding: '7px 10px',
+                          borderRadius: 8,
+                          background: 'rgba(34, 197, 94, 0.12)',
+                          border: '1px solid rgba(34, 197, 94, 0.35)',
+                          color: '#4ade80',
+                          fontSize: 11,
+                          fontWeight: 700,
+                        }}
+                      >
+                        ✓ {learnedFeedbackBanner}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* לשונית 1: מאגר מוצרים + משרד הבריאות + ברקוד */}
             {activeTab === 'catalog' && (
@@ -634,9 +1025,70 @@ export function AddMealDrawer({
               </div>
             )}
 
-            {/* לשונית 2: צילום ארוחה + פענוח AI */}
+            {/* לשונית 2: צילום ארוחה / טבלת ערכים תזונתיים + פענוח AI */}
             {activeTab === 'ai-photo' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: 6,
+                    background: 'var(--bg-surface-2)',
+                    padding: 4,
+                    borderRadius: 12,
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  <button
+                    onClick={() => setPhotoMode('plate')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      padding: '8px',
+                      borderRadius: 8,
+                      border: 'none',
+                      background:
+                        photoMode === 'plate' ? 'var(--accent-volt)' : 'transparent',
+                      color:
+                        photoMode === 'plate' ? '#08090c' : 'var(--text-secondary)',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Camera size={14} />
+                    <span>צילום ארוחה / צלחת</span>
+                  </button>
+                  <button
+                    onClick={() => setPhotoMode('nutrition-label')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      padding: '8px',
+                      borderRadius: 8,
+                      border: 'none',
+                      background:
+                        photoMode === 'nutrition-label'
+                          ? 'var(--accent-volt)'
+                          : 'transparent',
+                      color:
+                        photoMode === 'nutrition-label'
+                          ? '#08090c'
+                          : 'var(--text-secondary)',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <FileText size={14} />
+                    <span>טבלת ערכים תזונתיים מאריזה</span>
+                  </button>
+                </div>
+
                 <div
                   style={{
                     background: 'var(--bg-surface-2)',
@@ -686,14 +1138,22 @@ export function AddMealDrawer({
                         marginBottom: 10,
                       }}
                     >
-                      <Camera size={32} color="var(--accent-volt)" />
+                      {photoMode === 'nutrition-label' ? (
+                        <FileText size={32} color="var(--accent-volt)" />
+                      ) : (
+                        <Camera size={32} color="var(--accent-volt)" />
+                      )}
                       <div style={{ fontSize: 14, fontWeight: 700 }}>
-                        צילום ארוחה לפענוח AI אוטומטי
+                        {photoMode === 'nutrition-label'
+                          ? 'צילום טבלת ערכים תזונתיים מאריזת מוצר'
+                          : 'צילום ארוחה לפענוח AI אוטומטי'}
                       </div>
                       <div
                         style={{ fontSize: 12, color: 'var(--text-secondary)' }}
                       >
-                        ה-AI יזהה את המרכיבים, יעריך משקלים ויזין קלוריות ומאקרו
+                        {photoMode === 'nutrition-label'
+                          ? 'ה-AI יקרא את הטבלה שעל האריזה (ל-100 גרם או למנה) ויוסיף לארוחה'
+                          : 'ה-AI יזהה את המרכיבים, יעריך משקלים ויזין קלוריות ומאקרו'}
                       </div>
                     </div>
                   )}
@@ -723,8 +1183,16 @@ export function AddMealDrawer({
                 </div>
 
                 <Textarea
-                  label="הקשר לצילום עבור ה-AI (אופציונלי)"
-                  placeholder="למשל: חזה עוף 150 גרם עם אורז, הסלט מתובל בכפית שמן זית..."
+                  label={
+                    photoMode === 'nutrition-label'
+                      ? 'שם המוצר וכמות שאכלת (למשל: חטיף חלבון - יחידה אחת 60 גרם)'
+                      : 'הקשר לצילום עבור ה-AI (אופציונלי)'
+                  }
+                  placeholder={
+                    photoMode === 'nutrition-label'
+                      ? 'למשל: חטיף חלבון 60 גרם...'
+                      : 'למשל: חזה עוף 150 גרם עם אורז, הסלט מתובל בכפית שמן זית...'
+                  }
                   value={photoNote}
                   onChange={(e) => setPhotoNote(e.currentTarget.value)}
                   minRows={2}
@@ -746,17 +1214,59 @@ export function AddMealDrawer({
                 >
                   <Wand2 size={16} />
                   <span>
-                    {aiLoading ? 'מפענח מרכיבים וכמויות...' : 'פענח תמונה באמצעות AI'}
+                    {aiLoading
+                      ? 'מפענח מרכיבים וכמויות...'
+                      : photoMode === 'nutrition-label'
+                      ? 'חלץ ערכים תזונתיים מהאריזה (AI)'
+                      : 'פענח תמונה באמצעות AI'}
                   </span>
                 </button>
               </div>
             )}
 
-            {/* לשונית 3: טקסט חופשי ל-AI */}
+            {/* לשונית 3: טקסט חופשי + הקלטה קולית ל-AI */}
             {activeTab === 'ai-text' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <span style={{ fontSize: 12, fontWeight: 700 }}>
+                    תאר בטקסט או בהקלטה קולית מה אכלת:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={toggleVoiceRecording}
+                    className={isRecordingVoice ? 'btn-volt' : 'btn-surface'}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '6px 12px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {isRecordingVoice ? (
+                      <>
+                        <MicOff size={14} />
+                        <span>מקליט בעברית... לחץ לעצירה</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mic size={14} color="var(--accent-volt)" />
+                        <span>🎙️ הקלט ארוחה בקול</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
                 <Textarea
-                  label="תאר בטקסט חופשי מה אכלת (ללא צורך בצילום)"
                   placeholder="למשל: אכלתי 2 ביצים מקושקשות, חצי גביע קוטג' 5%, 2 פרוסות לחם כוסמין וקרמבו אחד"
                   value={freeTextPrompt}
                   onChange={(e) => setFreeTextPrompt(e.currentTarget.value)}

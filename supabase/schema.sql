@@ -1,7 +1,7 @@
 -- =====================================================================
 -- SPOT FITNESS — סכמת מסד נתונים מלאה עבור ארכיטקטורת 3 שכבות:
--- מנהל ראשי (Admin), מאמנים (Coaches), קבוצות (Groups), ומתאמנים (Trainees)
--- העתק והדבק את כל הקוד הזה ב-SQL Editor של Supabase ולחץ על RUN
+-- מנהל ראשי (Admin), מאמנים (Coaches), קבוצות (Groups), מתאמנים (Trainees),
+-- שאלון קליטה (Onboarding), היקפים (Measurements) וימי תשקיף (Observation Days)
 -- =====================================================================
 
 -- 1. טבלת מאמנים (Coaches)
@@ -14,8 +14,11 @@ create table if not exists public.coaches (
   phone text,
   invite_code text unique not null,
   status text not null default 'active', -- 'active' | 'paused'
+  onboarding jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
+
+alter table public.coaches add column if not exists onboarding jsonb not null default '{}'::jsonb;
 
 -- 2. טבלת קבוצות מתאמנים (Trainee Groups)
 create table if not exists public.trainee_groups (
@@ -40,12 +43,12 @@ create table if not exists public.nutrition_templates (
 
 alter table public.nutrition_templates add column if not exists owner_coach_id text not null default 'coach-admin';
 
--- 4. טבלת מתאמנים (כולל בעלות מאמן ראשי, מאמנים שותפים ושיוך לקבוצה)
+-- 4. טבלת מתאמנים (כולל בעלות מאמן ראשי, שותפים, קבוצה, Onboarding, היקפים וימי תשקיף)
 create table if not exists public.trainees (
   id text primary key,
   email text unique,
   password text,
-  status text not null default 'active', -- 'active' | 'pending' | 'paused'
+  status text not null default 'active',
   name text not null,
   avatar text not null default 'מ',
   phone text,
@@ -60,6 +63,10 @@ create table if not exists public.trainees (
   rest_template jsonb not null,
   favorite_food_ids jsonb not null default '[]'::jsonb,
   weight_history jsonb not null default '[]'::jsonb,
+  measurements_history jsonb not null default '[]'::jsonb,
+  onboarding jsonb not null default '{}'::jsonb,
+  observation_dates jsonb not null default '[]'::jsonb,
+  count_observation_in_stats boolean not null default false,
   logs jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
@@ -70,6 +77,10 @@ alter table public.trainees add column if not exists status text not null defaul
 alter table public.trainees add column if not exists primary_coach_id text not null default 'coach-admin';
 alter table public.trainees add column if not exists shared_coach_ids jsonb not null default '[]'::jsonb;
 alter table public.trainees add column if not exists group_id text;
+alter table public.trainees add column if not exists measurements_history jsonb not null default '[]'::jsonb;
+alter table public.trainees add column if not exists onboarding jsonb not null default '{}'::jsonb;
+alter table public.trainees add column if not exists observation_dates jsonb not null default '[]'::jsonb;
+alter table public.trainees add column if not exists count_observation_in_stats boolean not null default false;
 
 -- 5. הגדרות הרשאות גישה (Row Level Security)
 alter table public.coaches enable row level security;

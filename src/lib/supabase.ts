@@ -1,10 +1,15 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import {
   AccountStatus,
+  BodyMeasurementEntry,
+  CoachOnboardingData,
   CoachProfile,
   NutritionTemplate,
+  TraineeActivityTargets,
   TraineeGroup,
+  TraineeOnboardingData,
   TraineeProfile,
+  WeeklyCheckInEntry,
 } from '@/types/nutrition';
 
 const supabaseUrl =
@@ -25,6 +30,13 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
 
 function mapRowToCoach(row: Record<string, unknown>): CoachProfile {
   const name = String(row.name || 'מאמן');
+  const onboarding =
+    row.onboarding &&
+    typeof row.onboarding === 'object' &&
+    Object.keys(row.onboarding as object).length > 0
+      ? (row.onboarding as CoachOnboardingData)
+      : undefined;
+
   return {
     id: String(row.id),
     email: String(row.email || ''),
@@ -34,6 +46,7 @@ function mapRowToCoach(row: Record<string, unknown>): CoachProfile {
     phone: String(row.phone || ''),
     inviteCode: String(row.invite_code || ''),
     status: row.status === 'paused' ? 'paused' : 'active',
+    onboarding,
   };
 }
 
@@ -46,8 +59,64 @@ function mapRowToGroup(row: Record<string, unknown>): TraineeGroup {
   };
 }
 
+interface EmbeddedTraineeMeta {
+  onboarding?: TraineeOnboardingData;
+  activityTargets?: TraineeActivityTargets;
+  enableWorkoutRestSplit?: boolean;
+  coachAiNotes?: string;
+  aiLearnedPreferences?: string[];
+  weeklyCheckIns?: WeeklyCheckInEntry[];
+  measurementsHistory?: BodyMeasurementEntry[];
+  observationDates?: string[];
+  countObservationInStats?: boolean;
+  primaryCoachId?: string;
+  sharedCoachIds?: string[];
+  groupId?: string;
+}
+
 function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
   const name = String(row.name || 'מתאמן');
+  const rawLogs =
+    row.logs && typeof row.logs === 'object'
+      ? { ...(row.logs as Record<string, unknown>) }
+      : {};
+
+  const embeddedMeta = (rawLogs.__profile_meta || {}) as EmbeddedTraineeMeta;
+  delete rawLogs.__profile_meta;
+
+  const onboarding =
+    row.onboarding &&
+    typeof row.onboarding === 'object' &&
+    Object.keys(row.onboarding as object).length > 0
+      ? (row.onboarding as TraineeOnboardingData)
+      : embeddedMeta.onboarding;
+
+  const measurementsHistory =
+    Array.isArray(row.measurements_history) &&
+    row.measurements_history.length > 0
+      ? (row.measurements_history as BodyMeasurementEntry[])
+      : embeddedMeta.measurementsHistory || [];
+
+  const observationDates =
+    Array.isArray(row.observation_dates) && row.observation_dates.length > 0
+      ? (row.observation_dates as string[])
+      : embeddedMeta.observationDates || [];
+
+  const countObservationInStats =
+    typeof row.count_observation_in_stats === 'boolean'
+      ? row.count_observation_in_stats
+      : Boolean(embeddedMeta.countObservationInStats);
+
+  const activityTargets: TraineeActivityTargets =
+    embeddedMeta.activityTargets || {
+      weeklyWorkoutsTarget: 4,
+      workoutTypes: ['אימון כוח A', 'אימון כוח B', 'Full Body'],
+      weeklyCardioTarget: 3,
+      cardioMode: 'both',
+      cardioTargetMinutes: 35,
+      dailySleepTargetHours: 7.5,
+    };
+
   return {
     id: String(row.id),
     email: String(row.email || ''),
@@ -60,11 +129,15 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
     currentWeight: Number(row.current_weight) || 75,
     targetWeight: Number(row.target_weight) || 70,
     tolerancePercent: Number(row.tolerance_percent) || 10,
-    primaryCoachId: String(row.primary_coach_id || 'coach-admin'),
+    primaryCoachId: String(
+      row.primary_coach_id || embeddedMeta.primaryCoachId || 'coach-admin'
+    ),
     sharedCoachIds: Array.isArray(row.shared_coach_ids)
       ? (row.shared_coach_ids as string[])
-      : [],
-    groupId: row.group_id ? String(row.group_id) : undefined,
+      : embeddedMeta.sharedCoachIds || [],
+    groupId: row.group_id
+      ? String(row.group_id)
+      : embeddedMeta.groupId || undefined,
     workoutTemplate: row.workout_template as NutritionTemplate,
     restTemplate: row.rest_template as NutritionTemplate,
     favoriteFoodIds: Array.isArray(row.favorite_food_ids)
@@ -73,10 +146,20 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
     weightHistory: Array.isArray(row.weight_history)
       ? (row.weight_history as { date: string; weight: number }[])
       : [],
-    logs:
-      row.logs && typeof row.logs === 'object'
-        ? (row.logs as TraineeProfile['logs'])
-        : {},
+    measurementsHistory,
+    onboarding,
+    activityTargets,
+    enableWorkoutRestSplit: Boolean(embeddedMeta.enableWorkoutRestSplit),
+    coachAiNotes: embeddedMeta.coachAiNotes || '',
+    aiLearnedPreferences: Array.isArray(embeddedMeta.aiLearnedPreferences)
+      ? embeddedMeta.aiLearnedPreferences
+      : [],
+    weeklyCheckIns: Array.isArray(embeddedMeta.weeklyCheckIns)
+      ? embeddedMeta.weeklyCheckIns
+      : [],
+    observationDates,
+    countObservationInStats,
+    logs: rawLogs as TraineeProfile['logs'],
   };
 }
 
@@ -161,9 +244,26 @@ export async function saveCoachesToSupabase(coaches: CoachProfile[]) {
     phone: c.phone,
     invite_code: c.inviteCode,
     status: c.status,
+    onboarding: c.onboarding || {},
     updated_at: new Date().toISOString(),
   }));
-  await supabase.from('coaches').upsert(rows, { onConflict: 'id' });
+  const { error } = await supabase
+    .from('coaches')
+    .upsert(rows, { onConflict: 'id' });
+  if (error) {
+    const legacyRows = coaches.map((c) => ({
+      id: c.id,
+      email: c.email,
+      password: c.password || '',
+      name: c.name,
+      avatar: c.avatar,
+      phone: c.phone,
+      invite_code: c.inviteCode,
+      status: c.status,
+      updated_at: new Date().toISOString(),
+    }));
+    await supabase.from('coaches').upsert(legacyRows, { onConflict: 'id' });
+  }
 }
 
 export async function deleteCoachFromSupabase(coachId: string) {
@@ -204,7 +304,6 @@ export async function saveTemplatesToSupabase(templates: NutritionTemplate[]) {
     .from('nutrition_templates')
     .upsert(rows, { onConflict: 'id' });
   if (error) {
-    // Fallback if owner_coach_id column wasn't migrated yet
     const legacyRows = templates.map((t) => ({
       id: t.id,
       name: t.name,
@@ -227,6 +326,25 @@ export async function deleteTemplateFromSupabase(templateId: string) {
 
 export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
   if (!supabase || trainees.length === 0) return;
+
+  const packLogsWithMeta = (t: TraineeProfile) => ({
+    ...t.logs,
+    __profile_meta: {
+      onboarding: t.onboarding,
+      activityTargets: t.activityTargets,
+      enableWorkoutRestSplit: Boolean(t.enableWorkoutRestSplit),
+      coachAiNotes: t.coachAiNotes || '',
+      aiLearnedPreferences: t.aiLearnedPreferences || [],
+      weeklyCheckIns: t.weeklyCheckIns || [],
+      measurementsHistory: t.measurementsHistory || [],
+      observationDates: t.observationDates || [],
+      countObservationInStats: Boolean(t.countObservationInStats),
+      primaryCoachId: t.primaryCoachId || 'coach-admin',
+      sharedCoachIds: t.sharedCoachIds || [],
+      groupId: t.groupId,
+    },
+  });
+
   const rows = trainees.map((t) => ({
     id: t.id,
     email: t.email,
@@ -246,14 +364,20 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
     rest_template: t.restTemplate,
     favorite_food_ids: t.favoriteFoodIds,
     weight_history: t.weightHistory,
-    logs: t.logs,
+    measurements_history: t.measurementsHistory || [],
+    onboarding: t.onboarding || {},
+    observation_dates: t.observationDates || [],
+    count_observation_in_stats: Boolean(t.countObservationInStats),
+    logs: packLogsWithMeta(t),
     updated_at: new Date().toISOString(),
   }));
+
   const { error } = await supabase
     .from('trainees')
     .upsert(rows, { onConflict: 'id' });
+
   if (error) {
-    // Fallback if primary_coach_id/shared_coach_ids/group_id columns weren't migrated yet
+    // גיבוי אוטומטי אם חלק מהעמודות החדשות טרם הורצו ב-SQL Editor: הכל נשמר בתוך logs.__profile_meta!
     const legacyRows = trainees.map((t) => ({
       id: t.id,
       email: t.email,
@@ -270,7 +394,7 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
       rest_template: t.restTemplate,
       favorite_food_ids: t.favoriteFoodIds,
       weight_history: t.weightHistory,
-      logs: t.logs,
+      logs: packLogsWithMeta(t),
       updated_at: new Date().toISOString(),
     }));
     await supabase.from('trainees').upsert(legacyRows, { onConflict: 'id' });

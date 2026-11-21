@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import {
   Modal,
   TextInput,
+  Textarea,
   NumberInput,
   Select,
   PasswordInput,
@@ -29,6 +30,7 @@ import {
   FolderPlus,
   Crown,
   Layers,
+  Brain,
 } from 'lucide-react';
 import {
   AccountStatus,
@@ -38,6 +40,7 @@ import {
   DayType,
   MealTemplateSlot,
   NutritionTemplate,
+  TraineeActivityTargets,
   TraineeGroup,
   TraineeProfile,
 } from '@/types/nutrition';
@@ -109,6 +112,28 @@ interface CoachDashboardViewProps {
     dayType: DayType
   ) => void;
   onBulkGroupShareCoach: (groupId: string, targetCoachId: string) => void;
+  onManageObservationDays: (
+    traineeId: string,
+    payload: {
+      toggleDate?: string;
+      addFutureDays?: number;
+      clearAll?: boolean;
+      countObservationInStats?: boolean;
+    }
+  ) => void;
+  onUpdateActivityTargets: (
+    traineeId: string,
+    activityTargets: TraineeActivityTargets
+  ) => void;
+  onUpdateAiNotesAndSplit?: (
+    traineeId: string,
+    payload: {
+      enableWorkoutRestSplit?: boolean;
+      coachAiNotes?: string;
+      aiLearnedPreferences?: string[];
+    }
+  ) => void;
+  onOpenCoachOnboarding?: () => void;
   onDeleteTrainee: (traineeId: string) => void;
   onCreateCoach: (data: {
     name: string;
@@ -137,6 +162,19 @@ const GROUP_COLOR_SWATCHES = [
   { label: 'סגול פרימיום', value: '#a855f7' },
 ];
 
+const WORKOUT_TYPE_PRESETS = [
+  'אימון כוח A',
+  'אימון כוח B',
+  'אימון כוח C',
+  'Full Body',
+  'פלג גוף עליון',
+  'פלג גוף תחתון',
+  'Push (דחיפה)',
+  'Pull (משיכה)',
+  'Legs (רגליים)',
+  'פילאטיס / ליבה',
+];
+
 export function CoachDashboardView({
   currentUser,
   trainees,
@@ -160,6 +198,10 @@ export function CoachDashboardView({
   onDeleteGroup,
   onBulkGroupAssignTemplate,
   onBulkGroupShareCoach,
+  onManageObservationDays,
+  onUpdateActivityTargets,
+  onUpdateAiNotesAndSplit,
+  onOpenCoachOnboarding,
   onDeleteTrainee,
   onCreateCoach,
   onUpdateCoachStatus,
@@ -269,6 +311,7 @@ export function CoachDashboardView({
   >({});
 
   const [inviteCodeDraft, setInviteCodeDraft] = useState(coachInviteCode);
+  const [customWorkoutTypeInput, setCustomWorkoutTypeInput] = useState('');
 
   const pendingTrainees = trainees.filter((t) => t.status === 'pending');
 
@@ -353,13 +396,27 @@ export function CoachDashboardView({
 
   const updateTemplateMealField = (
     mealId: string,
-    field: 'name' | 'timeHint' | 'calories' | 'protein' | 'carbs' | 'fat',
+    field:
+      | 'name'
+      | 'timeHint'
+      | 'calories'
+      | 'protein'
+      | 'carbs'
+      | 'fat'
+      | 'recommendedOptions',
     value: string | number
   ) => {
     setEditableTemplate((prev) => ({
       ...prev,
       meals: prev.meals.map((m) => {
         if (m.id !== mealId) return m;
+        if (field === 'recommendedOptions') {
+          const opts = String(value)
+            .split('|')
+            .map((s) => s.trim())
+            .filter(Boolean);
+          return { ...m, recommendedOptions: opts };
+        }
         if (field === 'name' || field === 'timeHint') {
           return { ...m, [field]: String(value) };
         }
@@ -402,43 +459,94 @@ export function CoachDashboardView({
     const tpl = log?.dayType === 'rest' ? t.restTemplate : t.workoutTemplate;
     const target = sumMacros(tpl.meals.map((m) => m.targets));
     const loggedMealsCount = log ? Object.keys(log.meals).length : 0;
+    const isTodayObs =
+      (t.observationDates || []).includes(today) ||
+      Boolean(log?.isObservationDay);
+
+    const allItems = log
+      ? tpl.meals.flatMap((m) => log.meals[m.id]?.items || [])
+      : [];
+    const consumed = sumMacros(allItems.map((i) => i.macros));
+
+    // אם היום הוא יום תשקיף והמאמן בחר להחריג ימי תשקיף מחישוב החריגות
+    if (isTodayObs && !t.countObservationInStats) {
+      return {
+        statusColor: '#38bdf8',
+        statusBg: 'rgba(56, 189, 248, 0.14)',
+        label: 'יום תשקיף (מוחרג מיעד)',
+        consumed,
+        target,
+        loggedMealsCount,
+        totalMeals: tpl.meals.length,
+        isTodayObs: true,
+      };
+    }
 
     if (!log || loggedMealsCount === 0) {
       return {
         statusColor: 'var(--status-danger)',
         statusBg: 'rgba(239, 68, 68, 0.12)',
-        label: 'טרם הוזן היום',
+        label: isTodayObs ? 'תשקיף (טרם הוזן)' : 'טרם הוזן היום',
         consumed: { calories: 0, protein: 0, carbs: 0, fat: 0 },
         target,
         loggedMealsCount: 0,
         totalMeals: tpl.meals.length,
+        isTodayObs,
       };
     }
 
-    const allItems = tpl.meals.flatMap((m) => log.meals[m.id]?.items || []);
-    const consumed = sumMacros(allItems.map((i) => i.macros));
     const maxAllowed = target.calories * (1 + t.tolerancePercent / 100);
 
     if (consumed.calories > maxAllowed) {
       return {
         statusColor: 'var(--status-warn)',
         statusBg: 'rgba(245, 158, 11, 0.12)',
-        label: 'חריגה מהיעד',
+        label: isTodayObs ? 'תשקיף (נספר - חריגה)' : 'חריגה מהיעד',
         consumed,
         target,
         loggedMealsCount,
         totalMeals: tpl.meals.length,
+        isTodayObs,
       };
     }
 
     return {
       statusColor: 'var(--status-ok)',
       statusBg: 'rgba(34, 197, 94, 0.12)',
-      label: 'עומד ביעדים',
+      label: isTodayObs ? 'תשקיף (נספר - ביעד)' : 'עומד ביעדים',
       consumed,
       target,
       loggedMealsCount,
       totalMeals: tpl.meals.length,
+      isTodayObs,
+    };
+  };
+
+  // חישוב ממוצע קלוריות ומאקרו של ימי התשקיף עבור מתאמן
+  const getObservationAverage = (t: TraineeProfile) => {
+    const obsDates = t.observationDates || [];
+    const loggedObsDays = obsDates.filter(
+      (d) => t.logs[d] && Object.keys(t.logs[d].meals || {}).length > 0
+    );
+    if (loggedObsDays.length === 0) {
+      return { count: obsDates.length, loggedCount: 0, calories: 0, protein: 0 };
+    }
+    let totalCal = 0;
+    let totalProt = 0;
+    for (const d of loggedObsDays) {
+      const log = t.logs[d];
+      const items = Object.values(log.meals || {}).flatMap(
+        (m) => m.items || []
+      );
+      const macros = sumMacros(items.map((i) => i.macros));
+      totalCal += macros.calories;
+      totalProt += macros.protein;
+    }
+    return {
+      count: obsDates.length,
+      loggedCount: loggedObsDays.length,
+      calories: Math.round(totalCal / loggedObsDays.length),
+      protein: Math.round(totalProt / loggedObsDays.length),
     };
   };
 
@@ -446,21 +554,39 @@ export function CoachDashboardView({
     (editableTemplate?.meals || []).map((m) => m.targets)
   );
   const activeTraineePlan = selectedTrainee
-    ? editingDayType === 'workout'
+    ? !selectedTrainee.enableWorkoutRestSplit
+      ? selectedTrainee.workoutTemplate
+      : editingDayType === 'workout'
       ? selectedTrainee.workoutTemplate
       : selectedTrainee.restTemplate
     : currentTemplate;
 
   const updateTraineeDirectMeal = (
     mealId: string,
-    field: 'name' | 'calories' | 'protein' | 'carbs' | 'fat',
+    field:
+      | 'name'
+      | 'calories'
+      | 'protein'
+      | 'carbs'
+      | 'fat'
+      | 'recommendedOptions',
     value: string | number
   ) => {
     if (!selectedTrainee) return;
+    const effectiveDayType: DayType = selectedTrainee.enableWorkoutRestSplit
+      ? editingDayType
+      : 'workout';
     const updatedTpl: NutritionTemplate = {
       ...activeTraineePlan,
       meals: activeTraineePlan.meals.map((m) => {
         if (m.id !== mealId) return m;
+        if (field === 'recommendedOptions') {
+          const opts = String(value)
+            .split('|')
+            .map((s) => s.trim())
+            .filter(Boolean);
+          return { ...m, recommendedOptions: opts };
+        }
         if (field === 'name') return { ...m, name: String(value) };
         return {
           ...m,
@@ -473,7 +599,7 @@ export function CoachDashboardView({
     };
     onUpdateTraineePlan(
       selectedTrainee.id,
-      editingDayType,
+      effectiveDayType,
       updatedTpl,
       selectedTrainee.tolerancePercent
     );
@@ -731,6 +857,24 @@ export function CoachDashboardView({
         </div>
 
         <div style={{ display: 'flex', gap: 8 }}>
+          {onOpenCoachOnboarding && (
+            <button
+              onClick={onOpenCoachOnboarding}
+              className="btn-surface"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '9px 14px',
+                fontSize: 12,
+                cursor: 'pointer',
+              }}
+            >
+              <Sliders size={14} color="#38bdf8" />
+              <span>הגדרות פרופיל מאמן</span>
+            </button>
+          )}
+
           <button
             onClick={() => setNewGroupModal(true)}
             className="btn-surface"
@@ -1262,21 +1406,107 @@ export function CoachDashboardView({
                           </td>
 
                           <td style={{ padding: '14px 12px' }}>
-                            <span
+                            <div
                               style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 6,
-                                padding: '4px 10px',
-                                borderRadius: 999,
-                                background: st.statusBg,
-                                color: st.statusColor,
-                                fontSize: 11,
-                                fontWeight: 700,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: 5,
+                                alignItems: 'flex-start',
                               }}
                             >
-                              {st.label} ({st.loggedMealsCount}/{st.totalMeals})
-                            </span>
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 6,
+                                  padding: '4px 10px',
+                                  borderRadius: 999,
+                                  background: st.statusBg,
+                                  color: st.statusColor,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {st.label} ({st.loggedMealsCount}/{st.totalMeals}
+                                )
+                              </span>
+
+                              {/* כפתורי קליק זריז למאמן על ימי תשקיף */}
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <button
+                                  title="הפעל או בטל את היום כיום תשקיף בקליק"
+                                  onClick={() => {
+                                    onManageObservationDays(t.id, {
+                                      toggleDate: today,
+                                    });
+                                    showToast(
+                                      st.isTodayObs
+                                        ? `יום תשקיף בוטל להיום עבור ${t.name}`
+                                        : `היום הוגדר כיום תשקיף עבור ${t.name}`
+                                    );
+                                  }}
+                                  style={{
+                                    padding: '2px 8px',
+                                    borderRadius: 6,
+                                    border: st.isTodayObs
+                                      ? '1px solid #38bdf8'
+                                      : '1px solid var(--border-subtle)',
+                                    background: st.isTodayObs
+                                      ? 'rgba(56, 189, 248, 0.15)'
+                                      : 'var(--bg-surface-2)',
+                                    color: st.isTodayObs
+                                      ? '#38bdf8'
+                                      : 'var(--text-muted)',
+                                    fontSize: 10,
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  {st.isTodayObs
+                                    ? '✓ תשקיף היום'
+                                    : '+ תשקיף היום'}
+                                </button>
+
+                                {((t.observationDates || []).length > 0 ||
+                                  st.isTodayObs) && (
+                                  <button
+                                    title="בחר בקליק זריז אם ימי תשקיף נחשבים בספירת היעדים או לא"
+                                    onClick={() => {
+                                      const nextVal =
+                                        !t.countObservationInStats;
+                                      onManageObservationDays(t.id, {
+                                        countObservationInStats: nextVal,
+                                      });
+                                      showToast(
+                                        nextVal
+                                          ? `ימי תשקיף של ${t.name} נכללים כעת בספירת היעדים`
+                                          : `ימי תשקיף של ${t.name} מוחרגים מחישוב חריגות (הקלוריות נספרות בתשקיף)`
+                                      );
+                                    }}
+                                    style={{
+                                      padding: '2px 8px',
+                                      borderRadius: 6,
+                                      border: t.countObservationInStats
+                                        ? '1px solid var(--accent-volt)'
+                                        : '1px solid var(--border-subtle)',
+                                      background: t.countObservationInStats
+                                        ? 'rgba(210, 255, 40, 0.14)'
+                                        : 'var(--bg-surface-2)',
+                                      color: t.countObservationInStats
+                                        ? 'var(--accent-volt)'
+                                        : 'var(--text-secondary)',
+                                      fontSize: 10,
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    {t.countObservationInStats
+                                      ? 'תשקיף: נספר ביעד'
+                                      : 'תשקיף: לא נחשב ביעד'}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
                           </td>
 
                           <td style={{ padding: '14px 12px', minWidth: 185 }}>
@@ -1394,17 +1624,945 @@ export function CoachDashboardView({
       )}
 
       {/* ===================================================================== */}
-      {/* תצוגה 2: מסך מפוצל לניהול תפריט ויומן מתאמן                           */}
+      {/* תצוגה 2: מסך מפוצל לניהול תפריט, שאלון Onboarding, היקפים ויומן מתאמן  */}
       {/* ===================================================================== */}
       {activeSection === 'inspector' && selectedTrainee && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
-            gap: 20,
-          }}
-        >
-          <div className="pro-card" style={{ padding: 22 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {/* כרטיס עליון: נתוני Onboarding, היקפים, BMR/TDEE וניהול ימי תשקיף */}
+          <div className="pro-card" style={{ padding: 20 }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                flexWrap: 'wrap',
+                gap: 16,
+                paddingBottom: 16,
+                marginBottom: 16,
+                borderBottom: '1px solid var(--border-subtle)',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 800 }}>
+                  נתוני קליטה (Onboarding), היקפים וימי תשקיף —{' '}
+                  {selectedTrainee.name}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  {selectedTrainee.onboarding?.completed
+                    ? `הושלם בתאריך ${
+                        selectedTrainee.onboarding.completedAt || ''
+                      } · גיל: ${selectedTrainee.onboarding.age || '—'} · גובה: ${
+                        selectedTrainee.onboarding.heightCm || '—'
+                      } ס״מ · משקל: ${selectedTrainee.currentWeight} ק״ג`
+                    : 'המתאמן טרם השלים את שאלון ה-Onboarding בכניסה הראשונה'}
+                </div>
+              </div>
+
+              {/* חישוב BMR, TDEE וממוצע ימי תשקיף */}
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {selectedTrainee.onboarding?.estimatedBmr && (
+                  <div
+                    style={{
+                      background: 'var(--bg-surface-2)',
+                      padding: '8px 14px',
+                      borderRadius: 12,
+                      border: '1px solid var(--border-subtle)',
+                    }}
+                  >
+                    <div
+                      style={{ fontSize: 10, color: 'var(--text-secondary)' }}
+                    >
+                      BMR / TDEE משוער
+                    </div>
+                    <div
+                      className="num-mono"
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 800,
+                        color: 'var(--accent-volt)',
+                      }}
+                    >
+                      BMR {selectedTrainee.onboarding.estimatedBmr} · TDEE{' '}
+                      {selectedTrainee.onboarding.estimatedTdee} קק״ל
+                    </div>
+                  </div>
+                )}
+
+                {(() => {
+                  const obsAvg = getObservationAverage(selectedTrainee);
+                  return (
+                    <div
+                      style={{
+                        background: 'rgba(56, 189, 248, 0.08)',
+                        padding: '8px 14px',
+                        borderRadius: 12,
+                        border: '1px solid rgba(56, 189, 248, 0.3)',
+                      }}
+                    >
+                      <div style={{ fontSize: 10, color: '#38bdf8' }}>
+                        ממוצע ימי תשקיף ({obsAvg.loggedCount} מתוך {obsAvg.count}{' '}
+                        ימים)
+                      </div>
+                      <div
+                        className="num-mono"
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 800,
+                          color: '#ffffff',
+                        }}
+                      >
+                        {obsAvg.loggedCount > 0
+                          ? `${obsAvg.calories} קק״ל · חלבון ${obsAvg.protein}g`
+                          : 'טרם הוזנו ארוחות בתשקיף'}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* שורת שליטה מהירה בימי תשקיף למאמן */}
+            {(() => {
+              const act = selectedTrainee.activityTargets || {
+                weeklyWorkoutsTarget: 4,
+                workoutTypes: ['אימון כוח A', 'אימון כוח B', 'Full Body'],
+                weeklyCardioTarget: 3,
+                cardioMode: 'both' as const,
+                cardioTargetMinutes: 35,
+                dailySleepTargetHours: 7.5,
+              };
+
+              const loggedWorkoutsCount = Object.values(
+                selectedTrainee.logs || {}
+              ).filter((l) => l.workoutLog?.completed).length;
+              const loggedCardioCount = Object.values(
+                selectedTrainee.logs || {}
+              ).filter((l) => l.cardioLog?.completed).length;
+              const todaySleep = selectedTrainee.logs[today]?.sleepHours;
+
+              return (
+                <div
+                  style={{
+                    background: 'var(--bg-surface-2)',
+                    padding: 14,
+                    borderRadius: 14,
+                    border: '1px solid rgba(210, 255, 40, 0.25)',
+                    marginBottom: 14,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: 10,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 800,
+                          color: 'var(--accent-volt)',
+                        }}
+                      >
+                        הגדרת יעדי אימונים, סוגי אימון, הליכות/ריצות ושעות שינה
+                        ל-{selectedTrainee.name}
+                      </div>
+                      <div
+                        style={{ fontSize: 11, color: 'var(--text-secondary)' }}
+                      >
+                        יעדים אלו מוצגים למתאמן להזנה יומית ביומן שלו
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 8, fontSize: 11 }}>
+                      <span
+                        className="num-mono"
+                        style={{
+                          padding: '3px 9px',
+                          borderRadius: 999,
+                          background: 'rgba(210, 255, 40, 0.12)',
+                          color: 'var(--accent-volt)',
+                          fontWeight: 800,
+                        }}
+                      >
+                        אימונים שתועדו: {loggedWorkoutsCount} /{' '}
+                        {act.weeklyWorkoutsTarget}
+                      </span>
+                      <span
+                        className="num-mono"
+                        style={{
+                          padding: '3px 9px',
+                          borderRadius: 999,
+                          background: 'rgba(56, 189, 248, 0.14)',
+                          color: '#38bdf8',
+                          fontWeight: 800,
+                        }}
+                      >
+                        הליכות/ריצות: {loggedCardioCount} /{' '}
+                        {act.weeklyCardioTarget}
+                      </span>
+                      <span
+                        className="num-mono"
+                        style={{
+                          padding: '3px 9px',
+                          borderRadius: 999,
+                          background: 'rgba(168, 85, 247, 0.15)',
+                          color: '#c084fc',
+                          fontWeight: 800,
+                        }}
+                      >
+                        שינה היום: {todaySleep ?? '—'} /{' '}
+                        {act.dailySleepTargetHours}h
+                      </span>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns:
+                        'repeat(auto-fit, minmax(150px, 1fr))',
+                      gap: 10,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <NumberInput
+                      size="xs"
+                      label="מינימום ימי אימון בשבוע"
+                      value={act.weeklyWorkoutsTarget}
+                      min={0}
+                      max={14}
+                      onChange={(val) =>
+                        onUpdateActivityTargets(selectedTrainee.id, {
+                          ...act,
+                          weeklyWorkoutsTarget: Number(val) || 0,
+                        })
+                      }
+                    />
+                    <NumberInput
+                      size="xs"
+                      label="יעד הליכות / ריצות בשבוע"
+                      value={act.weeklyCardioTarget}
+                      min={0}
+                      max={14}
+                      onChange={(val) =>
+                        onUpdateActivityTargets(selectedTrainee.id, {
+                          ...act,
+                          weeklyCardioTarget: Number(val) || 0,
+                        })
+                      }
+                    />
+                    <NumberInput
+                      size="xs"
+                      label="משך הליכה/ריצה (דקות)"
+                      value={act.cardioTargetMinutes}
+                      min={10}
+                      max={180}
+                      step={5}
+                      onChange={(val) =>
+                        onUpdateActivityTargets(selectedTrainee.id, {
+                          ...act,
+                          cardioTargetMinutes: Number(val) || 35,
+                        })
+                      }
+                    />
+                    <NumberInput
+                      size="xs"
+                      label="יעד שעות שינה בלילה"
+                      value={act.dailySleepTargetHours}
+                      min={4}
+                      max={12}
+                      step={0.5}
+                      decimalScale={1}
+                      onChange={(val) =>
+                        onUpdateActivityTargets(selectedTrainee.id, {
+                          ...act,
+                          dailySleepTargetHours: Number(val) || 7.5,
+                        })
+                      }
+                    />
+                  </div>
+
+                  {/* בחירת סוגי האימון שהמתאמן יכול לסמן */}
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        marginBottom: 6,
+                      }}
+                    >
+                      סוגי אימון מוגדרים למתאמן (לחץ להוספה/הסרה):
+                    </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: 6,
+                        marginBottom: 8,
+                      }}
+                    >
+                      {Array.from(
+                        new Set([
+                          ...WORKOUT_TYPE_PRESETS,
+                          ...(act.workoutTypes || []),
+                        ])
+                      ).map((wType) => {
+                        const active = (act.workoutTypes || []).includes(wType);
+                        return (
+                          <button
+                            key={wType}
+                            type="button"
+                            onClick={() => {
+                              const nextTypes = active
+                                ? act.workoutTypes.filter((x) => x !== wType)
+                                : [...act.workoutTypes, wType];
+                              if (nextTypes.length === 0) return;
+                              onUpdateActivityTargets(selectedTrainee.id, {
+                                ...act,
+                                workoutTypes: nextTypes,
+                              });
+                            }}
+                            style={{
+                              padding: '5px 10px',
+                              borderRadius: 999,
+                              border: active
+                                ? '1px solid var(--accent-volt)'
+                                : '1px solid var(--border-subtle)',
+                              background: active
+                                ? 'rgba(210, 255, 40, 0.14)'
+                                : 'var(--bg-surface-1)',
+                              color: active
+                                ? 'var(--accent-volt)'
+                                : 'var(--text-muted)',
+                              fontSize: 11,
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {active ? `✓ ${wType}` : `+ ${wType}`}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <TextInput
+                        size="xs"
+                        style={{ flex: 1 }}
+                        placeholder="הוסף סוג אימון מותאם אישית (למשל: אימון רגליים וישבן, קרוספיט, שחייה)..."
+                        value={customWorkoutTypeInput}
+                        onChange={(e) =>
+                          setCustomWorkoutTypeInput(e.currentTarget.value)
+                        }
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const clean = customWorkoutTypeInput.trim();
+                          if (!clean) return;
+                          const nextTypes = Array.from(
+                            new Set([...(act.workoutTypes || []), clean])
+                          );
+                          onUpdateActivityTargets(selectedTrainee.id, {
+                            ...act,
+                            workoutTypes: nextTypes,
+                          });
+                          setCustomWorkoutTypeInput('');
+                          showToast(`סוג האימון "${clean}" נוסף למתאמן`);
+                        }}
+                        className="btn-surface"
+                        style={{
+                          padding: '6px 12px',
+                          fontSize: 11,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        + הוסף סוג אימון
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 10,
+                background: 'var(--bg-surface-2)',
+                padding: '12px 14px',
+                borderRadius: 14,
+                marginBottom: 14,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: '#38bdf8' }}>
+                  ניהול ימי תשקיף ({selectedTrainee.observationDates?.length || 0}{' '}
+                  ימים מוגדרים)
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                  הגדר ימי תשקיף מראש או בדיעבד, ובחר בקליק אם הקלוריות שלהם
+                  נחשבות בספירת היעדים
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => {
+                    onManageObservationDays(selectedTrainee.id, {
+                      toggleDate: today,
+                    });
+                    showToast('סטטוס יום תשקיף להיום עודכן');
+                  }}
+                  className="btn-surface"
+                  style={{
+                    padding: '7px 12px',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    borderColor: (
+                      selectedTrainee.observationDates || []
+                    ).includes(today)
+                      ? '#38bdf8'
+                      : undefined,
+                  }}
+                >
+                  {(selectedTrainee.observationDates || []).includes(today)
+                    ? '✓ היום מוגדר כיום תשקיף (לחץ לביטול)'
+                    : 'הגדר את היום כיום תשקיף'}
+                </button>
+
+                <button
+                  onClick={() => {
+                    onManageObservationDays(selectedTrainee.id, {
+                      addFutureDays: 3,
+                    });
+                    showToast('נוספו 3 ימי תשקיף מהיום והלאה');
+                  }}
+                  className="btn-surface"
+                  style={{
+                    padding: '7px 12px',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  + 3 ימי תשקיף מראש
+                </button>
+
+                <button
+                  onClick={() => {
+                    onManageObservationDays(selectedTrainee.id, {
+                      addFutureDays: 7,
+                    });
+                    showToast('נוספו 7 ימי תשקיף מראש');
+                  }}
+                  className="btn-surface"
+                  style={{
+                    padding: '7px 12px',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  + 7 ימי תשקיף מראש
+                </button>
+
+                {/* מתג קליק זריז למאמן: האם ימי תשקיף נחשבים בספירה או לא */}
+                <button
+                  onClick={() => {
+                    const nextVal = !selectedTrainee.countObservationInStats;
+                    onManageObservationDays(selectedTrainee.id, {
+                      countObservationInStats: nextVal,
+                    });
+                    showToast(
+                      nextVal
+                        ? 'ימי תשקיף נחשבים כעת בספירת היעדים'
+                        : 'ימי תשקיף מוחרגים מחישוב חריגות היעד'
+                    );
+                  }}
+                  className={
+                    selectedTrainee.countObservationInStats
+                      ? 'btn-volt'
+                      : 'btn-surface'
+                  }
+                  style={{
+                    padding: '7px 14px',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {selectedTrainee.countObservationInStats
+                    ? '✓ ימי תשקיף נחשבים בספירה'
+                    : 'ימי תשקיף לא נחשבים ביעד (לחץ להכללה)'}
+                </button>
+
+                {(selectedTrainee.observationDates || []).length > 0 && (
+                  <button
+                    onClick={() => {
+                      onManageObservationDays(selectedTrainee.id, {
+                        clearAll: true,
+                      });
+                      showToast('כל ימי התשקיף נוקו');
+                    }}
+                    className="btn-surface"
+                    style={{
+                      padding: '7px 10px',
+                      fontSize: 11,
+                      color: '#ef4444',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    נקה ימי תשקיף
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* פירוט תשובות ה-Onboarding וההיקפים של המתאמן */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: 12,
+              }}
+            >
+              <div
+                style={{
+                  background: 'var(--bg-surface-2)',
+                  padding: 12,
+                  borderRadius: 12,
+                  fontSize: 12,
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 800,
+                    color: 'var(--accent-volt)',
+                    marginBottom: 6,
+                  }}
+                >
+                  אימונים, הליכה ואורח חיים
+                </div>
+                <div>
+                  <b>אורח חיים:</b>{' '}
+                  {selectedTrainee.onboarding?.activityLevel || '—'}{' '}
+                  {selectedTrainee.onboarding?.activityLevelNote
+                    ? `(${selectedTrainee.onboarding.activityLevelNote})`
+                    : ''}
+                </div>
+                <div>
+                  <b>אימוני כוח:</b>{' '}
+                  {selectedTrainee.onboarding?.strengthWorkoutsPerWeek || '—'}{' '}
+                  {selectedTrainee.onboarding?.strengthWorkoutsNote
+                    ? `(${selectedTrainee.onboarding.strengthWorkoutsNote})`
+                    : ''}
+                </div>
+                <div>
+                  <b>הליכה בשבוע:</b>{' '}
+                  {selectedTrainee.onboarding?.walkingSessionsPerWeek || '—'}{' '}
+                  {selectedTrainee.onboarding?.walkingSessionsNote
+                    ? `(${selectedTrainee.onboarding.walkingSessionsNote})`
+                    : ''}
+                </div>
+                <div>
+                  <b>שעות שינה:</b>{' '}
+                  {selectedTrainee.onboarding?.sleepHours || '—'}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: 'var(--bg-surface-2)',
+                  padding: 12,
+                  borderRadius: 12,
+                  fontSize: 12,
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 800,
+                    color: '#38bdf8',
+                    marginBottom: 6,
+                  }}
+                >
+                  היקפי גוף אחרונים (ס״מ)
+                </div>
+                {(() => {
+                  const m =
+                    selectedTrainee.measurementsHistory?.[
+                      selectedTrainee.measurementsHistory.length - 1
+                    ];
+                  if (!m) {
+                    return (
+                      <div style={{ color: 'var(--text-muted)' }}>
+                        המתאמן טרם הזין מדידת היקפים
+                      </div>
+                    );
+                  }
+                  return (
+                    <div
+                      className="num-mono"
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: 6,
+                      }}
+                    >
+                      <div>
+                        <b>חזה:</b> {m.chestCm ?? '—'} ס״מ
+                      </div>
+                      <div>
+                        <b>בטן (פופיק):</b> {m.waistNavelCm ?? '—'} ס״מ
+                      </div>
+                      <div>
+                        <b>זרוע:</b> {m.armCm ?? '—'} ס״מ
+                      </div>
+                      <div>
+                        <b>ירך:</b> {m.thighCm ?? '—'} ס״מ
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div
+                style={{
+                  background: 'var(--bg-surface-2)',
+                  padding: 12,
+                  borderRadius: 12,
+                  fontSize: 12,
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 800,
+                    color: '#ffb800',
+                    marginBottom: 6,
+                  }}
+                >
+                  העדפות תזונה ואוכל חשוב
+                </div>
+                <div>
+                  <b>סגנון:</b>{' '}
+                  {(
+                    selectedTrainee.onboarding?.dietaryPreferences || []
+                  ).join(', ') || '—'}{' '}
+                  {selectedTrainee.onboarding?.dietaryPreferencesNote || ''}
+                </div>
+                <div>
+                  <b>לא מוותר על:</b>{' '}
+                  {(
+                    selectedTrainee.onboarding?.favoriteMustHaveFoods || []
+                  ).join(', ') || '—'}{' '}
+                  {selectedTrainee.onboarding?.favoriteMustHaveFoodsNote || ''}
+                </div>
+                <div>
+                  <b>אלרגיות / לא אוכל:</b>{' '}
+                  {(
+                    selectedTrainee.onboarding?.dislikedOrAllergies || []
+                  ).join(', ') || '—'}{' '}
+                  {selectedTrainee.onboarding?.dislikedOrAllergiesNote || ''}
+                </div>
+                {selectedTrainee.onboarding?.scheduleAndNotes && (
+                  <div>
+                    <b>הערות למאמן:</b>{' '}
+                    {selectedTrainee.onboarding.scheduleAndNotes}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* פאנל הנחיות מאמן ל-AI + זיכרון העדפות נלמד של המתאמן + צ'ק-אין שבועי */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gap: 12,
+                marginTop: 14,
+              }}
+            >
+              <div
+                style={{
+                  background: 'var(--bg-surface-2)',
+                  padding: 14,
+                  borderRadius: 14,
+                  border: '1px solid rgba(210, 255, 40, 0.28)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    fontSize: 13,
+                    fontWeight: 800,
+                    color: 'var(--accent-volt)',
+                    marginBottom: 6,
+                  }}
+                >
+                  <Brain size={15} />
+                  <span>
+                    הנחיות מאמן ל-AI וזיכרון העדפות נלמד ({selectedTrainee.name})
+                  </span>
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: 'var(--text-secondary)',
+                    marginBottom: 8,
+                  }}
+                >
+                  כל מה שתכתוב כאן יוזרק אוטומטית לפרומפט כשמנוע ה-AI מציע למתאמן
+                  ארוחות להשלמת היתרה (למשל: &quot;ללא גלוטן, להעדיף חלבון רזה בערב&quot;).
+                </div>
+                <Textarea
+                  size="xs"
+                  minRows={2}
+                  placeholder="למשל: המתאמן רגיש לגלוטן, מעדיף ארוחות בוקר קלות או חזה עוף/טונה בערב..."
+                  value={selectedTrainee.coachAiNotes || ''}
+                  onChange={(e) => {
+                    if (onUpdateAiNotesAndSplit) {
+                      onUpdateAiNotesAndSplit(selectedTrainee.id, {
+                        coachAiNotes: e.currentTarget.value,
+                      });
+                    }
+                  }}
+                />
+
+                {/* הצגת כללי ההעדפות שה-AI למד מתגובות המתאמן */}
+                <div style={{ marginTop: 10 }}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: 'var(--text-secondary)',
+                      marginBottom: 6,
+                    }}
+                  >
+                    כללים שהמערכת למדה מתגובות המתאמן להצעות AI (
+                    {(selectedTrainee.aiLearnedPreferences || []).length}):
+                  </div>
+                  {(selectedTrainee.aiLearnedPreferences || []).length === 0 ? (
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      טרם נלמדו כללים מתגובות המתאמן.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {(selectedTrainee.aiLearnedPreferences || []).map(
+                        (rule, idx) => (
+                          <span
+                            key={idx}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              padding: '4px 10px',
+                              borderRadius: 999,
+                              background: 'rgba(210, 255, 40, 0.1)',
+                              border: '1px solid rgba(210, 255, 40, 0.3)',
+                              fontSize: 11,
+                              color: 'var(--accent-volt)',
+                              fontWeight: 700,
+                            }}
+                          >
+                            <span>{rule}</span>
+                            <button
+                              type="button"
+                              title="הסר כלל זה"
+                              onClick={() => {
+                                if (onUpdateAiNotesAndSplit) {
+                                  const nextRules = (
+                                    selectedTrainee.aiLearnedPreferences || []
+                                  ).filter((_, i) => i !== idx);
+                                  onUpdateAiNotesAndSplit(selectedTrainee.id, {
+                                    aiLearnedPreferences: nextRules,
+                                  });
+                                }
+                              }}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: '#ef4444',
+                                cursor: 'pointer',
+                                fontWeight: 800,
+                                padding: 0,
+                              }}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        )
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* כרטיס צ'ק-אין שבועי אחרון של המתאמן + העתקת דו"ח לוואטסאפ */}
+              <div
+                style={{
+                  background: 'var(--bg-surface-2)',
+                  padding: 14,
+                  borderRadius: 14,
+                  border: '1px solid var(--border-subtle)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: 8,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 800,
+                        color: '#38bdf8',
+                      }}
+                    >
+                      📋 צ׳ק-אין שבועי אחרון ודו״ח סיכום
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const lastChk =
+                          selectedTrainee.weeklyCheckIns?.[
+                            selectedTrainee.weeklyCheckIns.length - 1
+                          ];
+                        const lastM =
+                          selectedTrainee.measurementsHistory?.[
+                            selectedTrainee.measurementsHistory.length - 1
+                          ];
+                        const act = selectedTrainee.activityTargets || {
+                          weeklyWorkoutsTarget: 4,
+                          weeklyCardioTarget: 3,
+                          dailySleepTargetHours: 7.5,
+                        };
+                        const allLogs = Object.values(
+                          selectedTrainee.logs || {}
+                        );
+                        const workoutsDone = allLogs.filter(
+                          (l) => l?.workoutLog?.completed
+                        ).length;
+                        const cardioDone = allLogs.filter(
+                          (l) => l?.cardioLog?.completed
+                        ).length;
+                        const report = [
+                          `📊 *דו"ח מתאמן SPOT - ${selectedTrainee.name}* (${today})`,
+                          `• משקל נוכחי: ${selectedTrainee.currentWeight} ק"ג (יעד: ${selectedTrainee.targetWeight} ק"ג)`,
+                          `• אימונים שתועדו: ${workoutsDone} (יעד שבועי: ${act.weeklyWorkoutsTarget})`,
+                          `• הליכות/ריצות שתועדו: ${cardioDone} (יעד שבועי: ${act.weeklyCardioTarget})`,
+                          lastM
+                            ? `• היקפים: חזה ${lastM.chestCm || '—'} | בטן ${lastM.waistNavelCm || '—'} | זרוע ${lastM.armCm || '—'} | ירך ${lastM.thighCm || '—'} ס"מ`
+                            : '',
+                          lastChk
+                            ? `• צ'ק-אין הרגשה (${lastChk.date}): אנרגיה ${lastChk.energyLevel}/5 | שובע ${lastChk.hungerLevel}/5 | שינה ${lastChk.sleepQuality}/5 ${lastChk.note ? `| "${lastChk.note}"` : ''}`
+                            : '',
+                        ]
+                          .filter(Boolean)
+                          .join('\n');
+                        if (
+                          typeof navigator !== 'undefined' &&
+                          navigator.clipboard
+                        ) {
+                          navigator.clipboard.writeText(report);
+                          showToast('דו״ח הסיכום הועתק ללוח (מוכן לוואטסאפ)');
+                        }
+                      }}
+                      className="btn-surface"
+                      style={{
+                        padding: '5px 10px',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        color: 'var(--accent-volt)',
+                      }}
+                    >
+                      העתק דו״ח לוואטסאפ
+                    </button>
+                  </div>
+
+                  {(() => {
+                    const lastChk =
+                      selectedTrainee.weeklyCheckIns?.[
+                        selectedTrainee.weeklyCheckIns.length - 1
+                      ];
+                    if (!lastChk) {
+                      return (
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: 'var(--text-muted)',
+                            marginTop: 10,
+                          }}
+                        >
+                          המתאמן טרם שלח צ׳ק-אין שבועי מהאפליקציה שלו.
+                        </div>
+                      );
+                    }
+                    return (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 6,
+                        }}
+                      >
+                        <div>
+                          <b>תאריך דיווח:</b> {lastChk.date} ·{' '}
+                          <b>משקל בדיווח:</b> {lastChk.weightKg} ק״ג
+                        </div>
+                        <div style={{ display: 'flex', gap: 12 }}>
+                          <span>
+                            <b>אנרגיה:</b> {lastChk.energyLevel}/5
+                          </span>
+                          <span>
+                            <b>שובע:</b> {lastChk.hungerLevel}/5
+                          </span>
+                          <span>
+                            <b>איכות שינה:</b> {lastChk.sleepQuality}/5
+                          </span>
+                        </div>
+                        {lastChk.note && (
+                          <div
+                            style={{
+                              padding: '6px 10px',
+                              borderRadius: 8,
+                              background: 'rgba(255,255,255,0.04)',
+                              color: 'var(--text-primary)',
+                            }}
+                          >
+                            &ldquo;{lastChk.note}&rdquo;
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+              gap: 20,
+            }}
+          >
+            <div className="pro-card" style={{ padding: 22 }}>
             <div
               style={{
                 display: 'flex',
@@ -1433,6 +2591,38 @@ export function CoachDashboardView({
               />
             </div>
 
+            {/* מתג בשליטת המאמן: האם לפתוח למתאמן פיצול לתפריט יום אימון / יום מנוחה */}
+            <div
+              style={{
+                background: 'var(--bg-surface-2)',
+                padding: '10px 12px',
+                borderRadius: 12,
+                border: '1px solid var(--border-subtle)',
+                marginBottom: 14,
+              }}
+            >
+              <Checkbox
+                label="הפעל למתאמן זה תפריט נפרד ליום אימון וליום מנוחה (אם כבוי – למתאמן יוצג תפריט יומי אחיד ללא מתג אימון/מנוחה)"
+                checked={Boolean(selectedTrainee.enableWorkoutRestSplit)}
+                onChange={(e) => {
+                  const nextSplit = e.currentTarget.checked;
+                  if (onUpdateAiNotesAndSplit) {
+                    onUpdateAiNotesAndSplit(selectedTrainee.id, {
+                      enableWorkoutRestSplit: nextSplit,
+                    });
+                    if (!nextSplit) {
+                      setEditingDayType('workout');
+                    }
+                    showToast(
+                      nextSplit
+                        ? 'נפתח למתאמן פיצול תפריט יום אימון / יום מנוחה'
+                        : 'הוגדר תפריט יומי אחיד למתאמן (ללא פיצול אימון/מנוחה)'
+                    );
+                  }
+                }}
+              />
+            </div>
+
             <div
               style={{
                 display: 'flex',
@@ -1441,17 +2631,31 @@ export function CoachDashboardView({
                 alignItems: 'flex-end',
               }}
             >
-              <Select
-                label="תפריט יום"
-                size="xs"
-                style={{ flex: 1 }}
-                value={editingDayType}
-                onChange={(val) => val && setEditingDayType(val as DayType)}
-                data={[
-                  { value: 'workout', label: 'יום אימון' },
-                  { value: 'rest', label: 'יום מנוחה' },
-                ]}
-              />
+              {Boolean(selectedTrainee.enableWorkoutRestSplit) ? (
+                <Select
+                  label="תפריט יום"
+                  size="xs"
+                  style={{ flex: 1 }}
+                  value={editingDayType}
+                  onChange={(val) => val && setEditingDayType(val as DayType)}
+                  data={[
+                    { value: 'workout', label: 'יום אימון' },
+                    { value: 'rest', label: 'יום מנוחה' },
+                  ]}
+                />
+              ) : (
+                <div
+                  style={{
+                    flex: 1,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: 'var(--text-secondary)',
+                    padding: '6px 0',
+                  }}
+                >
+                  מצב פעיל: תפריט יומי אחיד לכל ימות השבוע
+                </div>
+              )}
               <NumberInput
                 label="טווח גמישות (%)"
                 size="xs"
@@ -1463,7 +2667,9 @@ export function CoachDashboardView({
                 onChange={(val) =>
                   onUpdateTraineePlan(
                     selectedTrainee.id,
-                    editingDayType,
+                    selectedTrainee.enableWorkoutRestSplit
+                      ? editingDayType
+                      : 'workout',
                     activeTraineePlan,
                     Number(val) || 10
                   )
@@ -1561,6 +2767,21 @@ export function CoachDashboardView({
                       min={0}
                       onChange={(val) =>
                         updateTraineeDirectMeal(meal.id, 'fat', val)
+                      }
+                    />
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    <TextInput
+                      size="xs"
+                      label="אופציות ארוחה מומלצות למתאמן (מופרדות ב- | )"
+                      placeholder="למשל: 2 ביצים + חצי קוטג' + 2 פרוסות לחם | יוגורט חלבון + בננה + 10 שקדים"
+                      value={(meal.recommendedOptions || []).join(' | ')}
+                      onChange={(e) =>
+                        updateTraineeDirectMeal(
+                          meal.id,
+                          'recommendedOptions',
+                          e.currentTarget.value
+                        )
                       }
                     />
                   </div>
@@ -1784,6 +3005,7 @@ export function CoachDashboardView({
               })}
             </div>
           </div>
+          </div>
         </div>
       )}
 
@@ -1954,95 +3176,118 @@ export function CoachDashboardView({
               <div
                 key={meal.id}
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr auto',
-                  gap: 10,
-                  alignItems: 'flex-end',
                   background: 'var(--bg-surface-2)',
                   padding: 14,
                   borderRadius: 14,
                   border: '1px solid var(--border-subtle)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
                 }}
               >
-                <TextInput
-                  label={`שם ארוחה #${index + 1}`}
-                  disabled={!canEditCurrentTemplate}
-                  value={meal.name}
-                  onChange={(e) =>
-                    updateTemplateMealField(
-                      meal.id,
-                      'name',
-                      e.currentTarget.value
-                    )
-                  }
-                />
-                <TextInput
-                  label="שעה"
-                  disabled={!canEditCurrentTemplate}
-                  value={meal.timeHint || ''}
-                  onChange={(e) =>
-                    updateTemplateMealField(
-                      meal.id,
-                      'timeHint',
-                      e.currentTarget.value
-                    )
-                  }
-                />
-                <NumberInput
-                  label="קלוריות"
-                  disabled={!canEditCurrentTemplate}
-                  value={meal.targets.calories}
-                  min={0}
-                  step={25}
-                  onChange={(val) =>
-                    updateTemplateMealField(meal.id, 'calories', val)
-                  }
-                />
-                <NumberInput
-                  label="חלבון (g)"
-                  disabled={!canEditCurrentTemplate}
-                  value={meal.targets.protein}
-                  min={0}
-                  onChange={(val) =>
-                    updateTemplateMealField(meal.id, 'protein', val)
-                  }
-                />
-                <NumberInput
-                  label="פחמימות (g)"
-                  disabled={!canEditCurrentTemplate}
-                  value={meal.targets.carbs}
-                  min={0}
-                  onChange={(val) =>
-                    updateTemplateMealField(meal.id, 'carbs', val)
-                  }
-                />
-                <NumberInput
-                  label="שומנים (g)"
-                  disabled={!canEditCurrentTemplate}
-                  value={meal.targets.fat}
-                  min={0}
-                  onChange={(val) =>
-                    updateTemplateMealField(meal.id, 'fat', val)
-                  }
-                />
-                <button
-                  disabled={
-                    !canEditCurrentTemplate ||
-                    editableTemplate.meals.length <= 1
-                  }
-                  onClick={() => removeMealSlotFromTemplate(meal.id)}
-                  className="btn-surface"
+                <div
                   style={{
-                    height: 36,
-                    width: 36,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
+                    display: 'grid',
+                    gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr auto',
+                    gap: 10,
+                    alignItems: 'flex-end',
                   }}
                 >
-                  <Trash2 size={15} color="#ef4444" />
-                </button>
+                  <TextInput
+                    label={`שם ארוחה #${index + 1}`}
+                    disabled={!canEditCurrentTemplate}
+                    value={meal.name}
+                    onChange={(e) =>
+                      updateTemplateMealField(
+                        meal.id,
+                        'name',
+                        e.currentTarget.value
+                      )
+                    }
+                  />
+                  <TextInput
+                    label="שעה"
+                    disabled={!canEditCurrentTemplate}
+                    value={meal.timeHint || ''}
+                    onChange={(e) =>
+                      updateTemplateMealField(
+                        meal.id,
+                        'timeHint',
+                        e.currentTarget.value
+                      )
+                    }
+                  />
+                  <NumberInput
+                    label="קלוריות"
+                    disabled={!canEditCurrentTemplate}
+                    value={meal.targets.calories}
+                    min={0}
+                    step={25}
+                    onChange={(val) =>
+                      updateTemplateMealField(meal.id, 'calories', val)
+                    }
+                  />
+                  <NumberInput
+                    label="חלבון (g)"
+                    disabled={!canEditCurrentTemplate}
+                    value={meal.targets.protein}
+                    min={0}
+                    onChange={(val) =>
+                      updateTemplateMealField(meal.id, 'protein', val)
+                    }
+                  />
+                  <NumberInput
+                    label="פחמימות (g)"
+                    disabled={!canEditCurrentTemplate}
+                    value={meal.targets.carbs}
+                    min={0}
+                    onChange={(val) =>
+                      updateTemplateMealField(meal.id, 'carbs', val)
+                    }
+                  />
+                  <NumberInput
+                    label="שומנים (g)"
+                    disabled={!canEditCurrentTemplate}
+                    value={meal.targets.fat}
+                    min={0}
+                    onChange={(val) =>
+                      updateTemplateMealField(meal.id, 'fat', val)
+                    }
+                  />
+                  <button
+                    disabled={
+                      !canEditCurrentTemplate ||
+                      editableTemplate.meals.length <= 1
+                    }
+                    onClick={() => removeMealSlotFromTemplate(meal.id)}
+                    className="btn-surface"
+                    style={{
+                      height: 36,
+                      width: 36,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Trash2 size={15} color="#ef4444" />
+                  </button>
+                </div>
+
+                <TextInput
+                  size="xs"
+                  disabled={!canEditCurrentTemplate}
+                  label="אופציות ארוחה מומלצות למתאמן (מופרדות ב- | )"
+                  placeholder="למשל: 2 ביצים + חצי קוטג' + 2 פרוסות לחם | יוגורט חלבון + בננה + 10 שקדים"
+                  value={(meal.recommendedOptions || []).join(' | ')}
+                  onChange={(e) =>
+                    updateTemplateMealField(
+                      meal.id,
+                      'recommendedOptions',
+                      e.currentTarget.value
+                    )
+                  }
+                />
               </div>
             ))}
           </div>

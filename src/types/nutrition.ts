@@ -10,6 +10,7 @@ export interface MealTemplateSlot {
   name: string;
   timeHint?: string;
   targets: MacroTargets;
+  recommendedOptions?: string[]; // אופציות ארוחה מומלצות של המאמן לארוחה זו
 }
 
 export type DayType = 'workout' | 'rest';
@@ -21,7 +22,7 @@ export interface NutritionTemplate {
   dayType: DayType;
   tolerancePercent: number;
   meals: MealTemplateSlot[];
-  ownerCoachId?: string; // 'coach-admin' עבור טמפלייט מערכתי ראשי, או מזהה מאמן ספציפי
+  ownerCoachId?: string;
 }
 
 export interface FoodUnit {
@@ -69,17 +70,111 @@ export interface LoggedMealEntry {
   updatedAt: string;
 }
 
+export interface DailyWorkoutLog {
+  completed: boolean;
+  workoutType?: string;
+  durationMinutes?: number;
+  note?: string;
+}
+
+export interface DailyCardioLog {
+  completed: boolean;
+  mode?: 'walk' | 'run';
+  label?: string;
+  durationMinutes?: number;
+}
+
+export interface TraineeActivityTargets {
+  weeklyWorkoutsTarget: number; // מינימום אימונים בשבוע
+  workoutTypes: string[]; // סוגי אימונים שהמאמן הגדיר למתאמן
+  weeklyCardioTarget: number; // מינימום הליכות / ריצות בשבוע
+  cardioMode: 'walk' | 'run' | 'both';
+  cardioTargetMinutes: number; // יעד דקות להליכה/ריצה
+  dailySleepTargetHours: number; // יעד שעות שינה בלילה
+}
+
 export interface DailyLog {
   date: string; // YYYY-MM-DD
   dayType: DayType;
+  isObservationDay?: boolean;
   waterCups: number;
   waterGoal: number;
   weightKg?: number;
+  sleepHours?: number;
+  workoutLog?: DailyWorkoutLog;
+  cardioLog?: DailyCardioLog;
   meals: Record<string, LoggedMealEntry>;
 }
 
 export type UserRole = 'admin' | 'coach' | 'trainee';
 export type AccountStatus = 'active' | 'pending' | 'paused';
+
+export interface BodyMeasurementEntry {
+  date: string;
+  chestCm?: number;
+  waistNavelCm?: number;
+  armCm?: number;
+  thighCm?: number;
+  weightKg?: number;
+}
+
+export interface WeeklyCheckInEntry {
+  id: string;
+  date: string;
+  weightKg: number;
+  energyLevel: number; // 1..5
+  hungerLevel: number; // 1..5
+  sleepQuality: number; // 1..5
+  note?: string;
+}
+
+export interface AiMealSuggestionOption {
+  id: string;
+  title: string;
+  whyItFits: string;
+  items: LoggedFoodItem[];
+  totals: MacroTargets;
+}
+
+export interface TraineeOnboardingData {
+  completed: boolean;
+  measurementsCompleted: boolean;
+  age?: number;
+  gender?: 'male' | 'female';
+  heightCm?: number;
+  activityLevel?: string;
+  activityLevelNote?: string;
+  strengthWorkoutsPerWeek?: string;
+  strengthWorkoutsNote?: string;
+  walkingSessionsPerWeek?: string;
+  walkingSessionsNote?: string;
+  sleepHours?: string;
+  sleepHoursNote?: string;
+  dietaryPreferences: string[];
+  dietaryPreferencesNote?: string;
+  favoriteMustHaveFoods: string[];
+  favoriteMustHaveFoodsNote?: string;
+  dislikedOrAllergies: string[];
+  dislikedOrAllergiesNote?: string;
+  eatingChallenges: string[];
+  scheduleAndNotes?: string;
+  estimatedBmr?: number;
+  estimatedTdee?: number;
+  completedAt?: string;
+}
+
+export interface CoachOnboardingData {
+  completed: boolean;
+  title?: string;
+  specialties: string[];
+  specialtiesNote?: string;
+  welcomeMessage?: string;
+  defaultObservationDays: number;
+  defaultCountObservationInStats: boolean;
+  defaultTolerancePercent: number;
+  defaultWaterGoal: number;
+  completedAt?: string;
+}
 
 export interface CoachProfile {
   id: string;
@@ -90,6 +185,7 @@ export interface CoachProfile {
   phone: string;
   inviteCode: string;
   status: 'active' | 'paused';
+  onboarding?: CoachOnboardingData;
   createdAt?: string;
 }
 
@@ -103,7 +199,7 @@ export interface TraineeGroup {
   id: string;
   name: string;
   color: string;
-  ownerCoachId: string; // 'coach-admin' או מזהה המאמן שיצר את הקבוצה
+  ownerCoachId: string;
 }
 
 export interface TraineeProfile {
@@ -118,13 +214,22 @@ export interface TraineeProfile {
   currentWeight: number;
   targetWeight: number;
   tolerancePercent: number;
-  primaryCoachId: string; // 'coach-admin' או מזהה המאמן הראשי (הבעלים של המתאמן)
-  sharedCoachIds: string[]; // מזהי מאמנים שותפים שקיבלו הרשאת ניהול מקצועי
-  groupId?: string; // שיוך לקבוצת מתאמנים
+  primaryCoachId: string;
+  sharedCoachIds: string[];
+  groupId?: string;
   workoutTemplate: NutritionTemplate;
   restTemplate: NutritionTemplate;
   favoriteFoodIds: string[];
   weightHistory: { date: string; weight: number }[];
+  measurementsHistory?: BodyMeasurementEntry[];
+  onboarding?: TraineeOnboardingData;
+  activityTargets?: TraineeActivityTargets;
+  enableWorkoutRestSplit?: boolean; // ברירת מחדל false - נפתח למתאמן רק אם המאמן הפעיל זאת
+  coachAiNotes?: string; // הערות והנחיות מאמן שמוזרקות לפרומפט ה-AI
+  aiLearnedPreferences?: string[]; // זיכרון העדפות נלמד מתגובות המתאמן להצעות AI
+  weeklyCheckIns?: WeeklyCheckInEntry[];
+  observationDates?: string[]; // תאריכי ימי תשקיף (YYYY-MM-DD)
+  countObservationInStats?: boolean; // בחירת מאמן בקליק אם ימי תשקיף נספרים בחישוב היעדים או לא
   logs: Record<string, DailyLog>;
   createdAt?: string;
 }

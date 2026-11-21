@@ -124,6 +124,9 @@ export async function POST(request: NextRequest) {
       // ניתוב לפי קוד מאמן אישי
       let assignedPrimaryCoachId = 'coach-admin';
       let initialStatus: AccountStatus = 'pending';
+      let defaultObsDays = 0;
+      let defaultCountObs = false;
+      let defaultTolerance = 10;
 
       if (inviteCode) {
         if (inviteCode === dbState.coachInviteCode.toUpperCase()) {
@@ -138,7 +141,27 @@ export async function POST(request: NextRequest) {
           if (matchedCoach) {
             assignedPrimaryCoachId = matchedCoach.id;
             initialStatus = 'active';
+            defaultObsDays =
+              matchedCoach.onboarding?.defaultObservationDays ?? 0;
+            defaultCountObs =
+              matchedCoach.onboarding?.defaultCountObservationInStats ?? false;
+            defaultTolerance =
+              matchedCoach.onboarding?.defaultTolerancePercent ?? 10;
           }
+        }
+      }
+
+      const initialObservationDates: string[] = [];
+      if (defaultObsDays > 0) {
+        const now = new Date();
+        for (let i = 0; i < defaultObsDays; i++) {
+          const d = new Date(now);
+          d.setDate(now.getDate() + i);
+          const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+            2,
+            '0'
+          )}-${String(d.getDate()).padStart(2, '0')}`;
+          initialObservationDates.push(iso);
         }
       }
 
@@ -155,9 +178,11 @@ export async function POST(request: NextRequest) {
         goal,
         currentWeight,
         targetWeight: Math.max(45, currentWeight - 4),
-        tolerancePercent: 10,
+        tolerancePercent: defaultTolerance,
         primaryCoachId: assignedPrimaryCoachId,
         sharedCoachIds: [],
+        observationDates: initialObservationDates,
+        countObservationInStats: defaultCountObs,
         workoutTemplate: JSON.parse(JSON.stringify(defaultTpl)),
         restTemplate: JSON.parse(JSON.stringify(defaultTpl)),
         favoriteFoodIds: [

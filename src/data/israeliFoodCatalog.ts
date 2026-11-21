@@ -492,24 +492,40 @@ export const DEFAULT_TEMPLATES: NutritionTemplate[] = [
         name: 'ארוחת בוקר',
         timeHint: '08:00',
         targets: { calories: 420, protein: 35, carbs: 40, fat: 13 },
+        recommendedOptions: [
+          "2 ביצים + חצי גביע קוטג' 5% + 2 פרוסות לחם כוסמין",
+          'יוגורט דנונה PRO + חצי כוס שיבולת שועל + בננה',
+        ],
       },
       {
         id: 'meal-2',
         name: 'ארוחת צהריים (לפני אימון)',
         timeHint: '13:00',
         targets: { calories: 580, protein: 50, carbs: 65, fat: 13 },
+        recommendedOptions: [
+          '150 גרם חזה עוף + 200 גרם אורז בסמטי + כפית שמן זית בסלט',
+          '160 גרם פילה סלמון + בטטה אפויה בינונית + סלט ירקות',
+        ],
       },
       {
         id: 'meal-3',
         name: 'נשנוש / שייק אחרי אימון',
         timeHint: '17:00',
         targets: { calories: 300, protein: 30, carbs: 35, fat: 4 },
+        recommendedOptions: [
+          'סקופ אבקת חלבון + בננה + תפוח עץ',
+          'משקה חלבון GO + פרי + 10 שקדים',
+        ],
       },
       {
         id: 'meal-4',
         name: 'ארוחת ערב',
         timeHint: '20:30',
         targets: { calories: 550, protein: 45, carbs: 40, fat: 22 },
+        recommendedOptions: [
+          'קופסת טונה במים + 2 פרוסות לחם כוסמין + כף טחינה גולמית + ביצה',
+          "גביע קוטג' 5% + 2 פרוסות גבינה צהובה 9% + 2 פרוסות לחם + חצי אבוקדו",
+        ],
       },
     ],
   },

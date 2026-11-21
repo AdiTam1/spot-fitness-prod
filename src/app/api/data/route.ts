@@ -101,6 +101,7 @@ export async function GET(request: NextRequest) {
         templates: visibleTemplates,
         groups: visibleGroups,
         coaches: [], // מאמן רגיל לעולם לא מקבל את טבלת המאמנים המלאה
+        myCoachProfile: sanitizeCoachForClient(liveCoach),
         coachDirectory: buildCoachDirectory(state), // שמות בלבד לצורך שיתוף
         coachInviteCode: liveCoach.inviteCode,
         role: 'coach',
@@ -188,10 +189,24 @@ export async function POST(request: NextRequest) {
           if (existing.id !== session.id) return existing;
           return {
             ...existing,
+            name: sanitizeText(traineeInput.name, 80) || existing.name,
             currentWeight: safeWeight,
+            targetWeight: sanitizeNumber(
+              traineeInput.targetWeight,
+              30,
+              300,
+              existing.targetWeight
+            ),
             weightHistory: Array.isArray(traineeInput.weightHistory)
               ? traineeInput.weightHistory.slice(-60)
               : existing.weightHistory,
+            measurementsHistory: Array.isArray(traineeInput.measurementsHistory)
+              ? traineeInput.measurementsHistory.slice(-60)
+              : existing.measurementsHistory,
+            weeklyCheckIns: Array.isArray(traineeInput.weeklyCheckIns)
+              ? traineeInput.weeklyCheckIns.slice(-52)
+              : existing.weeklyCheckIns,
+            onboarding: traineeInput.onboarding || existing.onboarding,
             favoriteFoodIds: Array.isArray(traineeInput.favoriteFoodIds)
               ? traineeInput.favoriteFoodIds.slice(0, 50)
               : existing.favoriteFoodIds,
@@ -207,6 +222,249 @@ export async function POST(request: NextRequest) {
     // 2. פעולות מאמן ומנהל ראשי (אכיפת הרשאות פרטנית לכל אובייקט - BOLA/BFLA)
     // =========================================================================
     const state = await getServerDbState();
+
+    // השלמת Onboarding למאמן (פרופיל, ברירות מחדל לימי תשקיף, טמפלייטים וקבוצות התחלתיות)
+    if (action === 'coach-complete-onboarding') {
+      const name = sanitizeText(body.name, 80);
+      const phone = sanitizeText(body.phone, 30);
+      const newPassword =
+        typeof body.newPassword === 'string' ? body.newPassword.trim() : '';
+      const onboarding = body.onboarding;
+      const starterTemplates = Array.isArray(body.starterTemplates)
+        ? (body.starterTemplates as NutritionTemplate[])
+        : [];
+      const starterGroupNames = Array.isArray(body.starterGroupNames)
+        ? (body.starterGroupNames as string[])
+        : [];
+
+      const stampedTemplates: NutritionTemplate[] = starterTemplates.map(
+        (tpl) => ({
+          ...tpl,
+          id: generateSecureId('tpl'),
+          ownerCoachId: session.id,
+        })
+      );
+
+      const palette = ['#d2ff28', '#38bdf8', '#ff5e7e', '#ffb800', '#22c55e'];
+      const newGroups: TraineeGroup[] = starterGroupNames
+        .map((gName) => sanitizeText(gName, 50))
+        .filter(Boolean)
+        .filter(
+          (gName) =>
+            !state.groups.some(
+              (existingG) =>
+                existingG.name === gName &&
+                (existingG.ownerCoachId === session.id ||
+                  existingG.ownerCoachId === 'coach-admin')
+            )
+        )
+        .map((gName, idx) => ({
+          id: generateSecureId('grp'),
+          name: gName,
+          color: palette[idx % palette.length],
+          ownerCoachId: session.id,
+        }));
+
+      await updateServerDbState((prev) => ({
+        ...prev,
+        coaches: prev.coaches.map((c) => {
+          if (c.id !== session.id) return c;
+          return {
+            ...c,
+            name: name || c.name,
+            phone: phone || c.phone,
+            password: newPassword ? hashPassword(newPassword) : c.password,
+            onboarding: onboarding || c.onboarding,
+          };
+        }),
+        templates: [...prev.templates, ...stampedTemplates],
+        groups: [...prev.groups, ...newGroups],
+      }));
+
+      return NextResponse.json({ ok: true });
+    }
+
+    // ניהול פיצול יום אימון/מנוחה (enableWorkoutRestSplit) והערות מאמן/למידת AI למתאמן
+    if (action === 'coach-update-ai-notes-and-split') {
+      const traineeId = String(body.traineeId || '');
+      const target = state.trainees.find((t) => t.id === traineeId);
+      if (!target || !canCoachAccessTrainee(session, target)) {
+        return NextResponse.json(
+          { error: 'אין הרשאה לערוך הגדרות מתאמן זה' },
+          { status: 403 }
+        );
+      }
+
+      const enableWorkoutRestSplit =
+        typeof body.enableWorkoutRestSplit === 'boolean'
+          ? body.enableWorkoutRestSplit
+          : target.enableWorkoutRestSplit;
+
+      const coachAiNotes =
+        typeof body.coachAiNotes === 'string'
+          ? sanitizeText(body.coachAiNotes, 500)
+          : target.coachAiNotes;
+
+      const aiLearnedPreferences = Array.isArray(body.aiLearnedPreferences)
+        ? body.aiLearnedPreferences
+            .map((p: unknown) => sanitizeText(p, 200))
+            .filter(Boolean)
+            .slice(-30)
+        : target.aiLearnedPreferences;
+
+      await updateServerDbState((prev) => ({
+        ...prev,
+        trainees: prev.trainees.map((t) =>
+          t.id === traineeId
+            ? {
+                ...t,
+                enableWorkoutRestSplit,
+                coachAiNotes,
+                aiLearnedPreferences,
+              }
+            : t
+        ),
+      }));
+
+      return NextResponse.json({
+        ok: true,
+        enableWorkoutRestSplit,
+        coachAiNotes,
+        aiLearnedPreferences,
+      });
+    }
+
+    // ניהול יעדי אימונים שבועיים, סוגי אימון, הליכות/ריצות ושעות שינה ע"י המאמן
+    if (action === 'coach-update-activity-targets') {
+      const traineeId = String(body.traineeId || '');
+      const target = state.trainees.find((t) => t.id === traineeId);
+      if (!target || !canCoachAccessTrainee(session, target)) {
+        return NextResponse.json(
+          { error: 'אין הרשאה לערוך יעדי אימונים למתאמן זה' },
+          { status: 403 }
+        );
+      }
+
+      const incoming = body.activityTargets || {};
+      const nextTargets = {
+        weeklyWorkoutsTarget: sanitizeNumber(
+          incoming.weeklyWorkoutsTarget,
+          0,
+          14,
+          4
+        ),
+        workoutTypes: Array.isArray(incoming.workoutTypes)
+          ? incoming.workoutTypes
+              .map((w: unknown) => sanitizeText(w, 40))
+              .filter(Boolean)
+              .slice(0, 15)
+          : ['אימון כוח A', 'אימון כוח B', 'Full Body'],
+        weeklyCardioTarget: sanitizeNumber(
+          incoming.weeklyCardioTarget,
+          0,
+          14,
+          3
+        ),
+        cardioMode: (['walk', 'run', 'both'].includes(incoming.cardioMode)
+          ? incoming.cardioMode
+          : 'both') as 'walk' | 'run' | 'both',
+        cardioTargetMinutes: sanitizeNumber(
+          incoming.cardioTargetMinutes,
+          5,
+          300,
+          35
+        ),
+        dailySleepTargetHours: sanitizeNumber(
+          incoming.dailySleepTargetHours,
+          4,
+          14,
+          7.5
+        ),
+      };
+
+      await updateServerDbState((prev) => ({
+        ...prev,
+        trainees: prev.trainees.map((t) =>
+          t.id === traineeId ? { ...t, activityTargets: nextTargets } : t
+        ),
+      }));
+
+      return NextResponse.json({ ok: true, activityTargets: nextTargets });
+    }
+
+    // ניהול ימי תשקיף (Observation Days) ומתג חישוב ביעדים ע"י המאמן
+    if (action === 'coach-manage-observation-days') {
+      const traineeId = String(body.traineeId || '');
+      const target = state.trainees.find((t) => t.id === traineeId);
+      if (!target || !canCoachAccessTrainee(session, target)) {
+        return NextResponse.json(
+          { error: 'אין הרשאה לערוך ימי תשקיף למתאמן זה' },
+          { status: 403 }
+        );
+      }
+
+      const toggleDate = body.toggleDate
+        ? sanitizeText(body.toggleDate, 20)
+        : undefined;
+      const addFutureDays = Number(body.addFutureDays) || 0;
+      const clearAll = Boolean(body.clearAll);
+      const toggleCountInStats =
+        typeof body.countObservationInStats === 'boolean'
+          ? body.countObservationInStats
+          : undefined;
+
+      let nextDates = [...(target.observationDates || [])];
+
+      if (clearAll) {
+        nextDates = [];
+      } else if (toggleDate) {
+        if (nextDates.includes(toggleDate)) {
+          nextDates = nextDates.filter((d) => d !== toggleDate);
+        } else {
+          nextDates.push(toggleDate);
+        }
+      } else if (addFutureDays > 0 && addFutureDays <= 30) {
+        const now = new Date();
+        for (let i = 0; i < addFutureDays; i++) {
+          const d = new Date(now);
+          d.setDate(now.getDate() + i);
+          const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+            2,
+            '0'
+          )}-${String(d.getDate()).padStart(2, '0')}`;
+          if (!nextDates.includes(iso)) {
+            nextDates.push(iso);
+          }
+        }
+      }
+
+      nextDates.sort();
+
+      await updateServerDbState((prev) => ({
+        ...prev,
+        trainees: prev.trainees.map((t) =>
+          t.id === traineeId
+            ? {
+                ...t,
+                observationDates: nextDates,
+                countObservationInStats:
+                  toggleCountInStats !== undefined
+                    ? toggleCountInStats
+                    : t.countObservationInStats,
+              }
+            : t
+        ),
+      }));
+
+      return NextResponse.json({
+        ok: true,
+        observationDates: nextDates,
+        countObservationInStats:
+          toggleCountInStats !== undefined
+            ? toggleCountInStats
+            : target.countObservationInStats,
+      });
+    }
 
     // א. שמירת ארוחות/מים/משקל ע"י מאמן בתצוגת מתאמן או עדכון תפריט מתאמן
     if (action === 'update-trainee-plan') {
@@ -259,9 +517,16 @@ export async function POST(request: NextRequest) {
           t.id === traineeInput.id
             ? {
                 ...t,
+                name: sanitizeText(traineeInput.name, 80) || t.name,
                 logs: traineeInput.logs,
                 currentWeight: traineeInput.currentWeight,
+                targetWeight:
+                  traineeInput.targetWeight || t.targetWeight,
                 weightHistory: traineeInput.weightHistory,
+                measurementsHistory:
+                  traineeInput.measurementsHistory ||
+                  t.measurementsHistory,
+                onboarding: traineeInput.onboarding || t.onboarding,
                 favoriteFoodIds: traineeInput.favoriteFoodIds,
               }
             : t

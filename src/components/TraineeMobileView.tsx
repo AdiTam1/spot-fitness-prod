@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Modal } from '@mantine/core';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Camera,
@@ -8,26 +9,34 @@ import {
   Sparkles,
   Droplets,
   Scale,
-  Check,
   Dumbbell,
   Moon,
   Copy,
-  ChevronDown,
-  Barcode,
-  TrendingDown,
-  Calendar,
   Activity,
   Utensils,
   MessageSquare,
+  Ruler,
+  Eye,
+  ClipboardCheck,
+  Lightbulb,
+  Share2,
+  Check,
 } from 'lucide-react';
 import {
+  BodyMeasurementEntry,
+  DailyCardioLog,
+  DailyWorkoutLog,
   DayType,
   LoggedFoodItem,
   MealTemplateSlot,
+  TraineeOnboardingData,
   TraineeProfile,
+  WeeklyCheckInEntry,
 } from '@/types/nutrition';
 import { getTodayIso, sumMacros } from '@/data/israeliFoodCatalog';
 import { AddMealDrawer } from './AddMealDrawer';
+import { TraineeOnboardingWizard } from './TraineeOnboardingWizard';
+import { BodyMeasurementGuide } from './BodyMeasurementGuide';
 
 interface TraineeMobileViewProps {
   trainee: TraineeProfile;
@@ -45,6 +54,34 @@ interface TraineeMobileViewProps {
   onUpdateWater: (traineeId: string, date: string, cups: number) => void;
   onUpdateWeight: (traineeId: string, date: string, weightKg: number) => void;
   onToggleFavorite: (traineeId: string, foodId: string) => void;
+  onCompleteOnboarding: (
+    traineeId: string,
+    data: {
+      name: string;
+      currentWeight: number;
+      targetWeight: number;
+      onboarding: TraineeOnboardingData;
+      measurement?: BodyMeasurementEntry;
+    }
+  ) => void;
+  onSaveBodyMeasurement: (
+    traineeId: string,
+    measurement: BodyMeasurementEntry
+  ) => void;
+  onUpdateDailyActivity: (
+    traineeId: string,
+    date: string,
+    payload: {
+      sleepHours?: number;
+      workoutLog?: DailyWorkoutLog;
+      cardioLog?: DailyCardioLog;
+    }
+  ) => void;
+  onSaveWeeklyCheckIn?: (
+    traineeId: string,
+    checkIn: WeeklyCheckInEntry
+  ) => void;
+  onPreferenceLearned?: (traineeId: string, prefs: string[]) => void;
   geminiApiKey?: string;
 }
 
@@ -52,14 +89,15 @@ const HEBREW_DAYS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
 
 function getWeekDays(baseIso: string) {
   const today = new Date(baseIso + 'T12:00:00');
-  const dayOfWeek = today.getDay(); // 0..6
+  const dayOfWeek = today.getDay();
   const result = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() - dayOfWeek + i);
-    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-      d.getDate()
-    ).padStart(2, '0')}`;
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+      2,
+      '0'
+    )}-${String(d.getDate()).padStart(2, '0')}`;
     result.push({
       iso,
       dayLetter: HEBREW_DAYS[i],
@@ -79,11 +117,20 @@ export function TraineeMobileView({
   onUpdateWater,
   onUpdateWeight,
   onToggleFavorite,
+  onCompleteOnboarding,
+  onSaveBodyMeasurement,
+  onUpdateDailyActivity,
+  onSaveWeeklyCheckIn,
+  onPreferenceLearned,
   geminiApiKey,
 }: TraineeMobileViewProps) {
   const todayIso = getTodayIso();
   const [selectedDate, setSelectedDate] = useState<string>(todayIso);
-  const [mobileSection, setMobileSection] = useState<'journal' | 'metrics'>('journal');
+  const [mobileSection, setMobileSection] = useState<'journal' | 'metrics'>(
+    'journal'
+  );
+  const [editingOnboarding, setEditingOnboarding] = useState(false);
+  const [measurementModalOpen, setMeasurementModalOpen] = useState(false);
 
   const [activeMealSlot, setActiveMealSlot] = useState<MealTemplateSlot | null>(
     null
@@ -92,6 +139,37 @@ export function TraineeMobileView({
   const [weightInput, setWeightInput] = useState<string>(
     String(trainee.currentWeight)
   );
+
+  const latestCheckIn =
+    trainee.weeklyCheckIns?.[trainee.weeklyCheckIns.length - 1];
+  const [energyLevel, setEnergyLevel] = useState<number>(
+    latestCheckIn?.energyLevel || 4
+  );
+  const [hungerLevel, setHungerLevel] = useState<number>(
+    latestCheckIn?.hungerLevel || 3
+  );
+  const [sleepQuality, setSleepQuality] = useState<number>(
+    latestCheckIn?.sleepQuality || 4
+  );
+  const [checkInNote, setCheckInNote] = useState<string>('');
+  const [checkInSavedBanner, setCheckInSavedBanner] = useState(false);
+  const [reportCopiedBanner, setReportCopiedBanner] = useState(false);
+
+  // אם המתאמן מתחבר בפעם הראשונה וטרם השלים Onboarding -> מציג את אשף ה-Onboarding
+  if (
+    (!trainee.onboarding?.completed && !isCoachPreview) ||
+    editingOnboarding
+  ) {
+    return (
+      <TraineeOnboardingWizard
+        trainee={trainee}
+        onCompleteOnboarding={(data) => {
+          onCompleteOnboarding(trainee.id, data);
+          setEditingOnboarding(false);
+        }}
+      />
+    );
+  }
 
   const weekDays = getWeekDays(todayIso);
 
@@ -104,10 +182,16 @@ export function TraineeMobileView({
     meals: {},
   };
 
-  const activeTemplate =
-    dailyLog.dayType === 'workout'
-      ? trainee.workoutTemplate
-      : trainee.restTemplate;
+  // בדיקה האם היום הנבחר מוגדר כ"יום תשקיף" (Observation Day)
+  const isObservationDay =
+    (trainee.observationDates || []).includes(selectedDate) ||
+    Boolean(dailyLog.isObservationDay);
+
+  const activeTemplate = !trainee.enableWorkoutRestSplit
+    ? trainee.workoutTemplate
+    : dailyLog.dayType === 'workout'
+    ? trainee.workoutTemplate
+    : trainee.restTemplate;
 
   const dailyTarget = sumMacros(activeTemplate.meals.map((m) => m.targets));
   const allLoggedItems: LoggedFoodItem[] = activeTemplate.meals.flatMap(
@@ -127,14 +211,16 @@ export function TraineeMobileView({
       100
   );
   const isOverLimit =
+    !isObservationDay &&
     dailyConsumed.calories >
-    dailyTarget.calories * (1 + trainee.tolerancePercent / 100);
+      dailyTarget.calories * (1 + trainee.tolerancePercent / 100);
 
-  // קשת SVG מותאמת אישית (240 מעלות)
   const radius = 78;
   const circumference = 2 * Math.PI * radius;
-  const arcLength = circumference * 0.72; // 260 degrees
-  const filledArc = Math.min(arcLength, arcLength * Math.min(1, calRatio));
+  const arcLength = circumference * 0.72;
+  const filledArc = isObservationDay
+    ? arcLength * Math.min(1, dailyConsumed.calories / 2200)
+    : Math.min(arcLength, arcLength * Math.min(1, calRatio));
 
   const openMealDrawer = (slot: MealTemplateSlot, tab = 'catalog') => {
     setActiveMealSlot(slot);
@@ -174,6 +260,9 @@ export function TraineeMobileView({
     onSaveMeal(trainee.id, selectedDate, slot.id, sampleItems);
   };
 
+  const latestMeasurement =
+    trainee.measurementsHistory?.[trainee.measurementsHistory.length - 1];
+
   return (
     <div
       style={{
@@ -182,7 +271,6 @@ export function TraineeMobileView({
         paddingBottom: 96,
       }}
     >
-      {/* חיווי תצוגה מקדימה למאמן בלבד (מוסתר לחלוטין ממתאמנים) */}
       {isCoachPreview && onExitCoachPreview && (
         <div
           style={{
@@ -219,6 +307,41 @@ export function TraineeMobileView({
         </div>
       )}
 
+      {/* תזכורת להשלמת מדידת היקפים אם המתאמן דילג עליה ב-Onboarding */}
+      {!trainee.onboarding?.measurementsCompleted && !latestMeasurement && (
+        <div
+          onClick={() => setMeasurementModalOpen(true)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px 14px',
+            borderRadius: 14,
+            background: 'rgba(56, 189, 248, 0.1)',
+            border: '1px solid rgba(56, 189, 248, 0.35)',
+            marginBottom: 12,
+            cursor: 'pointer',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Ruler size={16} color="#38bdf8" />
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#38bdf8' }}>
+              טרם השלמת מדידת היקפים ראשונית – לחץ להדרכה מונפשת
+            </span>
+          </div>
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 800,
+              color: '#38bdf8',
+              textDecoration: 'underline',
+            }}
+          >
+            השלם כעת
+          </span>
+        </div>
+      )}
+
       {/* כותרת אפליקציית המובייל של המתאמן המחובר + מתג יום אימון/מנוחה */}
       <div
         style={{
@@ -229,7 +352,6 @@ export function TraineeMobileView({
           position: 'relative',
         }}
       >
-        {/* פרופיל מתאמן אישי (ללא רשימת מתאמנים אחרים) */}
         <div
           style={{
             display: 'flex',
@@ -266,66 +388,88 @@ export function TraineeMobileView({
               {trainee.goal}
             </div>
           </div>
+          <button
+            title="עדכון שאלון פרופיל והעדפות"
+            onClick={() => setEditingOnboarding(true)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              padding: 2,
+              display: 'flex',
+            }}
+          >
+            <ClipboardCheck size={14} />
+          </button>
         </div>
 
-        {/* מתג קפסולה: יום אימון / יום מנוחה */}
-        <div
-          style={{
-            display: 'flex',
-            background: 'var(--bg-surface-1)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 999,
-            padding: 3,
-          }}
-        >
-          <button
-            onClick={() => onUpdateDayType(trainee.id, selectedDate, 'workout')}
+        {/* מתג קפסולה: יום אימון / יום מנוחה (מוצג אך ורק אם המאמן הפעיל פיצול תפריט אימון/מנוחה למתאמן זה) */}
+        {Boolean(trainee.enableWorkoutRestSplit) && (
+          <div
             style={{
               display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '6px 12px',
+              background: 'var(--bg-surface-1)',
+              border: '1px solid var(--border-subtle)',
               borderRadius: 999,
-              border: 'none',
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: 'pointer',
-              background:
-                dailyLog.dayType === 'workout' ? 'var(--accent-volt)' : 'transparent',
-              color:
-                dailyLog.dayType === 'workout' ? '#08090c' : 'var(--text-secondary)',
-              transition: 'all 0.18s ease',
+              padding: 3,
             }}
           >
-            <Dumbbell size={13} />
-            <span>אימון</span>
-          </button>
-          <button
-            onClick={() => onUpdateDayType(trainee.id, selectedDate, 'rest')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '6px 12px',
-              borderRadius: 999,
-              border: 'none',
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: 'pointer',
-              background:
-                dailyLog.dayType === 'rest' ? '#ffffff' : 'transparent',
-              color:
-                dailyLog.dayType === 'rest' ? '#08090c' : 'var(--text-secondary)',
-              transition: 'all 0.18s ease',
-            }}
-          >
-            <Moon size={13} />
-            <span>מנוחה</span>
-          </button>
-        </div>
+            <button
+              onClick={() => onUpdateDayType(trainee.id, selectedDate, 'workout')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '6px 12px',
+                borderRadius: 999,
+                border: 'none',
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+                background:
+                  dailyLog.dayType === 'workout'
+                    ? 'var(--accent-volt)'
+                    : 'transparent',
+                color:
+                  dailyLog.dayType === 'workout'
+                    ? '#08090c'
+                    : 'var(--text-secondary)',
+                transition: 'all 0.18s ease',
+              }}
+            >
+              <Dumbbell size={13} />
+              <span>אימון</span>
+            </button>
+            <button
+              onClick={() => onUpdateDayType(trainee.id, selectedDate, 'rest')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '6px 12px',
+                borderRadius: 999,
+                border: 'none',
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+                background:
+                  dailyLog.dayType === 'rest' ? '#ffffff' : 'transparent',
+                color:
+                  dailyLog.dayType === 'rest'
+                    ? '#08090c'
+                    : 'var(--text-secondary)',
+                transition: 'all 0.18s ease',
+              }}
+            >
+              <Moon size={13} />
+              <span>מנוחה</span>
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* סרגל תאריכים שבועי (7-Day Strip) */}
+      {/* סרגל תאריכים שבועי (7-Day Strip) עם חיווי ימי תשקיף */}
       <div
         className="pro-card"
         style={{
@@ -338,6 +482,9 @@ export function TraineeMobileView({
       >
         {weekDays.map((d) => {
           const isSelected = d.iso === selectedDate;
+          const isObs =
+            (trainee.observationDates || []).includes(d.iso) ||
+            Boolean(trainee.logs[d.iso]?.isObservationDay);
           const hasLog =
             trainee.logs[d.iso] &&
             Object.keys(trainee.logs[d.iso].meals || {}).length > 0;
@@ -349,43 +496,70 @@ export function TraineeMobileView({
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                gap: 4,
+                gap: 3,
                 padding: '8px 2px',
                 borderRadius: 14,
                 border: isSelected
-                  ? '1px solid rgba(210, 255, 40, 0.45)'
+                  ? isObs
+                    ? '1px solid rgba(56, 189, 248, 0.55)'
+                    : '1px solid rgba(210, 255, 40, 0.45)'
                   : '1px solid transparent',
                 background: isSelected
-                  ? 'rgba(210, 255, 40, 0.1)'
+                  ? isObs
+                    ? 'rgba(56, 189, 248, 0.14)'
+                    : 'rgba(210, 255, 40, 0.1)'
                   : 'transparent',
-                color: isSelected ? 'var(--accent-volt)' : 'var(--text-secondary)',
+                color: isSelected
+                  ? isObs
+                    ? '#38bdf8'
+                    : 'var(--accent-volt)'
+                  : 'var(--text-secondary)',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
               }}
             >
-              <span style={{ fontSize: 11, fontWeight: 600 }}>{d.dayLetter}</span>
+              <span style={{ fontSize: 11, fontWeight: 600 }}>
+                {d.dayLetter}
+              </span>
               <span
                 className="num-mono"
                 style={{
                   fontSize: 14,
                   fontWeight: 800,
-                  color: isSelected ? 'var(--accent-volt)' : 'var(--text-primary)',
+                  color: isSelected
+                    ? isObs
+                      ? '#38bdf8'
+                      : 'var(--accent-volt)'
+                    : 'var(--text-primary)',
                 }}
               >
                 {d.dayNumber}
               </span>
-              <span
-                style={{
-                  width: 5,
-                  height: 5,
-                  borderRadius: '50%',
-                  background: hasLog
-                    ? 'var(--accent-volt)'
-                    : d.isToday
-                    ? 'rgba(255,255,255,0.25)'
-                    : 'transparent',
-                }}
-              />
+              {isObs ? (
+                <span
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 800,
+                    color: '#38bdf8',
+                    lineHeight: 1,
+                  }}
+                >
+                  תשקיף
+                </span>
+              ) : (
+                <span
+                  style={{
+                    width: 5,
+                    height: 5,
+                    borderRadius: '50%',
+                    background: hasLog
+                      ? 'var(--accent-volt)'
+                      : d.isToday
+                      ? 'rgba(255,255,255,0.25)'
+                      : 'transparent',
+                  }}
+                />
+              )}
             </button>
           );
         })}
@@ -400,7 +574,34 @@ export function TraineeMobileView({
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.2 }}
           >
-            {/* קוקפיט קלוריות ומאקרו יומי (MacroFactor / Whoop Style) */}
+            {/* באנר הסבר אם היום הוא יום תשקיף */}
+            {isObservationDay && (
+              <div
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 14,
+                  background: 'rgba(56, 189, 248, 0.1)',
+                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                  marginBottom: 14,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <Eye size={18} color="#38bdf8" style={{ flexShrink: 0 }} />
+                <div style={{ fontSize: 12 }}>
+                  <div style={{ fontWeight: 800, color: '#38bdf8' }}>
+                    יום תשקיף (ללא מטרת יעד קלורי)
+                  </div>
+                  <div style={{ color: 'var(--text-secondary)' }}>
+                    היום מתעדים בחופשיות כל מה שאוכלים. הקלוריות נספרות עבור
+                    המאמן ללא חישוב חריגה.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* קוקפיט קלוריות ומאקרו יומי */}
             <div
               className="pro-card-elevated"
               style={{
@@ -408,9 +609,11 @@ export function TraineeMobileView({
                 marginBottom: 20,
                 position: 'relative',
                 overflow: 'hidden',
+                borderColor: isObservationDay
+                  ? 'rgba(56, 189, 248, 0.3)'
+                  : undefined,
               }}
             >
-              {/* הילה עדינה ברקע */}
               <div
                 style={{
                   position: 'absolute',
@@ -419,13 +622,13 @@ export function TraineeMobileView({
                   transform: 'translateX(-50%)',
                   width: 240,
                   height: 140,
-                  background:
-                    'radial-gradient(circle, rgba(210, 255, 40, 0.13) 0%, transparent 70%)',
+                  background: isObservationDay
+                    ? 'radial-gradient(circle, rgba(56, 189, 248, 0.16) 0%, transparent 70%)'
+                    : 'radial-gradient(circle, rgba(210, 255, 40, 0.13) 0%, transparent 70%)',
                   pointerEvents: 'none',
                 }}
               />
 
-              {/* שורת מדדים עליונה + שעון הקשת המרכזי */}
               <div
                 style={{
                   display: 'grid',
@@ -444,7 +647,7 @@ export function TraineeMobileView({
                       marginBottom: 2,
                     }}
                   >
-                    נצרך היום
+                    סה״כ הוזן
                   </div>
                   <div
                     className="num-mono"
@@ -453,7 +656,7 @@ export function TraineeMobileView({
                     {dailyConsumed.calories.toLocaleString()}
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                    קק״ל
+                    קק״ל נספרו
                   </div>
                 </div>
 
@@ -474,7 +677,6 @@ export function TraineeMobileView({
                     viewBox="0 0 180 180"
                     style={{ transform: 'rotate(140deg)' }}
                   >
-                    {/* מסילה אחורית */}
                     <circle
                       cx="90"
                       cy="90"
@@ -485,19 +687,27 @@ export function TraineeMobileView({
                       strokeDasharray={`${arcLength} ${circumference}`}
                       strokeLinecap="round"
                     />
-                    {/* קשת מילוי */}
                     <circle
                       cx="90"
                       cy="90"
                       r={radius}
                       fill="none"
-                      stroke={isOverLimit ? '#f59e0b' : '#d2ff28'}
+                      stroke={
+                        isObservationDay
+                          ? '#38bdf8'
+                          : isOverLimit
+                          ? '#f59e0b'
+                          : '#d2ff28'
+                      }
                       strokeWidth="12"
                       strokeDasharray={`${filledArc} ${circumference}`}
                       strokeLinecap="round"
                       style={{
-                        transition: 'stroke-dasharray 0.6s cubic-bezier(0.22, 1, 0.36, 1)',
-                        filter: isOverLimit
+                        transition:
+                          'stroke-dasharray 0.6s cubic-bezier(0.22, 1, 0.36, 1)',
+                        filter: isObservationDay
+                          ? 'drop-shadow(0 0 10px rgba(56, 189, 248, 0.35))'
+                          : isOverLimit
                           ? 'drop-shadow(0 0 8px rgba(245, 158, 11, 0.35))'
                           : 'drop-shadow(0 0 10px rgba(210, 255, 40, 0.35))',
                       }}
@@ -513,36 +723,78 @@ export function TraineeMobileView({
                       textAlign: 'center',
                     }}
                   >
-                    <div
-                      className="num-mono"
-                      style={{
-                        fontSize: 34,
-                        fontWeight: 800,
-                        lineHeight: 1,
-                        color: isOverLimit ? '#f59e0b' : '#ffffff',
-                      }}
-                    >
-                      {Math.abs(remainingCalories).toLocaleString()}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: isOverLimit ? '#f59e0b' : 'var(--accent-volt)',
-                        marginTop: 4,
-                      }}
-                    >
-                      {remainingCalories >= 0 ? 'קק״ל נותרו' : 'קק״ל מעל היעד'}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 10,
-                        color: 'var(--text-muted)',
-                        marginTop: 2,
-                      }}
-                    >
-                      סטייה: {calDiffPct}% (מותר ±{trainee.tolerancePercent}%)
-                    </div>
+                    {isObservationDay ? (
+                      <>
+                        <div
+                          className="num-mono"
+                          style={{
+                            fontSize: 32,
+                            fontWeight: 800,
+                            lineHeight: 1,
+                            color: '#ffffff',
+                          }}
+                        >
+                          {dailyConsumed.calories.toLocaleString()}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: '#38bdf8',
+                            marginTop: 4,
+                          }}
+                        >
+                          קק״ל ביום תשקיף
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: 'var(--text-muted)',
+                            marginTop: 2,
+                          }}
+                        >
+                          ללא הגבלת יעד יומי
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div
+                          className="num-mono"
+                          style={{
+                            fontSize: 34,
+                            fontWeight: 800,
+                            lineHeight: 1,
+                            color: isOverLimit ? '#f59e0b' : '#ffffff',
+                          }}
+                        >
+                          {Math.abs(remainingCalories).toLocaleString()}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: isOverLimit
+                              ? '#f59e0b'
+                              : 'var(--accent-volt)',
+                            marginTop: 4,
+                          }}
+                        >
+                          {remainingCalories >= 0
+                            ? 'קק״ל נותרו'
+                            : 'קק״ל מעל היעד'}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: 'var(--text-muted)',
+                            marginTop: 2,
+                          }}
+                        >
+                          סטייה: {calDiffPct}% (מותר ±
+                          {trainee.tolerancePercent}%)
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -556,17 +808,21 @@ export function TraineeMobileView({
                       marginBottom: 2,
                     }}
                   >
-                    יעד יומי
+                    {isObservationDay ? 'מצב יום' : 'יעד יומי'}
                   </div>
                   <div
                     className="num-mono"
                     style={{
-                      fontSize: 22,
+                      fontSize: isObservationDay ? 16 : 22,
                       fontWeight: 800,
-                      color: 'var(--text-primary)',
+                      color: isObservationDay
+                        ? '#38bdf8'
+                        : 'var(--text-primary)',
                     }}
                   >
-                    {dailyTarget.calories.toLocaleString()}
+                    {isObservationDay
+                      ? 'תשקיף'
+                      : dailyTarget.calories.toLocaleString()}
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
                     {activeTemplate.meals.length} ארוחות
@@ -574,7 +830,7 @@ export function TraineeMobileView({
                 </div>
               </div>
 
-              {/* שלוש עמודות הטלמטריה של אבות המזון (חלבון, פחמימה, שומן) */}
+              {/* שלוש עמודות אבות המזון */}
               <div
                 style={{
                   display: 'grid',
@@ -591,27 +847,26 @@ export function TraineeMobileView({
                     consumed: dailyConsumed.protein,
                     target: dailyTarget.protein,
                     color: 'var(--macro-protein)',
-                    bg: 'var(--macro-protein-soft)',
                   },
                   {
                     label: 'פחמימות',
                     consumed: dailyConsumed.carbs,
                     target: dailyTarget.carbs,
                     color: 'var(--macro-carbs)',
-                    bg: 'var(--macro-carbs-soft)',
                   },
                   {
                     label: 'שומנים',
                     consumed: dailyConsumed.fat,
                     target: dailyTarget.fat,
                     color: 'var(--macro-fat)',
-                    bg: 'var(--macro-fat-soft)',
                   },
                 ].map((m) => {
-                  const pct = Math.min(
-                    100,
-                    Math.round((m.consumed / Math.max(1, m.target)) * 100)
-                  );
+                  const pct = isObservationDay
+                    ? Math.min(100, Math.round((m.consumed / 150) * 100))
+                    : Math.min(
+                        100,
+                        Math.round((m.consumed / Math.max(1, m.target)) * 100)
+                      );
                   const left = Math.max(0, Math.round(m.target - m.consumed));
                   return (
                     <div
@@ -647,7 +902,7 @@ export function TraineeMobileView({
                             fontWeight: 600,
                           }}
                         >
-                          נותר {left}g
+                          {isObservationDay ? 'נספר' : `נותר ${left}g`}
                         </span>
                       </div>
 
@@ -659,20 +914,21 @@ export function TraineeMobileView({
                           marginBottom: 7,
                         }}
                       >
-                        {m.consumed}
-                        <span
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 500,
-                            color: 'var(--text-secondary)',
-                          }}
-                        >
-                          {' '}
-                          / {m.target}g
-                        </span>
+                        {m.consumed}g
+                        {!isObservationDay && (
+                          <span
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 500,
+                              color: 'var(--text-secondary)',
+                            }}
+                          >
+                            {' '}
+                            / {m.target}g
+                          </span>
+                        )}
                       </div>
 
-                      {/* פס התקדמות דק ומדויק */}
                       <div
                         style={{
                           height: 5,
@@ -699,6 +955,373 @@ export function TraineeMobileView({
             </div>
 
             {/* כותרת ציר זמן הארוחות */}
+            {(() => {
+              const actTargets = trainee.activityTargets || {
+                weeklyWorkoutsTarget: 4,
+                workoutTypes: ['אימון כוח A', 'אימון כוח B', 'Full Body'],
+                weeklyCardioTarget: 3,
+                cardioMode: 'both' as const,
+                cardioTargetMinutes: 35,
+                dailySleepTargetHours: 7.5,
+              };
+
+              // חישוב ביצוע שבועי מתוך 7 הימים בשבוע הנוכחי
+              const workoutsThisWeek = weekDays.filter(
+                (wd) => trainee.logs[wd.iso]?.workoutLog?.completed
+              ).length;
+              const cardioThisWeek = weekDays.filter(
+                (wd) => trainee.logs[wd.iso]?.cardioLog?.completed
+              ).length;
+              const todayWorkout = dailyLog.workoutLog;
+              const todayCardio = dailyLog.cardioLog;
+              const todaySleep = dailyLog.sleepHours;
+
+              return (
+                <div
+                  className="pro-card"
+                  style={{
+                    padding: 16,
+                    marginBottom: 18,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span style={{ fontSize: 14, fontWeight: 800 }}>
+                      אימונים, הליכה/ריצה ושעות שינה ({selectedDate})
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
+                      הזנה יומית מול יעדי המאמן
+                    </span>
+                  </div>
+
+                  {/* 1. אימון יומי + סוג אימון */}
+                  <div
+                    style={{
+                      background: 'var(--bg-surface-2)',
+                      padding: '10px 12px',
+                      borderRadius: 12,
+                      border: todayWorkout?.completed
+                        ? '1px solid rgba(210, 255, 40, 0.35)'
+                        : '1px solid var(--border-subtle)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontSize: 12,
+                          fontWeight: 800,
+                        }}
+                      >
+                        <Dumbbell size={14} color="var(--accent-volt)" />
+                        <span>אימון היום (בחר סוג אימון שביצעת):</span>
+                      </div>
+                      <span
+                        className="num-mono"
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 800,
+                          color:
+                            workoutsThisWeek >= actTargets.weeklyWorkoutsTarget
+                              ? 'var(--accent-volt)'
+                              : 'var(--text-secondary)',
+                        }}
+                      >
+                        השבוע: {workoutsThisWeek} /{' '}
+                        {actTargets.weeklyWorkoutsTarget} אימונים
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {(actTargets.workoutTypes.length > 0
+                        ? actTargets.workoutTypes
+                        : ['אימון כוח A', 'אימון כוח B', 'Full Body']
+                      ).map((wType) => {
+                        const isSelected =
+                          todayWorkout?.completed &&
+                          todayWorkout.workoutType === wType;
+                        return (
+                          <button
+                            key={wType}
+                            type="button"
+                            onClick={() => {
+                              const nextCompleted = !isSelected;
+                              onUpdateDailyActivity(trainee.id, selectedDate, {
+                                workoutLog: isSelected
+                                  ? { completed: false }
+                                  : {
+                                      completed: true,
+                                      workoutType: wType,
+                                      durationMinutes: 50,
+                                    },
+                              });
+                              if (
+                                nextCompleted &&
+                                Boolean(trainee.enableWorkoutRestSplit)
+                              ) {
+                                onUpdateDayType(
+                                  trainee.id,
+                                  selectedDate,
+                                  'workout'
+                                );
+                              }
+                            }}
+                            style={{
+                              padding: '5px 10px',
+                              borderRadius: 999,
+                              border: isSelected
+                                ? '1px solid var(--accent-volt)'
+                                : '1px solid var(--border-subtle)',
+                              background: isSelected
+                                ? 'rgba(210, 255, 40, 0.16)'
+                                : 'var(--bg-surface-1)',
+                              color: isSelected
+                                ? 'var(--accent-volt)'
+                                : 'var(--text-secondary)',
+                              fontSize: 11,
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {isSelected ? `✓ ${wType}` : wType}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 2. הליכה / ריצה יומית */}
+                  <div
+                    style={{
+                      background: 'var(--bg-surface-2)',
+                      padding: '10px 12px',
+                      borderRadius: 12,
+                      border: todayCardio?.completed
+                        ? '1px solid rgba(56, 189, 248, 0.4)'
+                        : '1px solid var(--border-subtle)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontSize: 12,
+                          fontWeight: 800,
+                        }}
+                      >
+                        <Activity size={14} color="#38bdf8" />
+                        <span>
+                          הליכה / ריצה היום (יעד: {actTargets.cardioTargetMinutes}{' '}
+                          דק׳):
+                        </span>
+                      </div>
+                      <span
+                        className="num-mono"
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 800,
+                          color:
+                            cardioThisWeek >= actTargets.weeklyCardioTarget
+                              ? '#38bdf8'
+                              : 'var(--text-secondary)',
+                        }}
+                      >
+                        השבוע: {cardioThisWeek} / {actTargets.weeklyCardioTarget}{' '}
+                        פעמים
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {[
+                        {
+                          label: `הליכה (${actTargets.cardioTargetMinutes} דק׳)`,
+                          mode: 'walk' as const,
+                          mins: actTargets.cardioTargetMinutes,
+                        },
+                        {
+                          label: 'הליכה מהירה (45 דק׳)',
+                          mode: 'walk' as const,
+                          mins: 45,
+                        },
+                        {
+                          label: 'ריצה (25 דק׳)',
+                          mode: 'run' as const,
+                          mins: 25,
+                        },
+                        {
+                          label: 'ריצה (40 דק׳)',
+                          mode: 'run' as const,
+                          mins: 40,
+                        },
+                      ].map((cOpt) => {
+                        const isSelected =
+                          todayCardio?.completed &&
+                          todayCardio.label === cOpt.label;
+                        return (
+                          <button
+                            key={cOpt.label}
+                            type="button"
+                            onClick={() =>
+                              onUpdateDailyActivity(trainee.id, selectedDate, {
+                                cardioLog: isSelected
+                                  ? { completed: false }
+                                  : {
+                                      completed: true,
+                                      mode: cOpt.mode,
+                                      label: cOpt.label,
+                                      durationMinutes: cOpt.mins,
+                                    },
+                              })
+                            }
+                            style={{
+                              padding: '5px 10px',
+                              borderRadius: 999,
+                              border: isSelected
+                                ? '1px solid #38bdf8'
+                                : '1px solid var(--border-subtle)',
+                              background: isSelected
+                                ? 'rgba(56, 189, 248, 0.16)'
+                                : 'var(--bg-surface-1)',
+                              color: isSelected
+                                ? '#38bdf8'
+                                : 'var(--text-secondary)',
+                              fontSize: 11,
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {isSelected ? `✓ ${cOpt.label}` : cOpt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 3. שעות שינה הלילה */}
+                  <div
+                    style={{
+                      background: 'var(--bg-surface-2)',
+                      padding: '10px 12px',
+                      borderRadius: 12,
+                      border: todaySleep
+                        ? '1px solid rgba(168, 85, 247, 0.4)'
+                        : '1px solid var(--border-subtle)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontSize: 12,
+                          fontWeight: 800,
+                        }}
+                      >
+                        <Moon size={14} color="#a855f7" />
+                        <span>כמה שעות ישנת הלילה?</span>
+                      </div>
+                      <span
+                        className="num-mono"
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 800,
+                          color:
+                            (todaySleep || 0) >=
+                            actTargets.dailySleepTargetHours
+                              ? '#a855f7'
+                              : 'var(--text-secondary)',
+                        }}
+                      >
+                        {todaySleep ?? 0} / {actTargets.dailySleepTargetHours}{' '}
+                        שעות (יעד)
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(7, 1fr)',
+                        gap: 5,
+                      }}
+                    >
+                      {[5, 6, 6.5, 7, 7.5, 8, 8.5].map((hrs) => {
+                        const isSelected = todaySleep === hrs;
+                        return (
+                          <button
+                            key={hrs}
+                            type="button"
+                            onClick={() =>
+                              onUpdateDailyActivity(trainee.id, selectedDate, {
+                                sleepHours: hrs,
+                              })
+                            }
+                            className="num-mono"
+                            style={{
+                              padding: '6px 2px',
+                              borderRadius: 8,
+                              border: isSelected
+                                ? '1px solid #a855f7'
+                                : '1px solid var(--border-subtle)',
+                              background: isSelected
+                                ? 'rgba(168, 85, 247, 0.18)'
+                                : 'var(--bg-surface-1)',
+                              color: isSelected
+                                ? '#c084fc'
+                                : 'var(--text-secondary)',
+                              fontSize: 11,
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {hrs}h
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             <div
               style={{
                 display: 'flex',
@@ -719,10 +1342,14 @@ export function TraineeMobileView({
                     padding: '2px 8px',
                     borderRadius: 999,
                     background: 'var(--bg-surface-2)',
-                    color: 'var(--text-secondary)',
+                    color: isObservationDay
+                      ? '#38bdf8'
+                      : 'var(--text-secondary)',
                   }}
                 >
-                  {activeTemplate.name}
+                  {isObservationDay
+                    ? 'יום תשקיף (תיעוד חופשי)'
+                    : activeTemplate.name}
                 </span>
               </div>
             </div>
@@ -750,11 +1377,12 @@ export function TraineeMobileView({
                     style={{
                       padding: 16,
                       borderColor: hasItems
-                        ? 'rgba(210, 255, 40, 0.22)'
+                        ? isObservationDay
+                          ? 'rgba(56, 189, 248, 0.3)'
+                          : 'rgba(210, 255, 40, 0.22)'
                         : 'var(--border-subtle)',
                     }}
                   >
-                    {/* שורת כותרת הארוחה */}
                     <div
                       style={{
                         display: 'flex',
@@ -766,7 +1394,6 @@ export function TraineeMobileView({
                       <div
                         style={{ display: 'flex', alignItems: 'center', gap: 12 }}
                       >
-                        {/* מיני טבעת התקדמות לארוחה */}
                         <div
                           style={{
                             position: 'relative',
@@ -796,7 +1423,13 @@ export function TraineeMobileView({
                               cy="19"
                               r="15"
                               fill="none"
-                              stroke={hasItems ? 'var(--accent-volt)' : 'transparent'}
+                              stroke={
+                                hasItems
+                                  ? isObservationDay
+                                    ? '#38bdf8'
+                                    : 'var(--accent-volt)'
+                                  : 'transparent'
+                              }
                               strokeWidth="3.2"
                               strokeDasharray={`${(mealPct / 100) * 94.2} 94.2`}
                               strokeLinecap="round"
@@ -809,7 +1442,9 @@ export function TraineeMobileView({
                               fontSize: 11,
                               fontWeight: 800,
                               color: hasItems
-                                ? 'var(--accent-volt)'
+                                ? isObservationDay
+                                  ? '#38bdf8'
+                                  : 'var(--accent-volt)'
                                 : 'var(--text-muted)',
                             }}
                           >
@@ -850,19 +1485,21 @@ export function TraineeMobileView({
                             }}
                           >
                             <span style={{ color: 'var(--macro-protein)' }}>
-                              ח׳ {mealMacros.protein}/{slot.targets.protein}g
+                              ח׳ {mealMacros.protein}
+                              {!isObservationDay && `/${slot.targets.protein}`}g
                             </span>
                             <span style={{ color: 'var(--macro-carbs)' }}>
-                              פ׳ {mealMacros.carbs}/{slot.targets.carbs}g
+                              פ׳ {mealMacros.carbs}
+                              {!isObservationDay && `/${slot.targets.carbs}`}g
                             </span>
                             <span style={{ color: 'var(--macro-fat)' }}>
-                              ש׳ {mealMacros.fat}/{slot.targets.fat}g
+                              ש׳ {mealMacros.fat}
+                              {!isObservationDay && `/${slot.targets.fat}`}g
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      {/* קפסולת קלוריות הארוחה */}
                       <div style={{ textAlign: 'left' }}>
                         <div
                           className="num-mono"
@@ -875,16 +1512,18 @@ export function TraineeMobileView({
                           }}
                         >
                           {mealMacros.calories}
-                          <span
-                            style={{
-                              fontSize: 12,
-                              fontWeight: 500,
-                              color: 'var(--text-secondary)',
-                            }}
-                          >
-                            {' '}
-                            / {slot.targets.calories}
-                          </span>
+                          {!isObservationDay && (
+                            <span
+                              style={{
+                                fontSize: 12,
+                                fontWeight: 500,
+                                color: 'var(--text-secondary)',
+                              }}
+                            >
+                              {' '}
+                              / {slot.targets.calories}
+                            </span>
+                          )}
                         </div>
                         <div
                           style={{
@@ -897,7 +1536,6 @@ export function TraineeMobileView({
                       </div>
                     </div>
 
-                    {/* רשימת המאכלים שהוזנו לארוחה */}
                     {hasItems && (
                       <div
                         style={{
@@ -1018,7 +1656,6 @@ export function TraineeMobileView({
                       </div>
                     )}
 
-                    {/* הערת מאמן במידה וקיימת */}
                     {entry?.coachFeedback && (
                       <div
                         style={{
@@ -1056,7 +1693,6 @@ export function TraineeMobileView({
                       </div>
                     )}
 
-                    {/* שורת כפתורי הזנה נקייה ומודרנית */}
                     <div
                       style={{
                         display: 'flex',
@@ -1080,6 +1716,26 @@ export function TraineeMobileView({
                       >
                         <Plus size={15} />
                         <span>{hasItems ? 'הוסף / ערוך פריטים' : 'הזן ארוחה'}</span>
+                      </button>
+
+                      <button
+                        title="💡 מה לאכול? (המלצת AI חכמה + אופציות המאמן)"
+                        onClick={() => openMealDrawer(slot, 'ai-recommend')}
+                        className="btn-surface"
+                        style={{
+                          padding: '9px 11px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          color: 'var(--accent-volt)',
+                          borderColor: 'rgba(210, 255, 40, 0.35)',
+                        }}
+                      >
+                        <Lightbulb size={14} color="var(--accent-volt)" />
+                        <span>מה לאכול?</span>
                       </button>
 
                       <button
@@ -1135,7 +1791,7 @@ export function TraineeMobileView({
             </div>
           </motion.div>
         ) : (
-          /* טאב מדדים, מים ומשקל גוף */
+          /* טאב מדדים, מים, משקל גוף והיקפים */
           <motion.div
             key="metrics"
             initial={{ opacity: 0, y: 8 }}
@@ -1144,6 +1800,110 @@ export function TraineeMobileView({
             transition={{ duration: 0.2 }}
             style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
           >
+            {/* כרטיס היקפי גוף ומדריך מדידה מונפש */}
+            <div className="pro-card" style={{ padding: 18 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 14,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 10,
+                      background: 'rgba(210, 255, 40, 0.12)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ruler size={18} color="var(--accent-volt)" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 800 }}>
+                      מדידת היקפי גוף (חזה, בטן, זרוע, ירך)
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                      כולל מדריך מדידה מונפש שלב-אחר-שלב
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setMeasurementModalOpen(true)}
+                  className="btn-volt"
+                  style={{
+                    padding: '7px 14px',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {latestMeasurement ? 'עדכן היקפים' : 'הזן היקפים'}
+                </button>
+              </div>
+
+              {latestMeasurement ? (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gap: 8,
+                  }}
+                >
+                  {[
+                    { label: 'חזה', val: latestMeasurement.chestCm },
+                    { label: 'בטן (פופיק)', val: latestMeasurement.waistNavelCm },
+                    { label: 'זרוע', val: latestMeasurement.armCm },
+                    { label: 'ירך', val: latestMeasurement.thighCm },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      style={{
+                        background: 'var(--bg-surface-2)',
+                        padding: '10px 6px',
+                        borderRadius: 12,
+                        textAlign: 'center',
+                        border: '1px solid var(--border-subtle)',
+                      }}
+                    >
+                      <div
+                        className="num-mono"
+                        style={{
+                          fontSize: 16,
+                          fontWeight: 800,
+                          color: 'var(--accent-volt)',
+                        }}
+                      >
+                        {item.val ? `${item.val}` : '—'}
+                      </div>
+                      <div
+                        style={{ fontSize: 11, color: 'var(--text-secondary)' }}
+                      >
+                        {item.label} (ס״מ)
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--text-muted)',
+                    textAlign: 'center',
+                    padding: 10,
+                  }}
+                >
+                  טרם הוזנו היקפים. לחץ על &ldquo;הזן היקפים&rdquo; לפתיחת
+                  המדריך המונפש.
+                </div>
+              )}
+            </div>
+
             {/* כרטיס הידרציה / שתיית מים */}
             <div className="pro-card" style={{ padding: 18 }}>
               <div
@@ -1185,7 +1945,6 @@ export function TraineeMobileView({
                 </div>
               </div>
 
-              {/* מטריצת כוסות מים ללחיצה */}
               <div
                 style={{
                   display: 'grid',
@@ -1199,7 +1958,9 @@ export function TraineeMobileView({
                   return (
                     <button
                       key={i}
-                      onClick={() => onUpdateWater(trainee.id, selectedDate, i + 1)}
+                      onClick={() =>
+                        onUpdateWater(trainee.id, selectedDate, i + 1)
+                      }
                       style={{
                         height: 38,
                         borderRadius: 10,
@@ -1267,13 +2028,12 @@ export function TraineeMobileView({
                 </div>
               </div>
 
-              {/* היסטוריית שקילות ויזואלית */}
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: `repeat(${Math.min(
-                    5,
-                    trainee.weightHistory.length
+                  gridTemplateColumns: `repeat(${Math.max(
+                    1,
+                    Math.min(5, trainee.weightHistory.length)
                   )}, 1fr)`,
                   gap: 8,
                   marginBottom: 14,
@@ -1334,11 +2094,246 @@ export function TraineeMobileView({
                 </button>
               </div>
             </div>
+
+            {/* כרטיס צ'ק-אין שבועי וייצוא דו"ח סיכום לוואטסאפ */}
+            <div className="pro-card" style={{ padding: 18 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 12,
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 800 }}>
+                    📋 צ׳ק-אין שבועי ודו״ח סיכום למאמן
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                    עדכן מדדי הרגשה שבועיים או העתק דו״ח התקדמות מלא
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const actTargets = trainee.activityTargets || {
+                      weeklyWorkoutsTarget: 4,
+                      weeklyCardioTarget: 3,
+                      dailySleepTargetHours: 7.5,
+                    };
+                    const workoutsDone = weekDays.filter(
+                      (wd) => trainee.logs[wd.iso]?.workoutLog?.completed
+                    ).length;
+                    const cardioDone = weekDays.filter(
+                      (wd) => trainee.logs[wd.iso]?.cardioLog?.completed
+                    ).length;
+                    const sleepDays = weekDays
+                      .map((wd) => trainee.logs[wd.iso]?.sleepHours)
+                      .filter((s): s is number => typeof s === 'number' && s > 0);
+                    const avgSleep =
+                      sleepDays.length > 0
+                        ? (
+                            sleepDays.reduce((a, b) => a + b, 0) /
+                            sleepDays.length
+                          ).toFixed(1)
+                        : '—';
+
+                    const reportLines = [
+                      `📊 *דו"ח סיכום שבועי SPOT - ${trainee.name}* (${todayIso})`,
+                      `• משקל נוכחי: ${trainee.currentWeight} ק"ג (יעד: ${trainee.targetWeight} ק"ג)`,
+                      `• אימונים השבוע: ${workoutsDone}/${actTargets.weeklyWorkoutsTarget}`,
+                      `• הליכות/ריצות השבוע: ${cardioDone}/${actTargets.weeklyCardioTarget}`,
+                      `• ממוצע שעות שינה: ${avgSleep} שעות (יעד: ${actTargets.dailySleepTargetHours})`,
+                      latestMeasurement
+                        ? `• היקפים אחרונים: חזה ${latestMeasurement.chestCm || '—'} | בטן ${latestMeasurement.waistNavelCm || '—'} | זרוע ${latestMeasurement.armCm || '—'} | ירך ${latestMeasurement.thighCm || '—'} ס"מ`
+                        : '',
+                      `• הרגשה שבועית (1-5): אנרגיה ${energyLevel}/5 | שובע ${hungerLevel}/5 | איכות שינה ${sleepQuality}/5`,
+                      checkInNote ? `• הערת מתאמן: ${checkInNote}` : '',
+                    ]
+                      .filter(Boolean)
+                      .join('\n');
+
+                    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                      navigator.clipboard.writeText(reportLines);
+                      setReportCopiedBanner(true);
+                      setTimeout(() => setReportCopiedBanner(false), 3500);
+                    }
+                  }}
+                  className="btn-surface"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '7px 12px',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    color: 'var(--accent-volt)',
+                    borderColor: 'rgba(210, 255, 40, 0.35)',
+                  }}
+                >
+                  <Share2 size={13} />
+                  <span>העתק דו״ח לוואטסאפ</span>
+                </button>
+              </div>
+
+              {reportCopiedBanner && (
+                <div
+                  style={{
+                    marginBottom: 12,
+                    padding: '8px 12px',
+                    borderRadius: 10,
+                    background: 'rgba(210, 255, 40, 0.12)',
+                    border: '1px solid rgba(210, 255, 40, 0.35)',
+                    color: 'var(--accent-volt)',
+                    fontSize: 11,
+                    fontWeight: 700,
+                  }}
+                >
+                  ✓ הדו״ח השבועי הועתק ללוח! ניתן להדביק ישירות בוואטסאפ למאמן.
+                </div>
+              )}
+
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                }}
+              >
+                {[
+                  {
+                    label: 'רמת אנרגיה באימונים וביום-יום (1-5)',
+                    val: energyLevel,
+                    setVal: setEnergyLevel,
+                  },
+                  {
+                    label: 'תחושת שובע ונוחות עם התפריט (1-5)',
+                    val: hungerLevel,
+                    setVal: setHungerLevel,
+                  },
+                  {
+                    label: 'איכות השינה וההתאוששות השבוע (1-5)',
+                    val: sleepQuality,
+                    setVal: setSleepQuality,
+                  },
+                ].map((row) => (
+                  <div
+                    key={row.label}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 8,
+                      background: 'var(--bg-surface-2)',
+                      padding: '8px 12px',
+                      borderRadius: 10,
+                    }}
+                  >
+                    <span style={{ fontSize: 12, fontWeight: 700 }}>
+                      {row.label}
+                    </span>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {[1, 2, 3, 4, 5].map((num) => (
+                        <button
+                          key={num}
+                          type="button"
+                          onClick={() => row.setVal(num)}
+                          className="num-mono"
+                          style={{
+                            width: 26,
+                            height: 26,
+                            borderRadius: 7,
+                            border:
+                              row.val === num
+                                ? '1px solid var(--accent-volt)'
+                                : '1px solid var(--border-subtle)',
+                            background:
+                              row.val === num
+                                ? 'rgba(210, 255, 40, 0.18)'
+                                : 'var(--bg-surface-1)',
+                            color:
+                              row.val === num
+                                ? 'var(--accent-volt)'
+                                : 'var(--text-secondary)',
+                            fontSize: 12,
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {num}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+
+                <input
+                  type="text"
+                  placeholder="סיכום קצר או שאלה למאמן לקראת השבוע הבא..."
+                  value={checkInNote}
+                  onChange={(e) => setCheckInNote(e.target.value)}
+                  style={{
+                    background: 'var(--bg-surface-2)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 10,
+                    padding: '9px 12px',
+                    color: 'var(--text-primary)',
+                    fontSize: 12,
+                  }}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onSaveWeeklyCheckIn) {
+                      onSaveWeeklyCheckIn(trainee.id, {
+                        id: `chk-${Date.now()}`,
+                        date: todayIso,
+                        weightKg: trainee.currentWeight,
+                        energyLevel,
+                        hungerLevel,
+                        sleepQuality,
+                        note: checkInNote.trim() || undefined,
+                      });
+                      setCheckInSavedBanner(true);
+                      setTimeout(() => setCheckInSavedBanner(false), 3000);
+                    }
+                  }}
+                  className="btn-volt"
+                  style={{
+                    padding: '10px',
+                    fontSize: 12,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Check size={15} />
+                  <span>שמור צ׳ק-אין שבועי למאמן</span>
+                </button>
+
+                {checkInSavedBanner && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: '#4ade80',
+                      fontWeight: 700,
+                      textAlign: 'center',
+                    }}
+                  >
+                    ✓ הצ׳ק-אין השבועי נשמר ומוצג כעת בדשבורד המאמן!
+                  </div>
+                )}
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* סרגל ניווט תחתון צף (Floating Glass Dock) */}
+      {/* סרגל ניווט תחתון צף */}
       <div className="mobile-bottom-dock">
         <div
           style={{
@@ -1375,7 +2370,6 @@ export function TraineeMobileView({
             <span>יומן ארוחות</span>
           </button>
 
-          {/* כפתור מרכזי בולט לצילום/הזנת AI מהירה */}
           <button
             onClick={() => {
               const firstUnlogged =
@@ -1424,10 +2418,38 @@ export function TraineeMobileView({
             }}
           >
             <Activity size={15} />
-            <span>מים ומשקל</span>
+            <span>משקל והיקפים</span>
           </button>
         </div>
       </div>
+
+      {/* מודאל מדידת היקפים מונפש */}
+      <Modal
+        opened={measurementModalOpen}
+        onClose={() => setMeasurementModalOpen(false)}
+        title={
+          <span style={{ fontWeight: 800, fontSize: 16 }}>
+            מדידת היקפי גוף מודרכת (חזה, בטן, זרוע, ירך)
+          </span>
+        }
+        centered
+        radius="lg"
+        size="lg"
+      >
+        <BodyMeasurementGuide
+          initialValues={latestMeasurement}
+          showSaveButtons
+          onSkip={() => setMeasurementModalOpen(false)}
+          onSave={(vals) => {
+            onSaveBodyMeasurement(trainee.id, {
+              date: todayIso,
+              ...vals,
+              weightKg: trainee.currentWeight,
+            });
+            setMeasurementModalOpen(false);
+          }}
+        />
+      </Modal>
 
       <AddMealDrawer
         opened={Boolean(activeMealSlot)}
@@ -1450,6 +2472,13 @@ export function TraineeMobileView({
         }
         geminiApiKey={geminiApiKey}
         initialTab={drawerTab}
+        traineeId={trainee.id}
+        learnedPreferences={trainee.aiLearnedPreferences || []}
+        onPreferenceLearned={(prefs) => {
+          if (onPreferenceLearned) {
+            onPreferenceLearned(trainee.id, prefs);
+          }
+        }}
       />
     </div>
   );

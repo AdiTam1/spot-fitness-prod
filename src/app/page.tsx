@@ -12,17 +12,25 @@ import {
 import {
   AccountStatus,
   AuthSessionUser,
+  BodyMeasurementEntry,
   CoachDirectoryItem,
+  CoachOnboardingData,
   CoachProfile,
+  DailyCardioLog,
+  DailyWorkoutLog,
   DayType,
   LoggedFoodItem,
   NutritionTemplate,
+  TraineeActivityTargets,
   TraineeGroup,
+  TraineeOnboardingData,
   TraineeProfile,
+  WeeklyCheckInEntry,
 } from '@/types/nutrition';
 import { TraineeMobileView } from '@/components/TraineeMobileView';
 import { CoachDashboardView } from '@/components/CoachDashboardView';
 import { AuthGateView } from '@/components/AuthGateView';
+import { CoachOnboardingWizard } from '@/components/CoachOnboardingWizard';
 
 export default function HomePage() {
   const [currentUser, setCurrentUser] = useState<AuthSessionUser | null>(null);
@@ -34,6 +42,11 @@ export default function HomePage() {
   const [trainees, setTrainees] = useState<TraineeProfile[]>([]);
   const [groups, setGroups] = useState<TraineeGroup[]>([]);
   const [coaches, setCoaches] = useState<CoachProfile[]>([]);
+  const [myCoachProfile, setMyCoachProfile] = useState<CoachProfile | null>(
+    null
+  );
+  const [editingCoachOnboarding, setEditingCoachOnboarding] = useState(false);
+  const [skippedCoachOnboarding, setSkippedCoachOnboarding] = useState(false);
   const [coachDirectory, setCoachDirectory] = useState<CoachDirectoryItem[]>(
     []
   );
@@ -52,6 +65,7 @@ export default function HomePage() {
         setTemplates([]);
         setGroups([]);
         setCoaches([]);
+        setMyCoachProfile(null);
         setCoachDirectory([]);
         return;
       }
@@ -68,6 +82,9 @@ export default function HomePage() {
         }
         if (Array.isArray(remoteData.coaches)) {
           setCoaches(remoteData.coaches);
+        }
+        if (remoteData.myCoachProfile) {
+          setMyCoachProfile(remoteData.myCoachProfile);
         }
         if (Array.isArray(remoteData.coachDirectory)) {
           setCoachDirectory(remoteData.coachDirectory);
@@ -130,6 +147,7 @@ export default function HomePage() {
   const handleLoginSuccess = async (user: AuthSessionUser) => {
     setCurrentUser(user);
     setCoachPreviewTraineeId(null);
+    setSkippedCoachOnboarding(false);
     await fetchAuthorizedData();
   };
 
@@ -140,8 +158,243 @@ export default function HomePage() {
     setTemplates([]);
     setGroups([]);
     setCoaches([]);
+    setMyCoachProfile(null);
     setCoachDirectory([]);
     setCoachPreviewTraineeId(null);
+  };
+
+  const handleCompleteTraineeOnboarding = (
+    traineeId: string,
+    data: {
+      name: string;
+      currentWeight: number;
+      targetWeight: number;
+      onboarding: TraineeOnboardingData;
+      measurement?: BodyMeasurementEntry;
+    }
+  ) => {
+    setTrainees((prev) =>
+      prev.map((t) => {
+        if (t.id !== traineeId) return t;
+        const nextMeas = data.measurement
+          ? [...(t.measurementsHistory || []), data.measurement]
+          : t.measurementsHistory || [];
+        const updatedTrainee: TraineeProfile = {
+          ...t,
+          name: data.name || t.name,
+          currentWeight: data.currentWeight,
+          targetWeight: data.targetWeight,
+          onboarding: data.onboarding,
+          measurementsHistory: nextMeas,
+          weightHistory: [
+            ...t.weightHistory,
+            { date: data.onboarding.completedAt || 'היום', weight: data.currentWeight },
+          ],
+        };
+        syncTraineeLogUpdate(updatedTrainee);
+        return updatedTrainee;
+      })
+    );
+  };
+
+  const handleSaveBodyMeasurement = (
+    traineeId: string,
+    measurement: BodyMeasurementEntry
+  ) => {
+    setTrainees((prev) =>
+      prev.map((t) => {
+        if (t.id !== traineeId) return t;
+        const updatedTrainee: TraineeProfile = {
+          ...t,
+          measurementsHistory: [...(t.measurementsHistory || []), measurement],
+          onboarding: t.onboarding
+            ? { ...t.onboarding, measurementsCompleted: true }
+            : {
+                completed: true,
+                measurementsCompleted: true,
+                dietaryPreferences: [],
+                favoriteMustHaveFoods: [],
+                dislikedOrAllergies: [],
+                eatingChallenges: [],
+              },
+        };
+        syncTraineeLogUpdate(updatedTrainee);
+        return updatedTrainee;
+      })
+    );
+  };
+
+  const handleCompleteCoachOnboarding = async (data: {
+    name: string;
+    phone: string;
+    newPassword?: string;
+    onboarding: CoachOnboardingData;
+    starterTemplates: NutritionTemplate[];
+    starterGroupNames: string[];
+  }) => {
+    const res = await postDataAction({
+      action: 'coach-complete-onboarding',
+      ...data,
+    });
+    if (res.ok) {
+      setEditingCoachOnboarding(false);
+      await fetchAuthorizedData();
+    }
+  };
+
+  const handleUpdateDailyActivity = (
+    traineeId: string,
+    date: string,
+    payload: {
+      sleepHours?: number;
+      workoutLog?: DailyWorkoutLog;
+      cardioLog?: DailyCardioLog;
+    }
+  ) => {
+    if (currentUser?.role === 'trainee' && currentUser.id !== traineeId) return;
+    setTrainees((prev) =>
+      prev.map((t) => {
+        if (t.id !== traineeId) return t;
+        const currentLog = t.logs[date] || {
+          date,
+          dayType: 'workout',
+          waterCups: 0,
+          waterGoal: 12,
+          weightKg: t.currentWeight,
+          meals: {},
+        };
+        const updatedTrainee: TraineeProfile = {
+          ...t,
+          logs: {
+            ...t.logs,
+            [date]: {
+              ...currentLog,
+              ...(payload.sleepHours !== undefined
+                ? { sleepHours: payload.sleepHours }
+                : {}),
+              ...(payload.workoutLog !== undefined
+                ? { workoutLog: payload.workoutLog }
+                : {}),
+              ...(payload.cardioLog !== undefined
+                ? { cardioLog: payload.cardioLog }
+                : {}),
+            },
+          },
+        };
+        syncTraineeLogUpdate(updatedTrainee);
+        return updatedTrainee;
+      })
+    );
+  };
+
+  const handleUpdateActivityTargets = async (
+    traineeId: string,
+    activityTargets: TraineeActivityTargets
+  ) => {
+    if (!currentUser || currentUser.role === 'trainee') return;
+    setTrainees((prev) =>
+      prev.map((t) =>
+        t.id === traineeId ? { ...t, activityTargets } : t
+      )
+    );
+    await postDataAction({
+      action: 'coach-update-activity-targets',
+      traineeId,
+      activityTargets,
+    });
+  };
+
+  const handleUpdateAiNotesAndSplit = async (
+    traineeId: string,
+    payload: {
+      enableWorkoutRestSplit?: boolean;
+      coachAiNotes?: string;
+      aiLearnedPreferences?: string[];
+    }
+  ) => {
+    if (!currentUser || currentUser.role === 'trainee') return;
+    setTrainees((prev) =>
+      prev.map((t) =>
+        t.id === traineeId
+          ? {
+              ...t,
+              ...(payload.enableWorkoutRestSplit !== undefined
+                ? { enableWorkoutRestSplit: payload.enableWorkoutRestSplit }
+                : {}),
+              ...(payload.coachAiNotes !== undefined
+                ? { coachAiNotes: payload.coachAiNotes }
+                : {}),
+              ...(payload.aiLearnedPreferences !== undefined
+                ? { aiLearnedPreferences: payload.aiLearnedPreferences }
+                : {}),
+            }
+          : t
+      )
+    );
+    await postDataAction({
+      action: 'coach-update-ai-notes-and-split',
+      traineeId,
+      ...payload,
+    });
+  };
+
+  const handleSaveWeeklyCheckIn = (
+    traineeId: string,
+    checkIn: WeeklyCheckInEntry
+  ) => {
+    if (currentUser?.role === 'trainee' && currentUser.id !== traineeId) return;
+    setTrainees((prev) =>
+      prev.map((t) => {
+        if (t.id !== traineeId) return t;
+        const updatedTrainee: TraineeProfile = {
+          ...t,
+          weeklyCheckIns: [...(t.weeklyCheckIns || []), checkIn],
+        };
+        syncTraineeLogUpdate(updatedTrainee);
+        return updatedTrainee;
+      })
+    );
+  };
+
+  const handlePreferenceLearned = (traineeId: string, prefs: string[]) => {
+    setTrainees((prev) =>
+      prev.map((t) =>
+        t.id === traineeId ? { ...t, aiLearnedPreferences: prefs } : t
+      )
+    );
+  };
+
+  const handleManageObservationDays = async (
+    traineeId: string,
+    payload: {
+      toggleDate?: string;
+      addFutureDays?: number;
+      clearAll?: boolean;
+      countObservationInStats?: boolean;
+    }
+  ) => {
+    const res = await postDataAction({
+      action: 'coach-manage-observation-days',
+      traineeId,
+      ...payload,
+    });
+    if (res.ok) {
+      const json = await res.json();
+      setTrainees((prev) =>
+        prev.map((t) =>
+          t.id === traineeId
+            ? {
+                ...t,
+                observationDates:
+                  json.observationDates ?? t.observationDates,
+                countObservationInStats:
+                  json.countObservationInStats ??
+                  t.countObservationInStats,
+              }
+            : t
+        )
+      );
+    }
   };
 
   const handleSaveMeal = (
@@ -717,6 +970,13 @@ export default function HomePage() {
     );
   }
 
+  const shouldShowCoachOnboarding =
+    editingCoachOnboarding ||
+    (currentUser.role === 'coach' &&
+      myCoachProfile &&
+      !myCoachProfile.onboarding?.completed &&
+      !skippedCoachOnboarding);
+
   return (
     <div style={{ minHeight: '100vh' }}>
       <header
@@ -871,7 +1131,18 @@ export default function HomePage() {
           padding: '20px 16px',
         }}
       >
-        {currentUser.role === 'trainee' && loggedInTraineeProfile ? (
+        {shouldShowCoachOnboarding ? (
+          <CoachOnboardingWizard
+            coachName={myCoachProfile?.name || currentUser.name}
+            coachPhone={myCoachProfile?.phone || ''}
+            existingOnboarding={myCoachProfile?.onboarding}
+            onCompleteCoachOnboarding={handleCompleteCoachOnboarding}
+            onSkip={() => {
+              setSkippedCoachOnboarding(true);
+              setEditingCoachOnboarding(false);
+            }}
+          />
+        ) : currentUser.role === 'trainee' && loggedInTraineeProfile ? (
           <TraineeMobileView
             trainee={loggedInTraineeProfile}
             isCoachPreview={false}
@@ -880,6 +1151,11 @@ export default function HomePage() {
             onUpdateWater={handleUpdateWater}
             onUpdateWeight={handleUpdateWeight}
             onToggleFavorite={handleToggleFavorite}
+            onCompleteOnboarding={handleCompleteTraineeOnboarding}
+            onSaveBodyMeasurement={handleSaveBodyMeasurement}
+            onUpdateDailyActivity={handleUpdateDailyActivity}
+            onSaveWeeklyCheckIn={handleSaveWeeklyCheckIn}
+            onPreferenceLearned={handlePreferenceLearned}
             geminiApiKey={geminiApiKey}
           />
         ) : (currentUser.role === 'admin' || currentUser.role === 'coach') &&
@@ -894,6 +1170,11 @@ export default function HomePage() {
             onUpdateWater={handleUpdateWater}
             onUpdateWeight={handleUpdateWeight}
             onToggleFavorite={handleToggleFavorite}
+            onCompleteOnboarding={handleCompleteTraineeOnboarding}
+            onSaveBodyMeasurement={handleSaveBodyMeasurement}
+            onUpdateDailyActivity={handleUpdateDailyActivity}
+            onSaveWeeklyCheckIn={handleSaveWeeklyCheckIn}
+            onPreferenceLearned={handlePreferenceLearned}
             geminiApiKey={geminiApiKey}
           />
         ) : (
@@ -926,6 +1207,10 @@ export default function HomePage() {
             onDeleteGroup={handleDeleteGroup}
             onBulkGroupAssignTemplate={handleBulkGroupAssignTemplate}
             onBulkGroupShareCoach={handleBulkGroupShareCoach}
+            onManageObservationDays={handleManageObservationDays}
+            onUpdateActivityTargets={handleUpdateActivityTargets}
+            onUpdateAiNotesAndSplit={handleUpdateAiNotesAndSplit}
+            onOpenCoachOnboarding={() => setEditingCoachOnboarding(true)}
             onDeleteTrainee={handleDeleteTrainee}
             onCreateCoach={handleCreateCoach}
             onUpdateCoachStatus={handleUpdateCoachStatus}
