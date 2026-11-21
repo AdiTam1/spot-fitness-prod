@@ -21,6 +21,7 @@ export interface NutritionTemplate {
   dayType: DayType;
   tolerancePercent: number;
   meals: MealTemplateSlot[];
+  ownerCoachId?: string; // 'coach-admin' עבור טמפלייט מערכתי ראשי, או מזהה מאמן ספציפי
 }
 
 export interface FoodUnit {
@@ -63,6 +64,7 @@ export interface LoggedMealEntry {
   photoDataUrl?: string;
   photoNote?: string;
   coachFeedback?: string;
+  coachFeedbackAuthor?: string;
   coachFeedbackAt?: string;
   updatedAt: string;
 }
@@ -76,13 +78,38 @@ export interface DailyLog {
   meals: Record<string, LoggedMealEntry>;
 }
 
-export type UserRole = 'coach' | 'trainee';
+export type UserRole = 'admin' | 'coach' | 'trainee';
 export type AccountStatus = 'active' | 'pending' | 'paused';
+
+export interface CoachProfile {
+  id: string;
+  email: string;
+  password?: string;
+  name: string;
+  avatar: string;
+  phone: string;
+  inviteCode: string;
+  status: 'active' | 'paused';
+  createdAt?: string;
+}
+
+export interface CoachDirectoryItem {
+  id: string;
+  name: string;
+  isSuperAdmin?: boolean;
+}
+
+export interface TraineeGroup {
+  id: string;
+  name: string;
+  color: string;
+  ownerCoachId: string; // 'coach-admin' או מזהה המאמן שיצר את הקבוצה
+}
 
 export interface TraineeProfile {
   id: string;
   email: string;
-  password?: string; // מוצפן/נשמר לצורך אימות מול ה-DB
+  password?: string;
   status: AccountStatus;
   name: string;
   avatar: string;
@@ -91,6 +118,9 @@ export interface TraineeProfile {
   currentWeight: number;
   targetWeight: number;
   tolerancePercent: number;
+  primaryCoachId: string; // 'coach-admin' או מזהה המאמן הראשי (הבעלים של המתאמן)
+  sharedCoachIds: string[]; // מזהי מאמנים שותפים שקיבלו הרשאת ניהול מקצועי
+  groupId?: string; // שיוך לקבוצת מתאמנים
   workoutTemplate: NutritionTemplate;
   restTemplate: NutritionTemplate;
   favoriteFoodIds: string[];

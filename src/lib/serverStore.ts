@@ -1,21 +1,36 @@
 import fs from 'fs';
 import path from 'path';
 import { DEFAULT_TEMPLATES } from '@/data/israeliFoodCatalog';
-import { NutritionTemplate, TraineeProfile } from '@/types/nutrition';
+import {
+  AuthSessionUser,
+  CoachDirectoryItem,
+  CoachProfile,
+  NutritionTemplate,
+  TraineeGroup,
+  TraineeProfile,
+} from '@/types/nutrition';
 import { hashPassword } from '@/lib/serverAuth';
 import {
+  deleteCoachFromSupabase,
+  deleteGroupFromSupabase,
+  deleteTemplateFromSupabase,
   deleteTraineeFromSupabase,
   isSupabaseConfigured,
+  loadSingleCoachFromSupabase,
   loadSingleTraineeFromSupabase,
   loadStateFromSupabase,
+  saveCoachesToSupabase,
+  saveGroupsToSupabase,
   saveTemplatesToSupabase,
   saveTraineesToSupabase,
 } from '@/lib/supabase';
 
-interface ServerDatabaseState {
+export interface ServerDatabaseState {
   coachEmail: string;
   coachPasswordHash: string;
   coachInviteCode: string;
+  coaches: CoachProfile[];
+  groups: TraineeGroup[];
   templates: NutritionTemplate[];
   trainees: TraineeProfile[];
 }
@@ -28,10 +43,27 @@ declare global {
   var __spotServerDbCache: ServerDatabaseState | undefined;
 }
 
-/**
- * יצירת מצב התחלתי נקי ללא מתאמני דמו מומצאים (עומר/נועה/איתי).
- * רק טמפלייטי הבסיס של הארוחות נוצרים כדי שלמאמן יהיו תבניות מוכנות לעבודה.
- */
+const DEFAULT_GROUPS: TraineeGroup[] = [
+  {
+    id: 'grp-cut',
+    name: 'חיטוב ומיצוק',
+    color: '#d2ff28',
+    ownerCoachId: 'coach-admin',
+  },
+  {
+    id: 'grp-bulk',
+    name: 'עלייה במסת שריר',
+    color: '#38bdf8',
+    ownerCoachId: 'coach-admin',
+  },
+  {
+    id: 'grp-vip',
+    name: 'ליווי VIP',
+    color: '#ff5e7e',
+    ownerCoachId: 'coach-admin',
+  },
+];
+
 function createCleanInitialState(): ServerDatabaseState {
   return {
     coachEmail: (process.env.COACH_EMAIL || 'coach@spot.co.il')
@@ -41,8 +73,10 @@ function createCleanInitialState(): ServerDatabaseState {
       (process.env.COACH_PASSWORD || '123456').trim()
     ),
     coachInviteCode: (process.env.COACH_INVITE_CODE || 'SPOT2026').trim(),
+    coaches: [],
+    groups: DEFAULT_GROUPS,
     templates: DEFAULT_TEMPLATES,
-    trainees: [], // אפס מתאמנים מומצאים! רק מתאמנים אמיתיים מה-DB יכולים להתחבר
+    trainees: [],
   };
 }
 
@@ -55,6 +89,11 @@ function loadLocalServerFile(): ServerDatabaseState {
     if (fs.existsSync(LOCAL_DB_FILE)) {
       const raw = fs.readFileSync(LOCAL_DB_FILE, 'utf-8');
       const parsed = JSON.parse(raw) as ServerDatabaseState;
+      parsed.coaches = Array.isArray(parsed.coaches) ? parsed.coaches : [];
+      parsed.groups =
+        Array.isArray(parsed.groups) && parsed.groups.length > 0
+          ? parsed.groups
+          : DEFAULT_GROUPS;
       global.__spotServerDbCache = parsed;
       return parsed;
     }
@@ -76,7 +115,7 @@ function saveLocalServerFile(state: ServerDatabaseState) {
     }
     fs.writeFileSync(LOCAL_DB_FILE, JSON.stringify(state, null, 2), 'utf-8');
   } catch {
-    // Serverless environment (Vercel) uses Supabase directly
+    // Serverless environment uses Supabase directly
   }
 }
 
@@ -89,7 +128,6 @@ export async function getServerDbState(): Promise<ServerDatabaseState> {
   );
   const coachInviteCode = (process.env.COACH_INVITE_CODE || 'SPOT2026').trim();
 
-  // כאשר Supabase מוגדר (ב-Vercel או ב-.env.local) -> קורא אך ורק מ-Supabase!
   if (isSupabaseConfigured) {
     const remote = await loadStateFromSupabase();
 
@@ -99,16 +137,23 @@ export async function getServerDbState(): Promise<ServerDatabaseState> {
       await saveTemplatesToSupabase(templates);
     }
 
+    let groups = remote.groups;
+    if (groups.length === 0) {
+      groups = DEFAULT_GROUPS;
+      await saveGroupsToSupabase(groups);
+    }
+
     return {
       coachEmail,
       coachPasswordHash,
       coachInviteCode,
+      coaches: remote.coaches,
+      groups,
       templates,
-      trainees: remote.trainees, // מחזיר אך ורק את הרשומות האמיתיות מטבלת trainees ב-Supabase!
+      trainees: remote.trainees,
     };
   }
 
-  // מצב פיתוח מקומי ללא חיבור Supabase
   const localState = loadLocalServerFile();
   localState.coachEmail = coachEmail;
   localState.coachPasswordHash = coachPasswordHash;
@@ -125,6 +170,17 @@ export async function getSingleTraineeFromServer(
   return state.trainees.find((t) => t.id === traineeId) || null;
 }
 
+export async function getSingleCoachFromServer(
+  coachId: string
+): Promise<CoachProfile | null> {
+  if (isSupabaseConfigured) {
+    const remoteCoach = await loadSingleCoachFromSupabase(coachId);
+    if (remoteCoach) return remoteCoach;
+  }
+  const state = await getServerDbState();
+  return state.coaches.find((c) => c.id === coachId) || null;
+}
+
 export async function updateServerDbState(
   updater: (prev: ServerDatabaseState) => ServerDatabaseState
 ): Promise<ServerDatabaseState> {
@@ -133,9 +189,85 @@ export async function updateServerDbState(
 
   if (isSupabaseConfigured) {
     await Promise.all([
+      saveCoachesToSupabase(next.coaches),
+      saveGroupsToSupabase(next.groups),
       saveTemplatesToSupabase(next.templates),
       saveTraineesToSupabase(next.trainees),
     ]);
+  } else {
+    saveLocalServerFile(next);
+  }
+
+  return next;
+}
+
+/**
+ * מחיקת מאמן ע"י המנהל הראשי + הגנת Anti-Orphan:
+ * כל המתאמנים שהיו בבעלותו עוברים אוטומטית לבעלות המנהל הראשי ('coach-admin')
+ */
+export async function deleteCoachWithOrphanProtection(
+  coachId: string
+): Promise<ServerDatabaseState> {
+  const current = await getServerDbState();
+  const next: ServerDatabaseState = {
+    ...current,
+    coaches: current.coaches.filter((c) => c.id !== coachId),
+    trainees: current.trainees.map((t) => ({
+      ...t,
+      primaryCoachId:
+        t.primaryCoachId === coachId ? 'coach-admin' : t.primaryCoachId,
+      sharedCoachIds: (t.sharedCoachIds || []).filter((id) => id !== coachId),
+    })),
+  };
+
+  if (isSupabaseConfigured) {
+    await Promise.all([
+      deleteCoachFromSupabase(coachId),
+      saveTraineesToSupabase(next.trainees),
+    ]);
+  } else {
+    saveLocalServerFile(next);
+  }
+
+  return next;
+}
+
+export async function deleteGroupOnServer(
+  groupId: string
+): Promise<ServerDatabaseState> {
+  const current = await getServerDbState();
+  const next: ServerDatabaseState = {
+    ...current,
+    groups: current.groups.filter((g) => g.id !== groupId),
+    // מחיקת קבוצה אינה מוחקת את המתאמנים שבה! רק מנתקת את שיוך הקבוצה
+    trainees: current.trainees.map((t) =>
+      t.groupId === groupId ? { ...t, groupId: undefined } : t
+    ),
+  };
+
+  if (isSupabaseConfigured) {
+    await Promise.all([
+      deleteGroupFromSupabase(groupId),
+      saveTraineesToSupabase(next.trainees),
+    ]);
+  } else {
+    saveLocalServerFile(next);
+  }
+
+  return next;
+}
+
+export async function deleteTemplateOnServer(
+  templateId: string
+): Promise<ServerDatabaseState> {
+  const current = await getServerDbState();
+  const next: ServerDatabaseState = {
+    ...current,
+    templates: current.templates.filter((t) => t.id !== templateId),
+  };
+
+  if (isSupabaseConfigured) {
+    await deleteTemplateFromSupabase(templateId);
   } else {
     saveLocalServerFile(next);
   }
@@ -156,6 +288,82 @@ export async function deleteTraineeOnServer(traineeId: string): Promise<void> {
   saveLocalServerFile(next);
 }
 
+// ============================================================================
+// פונקציות שער הרשאות (Zero-Trust Object-Level Authorization Guards)
+// ============================================================================
+
+export function isSuperAdmin(session: AuthSessionUser): boolean {
+  return session.role === 'admin';
+}
+
+export function isPrimaryOwnerOfTrainee(
+  session: AuthSessionUser,
+  trainee: TraineeProfile
+): boolean {
+  if (session.role === 'admin') return true;
+  if (session.role === 'coach') {
+    return trainee.primaryCoachId === session.id;
+  }
+  return false;
+}
+
+export function canCoachAccessTrainee(
+  session: AuthSessionUser,
+  trainee: TraineeProfile
+): boolean {
+  if (session.role === 'admin') return true;
+  if (session.role === 'coach') {
+    // מתאמנים בסטטוס pending שנרשמו ללא קוד מאמן שייכים ל-coach-admin וגלויים רק למנהל הראשי!
+    if (
+      trainee.status === 'pending' &&
+      trainee.primaryCoachId === 'coach-admin'
+    ) {
+      return false;
+    }
+    return (
+      trainee.primaryCoachId === session.id ||
+      (trainee.sharedCoachIds || []).includes(session.id)
+    );
+  }
+  return false;
+}
+
+export function canCoachViewTemplate(
+  session: AuthSessionUser,
+  template: NutritionTemplate
+): boolean {
+  if (session.role === 'admin') return true;
+  if (session.role === 'coach') {
+    const owner = template.ownerCoachId || 'coach-admin';
+    return owner === 'coach-admin' || owner === session.id;
+  }
+  return false;
+}
+
+export function canCoachEditTemplate(
+  session: AuthSessionUser,
+  template: NutritionTemplate
+): boolean {
+  if (session.role === 'admin') return true;
+  if (session.role === 'coach') {
+    return template.ownerCoachId === session.id;
+  }
+  return false;
+}
+
+export function canCoachManageGroup(
+  session: AuthSessionUser,
+  group: TraineeGroup
+): boolean {
+  if (session.role === 'admin') return true;
+  if (session.role === 'coach') {
+    return (
+      group.ownerCoachId === 'coach-admin' || group.ownerCoachId === session.id
+    );
+  }
+  return false;
+}
+
 export function sanitizeTraineeForClient(
   trainee: TraineeProfile
 ): TraineeProfile {
@@ -163,4 +371,33 @@ export function sanitizeTraineeForClient(
     ...trainee,
     password: '',
   };
+}
+
+export function sanitizeCoachForClient(coach: CoachProfile): CoachProfile {
+  return {
+    ...coach,
+    password: '',
+  };
+}
+
+export function buildCoachDirectory(
+  state: ServerDatabaseState
+): CoachDirectoryItem[] {
+  const list: CoachDirectoryItem[] = [
+    {
+      id: 'coach-admin',
+      name: 'מנהל ראשי',
+      isSuperAdmin: true,
+    },
+  ];
+  for (const c of state.coaches) {
+    if (c.status === 'active') {
+      list.push({
+        id: c.id,
+        name: c.name,
+        isSuperAdmin: false,
+      });
+    }
+  }
+  return list;
 }

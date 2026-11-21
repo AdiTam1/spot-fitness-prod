@@ -1045,7 +1045,9 @@ export function TraineeMobileView({
                               marginLeft: 6,
                             }}
                           >
-                            הערת מאמן:
+                            {entry.coachFeedbackAuthor
+                              ? `${entry.coachFeedbackAuthor}:`
+                              : 'הערת מאמן:'}
                           </span>
                           <span style={{ color: 'var(--text-primary)' }}>
                             {entry.coachFeedback}

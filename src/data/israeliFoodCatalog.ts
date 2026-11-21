@@ -485,6 +485,7 @@ export const DEFAULT_TEMPLATES: NutritionTemplate[] = [
     description: 'דגש על חלבון גבוה (160g) ופחמימה סביב האימון',
     dayType: 'workout',
     tolerancePercent: 10,
+    ownerCoachId: 'coach-admin',
     meals: [
       {
         id: 'meal-1',
@@ -518,6 +519,7 @@ export const DEFAULT_TEMPLATES: NutritionTemplate[] = [
     description: 'הפחתת פחמימה קלה ביום ללא אימון ושמירה על חלבון',
     dayType: 'rest',
     tolerancePercent: 10,
+    ownerCoachId: 'coach-admin',
     meals: [
       {
         id: 'meal-1',
@@ -551,6 +553,7 @@ export const DEFAULT_TEMPLATES: NutritionTemplate[] = [
     description: '5 ארוחות מאוזנות לעלייה נקייה במסת השריר',
     dayType: 'workout',
     tolerancePercent: 10,
+    ownerCoachId: 'coach-admin',
     meals: [
       {
         id: 'meal-1',
@@ -613,6 +616,8 @@ export function createInitialTrainees(): TraineeProfile[] {
       currentWeight: 78.4,
       targetWeight: 74.0,
       tolerancePercent: 10,
+      primaryCoachId: 'coach-admin',
+      sharedCoachIds: [],
       workoutTemplate: JSON.parse(JSON.stringify(workoutTpl)),
       restTemplate: JSON.parse(JSON.stringify(restTpl)),
       favoriteFoodIds: ['cottage-tnuva-5', 'chicken-breast-grilled', 'basmati-rice-cooked', 'krembo-strauss', 'egg-whole'],
@@ -715,6 +720,8 @@ export function createInitialTrainees(): TraineeProfile[] {
       currentWeight: 61.2,
       targetWeight: 58.0,
       tolerancePercent: 10,
+      primaryCoachId: 'coach-admin',
+      sharedCoachIds: [],
       workoutTemplate: JSON.parse(JSON.stringify(restTpl)),
       restTemplate: JSON.parse(JSON.stringify(restTpl)),
       favoriteFoodIds: ['danone-pro-20', 'krembo-strauss', 'salmon-fillet-baked'],
@@ -772,6 +779,8 @@ export function createInitialTrainees(): TraineeProfile[] {
       currentWeight: 83.0,
       targetWeight: 88.0,
       tolerancePercent: 10,
+      primaryCoachId: 'coach-admin',
+      sharedCoachIds: [],
       workoutTemplate: JSON.parse(JSON.stringify(bulkTpl)),
       restTemplate: JSON.parse(JSON.stringify(bulkTpl)),
       favoriteFoodIds: ['chicken-breast-grilled', 'whey-protein-scoop', 'oats-quaker'],

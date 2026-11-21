@@ -13,6 +13,7 @@ import {
 } from '@/lib/serverAuth';
 import {
   getServerDbState,
+  getSingleCoachFromServer,
   getSingleTraineeFromServer,
   updateServerDbState,
 } from '@/lib/serverStore';
@@ -32,10 +33,22 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // אימות חי מול מסד הנתונים: אם המאמן השהה או מחק את המתאמן, הסשן מבוטל מיד!
+  // אימות חי למתאמן: אם הושהה או נמחק – הסשן מבוטל מיד
   if (user.role === 'trainee') {
     const liveTrainee = await getSingleTraineeFromServer(user.id);
     if (!liveTrainee || liveTrainee.status !== 'active') {
+      const res = NextResponse.json(
+        { user: null, suspended: true },
+        { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      );
+      return clearSessionCookie(res);
+    }
+  }
+
+  // אימות חי למאמן: אם המנהל הראשי השהה או מחק את המאמן – הסשן מבוטל מיד
+  if (user.role === 'coach') {
+    const liveCoach = await getSingleCoachFromServer(user.id);
+    if (!liveCoach || liveCoach.status !== 'active') {
       const res = NextResponse.json(
         { user: null, suspended: true },
         { headers: { 'Cache-Control': 'no-store, max-age=0' } }
@@ -52,7 +65,6 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // 1. הגנת CSRF (בדיקת Origin / Host)
     if (!verifyCsrfOrigin(request)) {
       return NextResponse.json(
         { error: 'בקשה ממקור לא מורשה (CSRF Blocked)' },
@@ -64,8 +76,7 @@ export async function POST(request: NextRequest) {
       request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
       'local-ip';
 
-    // 2. הגנת Brute-Force: עד 10 ניסיונות בדקה מאותו IP
-    const rl = checkRateLimit(`auth-${ip}`, 10, 60);
+    const rl = checkRateLimit(`auth-${ip}`, 12, 60);
     if (!rl.allowed) {
       return NextResponse.json(
         { error: 'יותר מדי ניסיונות התחברות. אנא המתן דקה ונסה שוב.' },
@@ -78,16 +89,17 @@ export async function POST(request: NextRequest) {
     const dbState = await getServerDbState();
 
     // =========================================================================
-    // מסלול א': הרשמת מתאמן חדש בצד השרת בלבד (ללא חשיפת קוד המאמן לדפדפן!)
+    // מסלול א': הרשמת מתאמן חדש עם ניתוב חכם לפי קוד הזמנה אישי של מאמן
     // =========================================================================
     if (action === 'register') {
       const name = sanitizeText(body.name, 80);
       const email = sanitizeText(body.email, 120).toLowerCase();
-      const rawPassword = typeof body.password === 'string' ? body.password.trim() : '';
+      const rawPassword =
+        typeof body.password === 'string' ? body.password.trim() : '';
       const phone = sanitizeText(body.phone, 30);
       const goal = sanitizeText(body.goal, 120) || 'חיטוב ותזונה מותאמת';
       const currentWeight = sanitizeNumber(body.currentWeight, 35, 250, 75);
-      const inviteCode = sanitizeText(body.inviteCode, 40);
+      const inviteCode = sanitizeText(body.inviteCode, 40).toUpperCase();
 
       if (!name || !email || !email.includes('@') || rawPassword.length < 4) {
         return NextResponse.json(
@@ -96,8 +108,10 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // בדיקת ייחודיות אימייל גלובלית (מנהל ראשי + מאמנים + מתאמנים)
       const emailExists =
         email === dbState.coachEmail.toLowerCase() ||
+        dbState.coaches.some((c) => c.email.toLowerCase() === email) ||
         dbState.trainees.some((t) => (t.email || '').toLowerCase() === email);
 
       if (emailExists) {
@@ -107,18 +121,33 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // בדיקת קוד המאמן בצד השרת בלבד!
-      const isInviteValid =
-        Boolean(inviteCode) &&
-        inviteCode.toUpperCase() === dbState.coachInviteCode.toUpperCase();
+      // ניתוב לפי קוד מאמן אישי
+      let assignedPrimaryCoachId = 'coach-admin';
+      let initialStatus: AccountStatus = 'pending';
 
-      const initialStatus: AccountStatus = isInviteValid ? 'active' : 'pending';
+      if (inviteCode) {
+        if (inviteCode === dbState.coachInviteCode.toUpperCase()) {
+          assignedPrimaryCoachId = 'coach-admin';
+          initialStatus = 'active';
+        } else {
+          const matchedCoach = dbState.coaches.find(
+            (c) =>
+              c.status === 'active' &&
+              c.inviteCode.toUpperCase() === inviteCode
+          );
+          if (matchedCoach) {
+            assignedPrimaryCoachId = matchedCoach.id;
+            initialStatus = 'active';
+          }
+        }
+      }
+
       const defaultTpl = dbState.templates[0] || DEFAULT_TEMPLATES[0];
 
       const newTrainee: TraineeProfile = {
-        id: generateSecureId('trainee'), // UUIDv4 בלתי ניתן לניחוש
+        id: generateSecureId('trainee'),
         email,
-        password: hashPassword(rawPassword), // נשמר מגובב ב-HMAC-SHA256 בלבד
+        password: hashPassword(rawPassword),
         status: initialStatus,
         name,
         avatar: name.charAt(0) || 'מ',
@@ -127,6 +156,8 @@ export async function POST(request: NextRequest) {
         currentWeight,
         targetWeight: Math.max(45, currentWeight - 4),
         tolerancePercent: 10,
+        primaryCoachId: assignedPrimaryCoachId,
+        sharedCoachIds: [],
         workoutTemplate: JSON.parse(JSON.stringify(defaultTpl)),
         restTemplate: JSON.parse(JSON.stringify(defaultTpl)),
         favoriteFoodIds: [
@@ -147,7 +178,7 @@ export async function POST(request: NextRequest) {
         id: newTrainee.id,
         email: newTrainee.email,
         name: newTrainee.name,
-        role: 'trainee', // מקובע בשרת כמתאמן בלבד!
+        role: 'trainee',
         status: initialStatus,
       };
 
@@ -163,10 +194,11 @@ export async function POST(request: NextRequest) {
     }
 
     // =========================================================================
-    // מסלול ב': התחברות משתמש קיים (מאמן או מתאמן) בצד השרת בלבד
+    // מסלול ב': התחברות (מנהל ראשי / מאמן / מתאמן)
     // =========================================================================
     const cleanEmail = sanitizeText(body.email, 120).toLowerCase();
-    const cleanPass = typeof body.password === 'string' ? body.password.trim() : '';
+    const cleanPass =
+      typeof body.password === 'string' ? body.password.trim() : '';
 
     if (!cleanEmail || !cleanPass) {
       return NextResponse.json(
@@ -175,15 +207,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1. בדיקת התחברות מאמן מול הגיבוב שבשרת
+    // 1. בדיקת התחברות מנהל ראשי (Super Admin)
     if (
       cleanEmail === dbState.coachEmail.toLowerCase() &&
       verifyPassword(cleanPass, dbState.coachPasswordHash)
     ) {
-      const coachUser: AuthSessionUser = {
+      const adminUser: AuthSessionUser = {
         id: 'coach-admin',
         email: dbState.coachEmail,
-        name: 'מאמן ראשי',
+        name: 'מנהל ראשי',
+        role: 'admin',
+        status: 'active',
+      };
+      const res = NextResponse.json({ user: adminUser });
+      return attachSessionCookie(res, adminUser);
+    }
+
+    // 2. בדיקת התחברות מאמן (Coach)
+    const matchedCoach = dbState.coaches.find(
+      (c) =>
+        c.email.toLowerCase() === cleanEmail &&
+        verifyPassword(cleanPass, c.password || '')
+    );
+
+    if (matchedCoach) {
+      if (matchedCoach.status === 'paused') {
+        return NextResponse.json(
+          { error: 'חשבון המאמן שלך מושהה כרגע. אנא פנה למנהל הראשי.' },
+          { status: 403 }
+        );
+      }
+      const coachUser: AuthSessionUser = {
+        id: matchedCoach.id,
+        email: matchedCoach.email,
+        name: matchedCoach.name,
         role: 'coach',
         status: 'active',
       };
@@ -191,43 +248,41 @@ export async function POST(request: NextRequest) {
       return attachSessionCookie(res, coachUser);
     }
 
-    // 2. בדיקת התחברות מתאמן מול מסד הנתונים בשרת
-    const matched = dbState.trainees.find(
+    // 3. בדיקת התחברות מתאמן (Trainee)
+    const matchedTrainee = dbState.trainees.find(
       (t) =>
         (t.email || '').toLowerCase() === cleanEmail &&
-        verifyPassword(cleanPass, t.password || '123456')
+        verifyPassword(cleanPass, t.password || '')
     );
 
-    if (!matched) {
+    if (!matchedTrainee) {
       return NextResponse.json(
         { error: 'אימייל או סיסמה שגויים' },
         { status: 401 }
       );
     }
 
-    if (matched.status === 'pending') {
+    if (matchedTrainee.status === 'pending') {
       return NextResponse.json(
         {
-          error: `שלום ${matched.name}, החשבון שלך ממתין לאישור המאמן. ברגע שהמאמן יאשר אותך תוכל להיכנס.`,
+          error: `שלום ${matchedTrainee.name}, החשבון שלך ממתין לאישור המאמן. ברגע שיאושר תוכל להיכנס.`,
           isPending: true,
         },
         { status: 403 }
       );
     }
 
-    if (matched.status === 'paused') {
+    if (matchedTrainee.status === 'paused') {
       return NextResponse.json(
-        {
-          error: 'המנוי שלך מושהה כרגע במערכת. אנא פנה למאמן שלך.',
-        },
+        { error: 'המנוי שלך מושהה כרגע במערכת. אנא פנה למאמן שלך.' },
         { status: 403 }
       );
     }
 
     const traineeUser: AuthSessionUser = {
-      id: matched.id,
-      email: matched.email,
-      name: matched.name,
+      id: matchedTrainee.id,
+      email: matchedTrainee.email,
+      name: matchedTrainee.name,
       role: 'trainee',
       status: 'active',
     };

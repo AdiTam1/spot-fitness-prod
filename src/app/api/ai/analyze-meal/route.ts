@@ -10,7 +10,10 @@ import {
   sanitizeText,
   verifyCsrfOrigin,
 } from '@/lib/serverAuth';
-import { getSingleTraineeFromServer } from '@/lib/serverStore';
+import {
+  getSingleCoachFromServer,
+  getSingleTraineeFromServer,
+} from '@/lib/serverStore';
 
 /**
  * מנתח טקסט עברי חכם (Fallback ללא צורך במפתח, או גיבוי מיידי)
@@ -190,12 +193,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // אימות חי מול מסד הנתונים שחשבון המתאמן לא הושהה או נמחק
+    // אימות חי מול מסד הנתונים שחשבון המתאמן או המאמן לא הושהה או נמחק
     if (sessionUser.role === 'trainee') {
       const liveTrainee = await getSingleTraineeFromServer(sessionUser.id);
       if (!liveTrainee || liveTrainee.status !== 'active') {
         const res = NextResponse.json(
           { error: 'החשבון אינו פעיל' },
+          { status: 403 }
+        );
+        return clearSessionCookie(res);
+      }
+    } else if (sessionUser.role === 'coach') {
+      const liveCoach = await getSingleCoachFromServer(sessionUser.id);
+      if (!liveCoach || liveCoach.status !== 'active') {
+        const res = NextResponse.json(
+          { error: 'חשבון המאמן מושהה' },
           { status: 403 }
         );
         return clearSessionCookie(res);
@@ -232,9 +244,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // שימוש במפתח חיצוני מותר אך ורק אם המשתמש המחובר הוא המאמן
+    // שימוש במפתח חיצוני מותר אך ורק אם המשתמש המחובר הוא מנהל ראשי או מאמן
     const safeCustomKey =
-      sessionUser.role === 'coach' && customApiKey ? customApiKey : '';
+      (sessionUser.role === 'admin' || sessionUser.role === 'coach') &&
+      customApiKey
+        ? customApiKey
+        : '';
     const apiKey = (safeCustomKey || process.env.GEMINI_API_KEY || '').trim();
     const sourceType: 'ai-photo' | 'ai-text' = imageDataUrl ? 'ai-photo' : 'ai-text';
 
