@@ -32,7 +32,11 @@ import {
   NutritionTemplate,
   TraineeProfile,
 } from '@/types/nutrition';
-import { getTodayIso, sumMacros } from '@/data/israeliFoodCatalog';
+import {
+  DEFAULT_TEMPLATES,
+  getTodayIso,
+  sumMacros,
+} from '@/data/israeliFoodCatalog';
 
 interface CoachDashboardViewProps {
   trainees: TraineeProfile[];
@@ -100,10 +104,12 @@ export function CoachDashboardView({
 
   // ניהול טמפלייטים
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(
-    templates[0]?.id || ''
+    templates[0]?.id || DEFAULT_TEMPLATES[0].id
   );
   const currentTemplate =
-    templates.find((t) => t.id === selectedTemplateId) || templates[0];
+    templates.find((t) => t.id === selectedTemplateId) ||
+    templates[0] ||
+    DEFAULT_TEMPLATES[0];
   const [editableTemplate, setEditableTemplate] = useState<NutritionTemplate>(
     () => JSON.parse(JSON.stringify(currentTemplate))
   );
@@ -113,7 +119,7 @@ export function CoachDashboardView({
   const [assignDayType, setAssignDayType] = useState<DayType>('workout');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const selectedTrainee =
+  const selectedTrainee: TraineeProfile | undefined =
     trainees.find((t) => t.id === selectedTraineeId) || trainees[0];
   const [editingDayType, setEditingDayType] = useState<DayType>('workout');
   const [feedbackDrafts, setFeedbackDrafts] = useState<Record<string, string>>(
@@ -130,7 +136,7 @@ export function CoachDashboardView({
     'חיטוב וירידה באחוזי שומן'
   );
   const [newTraineeTplId, setNewTraineeTplId] = useState(
-    templates[0]?.id || ''
+    templates[0]?.id || DEFAULT_TEMPLATES[0].id
   );
 
   // מודאל עריכת פרטי התחברות למתאמן קיים
@@ -281,17 +287,21 @@ export function CoachDashboardView({
     };
   };
 
-  const templateTotals = sumMacros(editableTemplate.meals.map((m) => m.targets));
-  const activeTraineePlan =
-    editingDayType === 'workout'
+  const templateTotals = sumMacros(
+    (editableTemplate?.meals || []).map((m) => m.targets)
+  );
+  const activeTraineePlan = selectedTrainee
+    ? editingDayType === 'workout'
       ? selectedTrainee.workoutTemplate
-      : selectedTrainee.restTemplate;
+      : selectedTrainee.restTemplate
+    : currentTemplate;
 
   const updateTraineeDirectMeal = (
     mealId: string,
     field: 'name' | 'calories' | 'protein' | 'carbs' | 'fat',
     value: string | number
   ) => {
+    if (!selectedTrainee) return;
     const updatedTpl: NutritionTemplate = {
       ...activeTraineePlan,
       meals: activeTraineePlan.meals.map((m) => {
@@ -315,6 +325,7 @@ export function CoachDashboardView({
   };
 
   const addMealToTraineePlan = () => {
+    if (!selectedTrainee) return;
     const updatedTpl: NutritionTemplate = {
       ...activeTraineePlan,
       meals: [
@@ -336,7 +347,7 @@ export function CoachDashboardView({
   };
 
   const removeMealFromTraineePlan = (mealId: string) => {
-    if (activeTraineePlan.meals.length <= 1) return;
+    if (!selectedTrainee || activeTraineePlan.meals.length <= 1) return;
     const updatedTpl: NutritionTemplate = {
       ...activeTraineePlan,
       meals: activeTraineePlan.meals.filter((m) => m.id !== mealId),

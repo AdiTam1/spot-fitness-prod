@@ -1,9 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import {
-  DEFAULT_TEMPLATES,
-  createInitialTrainees,
-} from '@/data/israeliFoodCatalog';
+import { DEFAULT_TEMPLATES } from '@/data/israeliFoodCatalog';
 import { NutritionTemplate, TraineeProfile } from '@/types/nutrition';
 import { hashPassword } from '@/lib/serverAuth';
 import {
@@ -31,18 +28,21 @@ declare global {
   var __spotServerDbCache: ServerDatabaseState | undefined;
 }
 
-function createDefaultServerState(): ServerDatabaseState {
-  const initialTrainees = createInitialTrainees().map((t) => ({
-    ...t,
-    password: hashPassword(t.password || '123456'),
-  }));
-
+/**
+ * יצירת מצב התחלתי נקי ללא מתאמני דמו מומצאים (עומר/נועה/איתי).
+ * רק טמפלייטי הבסיס של הארוחות נוצרים כדי שלמאמן יהיו תבניות מוכנות לעבודה.
+ */
+function createCleanInitialState(): ServerDatabaseState {
   return {
-    coachEmail: (process.env.COACH_EMAIL || 'coach@spot.co.il').toLowerCase(),
-    coachPasswordHash: hashPassword(process.env.COACH_PASSWORD || '123456'),
-    coachInviteCode: process.env.COACH_INVITE_CODE || 'SPOT2026',
+    coachEmail: (process.env.COACH_EMAIL || 'coach@spot.co.il')
+      .trim()
+      .toLowerCase(),
+    coachPasswordHash: hashPassword(
+      (process.env.COACH_PASSWORD || '123456').trim()
+    ),
+    coachInviteCode: (process.env.COACH_INVITE_CODE || 'SPOT2026').trim(),
     templates: DEFAULT_TEMPLATES,
-    trainees: initialTrainees,
+    trainees: [], // אפס מתאמנים מומצאים! רק מתאמנים אמיתיים מה-DB יכולים להתחבר
   };
 }
 
@@ -59,10 +59,10 @@ function loadLocalServerFile(): ServerDatabaseState {
       return parsed;
     }
   } catch {
-    // fallback to default memory state
+    // ignore
   }
 
-  const fresh = createDefaultServerState();
+  const fresh = createCleanInitialState();
   global.__spotServerDbCache = fresh;
   saveLocalServerFile(fresh);
   return fresh;
@@ -76,47 +76,42 @@ function saveLocalServerFile(state: ServerDatabaseState) {
     }
     fs.writeFileSync(LOCAL_DB_FILE, JSON.stringify(state, null, 2), 'utf-8');
   } catch {
-    // On serverless read-only filesystem (e.g. Vercel), Supabase is used as primary storage
+    // Serverless environment (Vercel) uses Supabase directly
   }
 }
 
-/**
- * שכבת גישה לנתונים בצד השרת בלבד (Server-Only DAL)
- */
 export async function getServerDbState(): Promise<ServerDatabaseState> {
-  const localState = loadLocalServerFile();
+  const coachEmail = (process.env.COACH_EMAIL || 'coach@spot.co.il')
+    .trim()
+    .toLowerCase();
+  const coachPasswordHash = hashPassword(
+    (process.env.COACH_PASSWORD || '123456').trim()
+  );
+  const coachInviteCode = (process.env.COACH_INVITE_CODE || 'SPOT2026').trim();
 
-  // וידוא שמשתני הסביבה מ-Vercel (COACH_EMAIL, COACH_PASSWORD, COACH_INVITE_CODE) תמיד מעודכנים
-  if (process.env.COACH_EMAIL) {
-    localState.coachEmail = process.env.COACH_EMAIL.trim().toLowerCase();
-  }
-  if (process.env.COACH_PASSWORD) {
-    localState.coachPasswordHash = hashPassword(process.env.COACH_PASSWORD.trim());
-  }
-
+  // כאשר Supabase מוגדר (ב-Vercel או ב-.env.local) -> קורא אך ורק מ-Supabase!
   if (isSupabaseConfigured) {
     const remote = await loadStateFromSupabase();
-    let changed = false;
 
-    if (remote.templates && remote.templates.length > 0) {
-      localState.templates = remote.templates;
-    } else {
-      await saveTemplatesToSupabase(localState.templates);
-      changed = true;
+    let templates = remote.templates;
+    if (templates.length === 0) {
+      templates = DEFAULT_TEMPLATES;
+      await saveTemplatesToSupabase(templates);
     }
 
-    if (remote.trainees && remote.trainees.length > 0) {
-      localState.trainees = remote.trainees;
-    } else {
-      await saveTraineesToSupabase(localState.trainees);
-      changed = true;
-    }
-
-    if (changed) {
-      saveLocalServerFile(localState);
-    }
+    return {
+      coachEmail,
+      coachPasswordHash,
+      coachInviteCode,
+      templates,
+      trainees: remote.trainees, // מחזיר אך ורק את הרשומות האמיתיות מטבלת trainees ב-Supabase!
+    };
   }
 
+  // מצב פיתוח מקומי ללא חיבור Supabase
+  const localState = loadLocalServerFile();
+  localState.coachEmail = coachEmail;
+  localState.coachPasswordHash = coachPasswordHash;
   return localState;
 }
 
@@ -124,8 +119,7 @@ export async function getSingleTraineeFromServer(
   traineeId: string
 ): Promise<TraineeProfile | null> {
   if (isSupabaseConfigured) {
-    const remoteSingle = await loadSingleTraineeFromSupabase(traineeId);
-    if (remoteSingle) return remoteSingle;
+    return await loadSingleTraineeFromSupabase(traineeId);
   }
   const state = await getServerDbState();
   return state.trainees.find((t) => t.id === traineeId) || null;
@@ -136,39 +130,37 @@ export async function updateServerDbState(
 ): Promise<ServerDatabaseState> {
   const current = await getServerDbState();
   const next = updater(current);
-  saveLocalServerFile(next);
 
   if (isSupabaseConfigured) {
     await Promise.all([
       saveTemplatesToSupabase(next.templates),
       saveTraineesToSupabase(next.trainees),
     ]);
+  } else {
+    saveLocalServerFile(next);
   }
 
   return next;
 }
 
 export async function deleteTraineeOnServer(traineeId: string): Promise<void> {
+  if (isSupabaseConfigured) {
+    await deleteTraineeFromSupabase(traineeId);
+    return;
+  }
   const current = await getServerDbState();
   const next: ServerDatabaseState = {
     ...current,
     trainees: current.trainees.filter((t) => t.id !== traineeId),
   };
   saveLocalServerFile(next);
-
-  if (isSupabaseConfigured) {
-    await deleteTraineeFromSupabase(traineeId);
-  }
 }
 
-/**
- * מסיר שדות רגישים (כמו גיבוב סיסמה) לפני שליחת פרופיל מתאמן לדפדפן
- */
 export function sanitizeTraineeForClient(
   trainee: TraineeProfile
 ): TraineeProfile {
   return {
     ...trainee,
-    password: '', // לעולם לא חושף סיסמה או Hash לדפדפן
+    password: '',
   };
 }

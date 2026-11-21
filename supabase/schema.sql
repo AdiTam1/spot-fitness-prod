@@ -1,5 +1,5 @@
 -- =====================================================================
--- SPOT FITNESS — סכמת מסד נתונים מלאה עבור Supabase (כולל אימות והרשאות)
+-- SPOT FITNESS — סכמת מסד נתונים מלאה ומעודכנת עבור Supabase
 -- העתק והדבק את כל הקוד הזה ב-SQL Editor של Supabase ולחץ על RUN
 -- =====================================================================
 
@@ -14,8 +14,11 @@ create table if not exists public.nutrition_templates (
   updated_at timestamptz not null default now()
 );
 
--- 2. טבלת מתאמנים, חשבונות משתמשים ויומני האכילה שלהם
-create table if not exists public.trainees (
+-- 2. איפוס והקמת טבלת המתאמנים עם כל העמודות החדשות (אימייל, סיסמה מוצפנת, סטטוס ויומן ארוחות)
+drop table if exists public.daily_meal_logs cascade;
+drop table if exists public.trainees cascade;
+
+create table public.trainees (
   id text primary key,
   email text unique,
   password text,
@@ -35,12 +38,7 @@ create table if not exists public.trainees (
   updated_at timestamptz not null default now()
 );
 
--- הוספת עמודות אימות במקרה שהטבלה כבר נוצרה בגרסה הקודמת
-alter table public.trainees add column if not exists email text;
-alter table public.trainees add column if not exists password text;
-alter table public.trainees add column if not exists status text not null default 'active';
-
--- 3. הגדרות הרשאות גישה (Row Level Security)
+-- 3. הגדרות הרשאות גישה (Row Level Security) עבור שרת ה-API
 alter table public.nutrition_templates enable row level security;
 alter table public.trainees enable row level security;
 

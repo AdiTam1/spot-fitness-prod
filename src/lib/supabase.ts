@@ -12,15 +12,17 @@ const supabaseKey =
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey);
 
 export const supabase: SupabaseClient | null = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseKey)
+  ? createClient(supabaseUrl, supabaseKey, {
+      auth: { persistSession: false },
+    })
   : null;
 
 function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
   const name = String(row.name || 'מתאמן');
   return {
     id: String(row.id),
-    email: String(row.email || `${row.id}@spot.co.il`),
-    password: String(row.password || '123456'),
+    email: String(row.email || ''),
+    password: String(row.password || ''),
     status: (row.status as AccountStatus) || 'active',
     name,
     avatar: String(row.avatar || name.charAt(0) || 'מ'),
@@ -31,119 +33,128 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
     tolerancePercent: Number(row.tolerance_percent) || 10,
     workoutTemplate: row.workout_template as NutritionTemplate,
     restTemplate: row.rest_template as NutritionTemplate,
-    favoriteFoodIds: (row.favorite_food_ids as string[]) || [],
-    weightHistory: (row.weight_history as { date: string; weight: number }[]) || [],
-    logs: (row.logs as TraineeProfile['logs']) || {},
+    favoriteFoodIds: Array.isArray(row.favorite_food_ids)
+      ? (row.favorite_food_ids as string[])
+      : [],
+    weightHistory: Array.isArray(row.weight_history)
+      ? (row.weight_history as { date: string; weight: number }[])
+      : [],
+    logs:
+      row.logs && typeof row.logs === 'object'
+        ? (row.logs as TraineeProfile['logs'])
+        : {},
   };
 }
 
 export async function loadStateFromSupabase(): Promise<{
-  templates: NutritionTemplate[] | null;
-  trainees: TraineeProfile[] | null;
+  templates: NutritionTemplate[];
+  trainees: TraineeProfile[];
+  dbError?: string;
 }> {
-  if (!supabase) return { templates: null, trainees: null };
+  if (!supabase) return { templates: [], trainees: [] };
 
-  try {
-    const [tplRes, trRes] = await Promise.all([
-      supabase.from('nutrition_templates').select('*'),
-      supabase.from('trainees').select('*'),
-    ]);
+  const [tplRes, trRes] = await Promise.all([
+    supabase.from('nutrition_templates').select('*'),
+    supabase.from('trainees').select('*'),
+  ]);
 
-    const templates: NutritionTemplate[] | null =
-      tplRes.data && tplRes.data.length > 0
-        ? tplRes.data.map((row) => ({
-            id: row.id,
-            name: row.name,
-            description: row.description || '',
-            dayType: row.day_type || 'workout',
-            tolerancePercent: Number(row.tolerance_percent) || 10,
-            meals: row.meals || [],
-          }))
-        : null;
-
-    const trainees: TraineeProfile[] | null =
-      trRes.data && trRes.data.length > 0
-        ? trRes.data.map((row) => mapRowToTrainee(row))
-        : null;
-
-    return { templates, trainees };
-  } catch (err) {
-    console.warn('Supabase load warning:', err);
-    return { templates: null, trainees: null };
+  if (tplRes.error) {
+    console.error('Supabase templates select error:', tplRes.error.message);
   }
+  if (trRes.error) {
+    console.error('Supabase trainees select error:', trRes.error.message);
+  }
+
+  const templates: NutritionTemplate[] = Array.isArray(tplRes.data)
+    ? tplRes.data.map((row) => ({
+        id: row.id,
+        name: row.name,
+        description: row.description || '',
+        dayType: row.day_type || 'workout',
+        tolerancePercent: Number(row.tolerance_percent) || 10,
+        meals: row.meals || [],
+      }))
+    : [];
+
+  const trainees: TraineeProfile[] = Array.isArray(trRes.data)
+    ? trRes.data.map((row) => mapRowToTrainee(row))
+    : [];
+
+  return {
+    templates,
+    trainees,
+    dbError: trRes.error?.message || tplRes.error?.message,
+  };
 }
 
-/**
- * שליפת מתאמן בודד בלבד (עבור מתאמן מחובר - בידוד נתונים כך שמתאמן מקבל אך ורק את הרשומה שלו)
- */
 export async function loadSingleTraineeFromSupabase(
   traineeId: string
 ): Promise<TraineeProfile | null> {
   if (!supabase) return null;
-  try {
-    const { data, error } = await supabase
-      .from('trainees')
-      .select('*')
-      .eq('id', traineeId)
-      .single();
-    if (error || !data) return null;
-    return mapRowToTrainee(data);
-  } catch {
-    return null;
-  }
+  const { data, error } = await supabase
+    .from('trainees')
+    .select('*')
+    .eq('id', traineeId)
+    .single();
+  if (error || !data) return null;
+  return mapRowToTrainee(data);
 }
 
 export async function saveTemplatesToSupabase(templates: NutritionTemplate[]) {
   if (!supabase || templates.length === 0) return;
-  try {
-    const rows = templates.map((t) => ({
-      id: t.id,
-      name: t.name,
-      description: t.description,
-      day_type: t.dayType,
-      tolerance_percent: t.tolerancePercent,
-      meals: t.meals,
-      updated_at: new Date().toISOString(),
-    }));
-    await supabase.from('nutrition_templates').upsert(rows, { onConflict: 'id' });
-  } catch (err) {
-    console.warn('Supabase save templates warning:', err);
+  const rows = templates.map((t) => ({
+    id: t.id,
+    name: t.name,
+    description: t.description,
+    day_type: t.dayType,
+    tolerance_percent: t.tolerancePercent,
+    meals: t.meals,
+    updated_at: new Date().toISOString(),
+  }));
+  const { error } = await supabase
+    .from('nutrition_templates')
+    .upsert(rows, { onConflict: 'id' });
+  if (error) {
+    console.error('Supabase saveTemplates error:', error.message);
   }
 }
 
 export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
   if (!supabase || trainees.length === 0) return;
-  try {
-    const rows = trainees.map((t) => ({
-      id: t.id,
-      email: t.email,
-      password: t.password || '123456',
-      status: t.status || 'active',
-      name: t.name,
-      avatar: t.avatar,
-      phone: t.phone,
-      goal: t.goal,
-      current_weight: t.currentWeight,
-      target_weight: t.targetWeight,
-      tolerance_percent: t.tolerancePercent,
-      workout_template: t.workoutTemplate,
-      rest_template: t.restTemplate,
-      favorite_food_ids: t.favoriteFoodIds,
-      weight_history: t.weightHistory,
-      logs: t.logs,
-      updated_at: new Date().toISOString(),
-    }));
-    await supabase.from('trainees').upsert(rows, { onConflict: 'id' });
-  } catch (err) {
-    console.warn('Supabase save trainees warning:', err);
+  const rows = trainees.map((t) => ({
+    id: t.id,
+    email: t.email,
+    password: t.password,
+    status: t.status || 'active',
+    name: t.name,
+    avatar: t.avatar,
+    phone: t.phone,
+    goal: t.goal,
+    current_weight: t.currentWeight,
+    target_weight: t.targetWeight,
+    tolerance_percent: t.tolerancePercent,
+    workout_template: t.workoutTemplate,
+    rest_template: t.restTemplate,
+    favorite_food_ids: t.favoriteFoodIds,
+    weight_history: t.weightHistory,
+    logs: t.logs,
+    updated_at: new Date().toISOString(),
+  }));
+  const { error } = await supabase
+    .from('trainees')
+    .upsert(rows, { onConflict: 'id' });
+  if (error) {
+    console.error('Supabase saveTrainees error:', error.message);
   }
 }
 
 export async function deleteTraineeFromSupabase(traineeId: string) {
   if (!supabase) return;
-  try {
-    await supabase.from('trainees').delete().eq('id', traineeId);
-  } catch (err) {
-    console.warn('Supabase delete trainee warning:', err);
+  const { error } = await supabase
+    .from('trainees')
+    .delete()
+    .eq('id', traineeId);
+  if (error) {
+    console.error('Supabase deleteTrainee error:', error.message);
   }
 }
