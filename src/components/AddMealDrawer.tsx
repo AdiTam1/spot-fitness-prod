@@ -41,6 +41,7 @@ import {
   LoggedFoodItem,
   LoggedMealEntry,
   MealTemplateSlot,
+  PendingAiMealJob,
   QuickContextChip,
   SavedMealPreset,
   TraineeCustomUnit,
@@ -56,6 +57,7 @@ import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { ServingToolsManagerModal } from './ServingToolsManagerModal';
 import { SavedMealsLibraryTab } from './SavedMealsLibraryTab';
 import { AiQuickContextPanel } from './AiQuickContextPanel';
+import { useAiProgressMessage } from './BackgroundAiSyncBanner';
 
 interface AddMealDrawerProps {
   opened: boolean;
@@ -108,6 +110,19 @@ interface AddMealDrawerProps {
     chips?: Partial<QuickContextChip>[];
     chipId?: string;
   }) => Promise<{ error?: string }>;
+  selectedDate?: string;
+  backgroundAiJobs?: PendingAiMealJob[];
+  onStartBackgroundAiAnalysis?: (payload: {
+    traineeId: string;
+    date: string;
+    mealSlotId: string;
+    mealSlotName: string;
+    mode: 'photo' | 'text';
+    imageDataUrl?: string;
+    imageDataUrls?: string[];
+    textPrompt?: string;
+    contextParams?: AiContextParams;
+  }) => Promise<{ jobId: string }>;
 }
 
 export function AddMealDrawer({
@@ -133,6 +148,9 @@ export function AddMealDrawer({
   onSavedMealAction,
   onManageToolsAndUnits,
   onManageQuickChips,
+  selectedDate,
+  backgroundAiJobs = [],
+  onStartBackgroundAiAnalysis,
 }: AddMealDrawerProps) {
   const [activeTab, setActiveTab] = useState<string>(initialTab);
   const [items, setItems] = useState<LoggedFoodItem[]>([]);
@@ -221,45 +239,83 @@ export function AddMealDrawer({
     setIsRecordingVoice(false);
   };
 
+  const lastOpenedKeyRef = useRef<string>('');
+  const slotBgProcessingJob =
+    opened && mealSlot
+      ? backgroundAiJobs.find(
+          (j) =>
+            j.status === 'processing' &&
+            j.mealSlotId === mealSlot.id &&
+            (!selectedDate || j.date === selectedDate)
+        )
+      : undefined;
+  const slotBgFailedJob =
+    opened && mealSlot
+      ? backgroundAiJobs.find(
+          (j) =>
+            j.status === 'failed' &&
+            !j.acknowledged &&
+            j.mealSlotId === mealSlot.id &&
+            (!selectedDate || j.date === selectedDate)
+        )
+      : undefined;
+  const isSlotBgProcessing = Boolean(slotBgProcessingJob);
+  const progressTicker = useAiProgressMessage(
+    aiLoading || isSlotBgProcessing,
+    slotBgProcessingJob?.startedAt
+  );
+
   useEffect(() => {
     if (opened && mealSlot) {
-      setItems(existingEntry?.items ? [...existingEntry.items] : []);
-      setPhotoDataUrl(existingEntry?.photoDataUrl);
-      setPhotoItems(
-        existingEntry?.photoDataUrl && !existingEntry.photoDataUrl.endsWith(',DEMO')
-          ? [
-              {
-                dataUrl: existingEntry.photoDataUrl,
-                sizeKB: Math.round((existingEntry.photoDataUrl.length * 3) / 4 / 1024),
-                formatLabel: 'WebP',
-                angle: 'top-down',
-              },
-            ]
-          : []
-      );
-      setPhotoSizeKB(null);
-      setPhotoFormatLabel('WebP');
-      setPhotoNote(existingEntry?.photoNote || '');
-      setFreeTextPrompt('');
-      setContextParams({ customUnits: customFoodUnits });
-      setSaveAsPreset(false);
-      setPresetTitleInput('');
-      setSearchQuery('');
-      setAiRecommendations([]);
-      setAiRecDebug(null);
-      setLearnedFeedbackBanner(null);
-      setPreferenceFeedbackText('');
-      setEditingItemId(null);
-      setAiSummary(null);
-      setActiveTab(initialTab);
-      stopVoiceRecording();
+      const openKey = `${mealSlot.id}::${selectedDate || ''}::${initialTab}`;
+      if (lastOpenedKeyRef.current !== openKey) {
+        lastOpenedKeyRef.current = openKey;
+        setItems(existingEntry?.items ? [...existingEntry.items] : []);
+        setPhotoDataUrl(existingEntry?.photoDataUrl);
+        setPhotoItems(
+          existingEntry?.photoDataUrl && !existingEntry.photoDataUrl.endsWith(',DEMO')
+            ? [
+                {
+                  dataUrl: existingEntry.photoDataUrl,
+                  sizeKB: Math.round((existingEntry.photoDataUrl.length * 3) / 4 / 1024),
+                  formatLabel: 'WebP',
+                  angle: 'top-down',
+                },
+              ]
+            : []
+        );
+        setPhotoSizeKB(null);
+        setPhotoFormatLabel('WebP');
+        setPhotoNote(existingEntry?.photoNote || '');
+        setFreeTextPrompt('');
+        setContextParams({ customUnits: customFoodUnits });
+        setSaveAsPreset(false);
+        setPresetTitleInput('');
+        setSearchQuery('');
+        setAiRecommendations([]);
+        setAiRecDebug(null);
+        setLearnedFeedbackBanner(null);
+        setPreferenceFeedbackText('');
+        setEditingItemId(null);
+        setAiSummary(null);
+        setActiveTab(initialTab);
+        stopVoiceRecording();
+      } else if (existingEntry?.items && existingEntry.items.length > 0) {
+        // מיזוג אוטומטי כשמשימת AI ברקע מסתיימת בזמן שהחלונית נשארה פתוחה
+        setItems((prev) => {
+          const existingIds = new Set(prev.map((p) => p.id));
+          const incomingNew = existingEntry.items.filter((i) => !existingIds.has(i.id));
+          return incomingNew.length > 0 ? [...prev, ...incomingNew] : prev;
+        });
+      }
     } else if (!opened) {
+      lastOpenedKeyRef.current = '';
       stopVoiceRecording();
     }
     return () => {
       stopVoiceRecording();
     };
-  }, [opened, mealSlot, existingEntry, initialTab, customFoodUnits]);
+  }, [opened, mealSlot, existingEntry, initialTab, customFoodUnits, selectedDate]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -480,6 +536,32 @@ export function AddMealDrawer({
         traineeId,
         chips: chipObjs,
       });
+    }
+
+    // אם קיימת תמיכת רקע והפענוח הוא לאופציית צילום/טקסט של המשתמש — הרץ ברקע עם סנכרון אוטומטי ל-DB!
+    if (
+      optionIndex === undefined &&
+      onStartBackgroundAiAnalysis &&
+      traineeId &&
+      selectedDate &&
+      mealSlot
+    ) {
+      setAiSummary(null);
+      await onStartBackgroundAiAnalysis({
+        traineeId,
+        date: selectedDate,
+        mealSlotId: mealSlot.id,
+        mealSlotName: mealSlot.name,
+        mode,
+        imageDataUrl: mode === 'photo' ? activeImages[0]?.dataUrl || undefined : undefined,
+        imageDataUrls:
+          mode === 'photo' && activeImages.length > 0
+            ? activeImages.map((im) => im.dataUrl)
+            : undefined,
+        textPrompt: promptToUse,
+        contextParams: fullContextParams,
+      });
+      return;
     }
 
     aiLockRef.current = true;
@@ -739,7 +821,7 @@ export function AddMealDrawer({
       <Drawer
         opened={opened}
         onClose={() => {
-          if (!savingMeal && !aiLoading) onClose();
+          if (!savingMeal) onClose();
         }}
         position="bottom"
         size="92%"
@@ -1791,6 +1873,7 @@ export function AddMealDrawer({
 
                 <button
                   disabled={
+                    isSlotBgProcessing ||
                     aiLoading ||
                     photoUploading ||
                     (photoItems.length === 0 && !photoDataUrl && !photoNote.trim())
@@ -1807,18 +1890,18 @@ export function AddMealDrawer({
                     cursor: 'pointer',
                   }}
                 >
-                  {aiLoading ? (
+                  {isSlotBgProcessing || aiLoading ? (
                     <Loader2 size={16} className="spot-spinner" />
                   ) : (
                     <Wand2 size={16} />
                   )}
                   <span>
-                    {aiLoading
-                      ? 'מפענח מרכיבים וכמויות...'
+                    {isSlotBgProcessing || aiLoading
+                      ? progressTicker.currentStepText
                       : photoMode === 'nutrition-label'
                       ? 'חלץ ערכים תזונתיים מהאריזה (AI)'
                       : photoItems.length > 1
-                      ? `פענח ${photoItems.length} תמונות באמצעות AI`
+                      ? `פענח ${photoItems.length} תמונות ברקע (AI)`
                       : 'פענח תמונה באמצעות AI'}
                   </span>
                 </button>
@@ -1909,7 +1992,7 @@ export function AddMealDrawer({
                 />
 
                 <button
-                  disabled={aiLoading || !freeTextPrompt.trim()}
+                  disabled={isSlotBgProcessing || aiLoading || !freeTextPrompt.trim()}
                   onClick={() => runAiAnalysis('text')}
                   className="btn-volt"
                   style={{
@@ -1922,13 +2005,15 @@ export function AddMealDrawer({
                     cursor: 'pointer',
                   }}
                 >
-                  {aiLoading ? (
+                  {isSlotBgProcessing || aiLoading ? (
                     <Loader2 size={16} className="spot-spinner" />
                   ) : (
                     <Sparkles size={16} />
                   )}
                   <span>
-                    {aiLoading ? 'מחשב ערכים תזונתיים...' : 'פרק משפט לקלוריות ומאקרו'}
+                    {isSlotBgProcessing || aiLoading
+                      ? progressTicker.currentStepText
+                      : 'פרק משפט לקלוריות ומאקרו'}
                   </span>
                 </button>
               </div>
@@ -2028,6 +2113,77 @@ export function AddMealDrawer({
                   </div>
                 )}
               </>
+            )}
+
+            {(isSlotBgProcessing || aiLoading) && (
+              <div
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: 14,
+                  background: 'rgba(210, 255, 40, 0.08)',
+                  border: '1px solid rgba(210, 255, 40, 0.35)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Loader2 size={16} color="var(--accent-volt)" className="spot-spinner" />
+                    <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent-volt)' }}>
+                      {progressTicker.currentStepText}
+                    </span>
+                  </div>
+                  <span
+                    className="num-mono"
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 800,
+                      padding: '2px 8px',
+                      borderRadius: 999,
+                      background: 'rgba(210, 255, 40, 0.14)',
+                      color: 'var(--accent-volt)',
+                    }}
+                  >
+                    {progressTicker.formattedElapsed}
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                  ניתוח AI מתקדם עשוי לקחת 1–3 דקות. <b>אפשר לצאת מהחלונית או אפילו לסגור בינתיים</b> — הפענוח ממשיך ברקע והפריטים יסתנכרנו אוטומטית ליומן הארוחות שלך.
+                </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="btn-surface"
+                  style={{
+                    alignSelf: 'flex-start',
+                    padding: '6px 12px',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    borderColor: 'rgba(210, 255, 40, 0.35)',
+                    color: 'var(--accent-volt)',
+                  }}
+                >
+                  אפשר לצאת בינתיים — סגור חלונית והמשך רגיל ←
+                </button>
+              </div>
+            )}
+
+            {slotBgFailedJob && !aiSummary && !isSlotBgProcessing && (
+              <div
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 12,
+                  background: 'rgba(239, 68, 68, 0.14)',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                  color: '#f87171',
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                {slotBgFailedJob.errorMsg || 'פענוח ה-AI נכשל — נסה שוב או הוסף מהמאגר'}
+              </div>
             )}
 
             {aiSummary && (

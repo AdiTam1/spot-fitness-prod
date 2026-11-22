@@ -1,8 +1,8 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GenerationConfig, GoogleGenerativeAI } from '@google/generative-ai';
 
 /**
  * מודלים פעילים ב-Free Tier של Google AI Studio (נובמבר 2026):
- * - gemini-3.8-flash: דגם ה-Vision המדויק ביותר לזיהוי תמונות ומדידות (מכסה יומית מצומצמת ~20 RPD ב-Free Tier)
+ * - gemini-3.8-flash: דגם ה-Vision המדויק ביותר לזיהוי תמונות ומדידות (עם thinkingLevel: 'low' למהירות גבוהה)
  * - gemini-3.6-flash: דגם Flash רב-תכליתי בחינם
  * - gemini-3.5-flash-lite / gemini-3.1-flash-lite: דגמי Lite מהירים עם מכסת Free Tier גבוהה (~500 RPD, ~15 RPM)
  */
@@ -44,8 +44,9 @@ export function safeParseGeminiJson(rawText: string): Record<string, unknown> {
 }
 
 /**
- * קריאה מאוחדת למודלי Gemini עם מעבר גיבוי אוטומטי בין מודלים פעילים ב-Free Tier
- * וניסיון חוזר ללא responseMimeType אם דגם ספציפי דורש JSON חופשי.
+ * קריאה מאוחדת למודלי Gemini עם מעבר גיבוי אוטומטי בין מודלים פעילים ב-Free Tier,
+ * הגדרת thinkingLevel: 'low' להאצת זמני תגובה (מונע המתנות של 3-4 דקות במודלי חשיבה),
+ * וניסיון חוזר מדורג אם דגם ספציפי דורש config מינימלי ב-v1beta.
  */
 export async function callGeminiJson(
   apiKey: string,
@@ -60,43 +61,44 @@ export async function callGeminiJson(
   const errors: string[] = [];
 
   for (const modelName of models) {
-    try {
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: {
-          responseMimeType: 'application/json',
-        },
-      });
-      const result = await model.generateContent(contents);
-      const parsed = safeParseGeminiJson(result.response.text());
-      return { parsed, modelName };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Gemini call failed';
+    // עבור דגמי 3.8 נגדיר thinkingLevel: 'low' כברירת מחדל (מקצר זמני תגובה מדקות לשניות)
+    const configAttempts: (Record<string, unknown> | undefined)[] = modelName.includes('3.8')
+      ? [
+          {
+            responseMimeType: 'application/json',
+            thinkingConfig: { thinkingLevel: 'low' },
+          },
+          { responseMimeType: 'application/json' },
+          undefined,
+        ]
+      : [{ responseMimeType: 'application/json' }, undefined];
 
-      // גיבוי אם מודל מחזיר 400 INVALID_ARGUMENT על responseMimeType ב-v1beta
-      const isMimeArgError =
-        msg.includes('400') &&
-        (msg.toLowerCase().includes('responsemimetype') ||
-          msg.toLowerCase().includes('generationconfig') ||
-          msg.toLowerCase().includes('invalid_argument'));
+    for (let attemptIdx = 0; attemptIdx < configAttempts.length; attemptIdx++) {
+      const cfg = configAttempts[attemptIdx];
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          ...(cfg ? { generationConfig: cfg as unknown as GenerationConfig } : {}),
+        });
+        const result = await model.generateContent(contents);
+        const parsed = safeParseGeminiJson(result.response.text());
+        return { parsed, modelName };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Gemini call failed';
+        const isConfigArgError =
+          msg.includes('400') &&
+          (msg.toLowerCase().includes('responsemimetype') ||
+            msg.toLowerCase().includes('thinkingconfig') ||
+            msg.toLowerCase().includes('generationconfig') ||
+            msg.toLowerCase().includes('invalid_argument'));
 
-      if (isMimeArgError) {
-        try {
-          const fallbackModel = genAI.getGenerativeModel({ model: modelName });
-          const fallbackRes = await fallbackModel.generateContent(contents);
-          const parsed = safeParseGeminiJson(fallbackRes.response.text());
-          return { parsed, modelName };
-        } catch (retryErr) {
-          const retryMsg =
-            retryErr instanceof Error ? retryErr.message : 'Retry failed';
-          errors.push(`${modelName}: ${retryMsg}`);
-          console.warn(`Gemini retry error (${modelName}):`, retryMsg);
+        if (isConfigArgError && attemptIdx < configAttempts.length - 1) {
           continue;
         }
+        errors.push(`${modelName}: ${msg}`);
+        console.warn(`Gemini API error (${modelName}):`, msg);
+        break;
       }
-
-      errors.push(`${modelName}: ${msg}`);
-      console.warn(`Gemini API error (${modelName}):`, msg);
     }
   }
 

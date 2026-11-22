@@ -25,12 +25,14 @@ import {
   Bookmark,
 } from 'lucide-react';
 import {
+  AiContextParams,
   BodyMeasurementEntry,
   DailyCardioLog,
   DailyWorkoutLog,
   DayType,
   LoggedFoodItem,
   MealTemplateSlot,
+  PendingAiMealJob,
   QuickContextChip,
   SavedMealPreset,
   TraineeCustomUnit,
@@ -121,6 +123,24 @@ interface TraineeMobileViewProps {
     chips?: Partial<QuickContextChip>[];
     chipId?: string;
   }) => Promise<{ error?: string }>;
+  backgroundAiJobs?: PendingAiMealJob[];
+  onStartBackgroundAiAnalysis?: (payload: {
+    traineeId: string;
+    date: string;
+    mealSlotId: string;
+    mealSlotName: string;
+    mode: 'photo' | 'text';
+    imageDataUrl?: string;
+    imageDataUrls?: string[];
+    textPrompt?: string;
+    contextParams?: AiContextParams;
+  }) => Promise<{ jobId: string }>;
+  externalOpenMealRequest?: {
+    traineeId: string;
+    date: string;
+    mealSlotId: string;
+    nonce: number;
+  } | null;
   geminiApiKey?: string;
 }
 
@@ -166,6 +186,9 @@ export function TraineeMobileView({
   onSavedMealAction,
   onManageToolsAndUnits,
   onManageQuickChips,
+  backgroundAiJobs = [],
+  onStartBackgroundAiAnalysis,
+  externalOpenMealRequest,
   geminiApiKey,
 }: TraineeMobileViewProps) {
   const todayIso = getTodayIso();
@@ -219,6 +242,25 @@ export function TraineeMobileView({
     setHungerLevel(chk?.hungerLevel || 3);
     setSleepQuality(chk?.sleepQuality || 4);
   }, [trainee.id, trainee.weeklyCheckIns]);
+
+  useEffect(() => {
+    if (!externalOpenMealRequest || externalOpenMealRequest.traineeId !== trainee.id) {
+      return;
+    }
+    setMobileSection('journal');
+    setSelectedDate(externalOpenMealRequest.date);
+    const allSlots = [
+      ...(trainee.workoutTemplate?.meals || []),
+      ...(trainee.restTemplate?.meals || []),
+    ];
+    const targetSlot = allSlots.find(
+      (s) => s.id === externalOpenMealRequest.mealSlotId
+    );
+    if (targetSlot) {
+      setActiveMealSlot(targetSlot);
+      setDrawerTab('catalog');
+    }
+  }, [externalOpenMealRequest, trainee.id, trainee.workoutTemplate, trainee.restTemplate]);
 
   // אם המתאמן מתחבר בפעם הראשונה וטרם השלים Onboarding -> מציג את אשף ה-Onboarding
   if (
@@ -2745,6 +2787,9 @@ export function TraineeMobileView({
             : undefined
         }
         onManageQuickChips={onManageQuickChips}
+        selectedDate={selectedDate}
+        backgroundAiJobs={backgroundAiJobs}
+        onStartBackgroundAiAnalysis={onStartBackgroundAiAnalysis}
       />
     </div>
   );

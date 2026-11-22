@@ -92,6 +92,7 @@ create table if not exists public.trainees (
   custom_serving_tools jsonb not null default '[]'::jsonb,
   custom_food_units jsonb not null default '[]'::jsonb,
   recent_context_chips jsonb not null default '[]'::jsonb,
+  pending_ai_jobs jsonb not null default '[]'::jsonb,
   logs jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
@@ -123,6 +124,7 @@ alter table public.trainees add column if not exists saved_meals jsonb not null 
 alter table public.trainees add column if not exists custom_serving_tools jsonb not null default '[]'::jsonb;
 alter table public.trainees add column if not exists custom_food_units jsonb not null default '[]'::jsonb;
 alter table public.trainees add column if not exists recent_context_chips jsonb not null default '[]'::jsonb;
+alter table public.trainees add column if not exists pending_ai_jobs jsonb not null default '[]'::jsonb;
 alter table public.trainees add column if not exists logs jsonb not null default '{}'::jsonb;
 alter table public.trainees add column if not exists updated_at timestamptz not null default now();
 
@@ -210,6 +212,11 @@ set
     when jsonb_typeof(logs->'__profile_meta'->'recentContextChips') = 'array'
       then logs->'__profile_meta'->'recentContextChips'
     else recent_context_chips
+  end,
+  pending_ai_jobs = case
+    when jsonb_typeof(logs->'__profile_meta'->'pendingAiJobs') = 'array'
+      then logs->'__profile_meta'->'pendingAiJobs'
+    else pending_ai_jobs
   end
 where logs ? '__profile_meta';
 

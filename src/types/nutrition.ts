@@ -306,6 +306,26 @@ export interface SavedMealPreset {
   coachQuestion?: SavedMealCoachQuestion;
 }
 
+export interface PendingAiMealJob {
+  id: string;
+  targetTraineeId: string;
+  date: string;
+  mealSlotId: string;
+  mealSlotName: string;
+  mode: 'photo' | 'text';
+  summaryHint?: string;
+  status: 'processing' | 'completed' | 'failed';
+  startedAt: string;
+  completedAt?: string;
+  engine?: string;
+  isAiFallback?: boolean;
+  fallbackReason?: string;
+  itemsCount?: number;
+  errorMsg?: string;
+  autoSyncedToLog?: boolean;
+  acknowledged?: boolean;
+}
+
 export interface TraineeGroup {
   id: string;
   name: string;
@@ -346,6 +366,7 @@ export interface TraineeProfile {
   customServingTools?: TraineeServingTool[]; // צלחות / קערות / קופסאות / כוסות מוגדרות אישית
   customFoodUnits?: TraineeCustomUnit[]; // יחידות מידה מוגדרות אישית בגרמים
   recentContextChips?: QuickContextChip[]; // צ'יפים מהירים פר-משתמש מסודרים לפי MRU
+  pendingAiJobs?: PendingAiMealJob[]; // משימות פענוח AI שמתבצעות ברקע ומסתנכרנות אוטומטית ליומן
   logs: Record<string, DailyLog>;
   createdAt?: string;
 }

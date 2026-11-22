@@ -33,6 +33,7 @@ import { diagnoseSupabaseError } from '@/lib/supabase';
 import {
   AccountStatus,
   CoachProfile,
+  DailyLog,
   DayType,
   LoggedFoodItem,
   NutritionTemplate,
@@ -46,6 +47,41 @@ import {
   TraineeProfile,
   TraineeServingTool,
 } from '@/types/nutrition';
+
+function mergeLogsPreservingPendingAi(
+  existing: TraineeProfile,
+  incomingLogs?: Record<string, DailyLog>
+): Record<string, DailyLog> {
+  if (!incomingLogs) return existing.logs;
+  const merged = { ...incomingLogs };
+  const unackedCompleted = (existing.pendingAiJobs || []).filter(
+    (j) => j.status === 'completed' && !j.acknowledged && j.autoSyncedToLog
+  );
+  for (const job of unackedCompleted) {
+    const serverMeal = existing.logs[job.date]?.meals?.[job.mealSlotId];
+    if (!serverMeal || !serverMeal.items?.length) continue;
+    const clientDay = merged[job.date] || existing.logs[job.date];
+    const clientMeal = clientDay?.meals?.[job.mealSlotId];
+    const clientItemIds = new Set((clientMeal?.items || []).map((i) => i.id));
+    const missingFromClient = serverMeal.items.filter(
+      (i) => !clientItemIds.has(i.id)
+    );
+    if (missingFromClient.length > 0 && clientDay) {
+      merged[job.date] = {
+        ...clientDay,
+        meals: {
+          ...clientDay.meals,
+          [job.mealSlotId]: {
+            ...(clientMeal || serverMeal),
+            items: [...(clientMeal?.items || []), ...missingFromClient],
+            photoDataUrl: clientMeal?.photoDataUrl || serverMeal.photoDataUrl,
+          },
+        },
+      };
+    }
+  }
+  return merged;
+}
 
 const ALLOWED_CHIP_CATEGORIES = new Set<QuickChipCategory>([
   'sauce',
@@ -757,6 +793,41 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, savedMeals: nextMeals });
     }
 
+    if (action === 'ack-ai-jobs') {
+      const targetId =
+        session.role === 'trainee' ? session.id : String(body.traineeId || '');
+      if (session.role === 'trainee' && body.traineeId && body.traineeId !== session.id) {
+        return NextResponse.json({ error: 'אין הרשאה' }, { status: 403 });
+      }
+      const state = await getServerDbState();
+      const targetTrainee = state.trainees.find((t) => t.id === targetId);
+      if (
+        !targetTrainee ||
+        (session.role === 'trainee'
+          ? targetTrainee.status !== 'active'
+          : !canCoachAccessTrainee(session, targetTrainee))
+      ) {
+        return NextResponse.json({ error: 'אין הרשאה' }, { status: 403 });
+      }
+
+      const jobId = body.jobId ? sanitizeText(body.jobId, 60) : '';
+      const clearAllFinished = Boolean(body.clearAllFinished);
+      const nextJobs = (targetTrainee.pendingAiJobs || []).filter((j) => {
+        if (clearAllFinished && j.status !== 'processing') return false;
+        if (jobId && j.id === jobId) return false;
+        return true;
+      });
+
+      await updateServerDbState((prev) => ({
+        ...prev,
+        trainees: prev.trainees.map((t) =>
+          t.id === targetId ? { ...t, pendingAiJobs: nextJobs } : t
+        ),
+      }));
+
+      return NextResponse.json({ ok: true, pendingAiJobs: nextJobs });
+    }
+
     // =========================================================================
     // 1. פעולת מתאמן: עדכון יומן הארוחות, ספריית הארוחות השמורות והמשקל של עצמו בלבד
     // =========================================================================
@@ -828,7 +899,7 @@ export async function POST(request: NextRequest) {
             recentContextChips: Array.isArray(traineeInput.recentContextChips)
               ? sanitizeQuickChips(traineeInput.recentContextChips, 'user', 60)
               : existing.recentContextChips,
-            logs: traineeInput.logs || existing.logs,
+            logs: mergeLogsPreservingPendingAi(existing, traineeInput.logs),
           };
         }),
       }));
@@ -1130,7 +1201,7 @@ export async function POST(request: NextRequest) {
             ? {
                 ...t,
                 name: sanitizeText(traineeInput.name, 80) || t.name,
-                logs: traineeInput.logs,
+                logs: mergeLogsPreservingPendingAi(t, traineeInput.logs),
                 currentWeight: traineeInput.currentWeight,
                 targetWeight:
                   traineeInput.targetWeight || t.targetWeight,

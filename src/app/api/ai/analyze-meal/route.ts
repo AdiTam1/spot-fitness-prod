@@ -3,6 +3,7 @@ import { ISRAELI_FOOD_CATALOG, calculateMacrosForGrams } from '@/data/israeliFoo
 import {
   AiContextParams,
   LoggedFoodItem,
+  PendingAiMealJob,
   ReferenceObjectKind,
   ServingToolKind,
   TraineeCustomUnit,
@@ -16,8 +17,10 @@ import {
   verifyCsrfOrigin,
 } from '@/lib/serverAuth';
 import {
+  canCoachAccessTrainee,
   getSingleCoachFromServer,
   getSingleTraineeFromServer,
+  updateServerDbState,
 } from '@/lib/serverStore';
 import {
   GEMINI_VISION_MODELS,
@@ -25,6 +28,8 @@ import {
   callGeminiJson,
   cleanGeminiKey,
 } from '@/lib/geminiClient';
+
+export const maxDuration = 300;
 
 /**
  * מנתח טקסט עברי חכם (גיבוי לזיהוי טקסטואלי כשאין חיבור ל-Gemini)
@@ -433,6 +438,7 @@ export async function POST(request: NextRequest) {
       toolName,
       baseItems,
       adjustmentPrompt,
+      backgroundJob,
     } = body as {
       mode?: 'analyze' | 'adjust-meal' | 'measure-tool';
       imageDataUrl?: string;
@@ -445,6 +451,15 @@ export async function POST(request: NextRequest) {
       toolName?: string;
       baseItems?: LoggedFoodItem[];
       adjustmentPrompt?: string;
+      backgroundJob?: {
+        jobId: string;
+        traineeId: string;
+        date: string;
+        mealSlotId: string;
+        mealSlotName: string;
+        mode?: 'photo' | 'text';
+        summaryHint?: string;
+      };
     };
 
     // 3. בדיקת תקינות וגודל הקלט
@@ -475,6 +490,140 @@ export async function POST(request: NextRequest) {
     );
     const hasRealImage = validatedImages.length > 0;
     const sourceType: 'ai-photo' | 'ai-text' = hasRealImage ? 'ai-photo' : 'ai-text';
+
+    // 3ב. אם הבקשה כוללת סנכרון ברקע (backgroundJob): רשום סטטוס "processing" ב-DB מראש
+    let authorizedBgJob: PendingAiMealJob | null = null;
+    if (backgroundJob?.jobId && backgroundJob?.traineeId && backgroundJob?.date && backgroundJob?.mealSlotId) {
+      const targetTrainee = await getSingleTraineeFromServer(backgroundJob.traineeId);
+      const isAllowedTarget =
+        targetTrainee &&
+        (sessionUser.role === 'trainee'
+          ? targetTrainee.id === sessionUser.id
+          : canCoachAccessTrainee(sessionUser, targetTrainee));
+
+      if (!isAllowedTarget) {
+        return NextResponse.json(
+          { error: 'אין הרשאה לסנכרן משימת AI למתאמן זה' },
+          { status: 403 }
+        );
+      }
+
+      authorizedBgJob = {
+        id: sanitizeText(backgroundJob.jobId, 60),
+        targetTraineeId: backgroundJob.traineeId,
+        date: sanitizeText(backgroundJob.date, 20),
+        mealSlotId: sanitizeText(backgroundJob.mealSlotId, 60),
+        mealSlotName: sanitizeText(backgroundJob.mealSlotName, 60) || 'ארוחה',
+        mode: backgroundJob.mode === 'text' ? 'text' : 'photo',
+        summaryHint: sanitizeText(backgroundJob.summaryHint || textPrompt || '', 80) || undefined,
+        status: 'processing',
+        startedAt: new Date().toISOString(),
+        acknowledged: false,
+      };
+
+      await updateServerDbState((prev) => ({
+        ...prev,
+        trainees: prev.trainees.map((t) => {
+          if (t.id !== authorizedBgJob!.targetTraineeId) return t;
+          const prevJobs = (t.pendingAiJobs || []).filter(
+            (j) => j.id !== authorizedBgJob!.id && !j.acknowledged
+          );
+          return {
+            ...t,
+            pendingAiJobs: [authorizedBgJob!, ...prevJobs].slice(0, 12),
+          };
+        }),
+      }));
+    }
+
+    const syncAnalyzeResultToServer = async (params: {
+      items?: LoggedFoodItem[];
+      engine?: string;
+      isAiFallback?: boolean;
+      fallbackReason?: string;
+      errorMsg?: string;
+    }): Promise<PendingAiMealJob | undefined> => {
+      if (!authorizedBgJob) return undefined;
+      const nowIso = new Date().toISOString();
+      const nowTime = new Date().toLocaleTimeString('he-IL', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      const succeeded = Array.isArray(params.items) && params.items.length > 0;
+      const finishedJob: PendingAiMealJob = {
+        ...authorizedBgJob,
+        status: succeeded ? 'completed' : 'failed',
+        completedAt: nowIso,
+        engine: params.engine,
+        isAiFallback: params.isAiFallback,
+        fallbackReason: params.fallbackReason,
+        itemsCount: succeeded ? params.items!.length : 0,
+        errorMsg: params.errorMsg,
+        autoSyncedToLog: succeeded,
+        acknowledged: false,
+      };
+
+      const primaryPhoto =
+        hasRealImage && imageDataUrl && imageDataUrl.length < 400000
+          ? imageDataUrl
+          : hasRealImage && Array.isArray(imageDataUrls) && imageDataUrls[0]?.length < 400000
+          ? imageDataUrls[0]
+          : undefined;
+
+      await updateServerDbState((prev) => ({
+        ...prev,
+        trainees: prev.trainees.map((t) => {
+          if (t.id !== authorizedBgJob!.targetTraineeId) return t;
+          const nextJobs = (t.pendingAiJobs || []).some((j) => j.id === finishedJob.id)
+            ? (t.pendingAiJobs || []).map((j) => (j.id === finishedJob.id ? finishedJob : j))
+            : [finishedJob, ...(t.pendingAiJobs || [])].slice(0, 12);
+
+          if (!succeeded) {
+            return { ...t, pendingAiJobs: nextJobs };
+          }
+
+          const dateKey = finishedJob.date;
+          const existingLog = t.logs[dateKey] || {
+            date: dateKey,
+            dayType: 'workout' as const,
+            waterCups: 0,
+            waterGoal: 12,
+            weightKg: t.currentWeight,
+            meals: {},
+          };
+          const existingMeal = existingLog.meals[finishedJob.mealSlotId] || {
+            mealSlotId: finishedJob.mealSlotId,
+            items: [],
+            updatedAt: nowTime,
+          };
+
+          return {
+            ...t,
+            pendingAiJobs: nextJobs,
+            logs: {
+              ...t.logs,
+              [dateKey]: {
+                ...existingLog,
+                meals: {
+                  ...existingLog.meals,
+                  [finishedJob.mealSlotId]: {
+                    ...existingMeal,
+                    items: [...existingMeal.items, ...params.items!],
+                    photoDataUrl: existingMeal.photoDataUrl || primaryPhoto,
+                    photoNote:
+                      existingMeal.photoNote ||
+                      (textPrompt ? sanitizeText(textPrompt, 240) : undefined),
+                    updatedAt: nowTime,
+                  },
+                },
+              },
+            },
+          };
+        }),
+      }));
+
+      return finishedJob;
+    };
 
     // =========================================================================
     // מצב A: מדידת כלי הגשה (צלחת / קערה / קופסה / כוס) בעזרת AI + אובייקט ייחוס
@@ -708,6 +857,11 @@ ${contextBlock ? `\nנתוני הקשר מעודכנים מהמשתמש:\n${cont
           sourceType,
           res.modelName || GEMINI_VISION_MODELS[0]
         );
+        const syncedJob = await syncAnalyzeResultToServer({
+          items,
+          engine: res.modelName,
+          isAiFallback: false,
+        });
         return NextResponse.json({
           items,
           summary:
@@ -715,6 +869,7 @@ ${contextBlock ? `\nנתוני הקשר מעודכנים מהמשתמש:\n${cont
             'הארוחה פוענחה בהצלחה באמצעות AI',
           engine: res.modelName,
           isAiFallback: false,
+          syncedJob,
         });
       }
       geminiErrorMsg = res.errorMsg || 'מודל Gemini לא החזיר תוצאה';
@@ -767,6 +922,12 @@ ${contextBlock ? `\nנתוני הקשר מעודכנים מהמשתמש:\n${cont
     }
 
     if (items.length > 0) {
+      const syncedJob = await syncAnalyzeResultToServer({
+        items,
+        engine: 'smart-hebrew-builtin',
+        isAiFallback: true,
+        fallbackReason,
+      });
       return NextResponse.json({
         items,
         summary: apiKey
@@ -775,14 +936,23 @@ ${contextBlock ? `\nנתוני הקשר מעודכנים מהמשתמש:\n${cont
         engine: 'smart-hebrew-builtin',
         isAiFallback: true,
         fallbackReason,
+        syncedJob,
       });
     }
 
+    const errMsg = apiKey
+      ? `מנוע זיהוי התמונות של AI נכשל זמנית (${geminiErrorMsg || 'נסה שוב'}). ניתן לתאר את הארוחה במילים (למשל: "פסטה 200 גרם") או לחפש במאגר.`
+      : 'לזיהוי מתמונה בלבד נדרש חיבור מפתח GEMINI_API_KEY תקף בשרת. כתוב שם מאכל (למשל: "פסטה") או הוסף ממאגר המזון.';
+
+    const syncedJob = await syncAnalyzeResultToServer({
+      items: [],
+      errorMsg: errMsg,
+    });
+
     return NextResponse.json(
       {
-        error: apiKey
-          ? `מנוע זיהוי התמונות של AI נכשל זמנית (${geminiErrorMsg || 'נסה שוב'}). ניתן לתאר את הארוחה במילים (למשל: "פסטה 200 גרם") או לחפש במאגר.`
-          : 'לזיהוי מתמונה בלבד נדרש חיבור מפתח GEMINI_API_KEY תקף בשרת. כתוב שם מאכל (למשל: "פסטה") או הוסף ממאגר המזון.',
+        error: errMsg,
+        syncedJob,
       },
       { status: 422 }
     );

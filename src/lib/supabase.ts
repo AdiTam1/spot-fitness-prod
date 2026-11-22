@@ -5,6 +5,7 @@ import {
   CoachOnboardingData,
   CoachProfile,
   NutritionTemplate,
+  PendingAiMealJob,
   QuickContextChip,
   SavedMealPreset,
   TraineeActivityTargets,
@@ -113,6 +114,7 @@ interface EmbeddedTraineeMeta {
   customServingTools?: TraineeServingTool[];
   customFoodUnits?: TraineeCustomUnit[];
   recentContextChips?: QuickContextChip[];
+  pendingAiJobs?: PendingAiMealJob[];
   primaryCoachId?: string;
   sharedCoachIds?: string[];
   groupId?: string | null;
@@ -246,6 +248,11 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
       ? embeddedMeta.recentContextChips
       : Array.isArray(row.recent_context_chips)
       ? (row.recent_context_chips as QuickContextChip[])
+      : [],
+    pendingAiJobs: Array.isArray(embeddedMeta.pendingAiJobs)
+      ? embeddedMeta.pendingAiJobs
+      : Array.isArray(row.pending_ai_jobs)
+      ? (row.pending_ai_jobs as PendingAiMealJob[])
       : [],
     logs: rawLogs as TraineeProfile['logs'],
   };
@@ -831,6 +838,7 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
       customServingTools: t.customServingTools || [],
       customFoodUnits: t.customFoodUnits || [],
       recentContextChips: t.recentContextChips || [],
+      pendingAiJobs: t.pendingAiJobs || [],
       primaryCoachId: t.primaryCoachId || 'coach-admin',
       sharedCoachIds: t.sharedCoachIds || [],
       groupId: t.groupId || null,
@@ -869,6 +877,7 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
     custom_serving_tools: t.customServingTools || [],
     custom_food_units: t.customFoodUnits || [],
     recent_context_chips: t.recentContextChips || [],
+    pending_ai_jobs: t.pendingAiJobs || [],
     logs: packLogsWithMeta(t),
     updated_at: new Date().toISOString(),
   }));
