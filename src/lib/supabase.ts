@@ -5,10 +5,14 @@ import {
   CoachOnboardingData,
   CoachProfile,
   NutritionTemplate,
+  QuickContextChip,
+  SavedMealPreset,
   TraineeActivityTargets,
+  TraineeCustomUnit,
   TraineeGroup,
   TraineeOnboardingData,
   TraineeProfile,
+  TraineeServingTool,
   WeeklyCheckInEntry,
 } from '@/types/nutrition';
 
@@ -89,6 +93,9 @@ function mapRowToGroup(row: Record<string, unknown>): TraineeGroup {
     name: String(row.name || 'קבוצה'),
     color: String(row.color || '#d2ff28'),
     ownerCoachId: String(row.owner_coach_id || 'coach-admin'),
+    customQuickChips: Array.isArray(row.custom_quick_chips)
+      ? (row.custom_quick_chips as QuickContextChip[])
+      : undefined,
   };
 }
 
@@ -102,6 +109,10 @@ interface EmbeddedTraineeMeta {
   measurementsHistory?: BodyMeasurementEntry[];
   observationDates?: string[];
   countObservationInStats?: boolean;
+  savedMeals?: SavedMealPreset[];
+  customServingTools?: TraineeServingTool[];
+  customFoodUnits?: TraineeCustomUnit[];
+  recentContextChips?: QuickContextChip[];
   primaryCoachId?: string;
   sharedCoachIds?: string[];
   groupId?: string | null;
@@ -216,6 +227,26 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
       : [],
     observationDates,
     countObservationInStats,
+    savedMeals: Array.isArray(embeddedMeta.savedMeals)
+      ? embeddedMeta.savedMeals
+      : Array.isArray(row.saved_meals)
+      ? (row.saved_meals as SavedMealPreset[])
+      : [],
+    customServingTools: Array.isArray(embeddedMeta.customServingTools)
+      ? embeddedMeta.customServingTools
+      : Array.isArray(row.custom_serving_tools)
+      ? (row.custom_serving_tools as TraineeServingTool[])
+      : [],
+    customFoodUnits: Array.isArray(embeddedMeta.customFoodUnits)
+      ? embeddedMeta.customFoodUnits
+      : Array.isArray(row.custom_food_units)
+      ? (row.custom_food_units as TraineeCustomUnit[])
+      : [],
+    recentContextChips: Array.isArray(embeddedMeta.recentContextChips)
+      ? embeddedMeta.recentContextChips
+      : Array.isArray(row.recent_context_chips)
+      ? (row.recent_context_chips as QuickContextChip[])
+      : [],
     logs: rawLogs as TraineeProfile['logs'],
   };
 }
@@ -278,6 +309,7 @@ export async function loadStateFromSupabase(): Promise<{
   groups: TraineeGroup[];
   templates: NutritionTemplate[];
   trainees: TraineeProfile[];
+  globalQuickChips: QuickContextChip[];
   readErrors: string[];
 }> {
   if (!supabase) {
@@ -286,6 +318,7 @@ export async function loadStateFromSupabase(): Promise<{
       groups: [],
       templates: [],
       trainees: [],
+      globalQuickChips: [],
       readErrors: [],
     };
   }
@@ -317,6 +350,7 @@ export async function loadStateFromSupabase(): Promise<{
   );
   let fallbackCoaches: CoachProfile[] = [];
   let fallbackGroups: TraineeGroup[] = [];
+  let globalQuickChips: QuickContextChip[] = [];
 
   if (
     systemMetaRow &&
@@ -326,12 +360,16 @@ export async function loadStateFromSupabase(): Promise<{
     const metaObj = systemMetaRow.meals as {
       coaches?: CoachProfile[];
       groups?: TraineeGroup[];
+      globalQuickChips?: QuickContextChip[];
     };
     if (Array.isArray(metaObj.coaches)) {
       fallbackCoaches = metaObj.coaches;
     }
     if (Array.isArray(metaObj.groups)) {
       fallbackGroups = metaObj.groups;
+    }
+    if (Array.isArray(metaObj.globalQuickChips)) {
+      globalQuickChips = metaObj.globalQuickChips;
     }
   }
 
@@ -361,7 +399,14 @@ export async function loadStateFromSupabase(): Promise<{
     groupMap.set(fg.id, fg);
   }
   for (const tg of tableGroups) {
-    groupMap.set(tg.id, tg);
+    const existingFallback = groupMap.get(tg.id);
+    groupMap.set(tg.id, {
+      ...tg,
+      customQuickChips:
+        tg.customQuickChips !== undefined
+          ? tg.customQuickChips
+          : existingFallback?.customQuickChips,
+    });
   }
   const groups = Array.from(groupMap.values());
 
@@ -381,7 +426,7 @@ export async function loadStateFromSupabase(): Promise<{
     ? trRes.data.map((row) => mapRowToTrainee(row))
     : [];
 
-  return { coaches, groups, templates, trainees, readErrors };
+  return { coaches, groups, templates, trainees, globalQuickChips, readErrors };
 }
 
 export async function loadSingleTraineeFromSupabase(
@@ -414,9 +459,64 @@ export async function loadSingleCoachFromSupabase(
   return fullState.coaches.find((c) => c.id === coachId) || null;
 }
 
+export async function loadQuickChipsContextForTraineeFromSupabase(
+  groupId?: string
+): Promise<{
+  globalQuickChips: QuickContextChip[];
+  groupQuickChips: QuickContextChip[];
+}> {
+  if (!supabase) return { globalQuickChips: [], groupQuickChips: [] };
+
+  const [metaRes, grpRes] = await Promise.all([
+    supabase
+      .from('nutrition_templates')
+      .select('meals')
+      .eq('id', SYSTEM_META_TEMPLATE_ID)
+      .maybeSingle(),
+    groupId
+      ? supabase
+          .from('trainee_groups')
+          .select('custom_quick_chips')
+          .eq('id', groupId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+
+  let globalQuickChips: QuickContextChip[] = [];
+  let fallbackGroups: TraineeGroup[] = [];
+  const metaMeals = metaRes.data?.meals as
+    | { globalQuickChips?: QuickContextChip[]; groups?: TraineeGroup[] }
+    | undefined;
+  if (metaMeals && typeof metaMeals === 'object') {
+    if (Array.isArray(metaMeals.globalQuickChips)) {
+      globalQuickChips = metaMeals.globalQuickChips;
+    }
+    if (Array.isArray(metaMeals.groups)) {
+      fallbackGroups = metaMeals.groups;
+    }
+  }
+
+  let groupQuickChips: QuickContextChip[] = [];
+  if (groupId) {
+    const rowChips = (grpRes.data as { custom_quick_chips?: QuickContextChip[] } | null)
+      ?.custom_quick_chips;
+    if (Array.isArray(rowChips)) {
+      groupQuickChips = rowChips;
+    } else {
+      const fb = fallbackGroups.find((g) => g.id === groupId);
+      if (Array.isArray(fb?.customQuickChips)) {
+        groupQuickChips = fb.customQuickChips;
+      }
+    }
+  }
+
+  return { globalQuickChips, groupQuickChips };
+}
+
 export async function saveSystemMetaBackup(partial: {
   coaches?: CoachProfile[];
   groups?: TraineeGroup[];
+  globalQuickChips?: QuickContextChip[];
 }): Promise<{ ok: boolean; error?: string }> {
   const run = async (): Promise<{ ok: boolean; error?: string }> => {
     if (!supabase) return { ok: false, error: 'Supabase client not configured' };
@@ -432,6 +532,7 @@ export async function saveSystemMetaBackup(partial: {
         ? (existing.meals as {
             coaches?: CoachProfile[];
             groups?: TraineeGroup[];
+            globalQuickChips?: QuickContextChip[];
           })
         : {};
 
@@ -444,6 +545,10 @@ export async function saveSystemMetaBackup(partial: {
         partial.groups !== undefined
           ? partial.groups
           : currentMeta.groups || [],
+      globalQuickChips:
+        partial.globalQuickChips !== undefined
+          ? partial.globalQuickChips
+          : currentMeta.globalQuickChips || [],
     };
 
     const attempts: Record<string, unknown>[] = [
@@ -498,6 +603,15 @@ export async function saveSystemMetaBackup(partial: {
     () => undefined
   );
   return queued;
+}
+
+export async function saveGlobalQuickChipsToSupabase(
+  globalQuickChips: QuickContextChip[]
+) {
+  const res = await saveSystemMetaBackup({ globalQuickChips });
+  if (!res.ok) {
+    throw new Error(res.error || 'Supabase global quick chips save failed');
+  }
 }
 
 export async function saveCoachesToSupabase(
@@ -599,12 +713,25 @@ export async function saveGroupsToSupabase(
     name: g.name,
     color: g.color,
     owner_coach_id: g.ownerCoachId,
+    custom_quick_chips: g.customQuickChips || [],
     updated_at: new Date().toISOString(),
   }));
   const first = await supabase
     .from('trainee_groups')
     .upsert(rows, { onConflict: 'id' });
   if (!first.error) return;
+
+  const midRows = groups.map((g) => ({
+    id: g.id,
+    name: g.name,
+    color: g.color,
+    owner_coach_id: g.ownerCoachId,
+    updated_at: new Date().toISOString(),
+  }));
+  const mid = await supabase
+    .from('trainee_groups')
+    .upsert(midRows, { onConflict: 'id' });
+  if (!mid.error) return;
 
   const legacyRows = groups.map((g) => ({
     id: g.id,
@@ -700,6 +827,10 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
       measurementsHistory: t.measurementsHistory || [],
       observationDates: t.observationDates || [],
       countObservationInStats: Boolean(t.countObservationInStats),
+      savedMeals: t.savedMeals || [],
+      customServingTools: t.customServingTools || [],
+      customFoodUnits: t.customFoodUnits || [],
+      recentContextChips: t.recentContextChips || [],
       primaryCoachId: t.primaryCoachId || 'coach-admin',
       sharedCoachIds: t.sharedCoachIds || [],
       groupId: t.groupId || null,
@@ -734,6 +865,10 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
     coach_ai_notes: t.coachAiNotes || '',
     ai_learned_preferences: t.aiLearnedPreferences || [],
     weekly_check_ins: t.weeklyCheckIns || [],
+    saved_meals: t.savedMeals || [],
+    custom_serving_tools: t.customServingTools || [],
+    custom_food_units: t.customFoodUnits || [],
+    recent_context_chips: t.recentContextChips || [],
     logs: packLogsWithMeta(t),
     updated_at: new Date().toISOString(),
   }));

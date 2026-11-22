@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ISRAELI_FOOD_CATALOG, calculateMacrosForGrams } from '@/data/israeliFoodCatalog';
-import { LoggedFoodItem } from '@/types/nutrition';
+import {
+  AiContextParams,
+  LoggedFoodItem,
+  ReferenceObjectKind,
+  ServingToolKind,
+  TraineeCustomUnit,
+} from '@/types/nutrition';
 import {
   checkRateLimit,
   clearSessionCookie,
@@ -14,25 +19,12 @@ import {
   getSingleCoachFromServer,
   getSingleTraineeFromServer,
 } from '@/lib/serverStore';
-
-function cleanKey(raw?: string): string {
-  return (raw || '')
-    .trim()
-    .replace(/^["']|["']$/g, '')
-    .replace(/[\r\n]+/g, '')
-    .trim();
-}
-
-function safeParseGeminiJson(rawText: string): Record<string, unknown> {
-  const cleaned = rawText
-    .replace(/```json\s*/gi, '')
-    .replace(/```\s*/g, '')
-    .trim();
-  const start = cleaned.indexOf('{');
-  const end = cleaned.lastIndexOf('}');
-  const slice = start !== -1 && end > start ? cleaned.slice(start, end + 1) : cleaned;
-  return JSON.parse(slice) as Record<string, unknown>;
-}
+import {
+  GEMINI_VISION_MODELS,
+  GeminiContentPart,
+  callGeminiJson,
+  cleanGeminiKey,
+} from '@/lib/geminiClient';
 
 /**
  * מנתח טקסט עברי חכם (גיבוי לזיהוי טקסטואלי כשאין חיבור ל-Gemini)
@@ -40,7 +32,8 @@ function safeParseGeminiJson(rawText: string): Record<string, unknown> {
  */
 function smartHebrewMealParser(
   text: string,
-  sourceType: 'ai-photo' | 'ai-text'
+  sourceType: 'ai-photo' | 'ai-text',
+  customUnits?: TraineeCustomUnit[]
 ): LoggedFoodItem[] {
   const normalized = text.trim();
   if (!normalized) return [];
@@ -159,15 +152,26 @@ function smartHebrewMealParser(
     }
 
     const baseUnit = catalogItem.units[0];
-    const totalGrams = Math.round(baseUnit.grams * multiplier);
+    const matchedCustomUnit = (customUnits || []).find(
+      (u) =>
+        (u.unitName && segLower.includes(u.unitName.toLowerCase())) ||
+        (u.foodNameKeyword &&
+          segLower.includes(u.foodNameKeyword.toLowerCase()) &&
+          (!u.unitName || segLower.includes('צלחת') || segLower.includes('קערה') || segLower.includes('קופס')))
+    );
+    const unitGrams = matchedCustomUnit ? matchedCustomUnit.grams : baseUnit.grams;
+    const unitNameLabel = matchedCustomUnit ? matchedCustomUnit.unitName : baseUnit.label;
+    const totalGrams = Math.round(unitGrams * multiplier);
 
     matchedItems.push({
       id: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       name: catalogItem.name,
       unitLabel:
         multiplier === 1
-          ? baseUnit.label
-          : `${multiplier} × ${baseUnit.label.replace(/\s*\(\d+\s*גרם\)/, '')} (${totalGrams} גרם)`,
+          ? unitNameLabel.includes('גרם')
+            ? unitNameLabel
+            : `${unitNameLabel} (${totalGrams} גרם)`
+          : `${multiplier} × ${unitNameLabel.replace(/\s*\(\d+\s*גרם\)/, '')} (${totalGrams} גרם)`,
       quantity: multiplier,
       grams: totalGrams,
       macros: calculateMacrosForGrams(catalogItem.per100g, totalGrams),
@@ -176,6 +180,198 @@ function smartHebrewMealParser(
   }
 
   return matchedItems;
+}
+
+type GeminiPart = GeminiContentPart;
+
+function extractValidatedImages(
+  imageDataUrl?: string,
+  imageDataUrls?: string[],
+  imageAngles?: ('top-down' | 'side-45' | 'label' | 'other')[]
+): { mimeType: string; data: string; angleLabel: string }[] {
+  const rawList = Array.isArray(imageDataUrls) && imageDataUrls.length > 0
+    ? imageDataUrls
+    : imageDataUrl
+    ? [imageDataUrl]
+    : [];
+
+  const angleMap: Record<string, string> = {
+    'top-down': 'צילום 90° ישירות מלמעלה (קובע קוטר שוליים ושטח)',
+    'side-45': 'צילום פרופיל/צד 35°-45° (קובע גובה, עומק ונפח תלת-ממדי)',
+    label: 'צילום תווית / טבלת ערכים תזונתיים',
+    other: 'זווית צילום נוספת',
+  };
+
+  const out: { mimeType: string; data: string; angleLabel: string }[] = [];
+  for (let i = 0; i < Math.min(rawList.length, 3); i++) {
+    const url = rawList[i];
+    if (
+      typeof url !== 'string' ||
+      !url.startsWith('data:image/') ||
+      url.endsWith(',DEMO') ||
+      url.length < 100 ||
+      url.length > 3_500_000
+    ) {
+      continue;
+    }
+    const match = url.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    if (!match) continue;
+    const angleKey = imageAngles?.[i] || (i === 0 ? 'top-down' : i === 1 ? 'side-45' : 'other');
+    out.push({
+      mimeType: match[1],
+      data: match[2],
+      angleLabel: angleMap[angleKey] || `תמונה ${i + 1}`,
+    });
+  }
+  return out;
+}
+
+async function callGeminiStructured(
+  apiKey: string,
+  parts: GeminiPart[]
+): Promise<{ parsed: Record<string, unknown> | null; modelName?: string; errorMsg?: string }> {
+  return callGeminiJson(apiKey, parts, GEMINI_VISION_MODELS);
+}
+
+function formatContextParamsPrompt(ctx?: AiContextParams): string {
+  if (!ctx) return '';
+  const lines: string[] = [];
+  if (ctx.servingToolLabel) {
+    const dims = [
+      ctx.servingToolDiameterCm ? `קוטר ${ctx.servingToolDiameterCm} ס"מ` : '',
+      ctx.servingToolDepthCm ? `עומק ${ctx.servingToolDepthCm} ס"מ` : '',
+      ctx.servingToolVolumeMl ? `נפח ${ctx.servingToolVolumeMl} מ"ל` : '',
+    ]
+      .filter(Boolean)
+      .join(', ');
+    lines.push(`- כלי הגשה בשימוש: ${ctx.servingToolLabel}${dims ? ` (${dims})` : ''}`);
+  }
+  lines.push(
+    `- שומנים נסתרים / רטבים: ${
+      ctx.saucesAndOils && ctx.saucesAndOils.trim()
+        ? ctx.saucesAndOils.trim()
+        : 'ללא תוספת שמן/רטבים נסתרים (אלא אם נראה בבירור בתמונה)'
+    }`
+  );
+  if (ctx.portionOrGrams?.trim()) {
+    lines.push(`- כמויות/משקל שדווחו: ${ctx.portionOrGrams.trim()}`);
+  }
+  if (ctx.prepState?.trim()) {
+    lines.push(`- מצב צבירה/בישול/חיתוך: ${ctx.prepState.trim()}`);
+  }
+  if (ctx.drinksAndSides?.trim()) {
+    lines.push(`- שתייה ותוספות בצד: ${ctx.drinksAndSides.trim()}`);
+  }
+  if (ctx.mealSource) {
+    const srcMap: Record<string, string> = {
+      home: 'הכנה ביתית (בדר"כ פחות שמן נסתר)',
+      restaurant: 'אוכל ממסעדה / משלוח (קח בחשבון שמן בישול סביר במנות מוקפצות/צלויות)',
+      packaged: 'מוצר ארוז / מותג',
+    };
+    lines.push(`- מקור המנה: ${srcMap[ctx.mealSource] || ctx.mealSource}`);
+  }
+  if (Array.isArray(ctx.activeChipLabels) && ctx.activeChipLabels.length > 0) {
+    lines.push(`- צ׳יפים/תגיות מהירות שנבחרו: ${ctx.activeChipLabels.join(', ')}`);
+  }
+  if (Array.isArray(ctx.customUnits) && ctx.customUnits.length > 0) {
+    lines.push(
+      `- יחידות מידה אישיות שהמתאמן הגדיר מראש: ${ctx.customUnits
+        .slice(0, 15)
+        .map((u) => `${u.unitName}${u.foodNameKeyword ? ` (${u.foodNameKeyword})` : ''} = ${u.grams}g`)
+        .join(' | ')}`
+    );
+  }
+  return lines.join('\n');
+}
+
+function mapRawGeminiItems(
+  rawItems: Record<string, unknown>[],
+  sourceType: 'ai-photo' | 'ai-text',
+  modelName: string
+): LoggedFoodItem[] {
+  return rawItems.map((it, idx) => {
+    const macros = (it.macros as Record<string, number>) || {};
+    const grams = sanitizeNumber(it.grams, 1, 5000, 100);
+    return {
+      id: `gemini-${Date.now()}-${idx}`,
+      name: sanitizeText(it.name, 120) || 'פריט מזון',
+      unitLabel: sanitizeText(it.unitLabel, 80) || `${grams} גרם`,
+      quantity: sanitizeNumber(it.quantity, 0.1, 100, 1),
+      grams,
+      macros: {
+        calories: Math.round(sanitizeNumber(macros.calories, 0, 10000, 0)),
+        protein: Math.round(sanitizeNumber(macros.protein, 0, 1000, 0) * 10) / 10,
+        carbs: Math.round(sanitizeNumber(macros.carbs, 0, 1000, 0) * 10) / 10,
+        fat: Math.round(sanitizeNumber(macros.fat, 0, 1000, 0) * 10) / 10,
+      },
+      source: sourceType,
+      aiEngine: modelName,
+      isAiFallback: false,
+    };
+  });
+}
+
+function adjustMealFallback(
+  baseItems: LoggedFoodItem[],
+  adjustmentPrompt: string
+): LoggedFoodItem[] {
+  const cleanPrompt = adjustmentPrompt.trim();
+  const gramsOverride = cleanPrompt.match(/(\d+)\s*(?:גרם|ג'|ג׳|g)/i);
+  const withoutMatch = cleanPrompt.match(/בלי\s+([^\s,]+)/i);
+  let next = [...baseItems];
+
+  if (withoutMatch) {
+    const keyword = withoutMatch[1].toLowerCase();
+    next = next.filter((it) => !it.name.toLowerCase().includes(keyword));
+  }
+
+  if (gramsOverride && next.length > 0) {
+    const newGrams = sanitizeNumber(gramsOverride[1], 1, 5000, next[0].grams);
+    // התאם את הרכיב העיקרי (או הרכיב שמוזכר בטקסט)
+    let targetIdx = next.findIndex((it) =>
+      cleanPrompt.toLowerCase().includes(it.name.toLowerCase().split(' ')[0])
+    );
+    if (targetIdx < 0) targetIdx = 0;
+    const target = next[targetIdx];
+    const ratio = target.grams > 0 ? newGrams / target.grams : 1;
+    next[targetIdx] = {
+      ...target,
+      grams: newGrams,
+      unitLabel: `${newGrams} גרם (הותאם)`,
+      macros: {
+        calories: Math.round(target.macros.calories * ratio),
+        protein: Math.round(target.macros.protein * ratio * 10) / 10,
+        carbs: Math.round(target.macros.carbs * ratio * 10) / 10,
+        fat: Math.round(target.macros.fat * ratio * 10) / 10,
+      },
+    };
+  } else if (cleanPrompt.includes('חצי') && next.length > 0) {
+    next = next.map((it) => ({
+      ...it,
+      grams: Math.max(1, Math.round(it.grams * 0.5)),
+      unitLabel: `חצי מנה (${Math.max(1, Math.round(it.grams * 0.5))} גרם)`,
+      macros: {
+        calories: Math.round(it.macros.calories * 0.5),
+        protein: Math.round(it.macros.protein * 0.5 * 10) / 10,
+        carbs: Math.round(it.macros.carbs * 0.5 * 10) / 10,
+        fat: Math.round(it.macros.fat * 0.5 * 10) / 10,
+      },
+    }));
+  } else if (cleanPrompt.includes('כפול') && next.length > 0) {
+    next = next.map((it) => ({
+      ...it,
+      grams: Math.round(it.grams * 2),
+      unitLabel: `מנה כפולה (${Math.round(it.grams * 2)} גרם)`,
+      macros: {
+        calories: Math.round(it.macros.calories * 2),
+        protein: Math.round(it.macros.protein * 2 * 10) / 10,
+        carbs: Math.round(it.macros.carbs * 2 * 10) / 10,
+        fat: Math.round(it.macros.fat * 2 * 10) / 10,
+      },
+    }));
+  }
+
+  return next;
 }
 
 export async function POST(request: NextRequest) {
@@ -215,8 +411,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 2. הגנת Rate-Limit על מכסת ה-AI (עד 25 קריאות בשעה למשתמש)
-    const rl = checkRateLimit(`ai-${sessionUser.id}`, 25, 3600);
+    // 2. הגנת Rate-Limit על מכסת ה-AI (עד 50 קריאות בשעה למשתמש)
+    const rl = checkRateLimit(`ai-${sessionUser.id}`, 50, 3600);
     if (!rl.allowed) {
       return NextResponse.json(
         { error: 'הגעת למכסת פענוחי ה-AI לשעה זו. ניתן להזין מוצרים מהמאגר.' },
@@ -225,53 +421,255 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { imageDataUrl, textPrompt, customApiKey } = body as {
+    const {
+      mode = 'analyze',
+      imageDataUrl,
+      imageDataUrls,
+      textPrompt,
+      customApiKey,
+      contextParams,
+      referenceObject = 'credit-card',
+      toolKind = 'plate',
+      toolName,
+      baseItems,
+      adjustmentPrompt,
+    } = body as {
+      mode?: 'analyze' | 'adjust-meal' | 'measure-tool';
       imageDataUrl?: string;
+      imageDataUrls?: string[];
       textPrompt?: string;
       customApiKey?: string;
+      contextParams?: AiContextParams;
+      referenceObject?: ReferenceObjectKind;
+      toolKind?: ServingToolKind;
+      toolName?: string;
+      baseItems?: LoggedFoodItem[];
+      adjustmentPrompt?: string;
     };
 
-    // 3. בדיקת תקינות וגודל הקלט למניעת הזרקות ועומס
+    // 3. בדיקת תקינות וגודל הקלט
     if (textPrompt && textPrompt.length > 600) {
       return NextResponse.json(
         { error: 'תיאור הארוחה ארוך מדי (מקסימום 600 תווים)' },
         { status: 400 }
       );
     }
-    if (imageDataUrl && imageDataUrl.length > 3_500_000) {
+    if (adjustmentPrompt && adjustmentPrompt.length > 500) {
       return NextResponse.json(
-        { error: 'קובץ התמונה גדול מדי' },
+        { error: 'תיאור השינוי ארוך מדי (מקסימום 500 תווים)' },
         { status: 400 }
       );
     }
 
-    // שימוש במפתח חיצוני מותר אך ורק אם המשתמש המחובר הוא מנהל ראשי או מאמן
     const safeCustomKey =
       (sessionUser.role === 'admin' || sessionUser.role === 'coach') &&
       customApiKey
-        ? cleanKey(customApiKey)
+        ? cleanGeminiKey(customApiKey)
         : '';
-    const apiKey = safeCustomKey || cleanKey(process.env.GEMINI_API_KEY);
-    const hasRealImage = Boolean(
-      imageDataUrl &&
-        imageDataUrl.startsWith('data:image/') &&
-        !imageDataUrl.endsWith(',DEMO') &&
-        imageDataUrl.length > 100
+    const apiKey = safeCustomKey || cleanGeminiKey(process.env.GEMINI_API_KEY);
+
+    const validatedImages = extractValidatedImages(
+      imageDataUrl,
+      imageDataUrls,
+      contextParams?.imageAngles
     );
+    const hasRealImage = validatedImages.length > 0;
     const sourceType: 'ai-photo' | 'ai-text' = hasRealImage ? 'ai-photo' : 'ai-text';
 
-    // אם הוגדר מפתח Gemini API, נשתמש במודל Vision של Gemini (עם ניסיון גיבוי בין גרסאות Flash)
-    let geminiErrorMsg = '';
-    if (apiKey) {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const systemInstruction = `אתה תזונאי קליני וספורט מומחה בישראל.
-תפקידך לנתח ארוחה מתמונה ו/או מתיאור טקסטואלי בעברית ולהחזיר אובייקט JSON בלבד במבנה הבא:
+    // =========================================================================
+    // מצב A: מדידת כלי הגשה (צלחת / קערה / קופסה / כוס) בעזרת AI + אובייקט ייחוס
+    // =========================================================================
+    if (mode === 'measure-tool') {
+      if (!hasRealImage) {
+        return NextResponse.json(
+          { error: 'למדידת כלי עם AI יש להעלות לפחות תמונה אחת (רצוי 2: מלמעלה + מהצד).' },
+          { status: 400 }
+        );
+      }
+      if (!apiKey) {
+        return NextResponse.json(
+          {
+            error: 'לא הוגדר מפתח GEMINI_API_KEY בשרת למדידת כלים בתמונה. ניתן להזין מידות ידנית.',
+            isAiFallback: true,
+            fallbackReason: 'לא הוגדר GEMINI_API_KEY בשרת',
+          },
+          { status: 422 }
+        );
+      }
+
+      const refSpecs: Record<string, string> = {
+        'credit-card':
+          'כרטיס סטנדרטי ISO/IEC 7810 ID-1 (רב-קו / תעודה / כרטיס מועדון / אשראי הפוך): רוחב מדויק 8.56 ס"מ (85.60 מ"מ) × גובה 5.40 ס"מ (53.98 מ"מ), יחס צדדים 1.586:1',
+        'coin-10': 'מטבע 10 שקלים (10 NIS): קוטר 2.30 ס"מ (23.0 מ"מ), טבעת כסופה וליבה מוזהבת',
+        'coin-5': 'מטבע 5 שקלים (5 NIS): קוטר 2.40 ס"מ (24.0 מ"מ)',
+        cutlery: 'סכו"ם שולחני סטנדרטי (מזלג/כף מרק ~19.0 ס"מ, כפית ~14.0 ס"מ — שגיאה אפשרית 15%-25%)',
+        none: 'ללא אובייקט ייחוס רשמי — הערך על סמך פרופורציות סטנדרטיות וציין רמת ודאות בינונית/נמוכה',
+      };
+
+      const measurePrompt = `אתה מומחה Computer Vision ומדידות פיזיקליות לכלי הגשה.
+המשתמש רוצה למדוד כלי הגשה מסוג "${toolKind}"${toolName ? ` (${sanitizeText(toolName, 60)})` : ''} מתוך התמונות המצורפות.
+אובייקט הייחוס שהוצב ליד הכלי: ${refSpecs[referenceObject] || refSpecs['credit-card']}.
+
+בצע שלב-אחר-שלב (חובה להישען על קואורדינטות לפני חישוב):
+1. זהה את אובייקט הייחוס (4 פינות אם כרטיס, או קוטר מעגל אם מטבע) בתיבת [ymin, xmin, ymax, xmax] מנורמלת 0-1000.
+2. חשב יחס ס"מ-ליחידה מנורמלת במישור השולחן. אם אובייקט הייחוס על השולחן והכלי גבוה (מעל 4 ס"מ), קזז את התרחבות הפרלקסה של שפת הכלי העליונה כלפי מטה ב-8%-15%.
+3. מדוד את קוטר/רוחב הכלי (diameterCm), עומק/גובה פנימי משוער (depthCm), ונפח שימושי במ"ל (volumeMl).
+4. הערך משקל ממוצע בגרם למילוי אופייני סביר של הכלי (defaultFoodGrams, למשל פסטה/אורז/סלט/מרק בכמות יומיומית סבירה בכלי זה).
+5. תן המלצת כיול/התראת צילום קצרה בעברית (confidenceNote).
+
+החזר JSON בלבד במבנה הבא:
 {
-  "summary": "תיאור קצר בעברית של מה שזוהה בארוחה",
+  "recommendedName": "שם קצר וברור לכלי בעברית",
+  "diameterCm": 26.0,
+  "depthCm": 3.5,
+  "volumeMl": 850,
+  "defaultFoodGrams": 220,
+  "referenceDetected": true,
+  "confidence": "high",
+  "confidenceNote": "הסבר קצר על הזווית, אובייקט הייחוס ורמת הדיוק"
+}`;
+
+      const parts: GeminiPart[] = [{ text: measurePrompt }];
+      validatedImages.forEach((img, idx) => {
+        parts.push({ text: `תמונה ${idx + 1}: ${img.angleLabel}` });
+        parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
+      });
+
+      const res = await callGeminiStructured(apiKey, parts);
+      if (res.parsed) {
+        return NextResponse.json({
+          mode: 'measure-tool',
+          recommendedName: sanitizeText(res.parsed.recommendedName, 60) || toolName || 'כלי מדוד',
+          diameterCm: sanitizeNumber(res.parsed.diameterCm, 2, 55, 24),
+          depthCm: sanitizeNumber(res.parsed.depthCm, 0.5, 35, 3),
+          volumeMl: Math.round(sanitizeNumber(res.parsed.volumeMl, 10, 5000, 600)),
+          defaultFoodGrams: Math.round(
+            sanitizeNumber(res.parsed.defaultFoodGrams, 10, 3000, 200)
+          ),
+          referenceDetected: Boolean(res.parsed.referenceDetected ?? true),
+          confidence: String(res.parsed.confidence || 'medium'),
+          confidenceNote:
+            sanitizeText(res.parsed.confidenceNote, 200) ||
+            'המידות חולצו מתמונת הכלי ביחס לאובייקט הייחוס.',
+          engine: res.modelName,
+          isAiFallback: false,
+        });
+      }
+
+      return NextResponse.json(
+        {
+          error: `מדידת הכלי ב-AI נכשלה (${res.errorMsg}). ניתן להזין מידות ידנית או לנסות לצלם שוב באור טוב.`,
+          isAiFallback: true,
+          fallbackReason: res.errorMsg,
+        },
+        { status: 422 }
+      );
+    }
+
+    // =========================================================================
+    // מצב B: התאמת ארוחה שמורה עם AI ("הפעם היה 100 גרם פסטה / בלי רוטב")
+    // =========================================================================
+    if (mode === 'adjust-meal') {
+      const cleanBaseItems = Array.isArray(baseItems) ? baseItems.slice(0, 30) : [];
+      const cleanAdjustment = (adjustmentPrompt || textPrompt || '').trim();
+      if (cleanBaseItems.length === 0) {
+        return NextResponse.json(
+          { error: 'לא נמצאו מרכיבים קודמים להתאמה' },
+          { status: 400 }
+        );
+      }
+      if (!cleanAdjustment && !hasRealImage) {
+        return NextResponse.json(
+          { error: 'יש לכתוב מה השתנה בארוחה או לצרף תמונה מעודכנת' },
+          { status: 400 }
+        );
+      }
+
+      const contextBlock = formatContextParamsPrompt(contextParams);
+      let geminiErrorMsg = '';
+      if (apiKey) {
+        const adjustInstruction = `אתה תזונאי קליני וספורט מומחה בישראל.
+המשתמש לוקח ארוחה שמורה קיימת ורוצה להתאים אותה לשינוי שקרה הפעם.
+מרכיבי הבסיס של הארוחה הקודמת (JSON):
+${JSON.stringify(cleanBaseItems)}
+
+${cleanAdjustment ? `השינוי המבוקש ע"י המשתמש: "${cleanAdjustment}"` : ''}
+${contextBlock ? `\nנתוני הקשר מעודכנים מהמשתמש:\n${contextBlock}` : ''}
+
+עדכן אך ורק את הכמויות/המרכיבים שהשתנו (או כל מרכיב בהתאם לתמונה/להנחיה), חשב מחדש את הגרמים והמאקרו במדויק לפי מוצרים ישראליים, והחזר JSON בלבד:
+{
+  "summary": "סיכום קצר בעברית של השינוי שחושב",
   "items": [
     {
       "name": "שם המאכל בעברית",
-      "unitLabel": "תיאור היחידה והמשקל, למשל: יחידה (25 גרם) או מנה (150 גרם)",
+      "unitLabel": "תיאור יחידה ומשקל",
+      "quantity": 1,
+      "grams": 100,
+      "macros": { "calories": 131, "protein": 5.0, "carbs": 25.0, "fat": 1.1 }
+    }
+  ]
+}`;
+        const parts: GeminiPart[] = [{ text: adjustInstruction }];
+        validatedImages.forEach((img, idx) => {
+          parts.push({ text: `תמונה מעודכנת ${idx + 1}: ${img.angleLabel}` });
+          parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
+        });
+
+        const res = await callGeminiStructured(apiKey, parts);
+        if (res.parsed && Array.isArray(res.parsed.items) && res.parsed.items.length > 0) {
+          const items = mapRawGeminiItems(
+            res.parsed.items as Record<string, unknown>[],
+            sourceType,
+            res.modelName || GEMINI_VISION_MODELS[0]
+          );
+          return NextResponse.json({
+            items,
+            summary:
+              sanitizeText(res.parsed.summary, 200) ||
+              'הארוחה הותאמה מחדש באמצעות AI',
+            engine: res.modelName,
+            isAiFallback: false,
+          });
+        }
+        geminiErrorMsg = res.errorMsg || 'מודל Gemini לא החזיר תוצאה';
+      }
+
+      const fallbackReason = !apiKey
+        ? 'לא הוגדר GEMINI_API_KEY בשרת'
+        : geminiErrorMsg || 'מודל Gemini לא החזיר תוצאה';
+
+      const adjusted = adjustMealFallback(cleanBaseItems, cleanAdjustment).map(
+        (it) => ({
+          ...it,
+          aiEngine: 'smart-hebrew-builtin',
+          isAiFallback: true,
+          fallbackReason,
+        })
+      );
+
+      return NextResponse.json({
+        items: adjusted,
+        summary: `הארוחה הותאמה דטרמיניסטית (${adjusted.length} מרכיבים).`,
+        engine: 'smart-hebrew-builtin',
+        isAiFallback: true,
+        fallbackReason,
+      });
+    }
+
+    // =========================================================================
+    // מצב C (ברירת מחדל): ניתוח תמונות מרובות + הקשר מדויק + טקסט
+    // =========================================================================
+    const contextBlock = formatContextParamsPrompt(contextParams);
+    let geminiErrorMsg = '';
+    if (apiKey) {
+      const systemInstruction = `אתה תזונאי קליני וספורט מומחה בישראל עם התמחות בניתוח נפח וכמויות מתמונות.
+תפקידך לנתח ארוחה מ-1 עד 3 תמונות ו/או מתיאור טקסטואלי בעברית ולהחזיר JSON בלבד במבנה הבא:
+{
+  "summary": "תיאור קצר בעברית של מה שזוהה והערכת כמות",
+  "items": [
+    {
+      "name": "שם המאכל בעברית",
+      "unitLabel": "תיאור היחידה והמשקל, למשל: כוס מבושלת (160 גרם)",
       "quantity": 1,
       "grams": 150,
       "macros": {
@@ -283,106 +681,91 @@ export async function POST(request: NextRequest) {
     }
   ]
 }
-הקפד על ערכים תזונתיים מדויקים לפי מוצרים ישראליים (משרד הבריאות, תנובה, שטראוס, אסם וכו'). אם המשתמש ציין הקשר (כמו פסטה, כף שמן זית או אחוז שומן), התחשב בו במדויק.`;
 
-      const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
-        { text: systemInstruction },
-      ];
+כללי דיוק הנפח והקלוריות (חובה ליישם כשמצורפות תמונות):
+1. אם צורפו 2 תמונות (90° מלמעלה + ~35°-45° מהצד): השתמש בתמונת הלמעלה לשטח הפנים/הפרוסה ובתמונת הצד לגובה הערמה, עובי ועומק בתוך הקערה/קופסה.
+2. שים לב להקשר כלי ההגשה (קוטר/עומק/נפח אם הוזנו), קזז אפקט זווית אם מדובר בקערה עמוקה, ואל תגזים במזון אוורירי (קח בחשבון Packing Fraction: עלים/סלט ~0.4, פסטה חופשית ~0.65, אורז ~0.85, בשר/מוצק ~0.95) * צפיפות לפני המרה לגרם.
+3. שומנים נסתרים/רטבים: אם המשתמש הזין שאין תוספת שמן/רטבים, אל תוסיף שמן זית/טחינה מדומיינים אלא אם נראים או דווחו מפורשות! אם זה פסטה בלי בשר, אל תנחש חזה עוף.
+4. השתמש בערכים תזונתיים של מוצרים ישראליים (משרד הבריאות, תנובה, שטראוס, אסם, ברילה וכו').`;
+
+      const parts: GeminiPart[] = [{ text: systemInstruction }];
 
       if (textPrompt && textPrompt.trim()) {
         parts.push({ text: `תיאור / הערת המתאמן לארוחה: "${textPrompt.trim()}"` });
       }
-
-      if (hasRealImage && imageDataUrl) {
-        const match = imageDataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
-        if (match) {
-          parts.push({
-            inlineData: {
-              mimeType: match[1],
-              data: match[2],
-            },
-          });
-        }
+      if (contextBlock) {
+        parts.push({ text: `פרמטרי דיוק שנבחרו ע"י המתאמן:\n${contextBlock}` });
       }
+      validatedImages.forEach((img, idx) => {
+        parts.push({ text: `תמונה ${idx + 1}: ${img.angleLabel}` });
+        parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
+      });
 
-      for (const modelName of ['gemini-2.5-flash', 'gemini-2.0-flash']) {
-        try {
-          const model = genAI.getGenerativeModel({
-            model: modelName,
-            generationConfig: {
-              responseMimeType: 'application/json',
-            },
-          });
-
-          const result = await model.generateContent(parts);
-          const rawText = result.response.text();
-          const parsed = safeParseGeminiJson(rawText);
-
-          if (Array.isArray(parsed.items) && parsed.items.length > 0) {
-            const items: LoggedFoodItem[] = parsed.items.map(
-              (it: Record<string, unknown>, idx: number) => {
-                const macros = (it.macros as Record<string, number>) || {};
-                const grams = sanitizeNumber(it.grams, 1, 5000, 100);
-                return {
-                  id: `gemini-${Date.now()}-${idx}`,
-                  name: sanitizeText(it.name, 120) || 'פריט מזון',
-                  unitLabel:
-                    sanitizeText(it.unitLabel, 80) || `${grams} גרם`,
-                  quantity: sanitizeNumber(it.quantity, 0.1, 100, 1),
-                  grams,
-                  macros: {
-                    calories: Math.round(
-                      sanitizeNumber(macros.calories, 0, 10000, 0)
-                    ),
-                    protein:
-                      Math.round(
-                        sanitizeNumber(macros.protein, 0, 1000, 0) * 10
-                      ) / 10,
-                    carbs:
-                      Math.round(
-                        sanitizeNumber(macros.carbs, 0, 1000, 0) * 10
-                      ) / 10,
-                    fat:
-                      Math.round(sanitizeNumber(macros.fat, 0, 1000, 0) * 10) /
-                      10,
-                  },
-                  source: sourceType,
-                  aiEngine: modelName,
-                  isAiFallback: false,
-                };
-              }
-            );
-
-            return NextResponse.json({
-              items,
-              summary:
-                sanitizeText(parsed.summary, 200) ||
-                'הארוחה פוענחה בהצלחה באמצעות AI',
-              engine: modelName,
-              isAiFallback: false,
-            });
-          }
-        } catch (geminiErr) {
-          geminiErrorMsg =
-            geminiErr instanceof Error ? geminiErr.message : 'Gemini call failed';
-          console.warn(`Gemini API error (${modelName}):`, geminiErrorMsg);
-        }
+      const res = await callGeminiStructured(apiKey, parts);
+      if (res.parsed && Array.isArray(res.parsed.items) && res.parsed.items.length > 0) {
+        const items = mapRawGeminiItems(
+          res.parsed.items as Record<string, unknown>[],
+          sourceType,
+          res.modelName || GEMINI_VISION_MODELS[0]
+        );
+        return NextResponse.json({
+          items,
+          summary:
+            sanitizeText(res.parsed.summary, 200) ||
+            'הארוחה פוענחה בהצלחה באמצעות AI',
+          engine: res.modelName,
+          isAiFallback: false,
+        });
       }
+      geminiErrorMsg = res.errorMsg || 'מודל Gemini לא החזיר תוצאה';
     }
 
     const fallbackReason = !apiKey
       ? 'לא הוגדר GEMINI_API_KEY בשרת'
       : geminiErrorMsg || 'מודל Gemini לא החזיר תוצאה';
 
-    // גיבוי טקסטואלי: לעולם לא ממציא חזה עוף ואורז כשתמונה לא זוהתה!
-    const items = smartHebrewMealParser(textPrompt || '', sourceType).map(
-      (it) => ({
-        ...it,
-        aiEngine: 'smart-hebrew-builtin',
-        isAiFallback: true,
-        fallbackReason,
-      })
-    );
+    // גיבוי טקסטואלי דטרמיניסטי: משלב גם טקסט וגם שדות הקשר (רטבים/שתייה/יחידות מותאמות)
+    const combinedFallbackText = [
+      textPrompt || '',
+      contextParams?.portionOrGrams || '',
+      contextParams?.saucesAndOils || '',
+      contextParams?.drinksAndSides || '',
+    ]
+      .filter((s) => s && !s.includes('ללא'))
+      .join(', ');
+
+    let items = smartHebrewMealParser(
+      combinedFallbackText,
+      sourceType,
+      contextParams?.customUnits
+    ).map((it) => ({
+      ...it,
+      aiEngine: 'smart-hebrew-builtin',
+      isAiFallback: true,
+      fallbackReason,
+    }));
+
+    // אם המתאמן בחר כלי מוגדר עם משקל ברירת מחדל ויש מרכיב מרכזי אחד ללא משקל מפורש — הצמד משקל מכלי
+    if (
+      items.length === 1 &&
+      !(textPrompt && /\d+\s*(?:גרם|ג'|g)/i.test(textPrompt)) &&
+      contextParams?.servingToolLabel
+    ) {
+      const catMatch = ISRAELI_FOOD_CATALOG.find((c) => c.name === items[0].name);
+      const customGrams = contextParams?.portionOrGrams?.match(/(\d+)\s*(?:גרם|g)/i)?.[1];
+      const toolGrams = customGrams ? Number(customGrams) : undefined;
+      if (catMatch && toolGrams && toolGrams > 0) {
+        items = [
+          {
+            ...items[0],
+            grams: toolGrams,
+            unitLabel: `${contextParams.servingToolLabel} (${toolGrams} גרם)`,
+            macros: calculateMacrosForGrams(catMatch.per100g, toolGrams),
+          },
+        ];
+      }
+    }
+
     if (items.length > 0) {
       return NextResponse.json({
         items,

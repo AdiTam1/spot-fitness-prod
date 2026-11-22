@@ -31,11 +31,13 @@ create table if not exists public.trainee_groups (
   name text not null,
   color text not null default '#d2ff28',
   owner_coach_id text not null default 'coach-admin',
+  custom_quick_chips jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now()
 );
 
 alter table public.trainee_groups add column if not exists color text not null default '#d2ff28';
 alter table public.trainee_groups add column if not exists owner_coach_id text not null default 'coach-admin';
+alter table public.trainee_groups add column if not exists custom_quick_chips jsonb not null default '[]'::jsonb;
 alter table public.trainee_groups add column if not exists updated_at timestamptz not null default now();
 
 -- 3. טבלת טמפלייטים של תזונה (Global + Personal Coach Templates)
@@ -86,6 +88,10 @@ create table if not exists public.trainees (
   coach_ai_notes text not null default '',
   ai_learned_preferences jsonb not null default '[]'::jsonb,
   weekly_check_ins jsonb not null default '[]'::jsonb,
+  saved_meals jsonb not null default '[]'::jsonb,
+  custom_serving_tools jsonb not null default '[]'::jsonb,
+  custom_food_units jsonb not null default '[]'::jsonb,
+  recent_context_chips jsonb not null default '[]'::jsonb,
   logs jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
@@ -113,6 +119,10 @@ alter table public.trainees add column if not exists enable_workout_rest_split b
 alter table public.trainees add column if not exists coach_ai_notes text not null default '';
 alter table public.trainees add column if not exists ai_learned_preferences jsonb not null default '[]'::jsonb;
 alter table public.trainees add column if not exists weekly_check_ins jsonb not null default '[]'::jsonb;
+alter table public.trainees add column if not exists saved_meals jsonb not null default '[]'::jsonb;
+alter table public.trainees add column if not exists custom_serving_tools jsonb not null default '[]'::jsonb;
+alter table public.trainees add column if not exists custom_food_units jsonb not null default '[]'::jsonb;
+alter table public.trainees add column if not exists recent_context_chips jsonb not null default '[]'::jsonb;
 alter table public.trainees add column if not exists logs jsonb not null default '{}'::jsonb;
 alter table public.trainees add column if not exists updated_at timestamptz not null default now();
 
@@ -180,6 +190,26 @@ set
     when jsonb_typeof(logs->'__profile_meta'->'weeklyCheckIns') = 'array'
       then logs->'__profile_meta'->'weeklyCheckIns'
     else weekly_check_ins
+  end,
+  saved_meals = case
+    when jsonb_typeof(logs->'__profile_meta'->'savedMeals') = 'array'
+      then logs->'__profile_meta'->'savedMeals'
+    else saved_meals
+  end,
+  custom_serving_tools = case
+    when jsonb_typeof(logs->'__profile_meta'->'customServingTools') = 'array'
+      then logs->'__profile_meta'->'customServingTools'
+    else custom_serving_tools
+  end,
+  custom_food_units = case
+    when jsonb_typeof(logs->'__profile_meta'->'customFoodUnits') = 'array'
+      then logs->'__profile_meta'->'customFoodUnits'
+    else custom_food_units
+  end,
+  recent_context_chips = case
+    when jsonb_typeof(logs->'__profile_meta'->'recentContextChips') = 'array'
+      then logs->'__profile_meta'->'recentContextChips'
+    else recent_context_chips
   end
 where logs ? '__profile_meta';
 

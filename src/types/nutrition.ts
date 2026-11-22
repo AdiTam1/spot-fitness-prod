@@ -201,11 +201,117 @@ export interface CoachDirectoryItem {
   isSuperAdmin?: boolean;
 }
 
+export type QuickChipCategory =
+  | 'sauce'
+  | 'prep'
+  | 'portion'
+  | 'drink'
+  | 'source'
+  | 'tool-hint';
+
+export interface QuickContextChip {
+  id: string;
+  label: string;
+  category: QuickChipCategory;
+  scope: 'user' | 'group' | 'global';
+  groupId?: string;
+  createdBy?: string;
+  lastUsedAt?: string;
+  useCount?: number;
+}
+
+export type ReferenceObjectKind =
+  | 'credit-card'
+  | 'coin-10'
+  | 'coin-5'
+  | 'cutlery'
+  | 'none';
+
+export type ServingToolKind = 'plate' | 'bowl' | 'box' | 'cup' | 'spoon' | 'custom';
+
+export interface TraineeServingTool {
+  id: string;
+  name: string;
+  kind: ServingToolKind;
+  diameterCm?: number;
+  depthCm?: number;
+  volumeMl?: number;
+  defaultFoodGrams?: number;
+  notes?: string;
+  measuredByAi?: boolean;
+  referenceObject?: ReferenceObjectKind;
+  confidenceNote?: string;
+  updatedAt?: string;
+}
+
+export interface TraineeCustomUnit {
+  id: string;
+  unitName: string;
+  foodNameKeyword?: string;
+  grams: number;
+  servingToolId?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface AiContextParams {
+  servingToolId?: string;
+  servingToolLabel?: string;
+  servingToolDiameterCm?: number;
+  servingToolDepthCm?: number;
+  servingToolVolumeMl?: number;
+  saucesAndOils?: string;
+  portionOrGrams?: string;
+  prepState?: string;
+  drinksAndSides?: string;
+  mealSource?: 'home' | 'restaurant' | 'packaged' | '';
+  activeChipLabels?: string[];
+  imageAngles?: ('top-down' | 'side-45' | 'label' | 'other')[];
+  customUnits?: TraineeCustomUnit[];
+}
+
+export interface SavedMealCoachQuestion {
+  id: string;
+  question: string;
+  askedAt: string;
+  reply?: string;
+  repliedAt?: string;
+  repliedBy?: string;
+  status: 'pending' | 'answered';
+  recommendedPromoted?: boolean;
+}
+
+export interface SavedMealPreset {
+  id: string;
+  title: string;
+  mealSlotId?: string;
+  items: LoggedFoodItem[];
+  totalCalories: number;
+  totalProtein: number;
+  totalCarbs: number;
+  totalFat: number;
+  photoDataUrls?: string[];
+  photoDataUrl?: string;
+  contextSummary?: string;
+  contextParams?: AiContextParams;
+  aiEngine?: string;
+  isAiFallback?: boolean;
+  fallbackReason?: string;
+  isFavorite: boolean;
+  isPinned: boolean;
+  useCount: number;
+  lastUsedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  coachQuestion?: SavedMealCoachQuestion;
+}
+
 export interface TraineeGroup {
   id: string;
   name: string;
   color: string;
   ownerCoachId: string;
+  customQuickChips?: QuickContextChip[];
 }
 
 export interface TraineeProfile {
@@ -236,6 +342,10 @@ export interface TraineeProfile {
   weeklyCheckIns?: WeeklyCheckInEntry[];
   observationDates?: string[]; // תאריכי ימי תשקיף (YYYY-MM-DD)
   countObservationInStats?: boolean; // בחירת מאמן בקליק אם ימי תשקיף נספרים בחישוב היעדים או לא
+  savedMeals?: SavedMealPreset[]; // ספריית ארוחות שמורות (מועדפים, נעיצה, פופולריות, התאמת AI, שאלות למאמן)
+  customServingTools?: TraineeServingTool[]; // צלחות / קערות / קופסאות / כוסות מוגדרות אישית
+  customFoodUnits?: TraineeCustomUnit[]; // יחידות מידה מוגדרות אישית בגרמים
+  recentContextChips?: QuickContextChip[]; // צ'יפים מהירים פר-משתמש מסודרים לפי MRU
   logs: Record<string, DailyLog>;
   createdAt?: string;
 }

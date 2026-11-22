@@ -24,10 +24,14 @@ import {
   DayType,
   LoggedFoodItem,
   NutritionTemplate,
+  QuickContextChip,
+  SavedMealPreset,
   TraineeActivityTargets,
+  TraineeCustomUnit,
   TraineeGroup,
   TraineeOnboardingData,
   TraineeProfile,
+  TraineeServingTool,
   WeeklyCheckInEntry,
 } from '@/types/nutrition';
 import { TraineeMobileView } from '@/components/TraineeMobileView';
@@ -44,6 +48,10 @@ export default function HomePage() {
   const [templates, setTemplates] = useState<NutritionTemplate[]>([]);
   const [trainees, setTrainees] = useState<TraineeProfile[]>([]);
   const [groups, setGroups] = useState<TraineeGroup[]>([]);
+  const [globalQuickChips, setGlobalQuickChips] = useState<QuickContextChip[]>([]);
+  const [traineeGroupQuickChips, setTraineeGroupQuickChips] = useState<
+    QuickContextChip[]
+  >([]);
   const [coaches, setCoaches] = useState<CoachProfile[]>([]);
   const [myCoachProfile, setMyCoachProfile] = useState<CoachProfile | null>(
     null
@@ -89,6 +97,8 @@ export default function HomePage() {
         setTrainees([]);
         setTemplates([]);
         setGroups([]);
+        setGlobalQuickChips([]);
+        setTraineeGroupQuickChips([]);
         setCoaches([]);
         setMyCoachProfile(null);
         setCoachDirectory([]);
@@ -104,6 +114,12 @@ export default function HomePage() {
         }
         if (Array.isArray(remoteData.groups)) {
           setGroups(remoteData.groups);
+        }
+        if (Array.isArray(remoteData.globalQuickChips)) {
+          setGlobalQuickChips(remoteData.globalQuickChips);
+        }
+        if (Array.isArray(remoteData.groupQuickChips)) {
+          setTraineeGroupQuickChips(remoteData.groupQuickChips);
         }
         if (Array.isArray(remoteData.coaches)) {
           setCoaches(remoteData.coaches);
@@ -236,6 +252,8 @@ export default function HomePage() {
       traineesRef.current = [];
       setTemplates([]);
       setGroups([]);
+      setGlobalQuickChips([]);
+      setTraineeGroupQuickChips([]);
       setCoaches([]);
       setMyCoachProfile(null);
       setCoachDirectory([]);
@@ -475,6 +493,138 @@ export default function HomePage() {
           : t
       )
     );
+    return {};
+  };
+
+  const handleSavedMealAction = async (
+    traineeId: string,
+    payload: {
+      op:
+        | 'upsert'
+        | 'toggle-pin'
+        | 'toggle-favorite'
+        | 'increment-use'
+        | 'ask-question'
+        | 'delete';
+      preset?: Partial<SavedMealPreset>;
+      presetId?: string;
+      question?: string;
+    }
+  ): Promise<{ error?: string }> => {
+    const res = await postDataAction({
+      action: 'trainee-manage-saved-meals',
+      traineeId,
+      ...payload,
+    });
+    if (!res || !res.ok) {
+      return { error: await extractApiError(res, 'שגיאה בשמירת הארוחה בספרייה') };
+    }
+    const json = await res.json();
+    if (Array.isArray(json.savedMeals)) {
+      setTrainees((prev) =>
+        prev.map((t) =>
+          t.id === traineeId ? { ...t, savedMeals: json.savedMeals } : t
+        )
+      );
+    }
+    return {};
+  };
+
+  const handleManageToolsAndUnits = async (
+    traineeId: string,
+    payload: {
+      customServingTools?: TraineeServingTool[];
+      customFoodUnits?: TraineeCustomUnit[];
+    }
+  ): Promise<{ error?: string }> => {
+    const res = await postDataAction({
+      action: 'manage-custom-tools-and-units',
+      traineeId,
+      ...payload,
+    });
+    if (!res || !res.ok) {
+      return { error: await extractApiError(res, 'שגיאה בשמירת הכלים והיחידות') };
+    }
+    const json = await res.json();
+    setTrainees((prev) =>
+      prev.map((t) =>
+        t.id === traineeId
+          ? {
+              ...t,
+              customServingTools:
+                json.customServingTools ?? t.customServingTools,
+              customFoodUnits: json.customFoodUnits ?? t.customFoodUnits,
+            }
+          : t
+      )
+    );
+    return {};
+  };
+
+  const handleManageQuickChips = async (payload: {
+    scope: 'user' | 'group' | 'global';
+    op: 'touch' | 'upsert' | 'delete' | 'replace';
+    traineeId?: string;
+    groupId?: string;
+    chip?: Partial<QuickContextChip>;
+    chips?: Partial<QuickContextChip>[];
+    chipId?: string;
+  }): Promise<{ error?: string }> => {
+    const res = await postDataAction({
+      action: 'manage-quick-chips',
+      ...payload,
+    });
+    if (!res || !res.ok) {
+      return { error: await extractApiError(res, 'שגיאה בעדכון תגיות הקשר מהיר') };
+    }
+    const json = await res.json();
+    if (payload.scope === 'global' && Array.isArray(json.globalQuickChips)) {
+      setGlobalQuickChips(json.globalQuickChips);
+    } else if (
+      payload.scope === 'group' &&
+      json.groupId &&
+      Array.isArray(json.customQuickChips)
+    ) {
+      setGroups((prev) =>
+        prev.map((g) =>
+          g.id === json.groupId
+            ? { ...g, customQuickChips: json.customQuickChips }
+            : g
+        )
+      );
+    } else if (
+      payload.scope === 'user' &&
+      payload.traineeId &&
+      Array.isArray(json.recentContextChips)
+    ) {
+      setTrainees((prev) =>
+        prev.map((t) =>
+          t.id === payload.traineeId
+            ? { ...t, recentContextChips: json.recentContextChips }
+            : t
+        )
+      );
+    }
+    return {};
+  };
+
+  const handleReplySavedMeal = async (
+    traineeId: string,
+    payload: {
+      presetId: string;
+      reply: string;
+      promoteToSlotId?: string;
+    }
+  ): Promise<{ error?: string }> => {
+    const res = await postDataAction({
+      action: 'coach-reply-saved-meal',
+      traineeId,
+      ...payload,
+    });
+    if (!res || !res.ok) {
+      return { error: await extractApiError(res, 'שגיאה בשליחת תשובה למתאמן') };
+    }
+    await fetchAuthorizedData();
     return {};
   };
 
@@ -1430,6 +1580,11 @@ export default function HomePage() {
             onUpdateDailyActivity={handleUpdateDailyActivity}
             onSaveWeeklyCheckIn={handleSaveWeeklyCheckIn}
             onPreferenceLearned={handlePreferenceLearned}
+            globalQuickChips={globalQuickChips}
+            groupQuickChips={traineeGroupQuickChips}
+            onSavedMealAction={handleSavedMealAction}
+            onManageToolsAndUnits={handleManageToolsAndUnits}
+            onManageQuickChips={handleManageQuickChips}
             geminiApiKey={geminiApiKey}
           />
         ) : (currentUser.role === 'admin' || currentUser.role === 'coach') &&
@@ -1449,6 +1604,14 @@ export default function HomePage() {
             onUpdateDailyActivity={handleUpdateDailyActivity}
             onSaveWeeklyCheckIn={handleSaveWeeklyCheckIn}
             onPreferenceLearned={handlePreferenceLearned}
+            globalQuickChips={globalQuickChips}
+            groupQuickChips={
+              groups.find((g) => g.id === loggedInTraineeProfile.groupId)
+                ?.customQuickChips || []
+            }
+            onSavedMealAction={handleSavedMealAction}
+            onManageToolsAndUnits={handleManageToolsAndUnits}
+            onManageQuickChips={handleManageQuickChips}
             geminiApiKey={geminiApiKey}
           />
         ) : (
@@ -1460,6 +1623,10 @@ export default function HomePage() {
             coaches={coaches}
             coachDirectory={coachDirectory}
             coachInviteCode={coachInviteCode}
+            globalQuickChips={globalQuickChips}
+            onManageToolsAndUnits={handleManageToolsAndUnits}
+            onManageQuickChips={handleManageQuickChips}
+            onReplySavedMeal={handleReplySavedMeal}
             onUpdateCoachInviteCode={async (code) => {
               const prev = coachInviteCode;
               setCoachInviteCode(code);
@@ -1507,7 +1674,7 @@ export default function HomePage() {
           onClose={() => setAiSettingsOpen(false)}
           title={
             <span style={{ fontWeight: 800, fontSize: 15 }}>
-              הגדרות מנוע AI (Gemini 2.5 Flash)
+              הגדרות מנוע AI (Gemini 3.8 Flash / 3.5 Flash-Lite)
             </span>
           }
           centered
@@ -1532,7 +1699,7 @@ export default function HomePage() {
               }}
             >
               המערכת כוללת מנוע זיהוי עברי מובנה שעובד מיד ללא מפתח. לפענוח
-              תמונות חופשי עם Gemini 2.5 Flash ניתן להדביק מפתח חינמי מ-Google
+              תמונות חופשי עם Gemini 3.8 Flash (ומודל הגיבוי החינמי 3.5 Flash-Lite) ניתן להדביק מפתח חינמי מ-Google
               AI Studio:
             </div>
             <TextInput

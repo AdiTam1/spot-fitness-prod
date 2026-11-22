@@ -6,6 +6,7 @@ import {
   CoachDirectoryItem,
   CoachProfile,
   NutritionTemplate,
+  QuickContextChip,
   TraineeGroup,
   TraineeProfile,
 } from '@/types/nutrition';
@@ -16,10 +17,12 @@ import {
   deleteTemplateFromSupabase,
   deleteTraineeFromSupabase,
   isSupabaseConfigured,
+  loadQuickChipsContextForTraineeFromSupabase,
   loadSingleCoachFromSupabase,
   loadSingleTraineeFromSupabase,
   loadStateFromSupabase,
   saveCoachesToSupabase,
+  saveGlobalQuickChipsToSupabase,
   saveGroupsToSupabase,
   saveTemplatesToSupabase,
   saveTraineesToSupabase,
@@ -33,6 +36,7 @@ export interface ServerDatabaseState {
   groups: TraineeGroup[];
   templates: NutritionTemplate[];
   trainees: TraineeProfile[];
+  globalQuickChips?: QuickContextChip[];
   readErrors?: string[];
 }
 
@@ -78,6 +82,7 @@ function createCleanInitialState(): ServerDatabaseState {
     groups: DEFAULT_GROUPS,
     templates: DEFAULT_TEMPLATES,
     trainees: [],
+    globalQuickChips: [],
   };
 }
 
@@ -95,6 +100,9 @@ function loadLocalServerFile(): ServerDatabaseState {
         Array.isArray(parsed.groups) && parsed.groups.length > 0
           ? parsed.groups
           : DEFAULT_GROUPS;
+      parsed.globalQuickChips = Array.isArray(parsed.globalQuickChips)
+        ? parsed.globalQuickChips
+        : [];
       global.__spotServerDbCache = parsed;
       return parsed;
     }
@@ -164,6 +172,7 @@ export async function getServerDbState(): Promise<ServerDatabaseState> {
       groups,
       templates,
       trainees: remote.trainees,
+      globalQuickChips: remote.globalQuickChips || [],
       readErrors: remote.readErrors,
     };
   }
@@ -195,6 +204,25 @@ export async function getSingleCoachFromServer(
   return state.coaches.find((c) => c.id === coachId) || null;
 }
 
+export async function getQuickChipsContextForTrainee(
+  groupId?: string
+): Promise<{
+  globalQuickChips: QuickContextChip[];
+  groupQuickChips: QuickContextChip[];
+}> {
+  if (isSupabaseConfigured) {
+    return await loadQuickChipsContextForTraineeFromSupabase(groupId);
+  }
+  const state = await getServerDbState();
+  const globalQuickChips = Array.isArray(state.globalQuickChips)
+    ? state.globalQuickChips
+    : [];
+  const groupQuickChips = groupId
+    ? state.groups.find((g) => g.id === groupId)?.customQuickChips || []
+    : [];
+  return { globalQuickChips, groupQuickChips };
+}
+
 export async function updateServerDbState(
   updater: (prev: ServerDatabaseState) => ServerDatabaseState
 ): Promise<ServerDatabaseState> {
@@ -214,6 +242,9 @@ export async function updateServerDbState(
     }
     if (next.trainees !== current.trainees) {
       tasks.push(saveTraineesToSupabase(next.trainees));
+    }
+    if (next.globalQuickChips !== current.globalQuickChips) {
+      tasks.push(saveGlobalQuickChipsToSupabase(next.globalQuickChips || []));
     }
     if (tasks.length > 0) {
       await Promise.all(tasks);

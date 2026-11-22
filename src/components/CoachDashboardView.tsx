@@ -34,6 +34,7 @@ import {
   Loader2,
   AlertTriangle,
   Search,
+  MessageCircle,
 } from 'lucide-react';
 import {
   AccountStatus,
@@ -43,10 +44,15 @@ import {
   DayType,
   MealTemplateSlot,
   NutritionTemplate,
+  QuickContextChip,
   TraineeActivityTargets,
+  TraineeCustomUnit,
   TraineeGroup,
   TraineeProfile,
+  TraineeServingTool,
 } from '@/types/nutrition';
+import { QuickChipsAdminPanel } from './QuickChipsAdminPanel';
+import { CoachSavedMealsPanel } from './CoachSavedMealsPanel';
 import {
   DEFAULT_TEMPLATES,
   getTodayIso,
@@ -154,6 +160,27 @@ interface CoachDashboardViewProps {
   ) => Promise<{ error?: string }> | void;
   onDeleteCoach: (coachId: string) => Promise<{ error?: string }> | void;
   onPreviewTraineeMobile: (traineeId: string) => void;
+  globalQuickChips?: QuickContextChip[];
+  onManageToolsAndUnits?: (
+    traineeId: string,
+    payload: {
+      customServingTools?: TraineeServingTool[];
+      customFoodUnits?: TraineeCustomUnit[];
+    }
+  ) => Promise<{ error?: string }>;
+  onManageQuickChips?: (payload: {
+    scope: 'user' | 'group' | 'global';
+    op: 'touch' | 'upsert' | 'delete' | 'replace';
+    traineeId?: string;
+    groupId?: string;
+    chip?: Partial<QuickContextChip>;
+    chips?: Partial<QuickContextChip>[];
+    chipId?: string;
+  }) => Promise<{ error?: string }>;
+  onReplySavedMeal?: (
+    traineeId: string,
+    payload: { presetId: string; reply: string; promoteToSlotId?: string }
+  ) => Promise<{ error?: string }>;
 }
 
 const GROUP_COLOR_SWATCHES = [
@@ -211,9 +238,20 @@ export function CoachDashboardView({
   onUpdateCoachCredentials,
   onDeleteCoach,
   onPreviewTraineeMobile,
+  globalQuickChips = [],
+  onManageToolsAndUnits,
+  onManageQuickChips,
+  onReplySavedMeal,
 }: CoachDashboardViewProps) {
   const today = getTodayIso();
   const isSuperAdmin = currentUser.role === 'admin';
+  const totalPendingMealQuestions = trainees.reduce(
+    (sum, tr) =>
+      sum +
+      (tr.savedMeals || []).filter((m) => m.coachQuestion?.status === 'pending')
+        .length,
+    0
+  );
 
   const [activeSection, setActiveSection] = useState<
     'roster' | 'templates' | 'inspector' | 'users' | 'coaches'
@@ -889,7 +927,11 @@ export function CoachDashboardView({
             },
             {
               id: 'inspector',
-              label: `תוכנית ויומן (${selectedTrainee?.name || 'ללא מתאמן'})`,
+              label: `תוכנית ויומן (${selectedTrainee?.name || 'ללא מתאמן'})${
+                totalPendingMealQuestions > 0
+                  ? ` · 💬 ${totalPendingMealQuestions}`
+                  : ''
+              }`,
               icon: Sliders,
               show: true,
             },
@@ -1376,6 +1418,17 @@ export function CoachDashboardView({
                   </button>
                 )}
               </div>
+
+              <div style={{ width: '100%', marginTop: 10 }}>
+                <QuickChipsAdminPanel
+                  scope="group"
+                  groupId={activeGroupObj.id}
+                  title={`צ׳יפים מהירים לקבוצת "${activeGroupObj.name}"`}
+                  subtitle="הוסף צ׳יפים קבוצתיים (רטבים/כמויות/הרגלי בישול) שיוצגו בקליק אחד לכל מתאמני הקבוצה במסך זיהוי ה-AI."
+                  chips={activeGroupObj.customQuickChips || []}
+                  onManageQuickChips={onManageQuickChips}
+                />
+              </div>
             </div>
           )}
 
@@ -1487,6 +1540,38 @@ export function CoachDashboardView({
                                 >
                                   {t.email}
                                 </div>
+                                {(() => {
+                                  const pendingQ = (t.savedMeals || []).filter(
+                                    (m) => m.coachQuestion?.status === 'pending'
+                                  ).length;
+                                  if (pendingQ === 0) return null;
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedTraineeId(t.id);
+                                        setActiveSection('inspector');
+                                      }}
+                                      style={{
+                                        marginTop: 4,
+                                        padding: '2px 7px',
+                                        borderRadius: 999,
+                                        background: 'rgba(56, 189, 248, 0.16)',
+                                        border: '1px solid rgba(56, 189, 248, 0.35)',
+                                        color: '#7dd3fc',
+                                        fontSize: 10,
+                                        fontWeight: 700,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: 4,
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      <MessageCircle size={10} />
+                                      <span>{pendingQ} שאלות ארוחה</span>
+                                    </button>
+                                  );
+                                })()}
                               </div>
                             </div>
                           </td>
@@ -2661,6 +2746,13 @@ export function CoachDashboardView({
                   )}
                 </div>
               </div>
+
+              {/* פאנל ספריית ארוחות שמורות, שאלות מתאמן וניהול כלים מוגדרים */}
+              <CoachSavedMealsPanel
+                trainee={selectedTrainee}
+                onReplySavedMeal={onReplySavedMeal}
+                onManageToolsAndUnits={onManageToolsAndUnits}
+              />
 
               {/* כרטיס צ'ק-אין שבועי אחרון של המתאמן + העתקת דו"ח לוואטסאפ */}
               <div
@@ -4354,6 +4446,14 @@ export function CoachDashboardView({
               </table>
             </div>
           </div>
+
+          <QuickChipsAdminPanel
+            scope="global"
+            title="צ׳יפים מהירים גלובליים לכלל המשתמשים (Super Admin)"
+            subtitle="צ׳יפים שתוסיף כאן יהיו זמינים לבחירה בקליק אחד לכל המתאמנים והמאמנים באפליקציה במסך ניתוח ה-AI."
+            chips={globalQuickChips}
+            onManageQuickChips={onManageQuickChips}
+          />
         </div>
       )}
 

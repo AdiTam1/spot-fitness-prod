@@ -9,6 +9,7 @@ import {
   Select,
   ScrollArea,
   Collapse,
+  Switch,
 } from '@mantine/core';
 import {
   Camera,
@@ -28,13 +29,22 @@ import {
   FileText,
   Brain,
   Loader2,
+  Bookmark,
+  Image as ImageIcon,
+  X,
 } from 'lucide-react';
 import {
+  AiContextParams,
   AiMealSuggestionOption,
+  DailyLog,
   FoodCatalogItem,
   LoggedFoodItem,
   LoggedMealEntry,
   MealTemplateSlot,
+  QuickContextChip,
+  SavedMealPreset,
+  TraineeCustomUnit,
+  TraineeServingTool,
 } from '@/types/nutrition';
 import {
   ISRAELI_FOOD_CATALOG,
@@ -43,6 +53,9 @@ import {
 } from '@/data/israeliFoodCatalog';
 import { compressMealImage } from '@/utils/imageCompression';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
+import { ServingToolsManagerModal } from './ServingToolsManagerModal';
+import { SavedMealsLibraryTab } from './SavedMealsLibraryTab';
+import { AiQuickContextPanel } from './AiQuickContextPanel';
 
 interface AddMealDrawerProps {
   opened: boolean;
@@ -60,8 +73,41 @@ interface AddMealDrawerProps {
   geminiApiKey?: string;
   initialTab?: string;
   traineeId?: string;
+  traineeName?: string;
   learnedPreferences?: string[];
   onPreferenceLearned?: (prefs: string[]) => void;
+  savedMeals?: SavedMealPreset[];
+  customServingTools?: TraineeServingTool[];
+  customFoodUnits?: TraineeCustomUnit[];
+  recentContextChips?: QuickContextChip[];
+  groupQuickChips?: QuickContextChip[];
+  globalQuickChips?: QuickContextChip[];
+  traineeLogs?: Record<string, DailyLog>;
+  onSavedMealAction?: (payload: {
+    op:
+      | 'upsert'
+      | 'toggle-pin'
+      | 'toggle-favorite'
+      | 'increment-use'
+      | 'ask-question'
+      | 'delete';
+    preset?: Partial<SavedMealPreset>;
+    presetId?: string;
+    question?: string;
+  }) => Promise<{ error?: string }>;
+  onManageToolsAndUnits?: (payload: {
+    customServingTools?: TraineeServingTool[];
+    customFoodUnits?: TraineeCustomUnit[];
+  }) => Promise<{ error?: string }>;
+  onManageQuickChips?: (payload: {
+    scope: 'user' | 'group' | 'global';
+    op: 'touch' | 'upsert' | 'delete' | 'replace';
+    traineeId?: string;
+    groupId?: string;
+    chip?: Partial<QuickContextChip>;
+    chips?: Partial<QuickContextChip>[];
+    chipId?: string;
+  }) => Promise<{ error?: string }>;
 }
 
 export function AddMealDrawer({
@@ -77,17 +123,39 @@ export function AddMealDrawer({
   traineeId,
   learnedPreferences = [],
   onPreferenceLearned,
+  savedMeals = [],
+  customServingTools = [],
+  customFoodUnits = [],
+  recentContextChips = [],
+  groupQuickChips = [],
+  globalQuickChips = [],
+  traineeLogs = {},
+  onSavedMealAction,
+  onManageToolsAndUnits,
+  onManageQuickChips,
 }: AddMealDrawerProps) {
   const [activeTab, setActiveTab] = useState<string>(initialTab);
   const [items, setItems] = useState<LoggedFoodItem[]>([]);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | undefined>(
     undefined
   );
+  const [photoItems, setPhotoItems] = useState<
+    {
+      dataUrl: string;
+      sizeKB: number;
+      formatLabel: 'WebP' | 'JPEG';
+      angle: 'top-down' | 'side-45' | 'label' | 'other';
+    }[]
+  >([]);
   const [photoSizeKB, setPhotoSizeKB] = useState<number | null>(null);
   const [photoFormatLabel, setPhotoFormatLabel] = useState<'WebP' | 'JPEG'>('WebP');
   const [photoNote, setPhotoNote] = useState('');
   const [photoMode, setPhotoMode] = useState<'plate' | 'nutrition-label'>('plate');
   const [freeTextPrompt, setFreeTextPrompt] = useState('');
+  const [contextParams, setContextParams] = useState<AiContextParams>({});
+  const [toolsModalOpen, setToolsModalOpen] = useState(false);
+  const [saveAsPreset, setSaveAsPreset] = useState(false);
+  const [presetTitleInput, setPresetTitleInput] = useState('');
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSummary, setAiSummary] = useState<{
@@ -157,10 +225,25 @@ export function AddMealDrawer({
     if (opened && mealSlot) {
       setItems(existingEntry?.items ? [...existingEntry.items] : []);
       setPhotoDataUrl(existingEntry?.photoDataUrl);
+      setPhotoItems(
+        existingEntry?.photoDataUrl && !existingEntry.photoDataUrl.endsWith(',DEMO')
+          ? [
+              {
+                dataUrl: existingEntry.photoDataUrl,
+                sizeKB: Math.round((existingEntry.photoDataUrl.length * 3) / 4 / 1024),
+                formatLabel: 'WebP',
+                angle: 'top-down',
+              },
+            ]
+          : []
+      );
       setPhotoSizeKB(null);
       setPhotoFormatLabel('WebP');
       setPhotoNote(existingEntry?.photoNote || '');
       setFreeTextPrompt('');
+      setContextParams({ customUnits: customFoodUnits });
+      setSaveAsPreset(false);
+      setPresetTitleInput('');
       setSearchQuery('');
       setAiRecommendations([]);
       setAiRecDebug(null);
@@ -176,7 +259,7 @@ export function AddMealDrawer({
     return () => {
       stopVoiceRecording();
     };
-  }, [opened, mealSlot, existingEntry, initialTab]);
+  }, [opened, mealSlot, existingEntry, initialTab, customFoodUnits]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -220,11 +303,21 @@ export function AddMealDrawer({
     setCustomGrams(firstUnit.grams);
   };
 
+  const getCombinedUnitsForFood = (food: FoodCatalogItem) => {
+    const personal = customFoodUnits.map((u) => ({
+      label: `★ ${u.unitName} (${u.grams} גרם)`,
+      grams: u.grams,
+    }));
+    return [...food.units, ...personal];
+  };
+
   const handleUnitChange = (unitLabel: string | null) => {
     if (!selectedFood || !unitLabel) return;
     setSelectedUnitLabel(unitLabel);
     if (unitLabel === 'custom-grams') return;
-    const found = selectedFood.units.find((u) => u.label === unitLabel);
+    const found = getCombinedUnitsForFood(selectedFood).find(
+      (u) => u.label === unitLabel
+    );
     if (found) {
       setCustomGrams(Math.round(found.grams * quantity));
     }
@@ -234,7 +327,7 @@ export function AddMealDrawer({
     const q = Math.max(0.25, Number(val) || 1);
     setQuantity(q);
     if (selectedFood && selectedUnitLabel !== 'custom-grams') {
-      const found = selectedFood.units.find(
+      const found = getCombinedUnitsForFood(selectedFood).find(
         (u) => u.label === selectedUnitLabel
       );
       if (found) {
@@ -275,15 +368,26 @@ export function AddMealDrawer({
 
   const [photoUploading, setPhotoUploading] = useState(false);
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      setAiSummary({ msg: 'נא לבחור קובץ תמונה תקין (JPG, PNG, WebP)', isError: true });
+  const handlePhotoUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    preferredAngle?: 'top-down' | 'side-45' | 'label' | 'other'
+  ) => {
+    const files = Array.from(e.target.files || []).slice(
+      0,
+      Math.max(0, 3 - photoItems.length)
+    );
+    if (files.length === 0) {
       e.target.value = '';
       return;
     }
-    if (file.size > 20 * 1024 * 1024) {
+    const invalid = files.find((f) => !f.type.startsWith('image/'));
+    if (invalid) {
+      setAiSummary({ msg: 'נא לבחור קבצי תמונה תקינים (JPG, PNG, WebP)', isError: true });
+      e.target.value = '';
+      return;
+    }
+    const tooBig = files.find((f) => f.size > 20 * 1024 * 1024);
+    if (tooBig) {
       setAiSummary({ msg: 'קובץ התמונה גדול מדי (מקסימום 20MB)', isError: true });
       e.target.value = '';
       return;
@@ -291,10 +395,32 @@ export function AddMealDrawer({
     setPhotoUploading(true);
     setAiSummary(null);
     try {
-      const compressed = await compressMealImage(file, 800, 0.72);
-      setPhotoDataUrl(compressed.dataUrl);
-      setPhotoSizeKB(compressed.sizeKB);
-      setPhotoFormatLabel(compressed.formatLabel);
+      const newEntries: {
+        dataUrl: string;
+        sizeKB: number;
+        formatLabel: 'WebP' | 'JPEG';
+        angle: 'top-down' | 'side-45' | 'label' | 'other';
+      }[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const compressed = await compressMealImage(files[i], 800, 0.72);
+        const angle =
+          photoMode === 'nutrition-label'
+            ? 'label'
+            : preferredAngle || (photoItems.length + i === 0 ? 'top-down' : 'side-45');
+        newEntries.push({
+          dataUrl: compressed.dataUrl,
+          sizeKB: compressed.sizeKB,
+          formatLabel: compressed.formatLabel,
+          angle,
+        });
+      }
+      setPhotoItems((prev) => {
+        const merged = [...prev, ...newEntries].slice(0, 3);
+        setPhotoDataUrl(merged[0]?.dataUrl);
+        setPhotoSizeKB(merged[0]?.sizeKB ?? null);
+        setPhotoFormatLabel(merged[0]?.formatLabel ?? 'WebP');
+        return merged;
+      });
     } catch {
       setAiSummary({ msg: 'לא ניתן לקרוא את התמונה – נסה לצלם שוב', isError: true });
     } finally {
@@ -310,7 +436,13 @@ export function AddMealDrawer({
   ) => {
     if (aiLockRef.current) return;
     const rawPrompt = customTextOverride ?? (mode === 'photo' ? photoNote : freeTextPrompt);
-    if (mode === 'photo' && !photoDataUrl && !rawPrompt.trim()) {
+    const activeImages = photoItems.length > 0
+      ? photoItems
+      : photoDataUrl && !photoDataUrl.endsWith(',DEMO')
+      ? [{ dataUrl: photoDataUrl, angle: 'top-down' as const }]
+      : [];
+
+    if (mode === 'photo' && activeImages.length === 0 && !rawPrompt.trim()) {
       setAiSummary({ msg: 'נא להעלות תמונה או להזין תיאור של הארוחה', isError: true });
       return;
     }
@@ -318,6 +450,38 @@ export function AddMealDrawer({
       mode === 'photo' && photoMode === 'nutrition-label'
         ? `קרא את טבלת הערכים התזונתיים מהתמונה וחלץ את המוצר והערכים שלו למנה/100 גרם: ${rawPrompt}`
         : rawPrompt;
+
+    const fullContextParams: AiContextParams = {
+      ...contextParams,
+      imageAngles: activeImages.map((im) => im.angle),
+      customUnits: customFoodUnits,
+    };
+
+    // עדכון היסטוריית צ'יפים לפי שימוש אחרון (MRU) ברקע
+    if (
+      onManageQuickChips &&
+      traineeId &&
+      Array.isArray(contextParams.activeChipLabels) &&
+      contextParams.activeChipLabels.length > 0
+    ) {
+      const chipObjs = contextParams.activeChipLabels.map((lbl) => {
+        const found =
+          recentContextChips.find((c) => c.label === lbl) ||
+          groupQuickChips.find((c) => c.label === lbl) ||
+          globalQuickChips.find((c) => c.label === lbl);
+        return {
+          label: lbl,
+          category: found?.category || ('prep' as const),
+        };
+      });
+      void onManageQuickChips({
+        scope: 'user',
+        op: 'touch',
+        traineeId,
+        chips: chipObjs,
+      });
+    }
+
     aiLockRef.current = true;
     setAiLoading(true);
     if (optionIndex !== undefined) setAddingOptionIdx(optionIndex);
@@ -327,8 +491,13 @@ export function AddMealDrawer({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageDataUrl: mode === 'photo' ? photoDataUrl || undefined : undefined,
+          imageDataUrl: mode === 'photo' ? activeImages[0]?.dataUrl || undefined : undefined,
+          imageDataUrls:
+            mode === 'photo' && activeImages.length > 0
+              ? activeImages.map((im) => im.dataUrl)
+              : undefined,
           textPrompt: promptToUse,
+          contextParams: fullContextParams,
           customApiKey: geminiApiKey,
         }),
       });
@@ -631,6 +800,7 @@ export function AddMealDrawer({
                 { id: 'ai-recommend', label: '💡 מה לאכול?', icon: Lightbulb },
                 { id: 'ai-photo', label: 'צילום AI', icon: Camera },
                 { id: 'ai-text', label: 'טקסט / קול', icon: Sparkles },
+                { id: 'saved-meals', label: 'הארוחות שלי', icon: Bookmark },
                 { id: 'favorites', label: 'מועדפים', icon: Heart },
               ].map((t) => {
                 const Icon = t.icon;
@@ -661,6 +831,26 @@ export function AddMealDrawer({
                 );
               })}
             </div>
+
+            {activeTab === 'saved-meals' && (
+              <SavedMealsLibraryTab
+                savedMeals={savedMeals}
+                traineeLogs={traineeLogs}
+                geminiApiKey={geminiApiKey}
+                contextParams={{
+                  ...contextParams,
+                  customUnits: customFoodUnits,
+                }}
+                onAddItemsToMeal={(newItems, img) => {
+                  setItems((prev) => [...prev, ...newItems]);
+                  if (img && !photoDataUrl) {
+                    setPhotoDataUrl(img);
+                  }
+                }}
+                onOpenToolsModal={() => setToolsModalOpen(true)}
+                onSavedMealAction={onSavedMealAction}
+              />
+            )}
 
             {/* לשונית מיוחדת: 💡 מה לאכול? (המלצות המאמן + Smart Macro Finisher + למידת העדפות ללא צ'אט) */}
             {activeTab === 'ai-recommend' && (
@@ -1201,7 +1391,7 @@ export function AddMealDrawer({
                         value={selectedUnitLabel}
                         onChange={handleUnitChange}
                         data={[
-                          ...selectedFood.units.map((u) => ({
+                          ...getCombinedUnitsForFood(selectedFood).map((u) => ({
                             value: u.label,
                             label: u.label,
                           })),
@@ -1348,37 +1538,119 @@ export function AddMealDrawer({
                     background: 'var(--bg-surface-2)',
                     border: '1px dashed rgba(210, 255, 40, 0.35)',
                     borderRadius: 16,
-                    padding: 18,
+                    padding: 16,
                     textAlign: 'center',
                   }}
                 >
-                  {photoDataUrl ? (
+                  {photoItems.length > 0 ? (
                     <div
                       style={{
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
-                        gap: 8,
+                        gap: 10,
                       }}
                     >
-                      <img
-                        src={photoDataUrl}
-                        alt="צילום ארוחה"
-                        style={{
-                          maxHeight: 170,
-                          borderRadius: 12,
-                          objectFit: 'cover',
-                        }}
-                      />
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+                        {photoItems.map((im, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              position: 'relative',
+                              width: photoItems.length === 1 ? 168 : 102,
+                              height: photoItems.length === 1 ? 140 : 102,
+                              borderRadius: 12,
+                              overflow: 'hidden',
+                              border: '1px solid rgba(210, 255, 40, 0.35)',
+                            }}
+                          >
+                            <img
+                              src={im.dataUrl}
+                              alt={`צילום ארוחה ${idx + 1}`}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                            <button
+                              type="button"
+                              title="הסר תמונה"
+                              onClick={() => {
+                                setPhotoItems((prev) => {
+                                  const next = prev.filter((_, i) => i !== idx);
+                                  setPhotoDataUrl(next[0]?.dataUrl);
+                                  setPhotoSizeKB(next[0]?.sizeKB ?? null);
+                                  return next;
+                                });
+                              }}
+                              style={{
+                                position: 'absolute',
+                                top: 4,
+                                right: 4,
+                                width: 20,
+                                height: 20,
+                                borderRadius: '50%',
+                                background: 'rgba(0,0,0,0.75)',
+                                border: 'none',
+                                color: '#fff',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <X size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPhotoItems((prev) =>
+                                  prev.map((x, i) =>
+                                    i === idx
+                                      ? {
+                                          ...x,
+                                          angle:
+                                            x.angle === 'top-down'
+                                              ? 'side-45'
+                                              : x.angle === 'side-45'
+                                              ? 'label'
+                                              : 'top-down',
+                                        }
+                                      : x
+                                  )
+                                );
+                              }}
+                              style={{
+                                position: 'absolute',
+                                bottom: 3,
+                                left: 3,
+                                right: 3,
+                                fontSize: 9,
+                                fontWeight: 700,
+                                borderRadius: 5,
+                                border: 'none',
+                                background: 'rgba(0,0,0,0.78)',
+                                color: 'var(--accent-volt)',
+                                padding: '2px 4px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {im.angle === 'top-down'
+                                ? 'מלמעלה 90°'
+                                : im.angle === 'side-45'
+                                ? 'מהצד ~45°'
+                                : 'תווית / אחר'}{' '}
+                              · {im.sizeKB}KB
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                       {photoSizeKB && (
                         <span
                           style={{
-                            fontSize: 11,
+                            fontSize: 10,
                             color: 'var(--accent-volt)',
                             fontWeight: 700,
                           }}
                         >
-                          כווץ אוטומטית ל-{photoSizeKB}KB ({photoFormatLabel})
+                          {photoItems.length}/3 תמונות נבחרו ({photoFormatLabel} דחוס מהיר)
                         </span>
                       )}
                     </div>
@@ -1400,60 +1672,117 @@ export function AddMealDrawer({
                       <div style={{ fontSize: 14, fontWeight: 700 }}>
                         {photoMode === 'nutrition-label'
                           ? 'צילום טבלת ערכים תזונתיים מאריזת מוצר'
-                          : 'צילום ארוחה לפענוח AI אוטומטי'}
+                          : 'העלאה או צילום ארוחה לפענוח AI (עד 3 תמונות)'}
                       </div>
                       <div
-                        style={{ fontSize: 12, color: 'var(--text-secondary)' }}
+                        style={{ fontSize: 11, color: 'var(--text-secondary)', maxWidth: 360 }}
                       >
                         {photoMode === 'nutrition-label'
                           ? 'ה-AI יקרא את הטבלה שעל האריזה (ל-100 גרם או למנה) ויוסיף לארוחה'
-                          : 'ה-AI יזהה את המרכיבים, יעריך משקלים ויזין קלוריות ומאקרו'}
+                          : '💡 לדיוק מרבי בקלוריות ובנפח: צלם או העלה 2 תמונות — אחת מלמעלה (90°) ואחת מהצד (~45°), עם שולי הצלחת בפריים'}
                       </div>
                     </div>
                   )}
 
-                  <label
-                    className="btn-surface"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      padding: '8px 16px',
-                      fontSize: 12,
-                      cursor: photoUploading ? 'wait' : 'pointer',
-                      marginTop: 8,
-                      opacity: photoUploading ? 0.65 : 1,
-                    }}
-                  >
-                    <Upload size={14} />
-                    <span>
-                      {photoUploading
-                        ? 'מכווץ ומעבד תמונה...'
-                        : photoDataUrl
-                        ? 'החלף תמונה'
-                        : 'בחר או צלם תמונה'}
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      hidden
-                      disabled={photoUploading}
-                      onChange={handlePhotoUpload}
-                    />
-                  </label>
+                  {photoItems.length < 3 && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 8,
+                        justifyContent: 'center',
+                        flexWrap: 'wrap',
+                        marginTop: 10,
+                      }}
+                    >
+                      <label
+                        className="btn-surface"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '8px 14px',
+                          fontSize: 12,
+                          cursor: photoUploading ? 'wait' : 'pointer',
+                          opacity: photoUploading ? 0.65 : 1,
+                          borderColor: 'rgba(56, 189, 248, 0.35)',
+                        }}
+                      >
+                        <ImageIcon size={14} color="#38bdf8" />
+                        <span>
+                          {photoUploading
+                            ? 'מכווץ ומעבד...'
+                            : photoItems.length > 0
+                            ? 'הוסף תמונה מהגלריה'
+                            : 'בחר מהגלריה / קובץ'}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          hidden
+                          disabled={photoUploading}
+                          onChange={(e) => handlePhotoUpload(e)}
+                        />
+                      </label>
+
+                      <label
+                        className="btn-surface"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '8px 14px',
+                          fontSize: 12,
+                          cursor: photoUploading ? 'wait' : 'pointer',
+                          opacity: photoUploading ? 0.65 : 1,
+                          borderColor: 'rgba(210, 255, 40, 0.35)',
+                        }}
+                      >
+                        <Camera size={14} color="var(--accent-volt)" />
+                        <span>
+                          {photoItems.length === 0 ? 'צלם עכשיו במצלמה' : 'צלם זווית נוספת'}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          hidden
+                          disabled={photoUploading}
+                          onChange={(e) =>
+                            handlePhotoUpload(
+                              e,
+                              photoItems.length === 0 ? 'top-down' : 'side-45'
+                            )
+                          }
+                        />
+                      </label>
+                    </div>
+                  )}
                 </div>
+
+                <AiQuickContextPanel
+                  traineeId={traineeId}
+                  customServingTools={customServingTools}
+                  customFoodUnits={customFoodUnits}
+                  recentContextChips={recentContextChips}
+                  groupQuickChips={groupQuickChips}
+                  globalQuickChips={globalQuickChips}
+                  contextParams={contextParams}
+                  onChangeContextParams={setContextParams}
+                  onOpenToolsModal={() => setToolsModalOpen(true)}
+                  onManageQuickChips={onManageQuickChips}
+                />
 
                 <Textarea
                   label={
                     photoMode === 'nutrition-label'
                       ? 'שם המוצר וכמות שאכלת (למשל: חטיף חלבון - יחידה אחת 60 גרם)'
-                      : 'הקשר לצילום עבור ה-AI (אופציונלי)'
+                      : 'הקשר נוסף לצילום עבור ה-AI (אופציונלי)'
                   }
                   placeholder={
                     photoMode === 'nutrition-label'
                       ? 'למשל: חטיף חלבון 60 גרם...'
-                      : 'למשל: חזה עוף 150 גרם עם אורז, הסלט מתובל בכפית שמן זית...'
+                      : 'למשל: 180 גרם פסטה מבושלת, ללא תוספת שמן...'
                   }
                   value={photoNote}
                   onChange={(e) => setPhotoNote(e.currentTarget.value)}
@@ -1464,7 +1793,7 @@ export function AddMealDrawer({
                   disabled={
                     aiLoading ||
                     photoUploading ||
-                    (!photoDataUrl && !photoNote.trim())
+                    (photoItems.length === 0 && !photoDataUrl && !photoNote.trim())
                   }
                   onClick={() => runAiAnalysis('photo')}
                   className="btn-volt"
@@ -1488,6 +1817,8 @@ export function AddMealDrawer({
                       ? 'מפענח מרכיבים וכמויות...'
                       : photoMode === 'nutrition-label'
                       ? 'חלץ ערכים תזונתיים מהאריזה (AI)'
+                      : photoItems.length > 1
+                      ? `פענח ${photoItems.length} תמונות באמצעות AI`
                       : 'פענח תמונה באמצעות AI'}
                   </span>
                 </button>
@@ -1563,6 +1894,19 @@ export function AddMealDrawer({
                     </button>
                   ))}
                 </div>
+
+                <AiQuickContextPanel
+                  traineeId={traineeId}
+                  customServingTools={customServingTools}
+                  customFoodUnits={customFoodUnits}
+                  recentContextChips={recentContextChips}
+                  groupQuickChips={groupQuickChips}
+                  globalQuickChips={globalQuickChips}
+                  contextParams={contextParams}
+                  onChangeContextParams={setContextParams}
+                  onOpenToolsModal={() => setToolsModalOpen(true)}
+                  onManageQuickChips={onManageQuickChips}
+                />
 
                 <button
                   disabled={aiLoading || !freeTextPrompt.trim()}
@@ -2001,69 +2345,162 @@ export function AddMealDrawer({
                 gap: 12,
               }}
             >
-              <div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+                {items.length > 0 && onSavedMealAction && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 10,
+                      flexWrap: 'wrap',
+                      paddingBottom: 6,
+                      borderBottom: '1px solid rgba(255,255,255,0.06)',
+                    }}
+                  >
+                    <Switch
+                      size="xs"
+                      checked={saveAsPreset}
+                      onChange={(e) => setSaveAsPreset(e.currentTarget.checked)}
+                      label={
+                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                          📌 שמור מנה זו גם ב&quot;הארוחות שלי&quot; לשימוש חוזר
+                        </span>
+                      }
+                    />
+                    {saveAsPreset && (
+                      <TextInput
+                        size="xs"
+                        placeholder={
+                          items
+                            .slice(0, 2)
+                            .map((i) => i.name)
+                            .join(' + ') || 'שם למנה השמורה'
+                        }
+                        value={presetTitleInput}
+                        onChange={(e) => setPresetTitleInput(e.currentTarget.value)}
+                        style={{ flex: '1 1 180px' }}
+                      />
+                    )}
+                  </div>
+                )}
+
                 <div
-                  className="num-mono"
-                  style={{ fontSize: 16, fontWeight: 800 }}
-                >
-                  {currentTotals.calories} / {mealSlot.targets.calories} קק״ל
-                </div>
-                <div
-                  className="num-mono"
                   style={{
-                    fontSize: 12,
-                    color: 'var(--text-secondary)',
                     display: 'flex',
-                    gap: 10,
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: 12,
                   }}
                 >
-                  <span style={{ color: 'var(--macro-protein)' }}>
-                    ח׳ {currentTotals.protein}/{mealSlot.targets.protein}g
-                  </span>
-                  <span style={{ color: 'var(--macro-carbs)' }}>
-                    פ׳ {currentTotals.carbs}/{mealSlot.targets.carbs}g
-                  </span>
-                  <span style={{ color: 'var(--macro-fat)' }}>
-                    ש׳ {currentTotals.fat}/{mealSlot.targets.fat}g
-                  </span>
+                  <div>
+                    <div
+                      className="num-mono"
+                      style={{ fontSize: 16, fontWeight: 800 }}
+                    >
+                      {currentTotals.calories} / {mealSlot.targets.calories} קק״ל
+                    </div>
+                    <div
+                      className="num-mono"
+                      style={{
+                        fontSize: 12,
+                        color: 'var(--text-secondary)',
+                        display: 'flex',
+                        gap: 10,
+                      }}
+                    >
+                      <span style={{ color: 'var(--macro-protein)' }}>
+                        ח׳ {currentTotals.protein}/{mealSlot.targets.protein}g
+                      </span>
+                      <span style={{ color: 'var(--macro-carbs)' }}>
+                        פ׳ {currentTotals.carbs}/{mealSlot.targets.carbs}g
+                      </span>
+                      <span style={{ color: 'var(--macro-fat)' }}>
+                        ש׳ {currentTotals.fat}/{mealSlot.targets.fat}g
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    disabled={savingMeal}
+                    onClick={async () => {
+                      if (saveLockRef.current) return;
+                      saveLockRef.current = true;
+                      setSavingMeal(true);
+                      try {
+                        const primaryPhoto = photoItems[0]?.dataUrl || photoDataUrl;
+                        await onSaveMeal(mealSlot.id, items, primaryPhoto, photoNote);
+                        if (saveAsPreset && items.length > 0 && onSavedMealAction) {
+                          const autoTitle =
+                            presetTitleInput.trim() ||
+                            items
+                              .slice(0, 2)
+                              .map((i) => i.name)
+                              .join(' + ');
+                          const aiItem = items.find((it) => it.aiEngine || it.isAiFallback !== undefined);
+                          await onSavedMealAction({
+                            op: 'upsert',
+                            preset: {
+                              title: autoTitle,
+                              mealSlotId: mealSlot.id,
+                              items,
+                              photoDataUrls:
+                                photoItems.length > 0
+                                  ? photoItems.map((im) => im.dataUrl)
+                                  : primaryPhoto
+                                  ? [primaryPhoto]
+                                  : undefined,
+                              photoDataUrl: primaryPhoto,
+                              contextParams,
+                              aiEngine: aiItem?.aiEngine,
+                              isAiFallback: aiItem?.isAiFallback,
+                              fallbackReason: aiItem?.fallbackReason,
+                              useCount: 1,
+                            },
+                          });
+                        }
+                        onClose();
+                      } finally {
+                        saveLockRef.current = false;
+                        setSavingMeal(false);
+                      }
+                    }}
+                    className="btn-volt"
+                    style={{
+                      padding: '10px 22px',
+                      fontSize: 13,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {savingMeal ? (
+                      <Loader2 size={16} className="spot-spinner" />
+                    ) : (
+                      <Check size={16} />
+                    )}
+                    <span>{savingMeal ? 'שומר ארוחה...' : 'שמור ארוחה'}</span>
+                  </button>
                 </div>
               </div>
-
-              <button
-                disabled={savingMeal}
-                onClick={async () => {
-                  if (saveLockRef.current) return;
-                  saveLockRef.current = true;
-                  setSavingMeal(true);
-                  try {
-                    await onSaveMeal(mealSlot.id, items, photoDataUrl, photoNote);
-                    onClose();
-                  } finally {
-                    saveLockRef.current = false;
-                    setSavingMeal(false);
-                  }
-                }}
-                className="btn-volt"
-                style={{
-                  padding: '10px 22px',
-                  fontSize: 13,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  cursor: 'pointer',
-                }}
-              >
-                {savingMeal ? (
-                  <Loader2 size={16} className="spot-spinner" />
-                ) : (
-                  <Check size={16} />
-                )}
-                <span>{savingMeal ? 'שומר ארוחה...' : 'שמור ארוחה'}</span>
-              </button>
             </div>
           </div>
         </ScrollArea>
       </Drawer>
+
+      <ServingToolsManagerModal
+        opened={toolsModalOpen}
+        onClose={() => setToolsModalOpen(false)}
+        tools={customServingTools}
+        customUnits={customFoodUnits}
+        geminiApiKey={geminiApiKey}
+        onSave={async (payload) => {
+          if (!onManageToolsAndUnits) return { error: 'פעולת שמירה אינה מחוברת' };
+          return await onManageToolsAndUnits(payload);
+        }}
+      />
 
       <BarcodeScannerModal
         opened={barcodeModalOpen}

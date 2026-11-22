@@ -22,6 +22,7 @@ import {
   Share2,
   Check,
   Loader2,
+  Bookmark,
 } from 'lucide-react';
 import {
   BodyMeasurementEntry,
@@ -30,8 +31,12 @@ import {
   DayType,
   LoggedFoodItem,
   MealTemplateSlot,
+  QuickContextChip,
+  SavedMealPreset,
+  TraineeCustomUnit,
   TraineeOnboardingData,
   TraineeProfile,
+  TraineeServingTool,
   WeeklyCheckInEntry,
 } from '@/types/nutrition';
 import { getTodayIso, sumMacros } from '@/data/israeliFoodCatalog';
@@ -83,6 +88,39 @@ interface TraineeMobileViewProps {
     checkIn: WeeklyCheckInEntry
   ) => void | Promise<void>;
   onPreferenceLearned?: (traineeId: string, prefs: string[]) => void;
+  globalQuickChips?: QuickContextChip[];
+  groupQuickChips?: QuickContextChip[];
+  onSavedMealAction?: (
+    traineeId: string,
+    payload: {
+      op:
+        | 'upsert'
+        | 'toggle-pin'
+        | 'toggle-favorite'
+        | 'increment-use'
+        | 'ask-question'
+        | 'delete';
+      preset?: Partial<SavedMealPreset>;
+      presetId?: string;
+      question?: string;
+    }
+  ) => Promise<{ error?: string }>;
+  onManageToolsAndUnits?: (
+    traineeId: string,
+    payload: {
+      customServingTools?: TraineeServingTool[];
+      customFoodUnits?: TraineeCustomUnit[];
+    }
+  ) => Promise<{ error?: string }>;
+  onManageQuickChips?: (payload: {
+    scope: 'user' | 'group' | 'global';
+    op: 'touch' | 'upsert' | 'delete' | 'replace';
+    traineeId?: string;
+    groupId?: string;
+    chip?: Partial<QuickContextChip>;
+    chips?: Partial<QuickContextChip>[];
+    chipId?: string;
+  }) => Promise<{ error?: string }>;
   geminiApiKey?: string;
 }
 
@@ -123,6 +161,11 @@ export function TraineeMobileView({
   onUpdateDailyActivity,
   onSaveWeeklyCheckIn,
   onPreferenceLearned,
+  globalQuickChips = [],
+  groupQuickChips = [],
+  onSavedMealAction,
+  onManageToolsAndUnits,
+  onManageQuickChips,
   geminiApiKey,
 }: TraineeMobileViewProps) {
   const todayIso = getTodayIso();
@@ -1358,7 +1401,7 @@ export function TraineeMobileView({
                 padding: '0 4px',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 15, fontWeight: 800 }}>
                   ציר זמן ארוחות
                 </span>
@@ -1379,6 +1422,54 @@ export function TraineeMobileView({
                     : activeTemplate.name}
                 </span>
               </div>
+
+              {activeTemplate.meals.length > 0 && (() => {
+                const answeredCount = (trainee.savedMeals || []).filter(
+                  (m) => m.coachQuestion?.status === 'answered'
+                ).length;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => openMealDrawer(activeTemplate.meals[0], 'saved-meals')}
+                    className="btn-surface"
+                    style={{
+                      padding: '5px 10px',
+                      borderRadius: 999,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      cursor: 'pointer',
+                      borderColor:
+                        answeredCount > 0
+                          ? 'rgba(210, 255, 40, 0.45)'
+                          : 'var(--border-subtle)',
+                      color:
+                        answeredCount > 0
+                          ? 'var(--accent-volt)'
+                          : 'var(--text-primary)',
+                    }}
+                  >
+                    <Bookmark size={12} color="var(--accent-volt)" />
+                    <span>הארוחות והכלים שלי</span>
+                    {(trainee.savedMeals?.length || 0) > 0 && (
+                      <span
+                        className="num-mono"
+                        style={{
+                          fontSize: 10,
+                          padding: '1px 5px',
+                          borderRadius: 999,
+                          background: 'rgba(210, 255, 40, 0.14)',
+                          color: 'var(--accent-volt)',
+                        }}
+                      >
+                        {trainee.savedMeals?.length}
+                      </span>
+                    )}
+                  </button>
+                );
+              })()}
             </div>
 
             {/* רשימת כרטיסי הארוחות */}
@@ -1781,6 +1872,24 @@ export function TraineeMobileView({
                       >
                         <Camera size={15} color="var(--accent-volt)" />
                         <span>AI</span>
+                      </button>
+
+                      <button
+                        title="ספריית הארוחות השמורות והיסטוריה"
+                        onClick={() => openMealDrawer(slot, 'saved-meals')}
+                        className="btn-surface"
+                        style={{
+                          padding: '9px 11px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Bookmark size={14} color="#38bdf8" />
+                        <span>שמורות</span>
                       </button>
 
                       <button
@@ -2611,12 +2720,31 @@ export function TraineeMobileView({
         geminiApiKey={geminiApiKey}
         initialTab={drawerTab}
         traineeId={trainee.id}
+        traineeName={trainee.name}
         learnedPreferences={trainee.aiLearnedPreferences || []}
         onPreferenceLearned={(prefs) => {
           if (onPreferenceLearned) {
             onPreferenceLearned(trainee.id, prefs);
           }
         }}
+        savedMeals={trainee.savedMeals || []}
+        customServingTools={trainee.customServingTools || []}
+        customFoodUnits={trainee.customFoodUnits || []}
+        recentContextChips={trainee.recentContextChips || []}
+        groupQuickChips={groupQuickChips}
+        globalQuickChips={globalQuickChips}
+        traineeLogs={trainee.logs}
+        onSavedMealAction={
+          onSavedMealAction
+            ? (payload) => onSavedMealAction(trainee.id, payload)
+            : undefined
+        }
+        onManageToolsAndUnits={
+          onManageToolsAndUnits
+            ? (payload) => onManageToolsAndUnits(trainee.id, payload)
+            : undefined
+        }
+        onManageQuickChips={onManageQuickChips}
       />
     </div>
   );
