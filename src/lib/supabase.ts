@@ -63,6 +63,14 @@ export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey);
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseKey, {
       auth: { persistSession: false },
+      // חיוני ב-Next.js 14: מונע משכבת ה-Data Cache לשמור תשובות GET ישנות מ-Supabase
+      global: {
+        fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+          fetch(input, {
+            ...init,
+            cache: 'no-store',
+          }),
+      },
     })
   : null;
 

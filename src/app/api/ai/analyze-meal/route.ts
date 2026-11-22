@@ -30,6 +30,8 @@ import {
 } from '@/lib/geminiClient';
 
 export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
 
 /**
  * מנתח טקסט עברי חכם (גיבוי לזיהוי טקסטואלי כשאין חיבור ל-Gemini)

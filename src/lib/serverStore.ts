@@ -241,7 +241,14 @@ export async function updateServerDbState(
       tasks.push(saveTemplatesToSupabase(next.templates));
     }
     if (next.trainees !== current.trainees) {
-      tasks.push(saveTraineesToSupabase(next.trainees));
+      // שליחת עדכון אך ורק לשורות המתאמנים שהשתנו בפועל (מונע דריסות צולבות ועומס מיותר)
+      const changedTrainees = next.trainees.filter((nt) => {
+        const ct = current.trainees.find((x) => x.id === nt.id);
+        return ct !== nt;
+      });
+      if (changedTrainees.length > 0) {
+        tasks.push(saveTraineesToSupabase(changedTrainees));
+      }
     }
     if (next.globalQuickChips !== current.globalQuickChips) {
       tasks.push(saveGlobalQuickChipsToSupabase(next.globalQuickChips || []));

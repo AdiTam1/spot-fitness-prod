@@ -11,6 +11,7 @@ import {
   Loader2,
   WifiOff,
   AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import {
   AccountStatus,
@@ -73,6 +74,7 @@ export default function HomePage() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [manualSyncing, setManualSyncing] = useState(false);
   const [localBgJobs, setLocalBgJobs] = useState<PendingAiMealJob[]>([]);
   const [externalOpenMealRequest, setExternalOpenMealRequest] = useState<{
     traineeId: string;
@@ -82,6 +84,9 @@ export default function HomePage() {
   } | null>(null);
 
   const traineesRef = useRef<TraineeProfile[]>([]);
+  const syncingCountRef = useRef<number>(0);
+  const mutationEpochRef = useRef<number>(0);
+  const lastFetchAtRef = useRef<number>(0);
   useEffect(() => {
     traineesRef.current = trainees;
   }, [trainees]);
@@ -99,9 +104,17 @@ export default function HomePage() {
     };
   }, []);
 
-  const fetchAuthorizedData = useCallback(async () => {
+  const fetchAuthorizedData = useCallback(async (opts?: { force?: boolean }) => {
+    if (!opts?.force && syncingCountRef.current > 0) {
+      return;
+    }
+    const startEpoch = mutationEpochRef.current;
+    lastFetchAtRef.current = Date.now();
     try {
-      const dataRes = await fetch('/api/data', { cache: 'no-store' });
+      const dataRes = await fetch(`/api/data?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+      });
       if (dataRes.status === 401 || dataRes.status === 403) {
         setCurrentUser(null);
         setTrainees([]);
@@ -116,6 +129,13 @@ export default function HomePage() {
       }
       if (dataRes.ok) {
         const remoteData = await dataRes.json();
+        // אם בוצעה בינתיים שמירה מקומית חדשה בזמן שהמשיכה הייתה באוויר — אל תדרוס state טרי
+        if (
+          !opts?.force &&
+          (syncingCountRef.current > 0 || mutationEpochRef.current !== startEpoch)
+        ) {
+          return;
+        }
         if (Array.isArray(remoteData.trainees)) {
           setTrainees(remoteData.trainees);
         }
@@ -174,7 +194,35 @@ export default function HomePage() {
     initSecureSession();
   }, [fetchAuthorizedData]);
 
+  // סנכרון שקט אוטומטי בחזרה למסך (Mobile app switch / tab focus) וכל 25 שניות כשהמסך גלוי
+  useEffect(() => {
+    if (!currentUser || typeof window === 'undefined') return;
+
+    const syncIfFresh = () => {
+      if (document.visibilityState === 'hidden') return;
+      if (!window.navigator.onLine) return;
+      if (Date.now() - lastFetchAtRef.current < 3500) return;
+      void fetchAuthorizedData();
+    };
+
+    window.addEventListener('focus', syncIfFresh);
+    document.addEventListener('visibilitychange', syncIfFresh);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && window.navigator.onLine) {
+        void fetchAuthorizedData();
+      }
+    }, 25000);
+
+    return () => {
+      window.removeEventListener('focus', syncIfFresh);
+      document.removeEventListener('visibilitychange', syncIfFresh);
+      clearInterval(interval);
+    };
+  }, [currentUser, fetchAuthorizedData]);
+
   const postDataAction = async (payload: Record<string, unknown>) => {
+    syncingCountRef.current += 1;
+    mutationEpochRef.current += 1;
     setSyncingCount((c) => c + 1);
     setSyncError(null);
     try {
@@ -192,6 +240,7 @@ export default function HomePage() {
       setSyncError('אין תקשורת עם השרת – השינויים האחרונים לא נשמרו');
       return null;
     } finally {
+      syncingCountRef.current = Math.max(0, syncingCountRef.current - 1);
       setSyncingCount((c) => Math.max(0, c - 1));
     }
   };
@@ -1704,6 +1753,36 @@ export default function HomePage() {
                   : ''}
               </span>
             </div>
+
+            <button
+              title="סנכרן נתונים עדכניים מהשרת"
+              disabled={manualSyncing || isOffline}
+              onClick={async () => {
+                setManualSyncing(true);
+                try {
+                  await fetchAuthorizedData({ force: true });
+                } finally {
+                  setManualSyncing(false);
+                }
+              }}
+              className="btn-surface"
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: manualSyncing ? 'wait' : 'pointer',
+                padding: 0,
+              }}
+            >
+              <RefreshCw
+                size={14}
+                className={manualSyncing ? 'spot-spinner' : undefined}
+                color={manualSyncing ? 'var(--accent-volt)' : 'var(--text-secondary)'}
+              />
+            </button>
 
             {currentUser.role === 'admin' && (
               <button
