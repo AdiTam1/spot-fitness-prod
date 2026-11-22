@@ -104,7 +104,7 @@ interface EmbeddedTraineeMeta {
   countObservationInStats?: boolean;
   primaryCoachId?: string;
   sharedCoachIds?: string[];
-  groupId?: string;
+  groupId?: string | null;
 }
 
 function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
@@ -124,24 +124,33 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
       ? (row.onboarding as TraineeOnboardingData)
       : embeddedMeta.onboarding;
 
-  const measurementsHistory =
-    Array.isArray(row.measurements_history) &&
-    row.measurements_history.length > 0
-      ? (row.measurements_history as BodyMeasurementEntry[])
-      : embeddedMeta.measurementsHistory || [];
+  const measurementsHistory = Array.isArray(embeddedMeta.measurementsHistory)
+    ? embeddedMeta.measurementsHistory
+    : Array.isArray(row.measurements_history)
+    ? (row.measurements_history as BodyMeasurementEntry[])
+    : [];
 
-  const observationDates =
-    Array.isArray(row.observation_dates) && row.observation_dates.length > 0
-      ? (row.observation_dates as string[])
-      : embeddedMeta.observationDates || [];
+  const observationDates = Array.isArray(embeddedMeta.observationDates)
+    ? embeddedMeta.observationDates
+    : Array.isArray(row.observation_dates)
+    ? (row.observation_dates as string[])
+    : [];
 
   const countObservationInStats =
-    typeof row.count_observation_in_stats === 'boolean'
-      ? row.count_observation_in_stats
-      : Boolean(embeddedMeta.countObservationInStats);
+    'countObservationInStats' in embeddedMeta
+      ? Boolean(embeddedMeta.countObservationInStats)
+      : Boolean(row.count_observation_in_stats);
+
+  const rowActivityTargets =
+    row.activity_targets &&
+    typeof row.activity_targets === 'object' &&
+    Object.keys(row.activity_targets as object).length > 0
+      ? (row.activity_targets as TraineeActivityTargets)
+      : undefined;
 
   const activityTargets: TraineeActivityTargets =
-    embeddedMeta.activityTargets || {
+    embeddedMeta.activityTargets ||
+    rowActivityTargets || {
       weeklyWorkoutsTarget: 4,
       workoutTypes: ['אימון כוח A', 'אימון כוח B', 'Full Body'],
       weeklyCardioTarget: 3,
@@ -163,14 +172,19 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
     targetWeight: Number(row.target_weight) || 70,
     tolerancePercent: Number(row.tolerance_percent) || 10,
     primaryCoachId: String(
-      row.primary_coach_id || embeddedMeta.primaryCoachId || 'coach-admin'
+      embeddedMeta.primaryCoachId || row.primary_coach_id || 'coach-admin'
     ),
-    sharedCoachIds: Array.isArray(row.shared_coach_ids)
+    sharedCoachIds: Array.isArray(embeddedMeta.sharedCoachIds)
+      ? embeddedMeta.sharedCoachIds
+      : Array.isArray(row.shared_coach_ids)
       ? (row.shared_coach_ids as string[])
-      : embeddedMeta.sharedCoachIds || [],
-    groupId: row.group_id
-      ? String(row.group_id)
-      : embeddedMeta.groupId || undefined,
+      : [],
+    groupId:
+      'groupId' in embeddedMeta
+        ? embeddedMeta.groupId || undefined
+        : row.group_id
+        ? String(row.group_id)
+        : undefined,
     workoutTemplate: row.workout_template as NutritionTemplate,
     restTemplate: row.rest_template as NutritionTemplate,
     favoriteFoodIds: Array.isArray(row.favorite_food_ids)
@@ -182,13 +196,23 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
     measurementsHistory,
     onboarding,
     activityTargets,
-    enableWorkoutRestSplit: Boolean(embeddedMeta.enableWorkoutRestSplit),
-    coachAiNotes: embeddedMeta.coachAiNotes || '',
+    enableWorkoutRestSplit:
+      'enableWorkoutRestSplit' in embeddedMeta
+        ? Boolean(embeddedMeta.enableWorkoutRestSplit)
+        : Boolean(row.enable_workout_rest_split),
+    coachAiNotes:
+      'coachAiNotes' in embeddedMeta
+        ? embeddedMeta.coachAiNotes || ''
+        : String(row.coach_ai_notes || ''),
     aiLearnedPreferences: Array.isArray(embeddedMeta.aiLearnedPreferences)
       ? embeddedMeta.aiLearnedPreferences
+      : Array.isArray(row.ai_learned_preferences)
+      ? (row.ai_learned_preferences as string[])
       : [],
     weeklyCheckIns: Array.isArray(embeddedMeta.weeklyCheckIns)
       ? embeddedMeta.weeklyCheckIns
+      : Array.isArray(row.weekly_check_ins)
+      ? (row.weekly_check_ins as WeeklyCheckInEntry[])
       : [],
     observationDates,
     countObservationInStats,
@@ -678,11 +702,48 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
       countObservationInStats: Boolean(t.countObservationInStats),
       primaryCoachId: t.primaryCoachId || 'coach-admin',
       sharedCoachIds: t.sharedCoachIds || [],
-      groupId: t.groupId,
+      groupId: t.groupId || null,
     },
   });
 
-  const rows = trainees.map((t) => ({
+  const fullRows = trainees.map((t) => ({
+    id: t.id,
+    email: t.email,
+    password: t.password,
+    status: t.status || 'active',
+    name: t.name,
+    avatar: t.avatar,
+    phone: t.phone,
+    goal: t.goal,
+    current_weight: t.currentWeight,
+    target_weight: t.targetWeight,
+    tolerance_percent: t.tolerancePercent,
+    primary_coach_id: t.primaryCoachId || 'coach-admin',
+    shared_coach_ids: t.sharedCoachIds || [],
+    group_id: t.groupId || null,
+    workout_template: t.workoutTemplate,
+    rest_template: t.restTemplate,
+    favorite_food_ids: t.favoriteFoodIds,
+    weight_history: t.weightHistory,
+    measurements_history: t.measurementsHistory || [],
+    onboarding: t.onboarding || {},
+    observation_dates: t.observationDates || [],
+    count_observation_in_stats: Boolean(t.countObservationInStats),
+    activity_targets: t.activityTargets || {},
+    enable_workout_rest_split: Boolean(t.enableWorkoutRestSplit),
+    coach_ai_notes: t.coachAiNotes || '',
+    ai_learned_preferences: t.aiLearnedPreferences || [],
+    weekly_check_ins: t.weeklyCheckIns || [],
+    logs: packLogsWithMeta(t),
+    updated_at: new Date().toISOString(),
+  }));
+
+  const first = await supabase
+    .from('trainees')
+    .upsert(fullRows, { onConflict: 'id' });
+  if (!first.error) return;
+
+  const schemaV2Rows = trainees.map((t) => ({
     id: t.id,
     email: t.email,
     password: t.password,
@@ -709,41 +770,70 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
     updated_at: new Date().toISOString(),
   }));
 
-  const { error } = await supabase
+  const v2 = await supabase
     .from('trainees')
-    .upsert(rows, { onConflict: 'id' });
+    .upsert(schemaV2Rows, { onConflict: 'id' });
+  if (!v2.error) return;
 
-  if (error) {
-    // גיבוי אוטומטי אם חלק מהעמודות החדשות טרם הורצו ב-SQL Editor: הכל נשמר בתוך logs.__profile_meta!
-    const legacyRows = trainees.map((t) => ({
-      id: t.id,
-      email: t.email,
-      password: t.password,
-      status: t.status || 'active',
-      name: t.name,
-      avatar: t.avatar,
-      phone: t.phone,
-      goal: t.goal,
-      current_weight: t.currentWeight,
-      target_weight: t.targetWeight,
-      tolerance_percent: t.tolerancePercent,
-      workout_template: t.workoutTemplate,
-      rest_template: t.restTemplate,
-      favorite_food_ids: t.favoriteFoodIds,
-      weight_history: t.weightHistory,
-      logs: packLogsWithMeta(t),
-      updated_at: new Date().toISOString(),
-    }));
-    const legacy = await supabase
-      .from('trainees')
-      .upsert(legacyRows, { onConflict: 'id' });
-    if (legacy.error) {
-      throw new Error(formatSupabaseError('trainees', legacy.error));
-    }
+  // ניסיון ביניים: כולל primary_coach_id ו-shared_coach_ids ללא עמודות ההרחבה החדשות
+  const midRows = trainees.map((t) => ({
+    id: t.id,
+    email: t.email,
+    password: t.password,
+    status: t.status || 'active',
+    name: t.name,
+    avatar: t.avatar,
+    phone: t.phone,
+    goal: t.goal,
+    current_weight: t.currentWeight,
+    target_weight: t.targetWeight,
+    tolerance_percent: t.tolerancePercent,
+    primary_coach_id: t.primaryCoachId || 'coach-admin',
+    shared_coach_ids: t.sharedCoachIds || [],
+    workout_template: t.workoutTemplate,
+    rest_template: t.restTemplate,
+    favorite_food_ids: t.favoriteFoodIds,
+    weight_history: t.weightHistory,
+    logs: packLogsWithMeta(t),
+    updated_at: new Date().toISOString(),
+  }));
+  const mid = await supabase
+    .from('trainees')
+    .upsert(midRows, { onConflict: 'id' });
+  if (!mid.error) return;
+
+  // גיבוי אוטומטי אם גם עמודות השיוך טרם הורצו ב-SQL Editor: הכל נשמר בתוך logs.__profile_meta!
+  const legacyRows = trainees.map((t) => ({
+    id: t.id,
+    email: t.email,
+    password: t.password,
+    status: t.status || 'active',
+    name: t.name,
+    avatar: t.avatar,
+    phone: t.phone,
+    goal: t.goal,
+    current_weight: t.currentWeight,
+    target_weight: t.targetWeight,
+    tolerance_percent: t.tolerancePercent,
+    workout_template: t.workoutTemplate,
+    rest_template: t.restTemplate,
+    favorite_food_ids: t.favoriteFoodIds,
+    weight_history: t.weightHistory,
+    logs: packLogsWithMeta(t),
+    updated_at: new Date().toISOString(),
+  }));
+  const legacy = await supabase
+    .from('trainees')
+    .upsert(legacyRows, { onConflict: 'id' });
+  if (legacy.error) {
+    throw new Error(formatSupabaseError('trainees', legacy.error));
   }
 }
 
 export async function deleteTraineeFromSupabase(traineeId: string) {
   if (!supabase) return;
-  await supabase.from('trainees').delete().eq('id', traineeId);
+  const { error } = await supabase.from('trainees').delete().eq('id', traineeId);
+  if (error) {
+    throw new Error(formatSupabaseError('trainees', error));
+  }
 }
