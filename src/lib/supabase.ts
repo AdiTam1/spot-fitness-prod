@@ -13,9 +13,38 @@ import {
 } from '@/types/nutrition';
 
 const cleanEnv = (v?: string) =>
-  (v || '').trim().replace(/^["']|["']$/g, '').trim();
+  (v || '')
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .replace(/[\r\n]+/g, '')
+    .trim();
 
-const supabaseUrl = cleanEnv(
+function normalizeSupabaseBaseUrl(raw?: string): string {
+  const cleaned = cleanEnv(raw);
+  if (!cleaned) return '';
+  const withProto = /^https?:\/\//i.test(cleaned)
+    ? cleaned
+    : `https://${cleaned}`;
+  try {
+    const parsed = new URL(withProto);
+    if (
+      parsed.hostname.endsWith('.supabase.co') ||
+      parsed.hostname.endsWith('.supabase.in')
+    ) {
+      return parsed.origin;
+    }
+    const strippedPath = parsed.pathname
+      .replace(/\/(rest|auth|storage|realtime)\/v1.*$/i, '')
+      .replace(/\/+$/, '');
+    return `${parsed.origin}${strippedPath}`;
+  } catch {
+    return cleaned
+      .replace(/\/(rest|auth|storage|realtime)\/v1.*$/i, '')
+      .replace(/\/+$/, '');
+  }
+}
+
+const supabaseUrl = normalizeSupabaseBaseUrl(
   process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
 );
 const supabaseKey = cleanEnv(
@@ -185,6 +214,12 @@ function formatSupabaseError(table: string, error: SbErrorLike): string {
 
 export function diagnoseSupabaseError(rawMessage: string): string {
   const lower = rawMessage.toLowerCase();
+  if (
+    lower.includes('pgrst125') ||
+    lower.includes('invalid path specified')
+  ) {
+    return `כתובת ה-SUPABASE_URL בשרת אינה תקינה (כוללת נתיב עודף כמו /rest/v1 — יש להגדיר רק https://<project-ref>.supabase.co). (${rawMessage})`;
+  }
   if (lower.includes('row-level security') || lower.includes('42501')) {
     return `חסימת הרשאות במסד הנתונים (RLS): יש להריץ את פקודות ה-POLICY מתוך supabase/schema.sql ב-SQL Editor של Supabase, או להגדיר SUPABASE_SERVICE_ROLE_KEY בהגדרות Vercel. (${rawMessage})`;
   }
