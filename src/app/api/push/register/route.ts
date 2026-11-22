@@ -16,7 +16,7 @@ import {
   updateServerDbState,
 } from '@/lib/serverStore';
 import {
-  isFcmConfigured,
+  getFcmConfigErrorMessage,
   sendFcmNotificationToTokens,
 } from '@/lib/fcmServer';
 import { getTodayIso } from '@/data/israeliFoodCatalog';
@@ -152,14 +152,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (op === 'test-self') {
-      if (!isFcmConfigured()) {
-        return NextResponse.json(
-          {
-            error:
-              'שרת ההתראות (FIREBASE_SERVICE_ACCOUNT_JSON) עדיין לא הוגדר ב-Vercel.',
-          },
-          { status: 422 }
-        );
+      const configError = getFcmConfigErrorMessage();
+      if (configError) {
+        return NextResponse.json({ error: configError }, { status: 422 });
       }
       const tokens = (liveTrainee.fcmTokens || []).map((t) => t.token);
       if (tokens.length === 0) {

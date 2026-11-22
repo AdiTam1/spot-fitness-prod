@@ -15,38 +15,139 @@ interface CachedAccessToken {
 
 let cachedToken: CachedAccessToken | null = null;
 
-function loadServiceAccountConfig(): ServiceAccountConfig | null {
+function tryParseJsonRelaxed(text: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(text);
+    if (typeof parsed === 'string') return tryParseJsonRelaxed(parsed);
+    if (parsed && typeof parsed === 'object') {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // תיקון ירידות שורה חיות בתוך מחרוזות JSON בעקבות העתק-הדבק
+    let inString = false;
+    let escaped = false;
+    let fixed = '';
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (escaped) {
+        fixed += ch;
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        fixed += ch;
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        fixed += ch;
+        continue;
+      }
+      if (inString && (ch === '\n' || ch === '\r')) {
+        if (ch === '\n') fixed += '\\n';
+        continue;
+      }
+      fixed += ch;
+    }
+    try {
+      const reparsed = JSON.parse(fixed);
+      if (reparsed && typeof reparsed === 'object') {
+        return reparsed as Record<string, unknown>;
+      }
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function normalizeServiceAccountRaw(raw: string): Record<string, unknown> | null {
+  let candidate = raw.trim().replace(/^\uFEFF/, '');
+  if (!candidate) return null;
+
+  if (
+    (candidate.startsWith("'") && candidate.endsWith("'")) ||
+    (candidate.startsWith('"') && candidate.endsWith('"'))
+  ) {
+    const asJsonStr = tryParseJsonRelaxed(candidate);
+    if (asJsonStr) return asJsonStr;
+    candidate = candidate.slice(1, -1).trim();
+  }
+
+  if (!candidate.startsWith('{')) {
+    try {
+      const decoded = Buffer.from(candidate, 'base64').toString('utf8').trim();
+      if (decoded.startsWith('{')) {
+        candidate = decoded;
+      }
+    } catch {
+      // ignore non-base64
+    }
+  }
+
+  return tryParseJsonRelaxed(candidate);
+}
+
+function loadServiceAccountWithReason(): {
+  config: ServiceAccountConfig | null;
+  reason: 'ready' | 'missing' | 'invalid-format';
+} {
   const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
   if (rawJson) {
-    try {
-      const parsed = JSON.parse(rawJson) as {
-        project_id?: string;
-        client_email?: string;
-        private_key?: string;
+    const parsed = normalizeServiceAccountRaw(rawJson);
+    const projectId =
+      typeof parsed?.project_id === 'string' ? parsed.project_id.trim() : '';
+    const clientEmail =
+      typeof parsed?.client_email === 'string'
+        ? parsed.client_email.trim()
+        : '';
+    const privateKeyRaw =
+      typeof parsed?.private_key === 'string' ? parsed.private_key : '';
+
+    if (projectId && clientEmail && privateKeyRaw) {
+      return {
+        config: {
+          projectId,
+          clientEmail,
+          privateKey: privateKeyRaw.replace(/\\n/g, '\n').trim(),
+        },
+        reason: 'ready',
       };
-      if (parsed.project_id && parsed.client_email && parsed.private_key) {
-        return {
-          projectId: parsed.project_id,
-          clientEmail: parsed.client_email,
-          privateKey: parsed.private_key.replace(/\\n/g, '\n'),
-        };
-      }
-    } catch (err) {
-      console.error('Invalid FIREBASE_SERVICE_ACCOUNT_JSON:', err);
     }
+    console.error(
+      'FIREBASE_SERVICE_ACCOUNT_JSON present but invalid or missing project_id/client_email/private_key'
+    );
+    return { config: null, reason: 'invalid-format' };
   }
 
   const projectId = process.env.FIREBASE_PROJECT_ID?.trim();
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim();
   const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n').trim();
   if (projectId && clientEmail && privateKey) {
-    return { projectId, clientEmail, privateKey };
+    return {
+      config: { projectId, clientEmail, privateKey },
+      reason: 'ready',
+    };
   }
-  return null;
+  return { config: null, reason: 'missing' };
+}
+
+function loadServiceAccountConfig(): ServiceAccountConfig | null {
+  return loadServiceAccountWithReason().config;
 }
 
 export function isFcmConfigured(): boolean {
-  return loadServiceAccountConfig() !== null;
+  return loadServiceAccountWithReason().config !== null;
+}
+
+export function getFcmConfigErrorMessage(): string | null {
+  const { reason } = loadServiceAccountWithReason();
+  if (reason === 'ready') return null;
+  if (reason === 'invalid-format') {
+    return 'המשתנה FIREBASE_SERVICE_ACCOUNT_JSON קיים בשרת אך הפורמט שלו אינו תקין — יש להדביק את כל תוכן קובץ ה-JSON של Service Account מ-Firebase (כולל project_id, client_email, private_key).';
+  }
+  return 'המשתנה FIREBASE_SERVICE_ACCOUNT_JSON לא נטען בגרסת השרת הפעילה כרגע — אם הוספת אותו עכשיו ב-Vercel (Production), יש לבצע Redeploy כדי שהשינוי ייכנס לתוקף.';
 }
 
 async function getFcmAccessToken(
