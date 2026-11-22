@@ -3,9 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { TextInput, NumberInput, Textarea } from '@mantine/core';
 import {
-  User,
-  Ruler,
-  Utensils,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -141,7 +138,7 @@ export function TraineeOnboardingWizard({
   onCompleteOnboarding,
 }: TraineeOnboardingWizardProps) {
   const existing = trainee.onboarding;
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -319,16 +316,28 @@ export function TraineeOnboardingWizard({
   };
 
   return (
-    <div style={{ maxWidth: 540, margin: '0 auto', paddingBottom: 40 }}>
-      <div className="pro-card-elevated" style={{ padding: '24px 20px' }}>
-        {/* כותרת וסרגל התקדמות של 3 השלבים */}
-        <div style={{ marginBottom: 20 }}>
+    <div
+      style={{
+        maxWidth: 490,
+        margin: '0 auto',
+        minHeight: 'calc(100dvh - 80px)',
+        display: 'flex',
+        alignItems: 'center',
+        padding: '6px 0 14px',
+      }}
+    >
+      <div
+        className="pro-card-elevated"
+        style={{ width: '100%', padding: '18px 16px' }}
+      >
+        {/* כותרת ופס התקדמות קומפקטי */}
+        <div style={{ marginBottom: 14 }}>
           <div
             style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              marginBottom: 10,
+              marginBottom: 8,
             }}
           >
             <div>
@@ -337,15 +346,17 @@ export function TraineeOnboardingWizard({
                   fontSize: 11,
                   fontWeight: 800,
                   color: 'var(--accent-volt)',
-                  textTransform: 'uppercase',
                 }}
               >
-                הגדרת פרופיל מתאמן אישי · שלב {step} מתוך 3
+                התאמת הפרופיל האישי · שלב {step} מתוך 6
               </span>
-              <div style={{ fontSize: 20, fontWeight: 900, marginTop: 2 }}>
-                {step === 1 && 'נתוני גוף, אימונים והליכה שבועית'}
-                {step === 2 && 'מדידת היקפים מודרכת (עם הנפשה)'}
-                {step === 3 && 'הרגלי תזונה ובקשות מיוחדות למאמן'}
+              <div style={{ fontSize: 17, fontWeight: 900, marginTop: 1 }}>
+                {step === 1 && 'פרטים אישיים ויעד משקל'}
+                {step === 2 && 'שגרה יומית ושעות שינה'}
+                {step === 3 && 'אימוני כוח והליכות'}
+                {step === 4 && 'מדידת היקפים'}
+                {step === 5 && 'סגנון תזונה ומאכלים אהובים'}
+                {step === 6 && 'רגישויות ודגשים למאמן'}
               </div>
             </div>
           </div>
@@ -353,121 +364,95 @@ export function TraineeOnboardingWizard({
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: 8,
+              gridTemplateColumns: 'repeat(6, 1fr)',
+              gap: 5,
             }}
           >
-            {[
-              { s: 1, label: '1. נתונים והליכה', icon: User },
-              { s: 2, label: '2. בדיקת היקפים', icon: Ruler },
-              { s: 3, label: '3. העדפות תזונה', icon: Utensils },
-            ].map((item) => {
-              const active = step === item.s;
-              const done = step > item.s;
+            {[1, 2, 3, 4, 5, 6].map((s) => {
+              const active = step === s;
+              const done = step > s;
               return (
                 <button
-                  key={item.s}
+                  key={s}
                   type="button"
-                  onClick={() => setStep(item.s as 1 | 2 | 3)}
+                  aria-label={`שלב ${s}`}
+                  onClick={() => setStep(s as 1 | 2 | 3 | 4 | 5 | 6)}
                   style={{
-                    padding: '8px 10px',
-                    borderRadius: 10,
-                    border: active
-                      ? '1px solid var(--accent-volt)'
-                      : '1px solid var(--border-subtle)',
-                    background: done
-                      ? 'rgba(210, 255, 40, 0.14)'
-                      : active
-                      ? 'rgba(210, 255, 40, 0.08)'
-                      : 'var(--bg-surface-2)',
-                    color:
-                      active || done
-                        ? 'var(--accent-volt)'
-                        : 'var(--text-muted)',
-                    fontSize: 11,
-                    fontWeight: 700,
+                    height: 6,
+                    borderRadius: 999,
+                    border: 'none',
+                    background: active
+                      ? 'var(--accent-volt)'
+                      : done
+                      ? 'rgba(210, 255, 40, 0.45)'
+                      : 'var(--bg-surface-3)',
                     cursor: 'pointer',
-                    textAlign: 'center',
+                    padding: 0,
                   }}
-                >
-                  {item.label}
-                </button>
+                />
               );
             })}
           </div>
         </div>
 
         {/* ================================================================= */}
-        {/* שלב 1: נתוני גוף, אימוני כוח והליכה שבועית                        */}
+        {/* שלב 1: פרטים אישיים ומשקל                                         */}
         {/* ================================================================= */}
         {step === 1 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-                gap: 10,
-              }}
-            >
-              <TextInput
-                label="שם מלא"
-                value={name}
-                onChange={(e) => setName(e.currentTarget.value)}
-                required
-              />
-              <div>
-                <div
-                  style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}
-                >
-                  מין
-                </div>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: 6,
-                    background: 'var(--bg-surface-2)',
-                    padding: 4,
-                    borderRadius: 12,
-                    border: '1px solid var(--border-subtle)',
-                  }}
-                >
-                  {[
-                    { id: 'male', label: 'זכר' },
-                    { id: 'female', label: 'נקבה' },
-                  ].map((g) => (
-                    <button
-                      key={g.id}
-                      type="button"
-                      onClick={() => setGender(g.id as 'male' | 'female')}
-                      style={{
-                        padding: '6px',
-                        borderRadius: 8,
-                        border: 'none',
-                        background:
-                          gender === g.id
-                            ? 'var(--accent-volt)'
-                            : 'transparent',
-                        color:
-                          gender === g.id
-                            ? '#08090c'
-                            : 'var(--text-secondary)',
-                        fontSize: 12,
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {g.label}
-                    </button>
-                  ))}
-                </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <TextInput
+              label="שם מלא"
+              value={name}
+              onChange={(e) => setName(e.currentTarget.value)}
+              required
+            />
+
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
+                מין
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: 6,
+                  background: 'var(--bg-surface-2)',
+                  padding: 4,
+                  borderRadius: 12,
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                {[
+                  { id: 'male', label: 'זכר' },
+                  { id: 'female', label: 'נקבה' },
+                ].map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onClick={() => setGender(g.id as 'male' | 'female')}
+                    style={{
+                      padding: '7px',
+                      borderRadius: 8,
+                      border: 'none',
+                      background:
+                        gender === g.id ? 'var(--accent-volt)' : 'transparent',
+                      color:
+                        gender === g.id ? '#08090c' : 'var(--text-secondary)',
+                      fontSize: 13,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {g.label}
+                  </button>
+                ))}
               </div>
             </div>
 
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(108px, 1fr))',
+                gridTemplateColumns: '1fr 1fr',
                 gap: 8,
               }}
             >
@@ -486,7 +471,7 @@ export function TraineeOnboardingWizard({
                 onChange={(v) => setHeightCm(Number(v) || 174)}
               />
               <NumberInput
-                label="משקל (ק״ג)"
+                label="משקל נוכחי (ק״ג)"
                 value={currentWeight}
                 min={35}
                 max={250}
@@ -495,7 +480,7 @@ export function TraineeOnboardingWizard({
                 onChange={(v) => setCurrentWeight(Number(v) || 75)}
               />
               <NumberInput
-                label="משקל יעד"
+                label="משקל יעד (ק״ג)"
                 value={targetWeight}
                 min={35}
                 max={250}
@@ -505,16 +490,41 @@ export function TraineeOnboardingWizard({
               />
             </div>
 
-            {/* שאלה א': רמת פעילות יומיומית */}
+            <button
+              type="button"
+              onClick={() => setStep(2)}
+              className="btn-volt"
+              style={{
+                marginTop: 4,
+                padding: '11px',
+                fontSize: 14,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                cursor: 'pointer',
+              }}
+            >
+              <span>המשך</span>
+              <ChevronLeft size={16} />
+            </button>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* שלב 2: אורח חיים יומי ושעות שינה                                  */}
+        {/* ================================================================= */}
+        {step === 2 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
             <div
               style={{
                 background: 'var(--bg-surface-2)',
-                padding: 12,
-                borderRadius: 14,
+                padding: 11,
+                borderRadius: 12,
                 border: '1px solid var(--border-subtle)',
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
                 אורח חיים יומי (מחוץ לאימונים):
               </div>
               <div
@@ -533,7 +543,7 @@ export function TraineeOnboardingWizard({
                       type="button"
                       onClick={() => setActivityLevel(opt)}
                       style={{
-                        padding: '6px 11px',
+                        padding: '5px 10px',
                         borderRadius: 999,
                         border: selected
                           ? '1px solid var(--accent-volt)'
@@ -544,7 +554,7 @@ export function TraineeOnboardingWizard({
                         color: selected
                           ? 'var(--accent-volt)'
                           : 'var(--text-secondary)',
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: 700,
                         cursor: 'pointer',
                       }}
@@ -556,158 +566,21 @@ export function TraineeOnboardingWizard({
               </div>
               <TextInput
                 size="xs"
-                placeholder="פירוט חופשי נוסף (למשל: עומד 4 שעות ביום, שליח וכו')..."
+                placeholder="הערה נוספת (למשל: עומד 4 שעות ביום)..."
                 value={activityLevelNote}
                 onChange={(e) => setActivityLevelNote(e.currentTarget.value)}
               />
             </div>
 
-            {/* שאלה ב': כמה אימוני כוח בשבוע */}
             <div
               style={{
                 background: 'var(--bg-surface-2)',
-                padding: 12,
-                borderRadius: 14,
+                padding: 11,
+                borderRadius: 12,
                 border: '1px solid var(--border-subtle)',
               }}
             >
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 800,
-                  marginBottom: 8,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <Dumbbell size={15} color="var(--accent-volt)" />
-                <span>כמה אימוני כוח / חדר כושר בשבוע?</span>
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: 6,
-                  marginBottom: 8,
-                }}
-              >
-                {STRENGTH_OPTIONS.map((opt) => {
-                  const selected = strengthWorkouts === opt;
-                  return (
-                    <button
-                      key={opt}
-                      type="button"
-                      onClick={() => setStrengthWorkouts(opt)}
-                      style={{
-                        padding: '6px 11px',
-                        borderRadius: 999,
-                        border: selected
-                          ? '1px solid var(--accent-volt)'
-                          : '1px solid var(--border-subtle)',
-                        background: selected
-                          ? 'rgba(210, 255, 40, 0.14)'
-                          : 'var(--bg-surface-1)',
-                        color: selected
-                          ? 'var(--accent-volt)'
-                          : 'var(--text-secondary)',
-                        fontSize: 12,
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {opt}
-                    </button>
-                  );
-                })}
-              </div>
-              <TextInput
-                size="xs"
-                placeholder="פירוט חופשי על האימונים שלך (AB, פילאטיס, קרוספיט וכו')..."
-                value={strengthWorkoutsNote}
-                onChange={(e) =>
-                  setStrengthWorkoutsNote(e.currentTarget.value)
-                }
-              />
-            </div>
-
-            {/* שאלה ג' (נפרדת): כמה פעמים הליכה בשבוע */}
-            <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                padding: 12,
-                borderRadius: 14,
-                border: '1px solid rgba(56, 189, 248, 0.25)',
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 800,
-                  marginBottom: 8,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <Footprints size={15} color="#38bdf8" />
-                <span>כמה פעמים הליכה / אירובי בשבוע?</span>
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: 6,
-                  marginBottom: 8,
-                }}
-              >
-                {WALKING_OPTIONS.map((opt) => {
-                  const selected = walkingSessions === opt;
-                  return (
-                    <button
-                      key={opt}
-                      type="button"
-                      onClick={() => setWalkingSessions(opt)}
-                      style={{
-                        padding: '6px 11px',
-                        borderRadius: 999,
-                        border: selected
-                          ? '1px solid #38bdf8'
-                          : '1px solid var(--border-subtle)',
-                        background: selected
-                          ? 'rgba(56, 189, 248, 0.15)'
-                          : 'var(--bg-surface-1)',
-                        color: selected ? '#38bdf8' : 'var(--text-secondary)',
-                        fontSize: 12,
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {opt}
-                    </button>
-                  );
-                })}
-              </div>
-              <TextInput
-                size="xs"
-                placeholder="פירוט חופשי (למשל: 40 דקות הליכה בערב, ממוצע צעדים יומי וכו')..."
-                value={walkingSessionsNote}
-                onChange={(e) =>
-                  setWalkingSessionsNote(e.currentTarget.value)
-                }
-              />
-            </div>
-
-            {/* שאלה ד': שעות שינה */}
-            <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                padding: 12,
-                borderRadius: 14,
-                border: '1px solid var(--border-subtle)',
-              }}
-            >
-              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
                 ממוצע שעות שינה בלילה:
               </div>
               <div
@@ -726,7 +599,7 @@ export function TraineeOnboardingWizard({
                       type="button"
                       onClick={() => setSleepHours(opt)}
                       style={{
-                        padding: '6px 11px',
+                        padding: '5px 10px',
                         borderRadius: 999,
                         border: selected
                           ? '1px solid var(--accent-volt)'
@@ -737,7 +610,7 @@ export function TraineeOnboardingWizard({
                         color: selected
                           ? 'var(--accent-volt)'
                           : 'var(--text-secondary)',
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: 700,
                         cursor: 'pointer',
                       }}
@@ -749,58 +622,13 @@ export function TraineeOnboardingWizard({
               </div>
               <TextInput
                 size="xs"
-                placeholder="הערה חופשית על שעות שינה / משמרות..."
+                placeholder="הערה על שעות שינה / משמרות..."
                 value={sleepHoursNote}
                 onChange={(e) => setSleepHoursNote(e.currentTarget.value)}
               />
             </div>
 
-            <button
-              type="button"
-              onClick={() => setStep(2)}
-              className="btn-volt"
-              style={{
-                padding: '12px',
-                fontSize: 14,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                cursor: 'pointer',
-              }}
-            >
-              <span>המשך לשלב 2: בדיקת היקפים מודרכת</span>
-              <ChevronLeft size={16} />
-            </button>
-          </div>
-        )}
-
-        {/* ================================================================= */}
-        {/* שלב 2: מדידת היקפים עם הנפשות SVG ואפשרות דילוג                    */}
-        {/* ================================================================= */}
-        {step === 2 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              לחץ על כל אזור גוף כדי לראות את ההנפשה והוראות המדידה המדויקות. אם
-              אין לידך סרט מדידה כרגע, תוכל לדלג ולהשלים מאוחר יותר.
-            </div>
-
-            <BodyMeasurementGuide
-              initialValues={measurements}
-              onChange={(vals) => {
-                setMeasurements(vals);
-                setSkippedMeasurements(false);
-              }}
-            />
-
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                gap: 8,
-                marginTop: 8,
-              }}
-            >
+            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
               <button
                 type="button"
                 onClick={() => setStep(1)}
@@ -817,37 +645,279 @@ export function TraineeOnboardingWizard({
                 <ChevronRight size={15} />
                 <span>חזרה</span>
               </button>
-
               <button
                 type="button"
-                onClick={() => {
-                  setSkippedMeasurements(true);
-                  setStep(3);
+                onClick={() => setStep(3)}
+                className="btn-volt"
+                style={{
+                  flex: 1,
+                  padding: '11px',
+                  fontSize: 13,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  cursor: 'pointer',
                 }}
+              >
+                <span>המשך</span>
+                <ChevronLeft size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* שלב 3: אימוני כוח והליכות                                         */}
+        {/* ================================================================= */}
+        {step === 3 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+            <div
+              style={{
+                background: 'var(--bg-surface-2)',
+                padding: 11,
+                borderRadius: 12,
+                border: '1px solid var(--border-subtle)',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 800,
+                  marginBottom: 6,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Dumbbell size={14} color="var(--accent-volt)" />
+                <span>כמה אימוני כוח בשבוע?</span>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 6,
+                  marginBottom: 8,
+                }}
+              >
+                {STRENGTH_OPTIONS.map((opt) => {
+                  const selected = strengthWorkouts === opt;
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setStrengthWorkouts(opt)}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: 999,
+                        border: selected
+                          ? '1px solid var(--accent-volt)'
+                          : '1px solid var(--border-subtle)',
+                        background: selected
+                          ? 'rgba(210, 255, 40, 0.14)'
+                          : 'var(--bg-surface-1)',
+                        color: selected
+                          ? 'var(--accent-volt)'
+                          : 'var(--text-secondary)',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {opt}
+                    </button>
+                  );
+                })}
+              </div>
+              <TextInput
+                size="xs"
+                placeholder="פירוט על האימונים (AB, פילאטיס וכו')..."
+                value={strengthWorkoutsNote}
+                onChange={(e) =>
+                  setStrengthWorkoutsNote(e.currentTarget.value)
+                }
+              />
+            </div>
+
+            <div
+              style={{
+                background: 'var(--bg-surface-2)',
+                padding: 11,
+                borderRadius: 12,
+                border: '1px solid rgba(56, 189, 248, 0.25)',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 800,
+                  marginBottom: 6,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Footprints size={14} color="#38bdf8" />
+                <span>כמה פעמים הליכה / אירובי בשבוע?</span>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 6,
+                  marginBottom: 8,
+                }}
+              >
+                {WALKING_OPTIONS.map((opt) => {
+                  const selected = walkingSessions === opt;
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setWalkingSessions(opt)}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: 999,
+                        border: selected
+                          ? '1px solid #38bdf8'
+                          : '1px solid var(--border-subtle)',
+                        background: selected
+                          ? 'rgba(56, 189, 248, 0.15)'
+                          : 'var(--bg-surface-1)',
+                        color: selected ? '#38bdf8' : 'var(--text-secondary)',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {opt}
+                    </button>
+                  );
+                })}
+              </div>
+              <TextInput
+                size="xs"
+                placeholder="פירוט (למשל: 40 דקות בערב, צעדים וכו')..."
+                value={walkingSessionsNote}
+                onChange={(e) =>
+                  setWalkingSessionsNote(e.currentTarget.value)
+                }
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+              <button
+                type="button"
+                onClick={() => setStep(2)}
                 className="btn-surface"
                 style={{
                   padding: '10px 14px',
                   fontSize: 12,
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 5,
+                  gap: 4,
                   cursor: 'pointer',
                 }}
               >
-                <SkipForward size={14} />
-                <span>דלג ואשלים אחר כך</span>
+                <ChevronRight size={15} />
+                <span>חזרה</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setStep(4)}
+                className="btn-volt"
+                style={{
+                  flex: 1,
+                  padding: '11px',
+                  fontSize: 13,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  cursor: 'pointer',
+                }}
+              >
+                <span>המשך למדידת היקפים</span>
+                <ChevronLeft size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* שלב 4: מדידת היקפים (קומפקטי ללא גלילה)                          */}
+        {/* ================================================================= */}
+        {step === 4 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+              בחר אזור לראות כיצד למדוד. אם אין לידך סרט מדידה כרגע, תוכל לדלג.
+            </div>
+
+            <BodyMeasurementGuide
+              compact
+              initialValues={measurements}
+              onChange={(vals) => {
+                setMeasurements(vals);
+                setSkippedMeasurements(false);
+              }}
+            />
+
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 8,
+                marginTop: 2,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setStep(3)}
+                className="btn-surface"
+                style={{
+                  padding: '10px 12px',
+                  fontSize: 12,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  cursor: 'pointer',
+                }}
+              >
+                <ChevronRight size={14} />
+                <span>חזרה</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSkippedMeasurements(true);
+                  setStep(5);
+                }}
+                className="btn-surface"
+                style={{
+                  padding: '10px 12px',
+                  fontSize: 12,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  cursor: 'pointer',
+                }}
+              >
+                <SkipForward size={13} />
+                <span>דלג</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => {
                   setSkippedMeasurements(false);
-                  setStep(3);
+                  setStep(5);
                 }}
                 className="btn-volt"
                 style={{
                   flex: 1,
-                  padding: '10px 16px',
+                  padding: '10px 14px',
                   fontSize: 13,
                   display: 'flex',
                   alignItems: 'center',
@@ -856,7 +926,7 @@ export function TraineeOnboardingWizard({
                   cursor: 'pointer',
                 }}
               >
-                <span>שמור והמשך לשלב 3</span>
+                <span>המשך</span>
                 <ChevronLeft size={16} />
               </button>
             </div>
@@ -864,21 +934,20 @@ export function TraineeOnboardingWizard({
         )}
 
         {/* ================================================================= */}
-        {/* שלב 3: הרגלי תזונה, אוכל שלא מוותרים עליו ובקשות למאמן             */}
+        {/* שלב 5: סגנון תזונה ומאכלים אהובים                                 */}
         {/* ================================================================= */}
-        {step === 3 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {/* סגנון תזונה */}
+        {step === 5 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
             <div
               style={{
                 background: 'var(--bg-surface-2)',
-                padding: 12,
-                borderRadius: 14,
+                padding: 11,
+                borderRadius: 12,
                 border: '1px solid var(--border-subtle)',
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
-                סגנון תזונה (ניתן לבחור מספר אפשרויות):
+              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+                סגנון תזונה (ניתן לבחור כמה):
               </div>
               <div
                 style={{
@@ -902,7 +971,7 @@ export function TraineeOnboardingWizard({
                         )
                       }
                       style={{
-                        padding: '6px 11px',
+                        padding: '5px 10px',
                         borderRadius: 999,
                         border: selected
                           ? '1px solid var(--accent-volt)'
@@ -913,7 +982,7 @@ export function TraineeOnboardingWizard({
                         color: selected
                           ? 'var(--accent-volt)'
                           : 'var(--text-secondary)',
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: 700,
                         cursor: 'pointer',
                       }}
@@ -925,7 +994,7 @@ export function TraineeOnboardingWizard({
               </div>
               <TextInput
                 size="xs"
-                placeholder="הערה או פירוט חופשי על סגנון התזונה שלך..."
+                placeholder="הערה על סגנון התזונה..."
                 value={dietaryPreferencesNote}
                 onChange={(e) =>
                   setDietaryPreferencesNote(e.currentTarget.value)
@@ -933,17 +1002,16 @@ export function TraineeOnboardingWizard({
               />
             </div>
 
-            {/* אוכל שלא מוכן לוותר עליו */}
             <div
               style={{
                 background: 'var(--bg-surface-2)',
-                padding: 12,
-                borderRadius: 14,
+                padding: 11,
+                borderRadius: 12,
                 border: '1px solid var(--border-subtle)',
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
-                מאכלים או פינוקים שחשוב לך לא לוותר עליהם בתפריט:
+              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+                מאכלים או פינוקים שחשוב לך לשלב בתפריט:
               </div>
               <div
                 style={{
@@ -967,7 +1035,7 @@ export function TraineeOnboardingWizard({
                         )
                       }
                       style={{
-                        padding: '6px 11px',
+                        padding: '5px 10px',
                         borderRadius: 999,
                         border: selected
                           ? '1px solid var(--accent-volt)'
@@ -978,7 +1046,7 @@ export function TraineeOnboardingWizard({
                         color: selected
                           ? 'var(--accent-volt)'
                           : 'var(--text-secondary)',
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: 700,
                         cursor: 'pointer',
                       }}
@@ -990,7 +1058,7 @@ export function TraineeOnboardingWizard({
               </div>
               <TextInput
                 size="xs"
-                placeholder="כתוב בחופשיות כל מאכל שאתה אוהב ולא רוצה לוותר עליו..."
+                placeholder="מאכל אהוב נוסף שלא רוצה לוותר עליו..."
                 value={favoriteMustHaveFoodsNote}
                 onChange={(e) =>
                   setFavoriteMustHaveFoodsNote(e.currentTarget.value)
@@ -998,17 +1066,60 @@ export function TraineeOnboardingWizard({
               />
             </div>
 
-            {/* אלרגיות או מאכלים שלא אוכל */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+              <button
+                type="button"
+                onClick={() => setStep(4)}
+                className="btn-surface"
+                style={{
+                  padding: '10px 14px',
+                  fontSize: 12,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  cursor: 'pointer',
+                }}
+              >
+                <ChevronRight size={15} />
+                <span>חזרה</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setStep(6)}
+                className="btn-volt"
+                style={{
+                  flex: 1,
+                  padding: '11px',
+                  fontSize: 13,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  cursor: 'pointer',
+                }}
+              >
+                <span>המשך</span>
+                <ChevronLeft size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* שלב 6: רגישויות, אתגרים והערות למאמן                             */}
+        {/* ================================================================= */}
+        {step === 6 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
             <div
               style={{
                 background: 'var(--bg-surface-2)',
-                padding: 12,
-                borderRadius: 14,
+                padding: 11,
+                borderRadius: 12,
                 border: '1px solid var(--border-subtle)',
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
-                רגישויות, אלרגיות או מאכלים שאתה לא מסוגל לאכול:
+              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+                רגישויות, אלרגיות או מאכלים שלא אוכל:
               </div>
               <div
                 style={{
@@ -1032,7 +1143,7 @@ export function TraineeOnboardingWizard({
                         )
                       }
                       style={{
-                        padding: '6px 11px',
+                        padding: '5px 10px',
                         borderRadius: 999,
                         border: selected
                           ? '1px solid #ff5e7e'
@@ -1041,7 +1152,7 @@ export function TraineeOnboardingWizard({
                           ? 'rgba(255, 94, 126, 0.14)'
                           : 'var(--bg-surface-1)',
                         color: selected ? '#ff5e7e' : 'var(--text-secondary)',
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: 700,
                         cursor: 'pointer',
                       }}
@@ -1053,7 +1164,7 @@ export function TraineeOnboardingWizard({
               </div>
               <TextInput
                 size="xs"
-                placeholder="פירוט אלרגיות או מאכלים נוספים שלא ייכנסו לתפריט..."
+                placeholder="פירוט אלרגיות או מאכלים להוציא מהתפריט..."
                 value={dislikedOrAllergiesNote}
                 onChange={(e) =>
                   setDislikedOrAllergiesNote(e.currentTarget.value)
@@ -1061,17 +1172,16 @@ export function TraineeOnboardingWizard({
               />
             </div>
 
-            {/* אתגרים ובקשות מיוחדות למאמן */}
             <div
               style={{
                 background: 'var(--bg-surface-2)',
-                padding: 12,
-                borderRadius: 14,
+                padding: 11,
+                borderRadius: 12,
                 border: '1px solid var(--border-subtle)',
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
-                האתגרים העיקריים שלך בתזונה ובקשות מיוחדות למאמן:
+              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+                אתגרים והערות למאמן:
               </div>
               <div
                 style={{
@@ -1095,7 +1205,7 @@ export function TraineeOnboardingWizard({
                         )
                       }
                       style={{
-                        padding: '6px 11px',
+                        padding: '5px 10px',
                         borderRadius: 999,
                         border: selected
                           ? '1px solid #ffb800'
@@ -1104,7 +1214,7 @@ export function TraineeOnboardingWizard({
                           ? 'rgba(255, 184, 0, 0.14)'
                           : 'var(--bg-surface-1)',
                         color: selected ? '#ffb800' : 'var(--text-secondary)',
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: 700,
                         cursor: 'pointer',
                       }}
@@ -1117,27 +1227,21 @@ export function TraineeOnboardingWizard({
               <Textarea
                 size="xs"
                 minRows={2}
-                placeholder="סדר היום שלך (מתי קם, מתי מתאמן), כמה ארוחות נוח לך לאכול, וכל דבר נוסף שחשוב שהמאמן יידע..."
+                placeholder="שעות ערות/אימונים וכל הערה חשובה..."
                 value={scheduleAndNotes}
                 onChange={(e) => setScheduleAndNotes(e.currentTarget.value)}
               />
             </div>
 
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                gap: 10,
-                marginTop: 6,
-              }}
-            >
+            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
               <button
                 type="button"
-                onClick={() => setStep(2)}
+                disabled={isFinishing}
+                onClick={() => setStep(5)}
                 className="btn-surface"
                 style={{
-                  padding: '11px 16px',
-                  fontSize: 13,
+                  padding: '10px 14px',
+                  fontSize: 12,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 4,
@@ -1145,7 +1249,7 @@ export function TraineeOnboardingWizard({
                 }}
               >
                 <ChevronRight size={15} />
-                <span>חזרה להיקפים</span>
+                <span>חזרה</span>
               </button>
 
               <button
@@ -1155,7 +1259,7 @@ export function TraineeOnboardingWizard({
                 className="btn-volt"
                 style={{
                   flex: 1,
-                  padding: '12px 20px',
+                  padding: '11px 16px',
                   fontSize: 14,
                   display: 'flex',
                   alignItems: 'center',
@@ -1165,13 +1269,11 @@ export function TraineeOnboardingWizard({
                 }}
               >
                 {isFinishing ? (
-                  <Loader2 size={17} className="spot-spinner" />
+                  <Loader2 size={16} className="spot-spinner" />
                 ) : (
-                  <Check size={17} />
+                  <Check size={16} />
                 )}
-                <span>
-                  {isFinishing ? 'שומר פרופיל...' : 'שמור פרופיל וכנס לאפליקציה'}
-                </span>
+                <span>{isFinishing ? 'שומר פרופיל...' : 'שמור וסיים'}</span>
               </button>
             </div>
           </div>

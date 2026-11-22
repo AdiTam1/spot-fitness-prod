@@ -820,7 +820,7 @@ export function AddMealDrawer({
                       }}
                     >
                       <Brain size={14} color="var(--accent-volt)" />
-                      <span>משהו בהצעות לא מתאים לך? (זיכרון למידה לעתיד - ללא צ׳אט)</span>
+                      <span>משהו בהצעות לא מתאים לך?</span>
                     </div>
                     <div
                       style={{
@@ -829,7 +829,7 @@ export function AddMealDrawer({
                         marginBottom: 8,
                       }}
                     >
-                      רשום העדפה או הגבלה (למשל: &quot;אני לא אוכל גבינות חוץ מגבינה צהובה&quot; או &quot;אני לא אוכל גלוטן&quot;). המערכת תחלץ את הכלל ותזכור אותו אוטומטית בכל ההצעות הבאות.
+                      רשום העדפה או הגבלה (למשל: &quot;אני לא אוכל גבינות חוץ מגבינה צהובה&quot; או &quot;אני לא אוכל גלוטן&quot;) כדי שנזכור אותה בהצעות הבאות.
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <TextInput
@@ -928,7 +928,7 @@ export function AddMealDrawer({
                 >
                   <span>
                     {searchLoading
-                      ? 'סורק מאגר ישראלי ו-API משרד הבריאות...'
+                      ? 'מחפש במאגר המזון...'
                       : `${searchResults.length} תוצאות ${
                           mohCount > 0
                             ? `(כולל ${mohCount} ממאגר משרד הבריאות)`

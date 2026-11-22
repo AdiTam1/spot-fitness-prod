@@ -1,16 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { TextInput, PasswordInput, Textarea, Checkbox } from '@mantine/core';
 import {
-  ShieldCheck,
-  Sliders,
-  LayoutTemplate,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  Loader2,
-} from 'lucide-react';
+  TextInput,
+  PasswordInput,
+  NumberInput,
+  Textarea,
+  Checkbox,
+} from '@mantine/core';
+import { Check, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import {
   CoachOnboardingData,
   MealTemplateSlot,
@@ -168,7 +166,7 @@ export function CoachOnboardingWizard({
   onCompleteCoachOnboarding,
   onSkip,
 }: CoachOnboardingWizardProps) {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -270,15 +268,27 @@ export function CoachOnboardingWizard({
   };
 
   return (
-    <div style={{ maxWidth: 560, margin: '0 auto', paddingBottom: 40 }}>
-      <div className="pro-card-elevated" style={{ padding: '26px 22px' }}>
-        <div style={{ marginBottom: 20 }}>
+    <div
+      style={{
+        maxWidth: 500,
+        margin: '0 auto',
+        minHeight: 'calc(100dvh - 80px)',
+        display: 'flex',
+        alignItems: 'center',
+        padding: '6px 0 14px',
+      }}
+    >
+      <div
+        className="pro-card-elevated"
+        style={{ width: '100%', padding: '18px 16px' }}
+      >
+        <div style={{ marginBottom: 14 }}>
           <div
             style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              marginBottom: 10,
+              marginBottom: 8,
             }}
           >
             <div>
@@ -289,12 +299,14 @@ export function CoachOnboardingWizard({
                   color: 'var(--accent-volt)',
                 }}
               >
-                הגדרת סביבת מאמן (Coach Onboarding) · שלב {step} מתוך 3
+                הגדרת פרופיל מאמן · שלב {step} מתוך 5
               </span>
-              <div style={{ fontSize: 20, fontWeight: 900, marginTop: 2 }}>
-                {step === 1 && 'פרופיל מקצועי והתמחויות'}
-                {step === 2 && 'ימי תשקיף וברירות מחדל למתאמנים'}
-                {step === 3 && 'הקמת טמפלייטים וקבוצות התחלתיות'}
+              <div style={{ fontSize: 17, fontWeight: 900, marginTop: 1 }}>
+                {step === 1 && 'פרטים אישיים'}
+                {step === 2 && 'התמחויות ומסר פתיחה'}
+                {step === 3 && 'ימי תשקיף והגדרות ברירת מחדל'}
+                {step === 4 && 'טמפלייטים התחלתיים'}
+                {step === 5 && 'קבוצות מתאמנים וסיום'}
               </div>
             </div>
             {onSkip && (
@@ -309,7 +321,7 @@ export function CoachOnboardingWizard({
                   cursor: 'pointer',
                 }}
               >
-                דלג לדשבורד
+                דלג
               </button>
             )}
           </div>
@@ -317,105 +329,101 @@ export function CoachOnboardingWizard({
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: 8,
+              gridTemplateColumns: 'repeat(5, 1fr)',
+              gap: 5,
             }}
           >
-            {[
-              { s: 1, label: '1. פרופיל מאמן', icon: ShieldCheck },
-              { s: 2, label: '2. ימי תשקיף ויעדים', icon: Sliders },
-              { s: 3, label: '3. טמפלייטים וקבוצות', icon: LayoutTemplate },
-            ].map((item) => {
-              const active = step === item.s;
-              const done = step > item.s;
+            {[1, 2, 3, 4, 5].map((s) => {
+              const active = step === s;
+              const done = step > s;
               return (
                 <button
-                  key={item.s}
+                  key={s}
                   type="button"
-                  onClick={() => setStep(item.s as 1 | 2 | 3)}
+                  aria-label={`שלב ${s}`}
+                  onClick={() => setStep(s as 1 | 2 | 3 | 4 | 5)}
                   style={{
-                    padding: '8px 10px',
-                    borderRadius: 10,
-                    border: active
-                      ? '1px solid var(--accent-volt)'
-                      : '1px solid var(--border-subtle)',
-                    background: done
-                      ? 'rgba(210, 255, 40, 0.14)'
-                      : active
-                      ? 'rgba(210, 255, 40, 0.08)'
-                      : 'var(--bg-surface-2)',
-                    color:
-                      active || done
-                        ? 'var(--accent-volt)'
-                        : 'var(--text-muted)',
-                    fontSize: 11,
-                    fontWeight: 700,
+                    height: 6,
+                    borderRadius: 999,
+                    border: 'none',
+                    background: active
+                      ? 'var(--accent-volt)'
+                      : done
+                      ? 'rgba(210, 255, 40, 0.45)'
+                      : 'var(--bg-surface-3)',
                     cursor: 'pointer',
+                    padding: 0,
                   }}
-                >
-                  {item.label}
-                </button>
+                />
               );
             })}
           </div>
         </div>
 
+        {/* שלב 1: פרטים אישיים */}
         {step === 1 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+            <TextInput
+              label="שם תצוגה למתאמנים"
+              value={name}
+              onChange={(e) => setName(e.currentTarget.value)}
+            />
+            <TextInput
+              label="טייטל מקצועי"
+              value={title}
+              onChange={(e) => setTitle(e.currentTarget.value)}
+            />
+            <TextInput
+              dir="ltr"
+              type="tel"
+              inputMode="tel"
+              label="טלפון / וואטסאפ"
+              placeholder="052-0000000"
+              value={phone}
+              onChange={(e) => setPhone(e.currentTarget.value)}
+            />
+            <PasswordInput
+              dir="ltr"
+              autoComplete="new-password"
+              label="החלפת סיסמה אישית (אופציונלי)"
+              placeholder="השאר ריק לשמירת הקיימת"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.currentTarget.value)}
+            />
+
+            <button
+              type="button"
+              onClick={() => setStep(2)}
+              className="btn-volt"
               style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
-                gap: 10,
+                marginTop: 4,
+                padding: '11px',
+                fontSize: 14,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                cursor: 'pointer',
               }}
             >
-              <TextInput
-                label="שם תצוגה למתאמנים"
-                value={name}
-                onChange={(e) => setName(e.currentTarget.value)}
-              />
-              <TextInput
-                label="טייטל מקצועי"
-                value={title}
-                onChange={(e) => setTitle(e.currentTarget.value)}
-              />
-            </div>
+              <span>המשך</span>
+              <ChevronLeft size={16} />
+            </button>
+          </div>
+        )}
 
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
-                gap: 10,
-              }}
-            >
-              <TextInput
-                dir="ltr"
-                type="tel"
-                inputMode="tel"
-                label="טלפון / וואטסאפ"
-                placeholder="052-0000000"
-                value={phone}
-                onChange={(e) => setPhone(e.currentTarget.value)}
-              />
-              <PasswordInput
-                dir="ltr"
-                autoComplete="new-password"
-                label="החלפת סיסמה אישית (אופציונלי)"
-                placeholder="השאר ריק לשמירת הקיימת"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.currentTarget.value)}
-              />
-            </div>
-
+        {/* שלב 2: תחומי התמחות ומשפט פתיחה */}
+        {step === 2 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
             <div
               style={{
                 background: 'var(--bg-surface-2)',
-                padding: 12,
-                borderRadius: 14,
+                padding: 11,
+                borderRadius: 12,
                 border: '1px solid var(--border-subtle)',
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
                 תחומי ההתמחות שלך:
               </div>
               <div
@@ -440,7 +448,7 @@ export function CoachOnboardingWizard({
                         )
                       }
                       style={{
-                        padding: '6px 11px',
+                        padding: '5px 10px',
                         borderRadius: 999,
                         border: selected
                           ? '1px solid var(--accent-volt)'
@@ -451,7 +459,7 @@ export function CoachOnboardingWizard({
                         color: selected
                           ? 'var(--accent-volt)'
                           : 'var(--text-secondary)',
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: 700,
                         cursor: 'pointer',
                       }}
@@ -463,275 +471,20 @@ export function CoachOnboardingWizard({
               </div>
               <TextInput
                 size="xs"
-                placeholder="התמחות נוספת בטקסט חופשי..."
+                placeholder="התמחות נוספת..."
                 value={specialtiesNote}
                 onChange={(e) => setSpecialtiesNote(e.currentTarget.value)}
               />
             </div>
 
             <Textarea
-              label="משפט פתיחה אישי שיוצג למתאמנים שלך"
+              label="משפט פתיחה שיוצג למתאמנים שלך"
               minRows={2}
               value={welcomeMessage}
               onChange={(e) => setWelcomeMessage(e.currentTarget.value)}
             />
 
-            <button
-              type="button"
-              onClick={() => setStep(2)}
-              className="btn-volt"
-              style={{
-                padding: '12px',
-                fontSize: 14,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                cursor: 'pointer',
-              }}
-            >
-              <span>המשך לשלב 2: הגדרת ימי תשקיף ויעדים</span>
-              <ChevronLeft size={16} />
-            </button>
-          </div>
-        )}
-
-        {step === 2 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                padding: 14,
-                borderRadius: 14,
-                border: '1px solid var(--border-subtle)',
-              }}
-            >
-              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 4 }}>
-                כמה &ldquo;ימי תשקיף&rdquo; יוגדרו אוטומטית למתאמן חדש שלך?
-              </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: 'var(--text-secondary)',
-                  marginBottom: 10,
-                }}
-              >
-                בימי תשקיף המתאמן מזין ארוחות ללא מטרת קלוריות כדי שתוכל לראות את
-                הרגלי האכילה הטבעיים שלו (תמיד ניתן להוסיף או לבטל ימי תשקיף בכל
-                רגע).
-              </div>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(4, 1fr)',
-                  gap: 8,
-                }}
-              >
-                {[
-                  { days: 0, label: 'ללא (0 ימים)' },
-                  { days: 3, label: '3 ימי תשקיף' },
-                  { days: 5, label: '5 ימי תשקיף' },
-                  { days: 7, label: '7 ימי תשקיף' },
-                ].map((opt) => (
-                  <button
-                    key={opt.days}
-                    type="button"
-                    onClick={() => setDefaultObservationDays(opt.days)}
-                    style={{
-                      padding: '10px 6px',
-                      borderRadius: 10,
-                      border:
-                        defaultObservationDays === opt.days
-                          ? '1px solid var(--accent-volt)'
-                          : '1px solid var(--border-subtle)',
-                      background:
-                        defaultObservationDays === opt.days
-                          ? 'rgba(210, 255, 40, 0.14)'
-                          : 'var(--bg-surface-1)',
-                      color:
-                        defaultObservationDays === opt.days
-                          ? 'var(--accent-volt)'
-                          : 'var(--text-secondary)',
-                      fontSize: 12,
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                padding: 14,
-                borderRadius: 14,
-                border: '1px solid var(--border-subtle)',
-              }}
-            >
-              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
-                האם ימי תשקיף נחשבים בספירת העמידה ביעדים כברירת מחדל? (ניתן
-                להחלפה בקליק בכל מתאמן)
-              </div>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: 8,
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setDefaultCountObservationInStats(false)}
-                  style={{
-                    padding: '10px',
-                    borderRadius: 10,
-                    border: !defaultCountObservationInStats
-                      ? '1px solid var(--accent-volt)'
-                      : '1px solid var(--border-subtle)',
-                    background: !defaultCountObservationInStats
-                      ? 'rgba(210, 255, 40, 0.14)'
-                      : 'var(--bg-surface-1)',
-                    color: !defaultCountObservationInStats
-                      ? 'var(--accent-volt)'
-                      : 'var(--text-secondary)',
-                    fontSize: 12,
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                  }}
-                >
-                  החרג מחישוב חריגות (ספור קלוריות בתשקיף נפרד)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDefaultCountObservationInStats(true)}
-                  style={{
-                    padding: '10px',
-                    borderRadius: 10,
-                    border: defaultCountObservationInStats
-                      ? '1px solid var(--accent-volt)'
-                      : '1px solid var(--border-subtle)',
-                    background: defaultCountObservationInStats
-                      ? 'rgba(210, 255, 40, 0.14)'
-                      : 'var(--bg-surface-1)',
-                    color: defaultCountObservationInStats
-                      ? 'var(--accent-volt)'
-                      : 'var(--text-secondary)',
-                    fontSize: 12,
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                  }}
-                >
-                  כלול בספירה הכללית
-                </button>
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: 10,
-              }}
-            >
-              <div
-                style={{
-                  background: 'var(--bg-surface-2)',
-                  padding: 12,
-                  borderRadius: 14,
-                  border: '1px solid var(--border-subtle)',
-                }}
-              >
-                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>
-                  טווח גמישות קלורית (Tolerance):
-                </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {[5, 10, 15].map((pct) => (
-                    <button
-                      key={pct}
-                      type="button"
-                      onClick={() => setDefaultTolerancePercent(pct)}
-                      style={{
-                        flex: 1,
-                        padding: '8px 4px',
-                        borderRadius: 8,
-                        border:
-                          defaultTolerancePercent === pct
-                            ? '1px solid var(--accent-volt)'
-                            : '1px solid var(--border-subtle)',
-                        background:
-                          defaultTolerancePercent === pct
-                            ? 'rgba(210, 255, 40, 0.14)'
-                            : 'var(--bg-surface-1)',
-                        color:
-                          defaultTolerancePercent === pct
-                            ? 'var(--accent-volt)'
-                            : 'var(--text-secondary)',
-                        fontSize: 12,
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      ±{pct}%
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  background: 'var(--bg-surface-2)',
-                  padding: 12,
-                  borderRadius: 14,
-                  border: '1px solid var(--border-subtle)',
-                }}
-              >
-                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>
-                  יעד שתיית מים יומי (כוסות):
-                </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {[10, 12, 14].map((cups) => (
-                    <button
-                      key={cups}
-                      type="button"
-                      onClick={() => setDefaultWaterGoal(cups)}
-                      style={{
-                        flex: 1,
-                        padding: '8px 4px',
-                        borderRadius: 8,
-                        border:
-                          defaultWaterGoal === cups
-                            ? '1px solid #38bdf8'
-                            : '1px solid var(--border-subtle)',
-                        background:
-                          defaultWaterGoal === cups
-                            ? 'rgba(56, 189, 248, 0.15)'
-                            : 'var(--bg-surface-1)',
-                        color:
-                          defaultWaterGoal === cups
-                            ? '#38bdf8'
-                            : 'var(--text-secondary)',
-                        fontSize: 12,
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {cups} כוסות
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                gap: 10,
-              }}
-            >
+            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
               <button
                 type="button"
                 onClick={() => setStep(1)}
@@ -748,7 +501,6 @@ export function CoachOnboardingWizard({
                 <ChevronRight size={15} />
                 <span>חזרה</span>
               </button>
-
               <button
                 type="button"
                 onClick={() => setStep(3)}
@@ -764,25 +516,306 @@ export function CoachOnboardingWizard({
                   cursor: 'pointer',
                 }}
               >
-                <span>המשך לשלב 3: טמפלייטים וקבוצות</span>
+                <span>המשך</span>
                 <ChevronLeft size={16} />
               </button>
             </div>
           </div>
         )}
 
+        {/* שלב 3: ימי תשקיף וברירות מחדל (כולל הזנת כל מספר מותאם אישית) */}
         {step === 3 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
             <div
               style={{
                 background: 'var(--bg-surface-2)',
-                padding: 14,
-                borderRadius: 14,
+                padding: 11,
+                borderRadius: 12,
                 border: '1px solid var(--border-subtle)',
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
-                סמן טמפלייטים שיתווספו לספרייה האישית שלך (ניתנים לעריכה מלאה):
+              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 4 }}>
+                ימי תשקיף אוטומטיים למתאמן חדש
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: 'var(--text-secondary)',
+                  marginBottom: 8,
+                }}
+              >
+                תצפית בהרגלי האכילה לפני יעדים קבועים (בחר קיצור או הזן כל מספר).
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  gap: 6,
+                  marginBottom: 8,
+                }}
+              >
+                {[
+                  { days: 0, label: '0' },
+                  { days: 3, label: '3 ימים' },
+                  { days: 5, label: '5 ימים' },
+                  { days: 7, label: '7 ימים' },
+                ].map((opt) => (
+                  <button
+                    key={opt.days}
+                    type="button"
+                    onClick={() => setDefaultObservationDays(opt.days)}
+                    style={{
+                      padding: '8px 4px',
+                      borderRadius: 9,
+                      border:
+                        defaultObservationDays === opt.days
+                          ? '1px solid var(--accent-volt)'
+                          : '1px solid var(--border-subtle)',
+                      background:
+                        defaultObservationDays === opt.days
+                          ? 'rgba(210, 255, 40, 0.14)'
+                          : 'var(--bg-surface-1)',
+                      color:
+                        defaultObservationDays === opt.days
+                          ? 'var(--accent-volt)'
+                          : 'var(--text-secondary)',
+                      fontSize: 11,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <NumberInput
+                size="xs"
+                label="מספר ימים מדויק"
+                value={defaultObservationDays}
+                min={0}
+                max={90}
+                step={1}
+                allowDecimal={false}
+                onChange={(val) => {
+                  const num = val === '' ? 0 : Math.max(0, Math.min(90, Math.round(Number(val) || 0)));
+                  setDefaultObservationDays(num);
+                }}
+              />
+            </div>
+
+            <div
+              style={{
+                background: 'var(--bg-surface-2)',
+                padding: 11,
+                borderRadius: 12,
+                border: '1px solid var(--border-subtle)',
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+                ספירת ימי תשקיף ביעדים כברירת מחדל:
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: 6,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setDefaultCountObservationInStats(false)}
+                  style={{
+                    padding: '8px 6px',
+                    borderRadius: 9,
+                    border: !defaultCountObservationInStats
+                      ? '1px solid var(--accent-volt)'
+                      : '1px solid var(--border-subtle)',
+                    background: !defaultCountObservationInStats
+                      ? 'rgba(210, 255, 40, 0.14)'
+                      : 'var(--bg-surface-1)',
+                    color: !defaultCountObservationInStats
+                      ? 'var(--accent-volt)'
+                      : 'var(--text-secondary)',
+                    fontSize: 11,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                  }}
+                >
+                  החרג מחישוב חריגות
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDefaultCountObservationInStats(true)}
+                  style={{
+                    padding: '8px 6px',
+                    borderRadius: 9,
+                    border: defaultCountObservationInStats
+                      ? '1px solid var(--accent-volt)'
+                      : '1px solid var(--border-subtle)',
+                    background: defaultCountObservationInStats
+                      ? 'rgba(210, 255, 40, 0.14)'
+                      : 'var(--bg-surface-1)',
+                    color: defaultCountObservationInStats
+                      ? 'var(--accent-volt)'
+                      : 'var(--text-secondary)',
+                    fontSize: 11,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                  }}
+                >
+                  כלול בספירה הכללית
+                </button>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 8,
+              }}
+            >
+              <div
+                style={{
+                  background: 'var(--bg-surface-2)',
+                  padding: 10,
+                  borderRadius: 12,
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 6 }}>
+                  גמישות קלורית:
+                </div>
+                <div style={{ display: 'flex', gap: 5 }}>
+                  {[5, 10, 15].map((pct) => (
+                    <button
+                      key={pct}
+                      type="button"
+                      onClick={() => setDefaultTolerancePercent(pct)}
+                      style={{
+                        flex: 1,
+                        padding: '6px 2px',
+                        borderRadius: 8,
+                        border:
+                          defaultTolerancePercent === pct
+                            ? '1px solid var(--accent-volt)'
+                            : '1px solid var(--border-subtle)',
+                        background:
+                          defaultTolerancePercent === pct
+                            ? 'rgba(210, 255, 40, 0.14)'
+                            : 'var(--bg-surface-1)',
+                        color:
+                          defaultTolerancePercent === pct
+                            ? 'var(--accent-volt)'
+                            : 'var(--text-secondary)',
+                        fontSize: 11,
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ±{pct}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: 'var(--bg-surface-2)',
+                  padding: 10,
+                  borderRadius: 12,
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 6 }}>
+                  יעד מים (כוסות):
+                </div>
+                <div style={{ display: 'flex', gap: 5 }}>
+                  {[10, 12, 14].map((cups) => (
+                    <button
+                      key={cups}
+                      type="button"
+                      onClick={() => setDefaultWaterGoal(cups)}
+                      style={{
+                        flex: 1,
+                        padding: '6px 2px',
+                        borderRadius: 8,
+                        border:
+                          defaultWaterGoal === cups
+                            ? '1px solid #38bdf8'
+                            : '1px solid var(--border-subtle)',
+                        background:
+                          defaultWaterGoal === cups
+                            ? 'rgba(56, 189, 248, 0.15)'
+                            : 'var(--bg-surface-1)',
+                        color:
+                          defaultWaterGoal === cups
+                            ? '#38bdf8'
+                            : 'var(--text-secondary)',
+                        fontSize: 11,
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {cups}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+              <button
+                type="button"
+                onClick={() => setStep(2)}
+                className="btn-surface"
+                style={{
+                  padding: '10px 14px',
+                  fontSize: 12,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  cursor: 'pointer',
+                }}
+              >
+                <ChevronRight size={15} />
+                <span>חזרה</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setStep(4)}
+                className="btn-volt"
+                style={{
+                  flex: 1,
+                  padding: '11px',
+                  fontSize: 13,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  cursor: 'pointer',
+                }}
+              >
+                <span>המשך</span>
+                <ChevronLeft size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* שלב 4: תבניות התחלתיות */}
+        {step === 4 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+            <div
+              style={{
+                background: 'var(--bg-surface-2)',
+                padding: 12,
+                borderRadius: 12,
+                border: '1px solid var(--border-subtle)',
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>
+                סמן תבניות תפריט להוספה לספרייה שלך:
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {STARTER_TEMPLATE_PRESETS.map((preset) => {
@@ -831,16 +864,58 @@ export function CoachOnboardingWizard({
               </div>
             </div>
 
+            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+              <button
+                type="button"
+                onClick={() => setStep(3)}
+                className="btn-surface"
+                style={{
+                  padding: '10px 14px',
+                  fontSize: 12,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  cursor: 'pointer',
+                }}
+              >
+                <ChevronRight size={15} />
+                <span>חזרה</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setStep(5)}
+                className="btn-volt"
+                style={{
+                  flex: 1,
+                  padding: '11px',
+                  fontSize: 13,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  cursor: 'pointer',
+                }}
+              >
+                <span>המשך</span>
+                <ChevronLeft size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* שלב 5: קבוצות מתאמנים וסיום */}
+        {step === 5 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div
               style={{
                 background: 'var(--bg-surface-2)',
-                padding: 14,
-                borderRadius: 14,
+                padding: 12,
+                borderRadius: 12,
                 border: '1px solid var(--border-subtle)',
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
-                קבוצות מתאמנים ראשונות לפתיחה בדשבורד שלך:
+              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>
+                קבוצות מתאמנים ראשונות:
               </div>
               <div
                 style={{
@@ -887,23 +962,17 @@ export function CoachOnboardingWizard({
               </div>
               <TextInput
                 size="xs"
-                placeholder="הוסף קבוצה נוספת משלך (למשל: חיטוב קיץ 2026)..."
+                placeholder="הוסף קבוצה נוספת (למשל: חיטוב קיץ)..."
                 value={customGroupName}
                 onChange={(e) => setCustomGroupName(e.currentTarget.value)}
               />
             </div>
 
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                gap: 10,
-                marginTop: 6,
-              }}
-            >
+            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
               <button
                 type="button"
-                onClick={() => setStep(2)}
+                disabled={isFinishing}
+                onClick={() => setStep(4)}
                 className="btn-surface"
                 style={{
                   padding: '10px 14px',
@@ -925,7 +994,7 @@ export function CoachOnboardingWizard({
                 className="btn-volt"
                 style={{
                   flex: 1,
-                  padding: '12px 20px',
+                  padding: '11px 16px',
                   fontSize: 14,
                   display: 'flex',
                   alignItems: 'center',
@@ -935,15 +1004,11 @@ export function CoachOnboardingWizard({
                 }}
               >
                 {isFinishing ? (
-                  <Loader2 size={17} className="spot-spinner" />
+                  <Loader2 size={16} className="spot-spinner" />
                 ) : (
-                  <Check size={17} />
+                  <Check size={16} />
                 )}
-                <span>
-                  {isFinishing
-                    ? 'שומר ומקים סביבת מאמן...'
-                    : 'סיום והפעלת סביבת המאמן'}
-                </span>
+                <span>{isFinishing ? 'שומר...' : 'סיום ושמירה'}</span>
               </button>
             </div>
           </div>

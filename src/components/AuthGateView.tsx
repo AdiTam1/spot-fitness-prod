@@ -1,15 +1,16 @@
 'use client';
 
 import React, { useState } from 'react';
-import { TextInput, PasswordInput, NumberInput } from '@mantine/core';
+import { TextInput, PasswordInput } from '@mantine/core';
 import {
   Lock,
   UserPlus,
   LogIn,
   Clock,
   ShieldAlert,
-  KeyRound,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Loader2,
 } from 'lucide-react';
 import { AuthSessionUser } from '@/types/nutrition';
@@ -20,6 +21,7 @@ interface AuthGateViewProps {
 
 export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [regStep, setRegStep] = useState<1 | 2>(1);
 
   // שדות התחברות
   const [email, setEmail] = useState('');
@@ -29,13 +31,12 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
   const [pendingNotice, setPendingNotice] = useState<string | null>(null);
   const submittingRef = React.useRef(false);
 
-  // שדות הרשמת מתאמן (מאומתים בצד השרת בלבד - ללא חשיפת מתאמנים או קוד מאמן לדפדפן)
+  // שדות הרשמת מתאמן
   const [regName, setRegName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regPhone, setRegPhone] = useState('');
   const [regGoal, setRegGoal] = useState('חיטוב וירידה באחוזי שומן');
-  const [regWeight, setRegWeight] = useState<number>(75);
   const [regInviteCode, setRegInviteCode] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -80,11 +81,29 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
         onLoginSuccess(data.user);
       }
     } catch {
-      setError('שגיאת תקשורת מול שרת האימות');
+      setError('שגיאת תקשורת, נסה שוב');
     } finally {
       submittingRef.current = false;
       setLoading(false);
     }
+  };
+
+  const handleNextRegStep = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!regName.trim() || !regEmail.trim() || !regPassword.trim()) {
+      setError('נא למלא שם מלא, אימייל וסיסמה');
+      return;
+    }
+    if (!regEmail.includes('@')) {
+      setError('נא להזין כתובת אימייל תקינה');
+      return;
+    }
+    if (regPassword.trim().length < 4) {
+      setError('הסיסמה חייבת להכיל לפחות 4 תווים');
+      return;
+    }
+    setRegStep(2);
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -95,11 +114,13 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
 
     if (!regName.trim() || !regEmail.trim() || !regPassword.trim()) {
       setError('נא למלא שם מלא, אימייל וסיסמה');
+      setRegStep(1);
       return;
     }
 
     if (regPassword.trim().length < 4) {
       setError('הסיסמה חייבת להכיל לפחות 4 תווים');
+      setRegStep(1);
       return;
     }
 
@@ -116,7 +137,6 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
           password: regPassword.trim(),
           phone: regPhone.trim(),
           goal: regGoal.trim(),
-          currentWeight: regWeight,
           inviteCode: regInviteCode.trim(),
         }),
       });
@@ -130,16 +150,17 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
 
       if (data.isPending) {
         setPendingNotice(
-          `נרשמת בהצלחה ${data.user.name}! מכיוון שלא הוזן קוד מאמן תקף, החשבון שלך ממתין לאישור המאמן בדשבורד.`
+          `נרשמת בהצלחה ${data.user.name}! החשבון שלך ממתין לאישור מאמן.`
         );
         setMode('login');
+        setRegStep(1);
         setEmail(data.user.email);
         setPassword(regPassword.trim());
       } else if (data.user) {
         onLoginSuccess(data.user);
       }
     } catch {
-      setError('שגיאת תקשורת מול שרת ההרשמה');
+      setError('שגיאת תקשורת, נסה שוב');
     } finally {
       submittingRef.current = false;
       setLoading(false);
@@ -153,15 +174,15 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '24px 16px',
+        padding: '12px 14px',
       }}
     >
       <div
         className="pro-card-elevated"
         style={{
           width: '100%',
-          maxWidth: 430,
-          padding: '28px 24px',
+          maxWidth: 420,
+          padding: '20px 18px',
           position: 'relative',
           overflow: 'hidden',
         }}
@@ -173,46 +194,37 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
             left: '50%',
             transform: 'translateX(-50%)',
             width: 240,
-            height: 150,
+            height: 140,
             background:
               'radial-gradient(circle, rgba(210, 255, 40, 0.14) 0%, transparent 70%)',
             pointerEvents: 'none',
           }}
         />
 
-        <div style={{ textAlign: 'center', marginBottom: 22 }}>
+        <div style={{ textAlign: 'center', marginBottom: 14 }}>
           <div
             style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
+              width: 38,
+              height: 38,
+              borderRadius: 11,
               background: 'var(--accent-volt)',
               color: '#08090c',
               fontWeight: 900,
-              fontSize: 22,
+              fontSize: 19,
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              marginBottom: 10,
-              boxShadow: '0 8px 24px rgba(210, 255, 40, 0.25)',
+              marginBottom: 6,
+              boxShadow: '0 8px 20px rgba(210, 255, 40, 0.25)',
             }}
           >
             S
           </div>
           <div
             className="num-mono"
-            style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.03em' }}
+            style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.03em' }}
           >
             SPOT NUTRITION OS
-          </div>
-          <div
-            style={{
-              fontSize: 13,
-              color: 'var(--text-secondary)',
-              marginTop: 2,
-            }}
-          >
-            כניסה מאובטחת (HttpOnly HMAC-SHA256)
           </div>
         </div>
 
@@ -225,7 +237,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
             padding: 4,
             borderRadius: 12,
             border: '1px solid var(--border-subtle)',
-            marginBottom: 20,
+            marginBottom: 14,
           }}
         >
           <button
@@ -233,6 +245,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
             disabled={loading}
             onClick={() => {
               setMode('login');
+              setRegStep(1);
               setError(null);
             }}
             style={{
@@ -240,7 +253,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
               alignItems: 'center',
               justifyContent: 'center',
               gap: 6,
-              padding: '9px',
+              padding: '8px',
               borderRadius: 9,
               border: 'none',
               background:
@@ -261,6 +274,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
             disabled={loading}
             onClick={() => {
               setMode('register');
+              setRegStep(1);
               setError(null);
               setPendingNotice(null);
             }}
@@ -269,7 +283,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
               alignItems: 'center',
               justifyContent: 'center',
               gap: 6,
-              padding: '9px',
+              padding: '8px',
               borderRadius: 9,
               border: 'none',
               background:
@@ -292,17 +306,17 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              padding: '10px 12px',
-              borderRadius: 12,
+              padding: '8px 10px',
+              borderRadius: 10,
               background: 'rgba(239, 68, 68, 0.12)',
               border: '1px solid rgba(239, 68, 68, 0.35)',
               color: '#f87171',
               fontSize: 12,
               fontWeight: 600,
-              marginBottom: 14,
+              marginBottom: 12,
             }}
           >
-            <ShieldAlert size={16} style={{ flexShrink: 0 }} />
+            <ShieldAlert size={15} style={{ flexShrink: 0 }} />
             <span>{error}</span>
           </div>
         )}
@@ -312,19 +326,19 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
             style={{
               display: 'flex',
               alignItems: 'flex-start',
-              gap: 10,
-              padding: '12px 14px',
-              borderRadius: 12,
+              gap: 8,
+              padding: '10px 12px',
+              borderRadius: 10,
               background: 'rgba(245, 158, 11, 0.12)',
               border: '1px solid rgba(245, 158, 11, 0.35)',
               color: '#fbbf24',
               fontSize: 12,
               fontWeight: 600,
-              marginBottom: 14,
-              lineHeight: 1.5,
+              marginBottom: 12,
+              lineHeight: 1.45,
             }}
           >
-            <Clock size={17} style={{ flexShrink: 0, marginTop: 2 }} />
+            <Clock size={16} style={{ flexShrink: 0, marginTop: 1 }} />
             <span>{pendingNotice}</span>
           </div>
         )}
@@ -332,7 +346,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
         {mode === 'login' ? (
           <form
             onSubmit={handleLogin}
-            style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
+            style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
           >
             <TextInput
               type="email"
@@ -363,8 +377,8 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
               aria-busy={loading}
               className="btn-volt"
               style={{
-                marginTop: 6,
-                padding: '12px',
+                marginTop: 4,
+                padding: '11px',
                 fontSize: 14,
                 display: 'flex',
                 alignItems: 'center',
@@ -378,14 +392,30 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
               ) : (
                 <Lock size={15} />
               )}
-              <span>{loading ? 'מאמת מול השרת...' : 'כניסה למערכת'}</span>
+              <span>{loading ? 'מתחבר...' : 'כניסה'}</span>
             </button>
           </form>
-        ) : (
+        ) : regStep === 1 ? (
           <form
-            onSubmit={handleRegister}
-            style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+            onSubmit={handleNextRegStep}
+            style={{ display: 'flex', flexDirection: 'column', gap: 11 }}
           >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                fontSize: 11,
+                fontWeight: 700,
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <span>פרטי חשבון</span>
+              <span className="num-mono" style={{ color: 'var(--accent-volt)' }}>
+                1 / 2
+              </span>
+            </div>
+
             <TextInput
               autoComplete="name"
               label="שם מלא"
@@ -418,34 +448,57 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
               required
             />
 
-            <div
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-volt"
               style={{
-                display: 'grid',
-                gridTemplateColumns: '1.2fr 0.8fr',
-                gap: 10,
+                marginTop: 4,
+                padding: '11px',
+                fontSize: 14,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                cursor: 'pointer',
               }}
             >
-              <TextInput
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
-                dir="ltr"
-                label="טלפון"
-                placeholder="054-0000000"
-                value={regPhone}
-                onChange={(e) => setRegPhone(e.currentTarget.value)}
-                disabled={loading}
-              />
-              <NumberInput
-                label="משקל נוכחי (ק״ג)"
-                value={regWeight}
-                onChange={(val) => setRegWeight(Number(val) || 75)}
-                min={35}
-                max={220}
-                step={0.5}
-                disabled={loading}
-              />
+              <span>המשך</span>
+              <ChevronLeft size={16} />
+            </button>
+          </form>
+        ) : (
+          <form
+            onSubmit={handleRegister}
+            style={{ display: 'flex', flexDirection: 'column', gap: 11 }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                fontSize: 11,
+                fontWeight: 700,
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <span>פרטי הצטרפות</span>
+              <span className="num-mono" style={{ color: 'var(--accent-volt)' }}>
+                2 / 2
+              </span>
             </div>
+
+            <TextInput
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              dir="ltr"
+              label="טלפון"
+              placeholder="054-0000000"
+              value={regPhone}
+              onChange={(e) => setRegPhone(e.currentTarget.value)}
+              disabled={loading}
+            />
 
             <TextInput
               label="מטרת האימון והתזונה"
@@ -464,39 +517,61 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
             >
               <TextInput
                 dir="ltr"
-                label="קוד מאמן להפעלה מיידית (אופציונלי)"
-                description="אם קיבלת קוד אישי מהמאמן הזן אותו לכניסה מיידית. ללא קוד, ההרשמה תמתין לאישור המאמן."
-                placeholder="הזן קוד מאמן או השאר ריק"
-                leftSection={<KeyRound size={14} />}
+                label="קוד מאמן (אופציונלי)"
+                description="ללא קוד — ההרשמה תמתין לאישור מאמן"
+                placeholder="קוד אישי מהמאמן"
                 value={regInviteCode}
                 onChange={(e) => setRegInviteCode(e.currentTarget.value)}
                 disabled={loading}
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              aria-busy={loading}
-              className="btn-volt"
-              style={{
-                marginTop: 4,
-                padding: '12px',
-                fontSize: 14,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                cursor: 'pointer',
-              }}
-            >
-              {loading ? (
-                <Loader2 size={16} className="spot-spinner" />
-              ) : (
-                <CheckCircle2 size={16} />
-              )}
-              <span>{loading ? 'רושם חשבון...' : 'השלמת הרשמה'}</span>
-            </button>
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => {
+                  setError(null);
+                  setRegStep(1);
+                }}
+                className="btn-surface"
+                style={{
+                  padding: '11px 14px',
+                  fontSize: 13,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  cursor: 'pointer',
+                }}
+              >
+                <ChevronRight size={15} />
+                <span>חזרה</span>
+              </button>
+
+              <button
+                type="submit"
+                disabled={loading}
+                aria-busy={loading}
+                className="btn-volt"
+                style={{
+                  flex: 1,
+                  padding: '11px',
+                  fontSize: 14,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  cursor: 'pointer',
+                }}
+              >
+                {loading ? (
+                  <Loader2 size={16} className="spot-spinner" />
+                ) : (
+                  <CheckCircle2 size={16} />
+                )}
+                <span>{loading ? 'שומר...' : 'השלמת הרשמה'}</span>
+              </button>
+            </div>
           </form>
         )}
       </div>

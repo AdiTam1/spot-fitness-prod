@@ -266,10 +266,19 @@ export default function HomePage() {
         targetWeight: data.targetWeight,
         onboarding: data.onboarding,
         measurementsHistory: nextMeas,
-        weightHistory: [
-          ...t.weightHistory,
-          { date: data.onboarding.completedAt || 'היום', weight: data.currentWeight },
-        ],
+        weightHistory:
+          t.weightHistory.length === 0 ||
+          (!t.onboarding?.completed &&
+            t.weightHistory.length === 1 &&
+            t.weightHistory[0]?.date === 'התחלה')
+            ? [{ date: 'התחלה', weight: data.currentWeight }]
+            : [
+                ...t.weightHistory,
+                {
+                  date: data.onboarding.completedAt || 'היום',
+                  weight: data.currentWeight,
+                },
+              ],
       };
     });
   };

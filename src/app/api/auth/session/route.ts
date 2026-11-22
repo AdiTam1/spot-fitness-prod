@@ -22,7 +22,7 @@ import {
   AuthSessionUser,
   TraineeProfile,
 } from '@/types/nutrition';
-import { DEFAULT_TEMPLATES } from '@/data/israeliFoodCatalog';
+import { DEFAULT_TEMPLATES, getTodayIso } from '@/data/israeliFoodCatalog';
 
 export async function GET(request: NextRequest) {
   const user = getSessionFromRequest(request);
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
   try {
     if (!verifyCsrfOrigin(request)) {
       return NextResponse.json(
-        { error: 'בקשה ממקור לא מורשה (CSRF Blocked)' },
+        { error: 'בקשה אינה מורשית' },
         { status: 403 }
       );
     }
@@ -152,20 +152,18 @@ export async function POST(request: NextRequest) {
       }
 
       const initialObservationDates: string[] = [];
-      if (defaultObsDays > 0) {
-        const now = new Date();
-        for (let i = 0; i < defaultObsDays; i++) {
-          const d = new Date(now);
-          d.setDate(now.getDate() + i);
-          const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
-            2,
-            '0'
-          )}-${String(d.getDate()).padStart(2, '0')}`;
-          initialObservationDates.push(iso);
-        }
+      const clampedObsDays = Math.max(
+        0,
+        Math.min(90, Math.round(Number(defaultObsDays) || 0))
+      );
+      for (let i = 0; i < clampedObsDays; i++) {
+        initialObservationDates.push(getTodayIso(i));
       }
 
       const defaultTpl = dbState.templates[0] || DEFAULT_TEMPLATES[0];
+      const hasExplicitWeight =
+        typeof body.currentWeight === 'number' &&
+        Number.isFinite(body.currentWeight);
 
       const newTrainee: TraineeProfile = {
         id: generateSecureId('trainee'),
@@ -190,7 +188,9 @@ export async function POST(request: NextRequest) {
           'chicken-breast-grilled',
           'krembo-strauss',
         ],
-        weightHistory: [{ date: 'התחלה', weight: currentWeight }],
+        weightHistory: hasExplicitWeight
+          ? [{ date: 'התחלה', weight: currentWeight }]
+          : [],
         logs: {},
       };
 
@@ -290,7 +290,7 @@ export async function POST(request: NextRequest) {
     if (matchedTrainee.status === 'pending') {
       return NextResponse.json(
         {
-          error: `שלום ${matchedTrainee.name}, החשבון שלך ממתין לאישור המאמן. ברגע שיאושר תוכל להיכנס.`,
+          error: `שלום ${matchedTrainee.name}, החשבון שלך ממתין לאישור מאמן.`,
           isPending: true,
         },
         { status: 403 }
@@ -299,7 +299,7 @@ export async function POST(request: NextRequest) {
 
     if (matchedTrainee.status === 'paused') {
       return NextResponse.json(
-        { error: 'המנוי שלך מושהה כרגע במערכת. אנא פנה למאמן שלך.' },
+        { error: 'החשבון שלך מושהה כרגע. אנא פנה למאמן שלך.' },
         { status: 403 }
       );
     }

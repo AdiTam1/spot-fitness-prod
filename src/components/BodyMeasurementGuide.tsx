@@ -22,6 +22,7 @@ interface BodyMeasurementGuideProps {
   }) => void | Promise<void>;
   onSkip?: () => void;
   showSaveButtons?: boolean;
+  compact?: boolean;
 }
 
 type MeasurementZone = 'chest' | 'waistNavel' | 'arm' | 'thigh';
@@ -88,6 +89,7 @@ export function BodyMeasurementGuide({
   onSave,
   onSkip,
   showSaveButtons = false,
+  compact = false,
 }: BodyMeasurementGuideProps) {
   const [activeZone, setActiveZone] = useState<MeasurementZone>('chest');
   const [chestCm, setChestCm] = useState<number | undefined>(
@@ -124,18 +126,20 @@ export function BodyMeasurementGuide({
   };
 
   const zoneInfo = ZONE_CONFIG[activeZone];
+  const svgW = compact ? 92 : 130;
+  const svgH = compact ? 132 : 190;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 10 : 14 }}>
       {/* בורר 4 אזורי המדידה */}
       <div
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: 6,
+          gap: 5,
           background: 'var(--bg-surface-2)',
           padding: 4,
-          borderRadius: 14,
+          borderRadius: 12,
           border: '1px solid var(--border-subtle)',
         }}
       >
@@ -157,13 +161,13 @@ export function BodyMeasurementGuide({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 5,
-                  padding: '9px 6px',
-                  borderRadius: 10,
+                  gap: 4,
+                  padding: compact ? '7px 4px' : '9px 6px',
+                  borderRadius: 9,
                   border: 'none',
                   background: active ? 'var(--accent-volt)' : 'transparent',
                   color: active ? '#08090c' : 'var(--text-secondary)',
-                  fontSize: 12,
+                  fontSize: compact ? 11 : 12,
                   fontWeight: 800,
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
@@ -172,7 +176,7 @@ export function BodyMeasurementGuide({
                 <span>{ZONE_CONFIG[z].shortLabel}</span>
                 {hasVal && (
                   <CheckCircle2
-                    size={13}
+                    size={12}
                     color={active ? '#08090c' : 'var(--accent-volt)'}
                   />
                 )}
@@ -186,10 +190,12 @@ export function BodyMeasurementGuide({
       <div
         className="pro-card"
         style={{
-          padding: 16,
+          padding: compact ? 10 : 16,
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-          gap: 16,
+          gridTemplateColumns: compact
+            ? '98px 1fr'
+            : 'repeat(auto-fit, minmax(170px, 1fr))',
+          gap: compact ? 10 : 16,
           alignItems: 'center',
           background: 'rgba(255,255,255,0.02)',
         }}
@@ -197,10 +203,10 @@ export function BodyMeasurementGuide({
         {/* איור גוף וקטורי עם הנפשת סרט מדידה חי */}
         <div
           style={{
-            width: 145,
-            height: 200,
+            width: compact ? 98 : 145,
+            height: compact ? 138 : 200,
             margin: '0 auto',
-            borderRadius: 16,
+            borderRadius: 14,
             background: '#0b0d13',
             border: '1px solid rgba(210, 255, 40, 0.25)',
             display: 'flex',
@@ -211,7 +217,7 @@ export function BodyMeasurementGuide({
           }}
         >
           {activeZone === 'chest' && (
-            <svg width="130" height="190" viewBox="0 0 130 190">
+            <svg width={svgW} height={svgH} viewBox="0 0 130 190">
               {/* מתאר פלג גוף עליון אנטומי */}
               <circle
                 cx="65"
@@ -285,7 +291,7 @@ export function BodyMeasurementGuide({
           )}
 
           {activeZone === 'waistNavel' && (
-            <svg width="130" height="190" viewBox="0 0 130 190">
+            <svg width={svgW} height={svgH} viewBox="0 0 130 190">
               <circle
                 cx="65"
                 cy="22"
@@ -346,7 +352,7 @@ export function BodyMeasurementGuide({
           )}
 
           {activeZone === 'arm' && (
-            <svg width="130" height="190" viewBox="0 0 130 190">
+            <svg width={svgW} height={svgH} viewBox="0 0 130 190">
               {/* כתף וזרוע מכופפת ב-90 מעלות עם כיווץ דו-ראשי */}
               <path
                 d="M25 135 L25 90 C25 75, 42 75, 52 84 C64 70, 82 70, 92 84 L96 42 L110 42 L110 104 L46 104 L46 135 Z"
@@ -397,7 +403,7 @@ export function BodyMeasurementGuide({
           )}
 
           {activeZone === 'thigh' && (
-            <svg width="130" height="190" viewBox="0 0 130 190">
+            <svg width={svgW} height={svgH} viewBox="0 0 130 190">
               {/* מתאר אגן ורגליים */}
               <path
                 d="M36 28 L94 28 L98 62 L86 156 L72 156 L68 78 L62 78 L58 156 L44 156 L32 62 Z"
@@ -440,10 +446,10 @@ export function BodyMeasurementGuide({
         </div>
 
         {/* הוראות מדידה שלב-אחר-שלב */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 5 : 8 }}>
           <div
             style={{
-              fontSize: 15,
+              fontSize: compact ? 13 : 15,
               fontWeight: 800,
               color: 'var(--accent-volt)',
               display: 'flex',
@@ -451,7 +457,7 @@ export function BodyMeasurementGuide({
               gap: 6,
             }}
           >
-            <Ruler size={16} />
+            <Ruler size={compact ? 14 : 16} />
             <span>{zoneInfo.title}</span>
           </div>
 
@@ -459,14 +465,14 @@ export function BodyMeasurementGuide({
             style={{
               display: 'flex',
               flexDirection: 'column',
-              gap: 5,
-              fontSize: 12,
+              gap: compact ? 3 : 5,
+              fontSize: compact ? 11 : 12,
               color: 'var(--text-primary)',
-              lineHeight: 1.45,
+              lineHeight: compact ? 1.35 : 1.45,
             }}
           >
             {zoneInfo.instructions.map((step, i) => (
-              <div key={i} style={{ display: 'flex', gap: 6 }}>
+              <div key={i} style={{ display: 'flex', gap: 5 }}>
                 <span
                   className="num-mono"
                   style={{ color: 'var(--accent-volt)', fontWeight: 800 }}
@@ -478,27 +484,29 @@ export function BodyMeasurementGuide({
             ))}
           </div>
 
-          <div
-            style={{
-              marginTop: 4,
-              padding: '7px 10px',
-              borderRadius: 10,
-              background: 'rgba(210, 255, 40, 0.08)',
-              border: '1px solid rgba(210, 255, 40, 0.25)',
-              fontSize: 11,
-              color: 'var(--text-secondary)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            <Info
-              size={14}
-              color="var(--accent-volt)"
-              style={{ flexShrink: 0 }}
-            />
-            <span>{zoneInfo.tip}</span>
-          </div>
+          {!compact && (
+            <div
+              style={{
+                marginTop: 4,
+                padding: '7px 10px',
+                borderRadius: 10,
+                background: 'rgba(210, 255, 40, 0.08)',
+                border: '1px solid rgba(210, 255, 40, 0.25)',
+                fontSize: 11,
+                color: 'var(--text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <Info
+                size={14}
+                color="var(--accent-volt)"
+                style={{ flexShrink: 0 }}
+              />
+              <span>{zoneInfo.tip}</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -507,7 +515,7 @@ export function BodyMeasurementGuide({
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(2, 1fr)',
-          gap: 10,
+          gap: compact ? 8 : 10,
         }}
       >
         <div onClick={() => setActiveZone('chest')}>

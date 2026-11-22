@@ -622,8 +622,7 @@ export function TraineeMobileView({
                     יום תשקיף (ללא מטרת יעד קלורי)
                   </div>
                   <div style={{ color: 'var(--text-secondary)' }}>
-                    היום מתעדים בחופשיות כל מה שאוכלים. הקלוריות נספרות עבור
-                    המאמן ללא חישוב חריגה.
+                    תיעוד חופשי ללא חישוב חריגה מהיעד.
                   </div>
                 </div>
               </div>
@@ -2458,7 +2457,7 @@ export function TraineeMobileView({
                       textAlign: 'center',
                     }}
                   >
-                    ✓ הצ׳ק-אין השבועי נשמר ומוצג כעת בדשבורד המאמן!
+                    ✓ הצ׳ק-אין השבועי נשמר ונשלח למאמן!
                   </div>
                 )}
               </div>

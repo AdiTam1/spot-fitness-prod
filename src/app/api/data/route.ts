@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   if (!verifyCsrfOrigin(request)) {
-    return NextResponse.json({ error: 'CSRF Blocked' }, { status: 403 });
+    return NextResponse.json({ error: 'בקשה אינה מורשית' }, { status: 403 });
   }
 
   const session = getSessionFromRequest(request);
@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
         traineeInput.id !== session.id
       ) {
         return NextResponse.json(
-          { error: 'אין הרשאה לבצע פעולה זו (IDOR Blocked)' },
+          { error: 'אין הרשאה לבצע פעולה זו' },
           { status: 403 }
         );
       }
@@ -430,7 +430,7 @@ export async function POST(request: NextRequest) {
         } else {
           nextDates.push(toggleDate);
         }
-      } else if (addFutureDays > 0 && addFutureDays <= 30) {
+      } else if (addFutureDays > 0 && addFutureDays <= 90) {
         for (let i = 0; i < addFutureDays; i++) {
           const iso = getTodayIso(i);
           if (!nextDates.includes(iso)) {

@@ -308,6 +308,7 @@ export function CoachDashboardView({
   const [editCoachEmail, setEditCoachEmail] = useState('');
   const [editCoachPassword, setEditCoachPassword] = useState('');
   const [editCoachInvite, setEditCoachInvite] = useState('');
+  const [customObsDays, setCustomObsDays] = useState<number>(5);
 
   // אישור מתאמן Pending עם בחירת מאמן משויך
   const [pendingAssignCoachMap, setPendingAssignCoachMap] = useState<
@@ -2262,6 +2263,57 @@ export function CoachDashboardView({
                   {isBusy('obs-ins-7') ? 'מוסיף...' : '+ 7 ימי תשקיף מראש'}
                 </button>
 
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    background: 'var(--bg-surface-1)',
+                    padding: '3px 6px',
+                    borderRadius: 10,
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  <NumberInput
+                    size="xs"
+                    min={1}
+                    max={90}
+                    step={1}
+                    allowDecimal={false}
+                    value={customObsDays}
+                    onChange={(v) =>
+                      setCustomObsDays(
+                        Math.max(1, Math.min(90, Math.round(Number(v) || 1)))
+                      )
+                    }
+                    style={{ width: 64 }}
+                  />
+                  <button
+                    type="button"
+                    disabled={isBusy('obs-ins-custom')}
+                    onClick={() =>
+                      runBusy(
+                        'obs-ins-custom',
+                        () =>
+                          onManageObservationDays(selectedTrainee.id, {
+                            addFutureDays: customObsDays,
+                          }),
+                        `נוספו ${customObsDays} ימי תשקיף מראש`
+                      )
+                    }
+                    className="btn-surface"
+                    style={{
+                      padding: '5px 10px',
+                      fontSize: 11,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {isBusy('obs-ins-custom')
+                      ? 'מוסיף...'
+                      : `+ ${customObsDays} ימים`}
+                  </button>
+                </div>
+
                 {/* מתג קליק זריז למאמן: האם ימי תשקיף נחשבים בספירה או לא */}
                 <button
                   disabled={isBusy('obs-ins-count')}
@@ -4039,7 +4091,7 @@ export function CoachDashboardView({
           >
             <div>
               <div style={{ fontSize: 17, fontWeight: 800 }}>
-                ניהול מאמנים במערכת (הרשאת מנהל ראשי בלבד)
+                ניהול מאמנים
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                 הוסף מאמנים חדשים, הגדר להם קוד הזמנה אישי, או השהה מאמן (במחיקת
@@ -4667,7 +4719,7 @@ export function CoachDashboardView({
         onClose={() => !isBusy('create-coach') && setNewCoachModal(false)}
         title={
           <span style={{ fontWeight: 800, fontSize: 16 }}>
-            הקמת מאמן חדש במערכת (מנהל ראשי בלבד)
+            הוספת מאמן חדש
           </span>
         }
         centered
