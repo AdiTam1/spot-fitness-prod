@@ -1,0 +1,102 @@
+workflows:
+  spot-android-debug:
+    name: SPOT Android Debug APK (Free M2)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      node: 22
+      java: 21
+    cache:
+      cache_paths:
+        - $HOME/.npm
+        - $HOME/.gradle/caches
+    scripts:
+      - name: Install dependencies & sync Capacitor Android
+        script: |
+          npm ci
+          npx cap sync android
+      - name: Configure Android SDK 36 & local.properties
+        script: |
+          SDK_DIR="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          echo "sdk.dir=$SDK_DIR" > "$CM_BUILD_DIR/android/local.properties"
+          SDKMANAGER=$(find "$SDK_DIR/cmdline-tools" -name "sdkmanager" -type f 2>/dev/null | head -n 1 || true)
+          if [ -n "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --sdk_root="$SDK_DIR" --licenses >/dev/null 2>&1 || true
+            "$SDKMANAGER" --sdk_root="$SDK_DIR" "platform-tools" "platforms;android-36" "build-tools;36.0.0" || true
+          fi
+      - name: Build Debug APK
+        script: |
+          cd "$CM_BUILD_DIR/android"
+          chmod +x gradlew
+          BUILD_NUM="${PROJECT_BUILD_NUMBER:-1}"
+          VERSION_CODE=$((10000 + BUILD_NUM))
+          ./gradlew assembleDebug \
+            -PspotVersionCode="$VERSION_CODE" \
+            -PspotVersionName="1.0.$BUILD_NUM-debug"
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/spot-fitness-debug.apk
+    artifacts:
+      - android/app/build/outputs/apk/debug/spot-fitness-debug.apk
+
+  spot-android-release:
+    name: SPOT Android Signed Release APK (Free M2)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      node: 22
+      java: 21
+      android_signing:
+        - spot_keystore
+    cache:
+      cache_paths:
+        - $HOME/.npm
+        - $HOME/.gradle/caches
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: 'v*'
+          include: true
+    scripts:
+      - name: Install dependencies & sync Capacitor Android
+        script: |
+          npm ci
+          npx cap sync android
+      - name: Configure Android SDK 36 & local.properties
+        script: |
+          SDK_DIR="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          echo "sdk.dir=$SDK_DIR" > "$CM_BUILD_DIR/android/local.properties"
+          SDKMANAGER=$(find "$SDK_DIR/cmdline-tools" -name "sdkmanager" -type f 2>/dev/null | head -n 1 || true)
+          if [ -n "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --sdk_root="$SDK_DIR" --licenses >/dev/null 2>&1 || true
+            "$SDKMANAGER" --sdk_root="$SDK_DIR" "platform-tools" "platforms;android-36" "build-tools;36.0.0" || true
+          fi
+      - name: Build Signed Release APK
+        script: |
+          if [ -z "$CM_KEYSTORE_PATH" ]; then
+            echo "Missing spot_keystore in Codemagic -> Code signing identities -> Android keystores"
+            exit 1
+          fi
+          cd "$CM_BUILD_DIR/android"
+          chmod +x gradlew
+          RAW_VER="${CM_TAG#v}"
+          if [[ "$RAW_VER" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
+            VERSION_NAME="${MAJOR}.${MINOR}.${PATCH}"
+            VERSION_CODE=$((MAJOR * 10000 + MINOR * 100 + PATCH))
+          else
+            BUILD_NUM="${PROJECT_BUILD_NUMBER:-1}"
+            VERSION_NAME="1.0.$BUILD_NUM"
+            VERSION_CODE=$((10000 + BUILD_NUM))
+          fi
+          ./gradlew assembleRelease \
+            -PspotVersionCode="$VERSION_CODE" \
+            -PspotVersionName="$VERSION_NAME" \
+            -PspotKeystoreFile="$CM_KEYSTORE_PATH" \
+            -PspotKeystorePassword="$CM_KEYSTORE_PASSWORD" \
+            -PspotKeyAlias="$CM_KEY_ALIAS" \
+            -PspotKeyPassword="$CM_KEY_PASSWORD"
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/spot-fitness-release.apk
+    artifacts:
+      - android/app/build/outputs/apk/release/spot-fitness-release.apk
