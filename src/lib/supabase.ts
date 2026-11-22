@@ -169,16 +169,24 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
       ? (row.activity_targets as TraineeActivityTargets)
       : undefined;
 
-  const activityTargets: TraineeActivityTargets =
-    embeddedMeta.activityTargets ||
-    rowActivityTargets || {
-      weeklyWorkoutsTarget: 4,
-      workoutTypes: ['אימון כוח A', 'אימון כוח B', 'Full Body'],
-      weeklyCardioTarget: 3,
-      cardioMode: 'both',
-      cardioTargetMinutes: 35,
-      dailySleepTargetHours: 7.5,
-    };
+  const defaultActivityTargets: TraineeActivityTargets = {
+    weeklyWorkoutsTarget: 4,
+    workoutTypes: ['אימון כוח A', 'אימון כוח B', 'Full Body'],
+    weeklyCardioTarget: 3,
+    cardioMode: 'both',
+    cardioTargetMinutes: 35,
+    dailySleepTargetHours: 7.5,
+    dailyStepsTarget: 8000,
+  };
+
+  const activityTargets: TraineeActivityTargets = {
+    ...defaultActivityTargets,
+    ...(embeddedMeta.activityTargets || rowActivityTargets || {}),
+    dailyStepsTarget:
+      embeddedMeta.activityTargets?.dailyStepsTarget ??
+      rowActivityTargets?.dailyStepsTarget ??
+      8000,
+  };
 
   return {
     id: String(row.id),

@@ -31,3 +31,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# android / capacitor signing & build outputs
+*.jks
+*.keystore
+keystore_base64.txt
+android/.gradle/
+android/app/build/
+android/build/
+android/.idea/
+android/local.properties
+android/capacitor-cordova-android-plugins/
+android/app/release/

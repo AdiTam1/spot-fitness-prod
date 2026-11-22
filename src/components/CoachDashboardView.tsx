@@ -1973,13 +1973,15 @@ export function CoachDashboardView({
 
             {/* שורת שליטה מהירה בימי תשקיף למאמן */}
             {(() => {
-              const act = selectedTrainee.activityTargets || {
+              const act = {
                 weeklyWorkoutsTarget: 4,
                 workoutTypes: ['אימון כוח A', 'אימון כוח B', 'Full Body'],
                 weeklyCardioTarget: 3,
                 cardioMode: 'both' as const,
                 cardioTargetMinutes: 35,
                 dailySleepTargetHours: 7.5,
+                dailyStepsTarget: 8000,
+                ...(selectedTrainee.activityTargets || {}),
               };
 
               const loggedWorkoutsCount = Object.values(
@@ -1989,6 +1991,8 @@ export function CoachDashboardView({
                 selectedTrainee.logs || {}
               ).filter((l) => l.cardioLog?.completed).length;
               const todaySleep = selectedTrainee.logs[today]?.sleepHours;
+              const todaySteps = selectedTrainee.logs[today]?.steps;
+              const todayStepsSource = selectedTrainee.logs[today]?.stepsSource;
 
               return (
                 <div
@@ -2068,6 +2072,22 @@ export function CoachDashboardView({
                         שינה היום: {todaySleep ?? '—'} /{' '}
                         {act.dailySleepTargetHours}h
                       </span>
+                      <span
+                        className="num-mono"
+                        style={{
+                          padding: '3px 9px',
+                          borderRadius: 999,
+                          background: 'rgba(34, 197, 94, 0.15)',
+                          color: '#4ade80',
+                          fontWeight: 800,
+                        }}
+                      >
+                        צעדים היום: {(todaySteps ?? 0).toLocaleString()} /{' '}
+                        {(act.dailyStepsTarget ?? 8000).toLocaleString()}
+                        {todayStepsSource && todayStepsSource !== 'manual'
+                          ? ' (אוטומטי)'
+                          : ''}
+                      </span>
                     </div>
                   </div>
 
@@ -2132,6 +2152,20 @@ export function CoachDashboardView({
                         onUpdateActivityTargets(selectedTrainee.id, {
                           ...act,
                           dailySleepTargetHours: Number(val) || 7.5,
+                        })
+                      }
+                    />
+                    <NumberInput
+                      size="xs"
+                      label="יעד צעדים יומי"
+                      value={act.dailyStepsTarget ?? 8000}
+                      min={1000}
+                      max={50000}
+                      step={500}
+                      onChange={(val) =>
+                        onUpdateActivityTargets(selectedTrainee.id, {
+                          ...act,
+                          dailyStepsTarget: Number(val) || 8000,
                         })
                       }
                     />
@@ -2799,6 +2833,7 @@ export function CoachDashboardView({
                           weeklyWorkoutsTarget: 4,
                           weeklyCardioTarget: 3,
                           dailySleepTargetHours: 7.5,
+                          dailyStepsTarget: 8000,
                         };
                         const allLogs = Object.values(
                           selectedTrainee.logs || {}
@@ -2809,10 +2844,14 @@ export function CoachDashboardView({
                         const cardioDone = allLogs.filter(
                           (l) => l?.cardioLog?.completed
                         ).length;
+                        const todayStepsReport =
+                          selectedTrainee.logs?.[today]?.steps;
+                        const stepsGoalReport = act.dailyStepsTarget ?? 8000;
                         const report = [
                           `📊 *דו"ח מתאמן SPOT - ${selectedTrainee.name}* (${today})`,
                           `• משקל נוכחי: ${selectedTrainee.currentWeight} ק"ג (יעד: ${selectedTrainee.targetWeight} ק"ג)`,
                           `• אימונים שתועדו: ${workoutsDone} (יעד שבועי: ${act.weeklyWorkoutsTarget})`,
+                          `• צעדים היום: ${(todayStepsReport ?? 0).toLocaleString()} (יעד: ${stepsGoalReport.toLocaleString()})`,
                           `• הליכות/ריצות שתועדו: ${cardioDone} (יעד שבועי: ${act.weeklyCardioTarget})`,
                           lastM
                             ? `• היקפים: חזה ${lastM.chestCm || '—'} | בטן ${lastM.waistNavelCm || '—'} | זרוע ${lastM.armCm || '—'} | ירך ${lastM.thighCm || '—'} ס"מ`

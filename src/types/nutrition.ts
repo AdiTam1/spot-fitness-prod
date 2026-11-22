@@ -87,6 +87,12 @@ export interface DailyCardioLog {
   durationMinutes?: number;
 }
 
+export type StepsSyncSource =
+  | 'health-connect'
+  | 'play-services-local'
+  | 'device-sensor'
+  | 'manual';
+
 export interface TraineeActivityTargets {
   weeklyWorkoutsTarget: number; // מינימום אימונים בשבוע
   workoutTypes: string[]; // סוגי אימונים שהמאמן הגדיר למתאמן
@@ -94,6 +100,7 @@ export interface TraineeActivityTargets {
   cardioMode: 'walk' | 'run' | 'both';
   cardioTargetMinutes: number; // יעד דקות להליכה/ריצה
   dailySleepTargetHours: number; // יעד שעות שינה בלילה
+  dailyStepsTarget?: number; // יעד צעדים יומי (ברירת מחדל: 8000)
 }
 
 export interface DailyLog {
@@ -104,6 +111,9 @@ export interface DailyLog {
   waterGoal: number;
   weightKg?: number;
   sleepHours?: number;
+  steps?: number;
+  stepsSource?: StepsSyncSource;
+  stepsSyncedAt?: string;
   workoutLog?: DailyWorkoutLog;
   cardioLog?: DailyCardioLog;
   meals: Record<string, LoggedMealEntry>;

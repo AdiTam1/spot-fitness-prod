@@ -102,6 +102,69 @@ export function getSessionFromRequest(request: NextRequest): AuthSessionUser | n
   return verifySessionToken(token);
 }
 
+interface ScopedStepsPayload {
+  scope: 'steps-sync';
+  traineeId: string;
+  exp: number;
+}
+
+const STEPS_SYNC_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 ימים לסנכרון רקע אמין מה-APK
+
+/**
+ * יצירת טוקן ייעודי המוגבל אך ורק לסנכרון צעדים של מתאמן ספציפי (ללא גישה לארוחות או הגדרות מאמן).
+ * מאפשר ל-WorkManager ברקע לסנכרן גם כשהאפליקציה נהרגה מהזיכרון והעוגייה של WebView טרם נטענה.
+ */
+export function signStepsSyncToken(traineeId: string): string {
+  const payload: ScopedStepsPayload = {
+    scope: 'steps-sync',
+    traineeId,
+    exp: Math.floor(Date.now() / 1000) + STEPS_SYNC_TOKEN_TTL_SECONDS,
+  };
+  const payloadBase64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = crypto
+    .createHmac('sha256', getServerSecret())
+    .update(payloadBase64)
+    .digest('base64url');
+  return `${payloadBase64}.${signature}`;
+}
+
+export function verifyStepsSyncToken(token: string | undefined | null): string | null {
+  if (!token || !token.includes('.')) return null;
+  try {
+    const [payloadBase64, providedSig] = token.split('.');
+    if (!payloadBase64 || !providedSig) return null;
+
+    const expectedSig = crypto
+      .createHmac('sha256', getServerSecret())
+      .update(payloadBase64)
+      .digest('base64url');
+
+    const sigA = Buffer.from(providedSig);
+    const sigB = Buffer.from(expectedSig);
+    if (sigA.length !== sigB.length || !crypto.timingSafeEqual(sigA, sigB)) {
+      return null;
+    }
+
+    const decoded = JSON.parse(
+      Buffer.from(payloadBase64, 'base64url').toString('utf-8')
+    ) as Partial<ScopedStepsPayload>;
+
+    if (
+      decoded.scope !== 'steps-sync' ||
+      typeof decoded.traineeId !== 'string' ||
+      !decoded.traineeId ||
+      !decoded.exp ||
+      decoded.exp < Math.floor(Date.now() / 1000)
+    ) {
+      return null;
+    }
+
+    return decoded.traineeId;
+  } catch {
+    return null;
+  }
+}
+
 export function attachSessionCookie(
   response: NextResponse,
   user: AuthSessionUser

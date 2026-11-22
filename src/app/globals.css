@@ -140,10 +140,22 @@ a:focus-visible {
   pointer-events: none !important;
 }
 
+/* כותרת דביקה עם התחשבות מלאה ב-Safe Area של מכשירי Android 15-16 (Edge-to-Edge) */
+.spot-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 80;
+  background: rgba(8, 9, 12, 0.85);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 18px 10px;
+}
+
 /* סרגל תחתון צף למובייל (Floating Glass Dock) */
 .mobile-bottom-dock {
   position: fixed;
-  bottom: 18px;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 90;
@@ -156,6 +168,15 @@ a:focus-visible {
   border-radius: 999px;
   padding: 6px 10px;
   box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 768px) {
+  .mantine-Drawer-header {
+    padding-top: max(12px, env(safe-area-inset-top, 0px)) !important;
+  }
+  .mantine-Drawer-body {
+    padding-bottom: max(18px, env(safe-area-inset-bottom, 0px)) !important;
+  }
 }
 
 /* התאמת שדות הקלט של Mantine למראה נקי ויוקרתי */

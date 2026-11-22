@@ -35,6 +35,7 @@ import {
   PendingAiMealJob,
   QuickContextChip,
   SavedMealPreset,
+  StepsSyncSource,
   TraineeCustomUnit,
   TraineeOnboardingData,
   TraineeProfile,
@@ -45,6 +46,7 @@ import { getTodayIso, sumMacros } from '@/data/israeliFoodCatalog';
 import { AddMealDrawer } from './AddMealDrawer';
 import { TraineeOnboardingWizard } from './TraineeOnboardingWizard';
 import { BodyMeasurementGuide } from './BodyMeasurementGuide';
+import { DailyStepsCard } from './DailyStepsCard';
 
 interface TraineeMobileViewProps {
   trainee: TraineeProfile;
@@ -81,6 +83,9 @@ interface TraineeMobileViewProps {
     date: string,
     payload: {
       sleepHours?: number;
+      steps?: number;
+      stepsSource?: StepsSyncSource;
+      stepsSyncedAt?: string;
       workoutLog?: DailyWorkoutLog;
       cardioLog?: DailyCardioLog;
     }
@@ -142,6 +147,7 @@ interface TraineeMobileViewProps {
     nonce: number;
   } | null;
   geminiApiKey?: string;
+  onSyncNativeStepsNow?: () => Promise<void>;
 }
 
 const HEBREW_DAYS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
@@ -190,6 +196,7 @@ export function TraineeMobileView({
   onStartBackgroundAiAnalysis,
   externalOpenMealRequest,
   geminiApiKey,
+  onSyncNativeStepsNow,
 }: TraineeMobileViewProps) {
   const todayIso = getTodayIso();
   const [selectedDate, setSelectedDate] = useState<string>(todayIso);
@@ -1087,6 +1094,7 @@ export function TraineeMobileView({
               const todayWorkout = dailyLog.workoutLog;
               const todayCardio = dailyLog.cardioLog;
               const todaySleep = dailyLog.sleepHours;
+              const dailyStepsTarget = actTargets.dailyStepsTarget ?? 8000;
 
               return (
                 <div
@@ -1107,7 +1115,7 @@ export function TraineeMobileView({
                     }}
                   >
                     <span style={{ fontSize: 14, fontWeight: 800 }}>
-                      אימונים, הליכה/ריצה ושעות שינה ({selectedDate})
+                      אימונים, צעדים, הליכה/ריצה ושינה ({selectedDate})
                     </span>
                     <span
                       style={{
@@ -1115,9 +1123,28 @@ export function TraineeMobileView({
                         color: 'var(--text-secondary)',
                       }}
                     >
-                      הזנה יומית מול יעדי המאמן
+                      הזנה והסתנכרנות מול יעדי המאמן
                     </span>
                   </div>
+
+                  {/* 0. מד צעדים יומי חכם (Health Connect + Google Play Services + ידני) */}
+                  <DailyStepsCard
+                    selectedDate={selectedDate}
+                    todayIso={todayIso}
+                    steps={dailyLog.steps ?? 0}
+                    stepsSource={dailyLog.stepsSource}
+                    stepsSyncedAt={dailyLog.stepsSyncedAt}
+                    dailyStepsTarget={dailyStepsTarget}
+                    isCoachPreview={isCoachPreview}
+                    onSaveManualSteps={async (steps) => {
+                      await onUpdateDailyActivity(trainee.id, selectedDate, {
+                        steps,
+                        stepsSource: 'manual',
+                        stepsSyncedAt: new Date().toISOString(),
+                      });
+                    }}
+                    onSyncNativeStepsNow={onSyncNativeStepsNow}
+                  />
 
                   {/* 1. אימון יומי + סוג אימון */}
                   <div
@@ -2353,6 +2380,7 @@ export function TraineeMobileView({
                       weeklyWorkoutsTarget: 4,
                       weeklyCardioTarget: 3,
                       dailySleepTargetHours: 7.5,
+                      dailyStepsTarget: 8000,
                     };
                     const workoutsDone = weekDays.filter(
                       (wd) => trainee.logs[wd.iso]?.workoutLog?.completed
@@ -2370,11 +2398,22 @@ export function TraineeMobileView({
                             sleepDays.length
                           ).toFixed(1)
                         : '—';
+                    const stepDays = weekDays
+                      .map((wd) => trainee.logs[wd.iso]?.steps)
+                      .filter((s): s is number => typeof s === 'number' && s > 0);
+                    const avgSteps =
+                      stepDays.length > 0
+                        ? Math.round(
+                            stepDays.reduce((a, b) => a + b, 0) / stepDays.length
+                          ).toLocaleString()
+                        : '—';
+                    const stepsGoal = actTargets.dailyStepsTarget ?? 8000;
 
                     const reportLines = [
                       `📊 *דו"ח סיכום שבועי SPOT - ${trainee.name}* (${todayIso})`,
                       `• משקל נוכחי: ${trainee.currentWeight} ק"ג (יעד: ${trainee.targetWeight} ק"ג)`,
                       `• אימונים השבוע: ${workoutsDone}/${actTargets.weeklyWorkoutsTarget}`,
+                      `• ממוצע צעדים יומי: ${avgSteps} (יעד: ${stepsGoal.toLocaleString()})`,
                       `• הליכות/ריצות השבוע: ${cardioDone}/${actTargets.weeklyCardioTarget}`,
                       `• ממוצע שעות שינה: ${avgSleep} שעות (יעד: ${actTargets.dailySleepTargetHours})`,
                       latestMeasurement

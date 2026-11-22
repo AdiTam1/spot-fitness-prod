@@ -1,0 +1,168 @@
+name: Build Android APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+    paths:
+      - 'android/**'
+      - 'capacitor-shell/**'
+      - 'capacitor.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/android-apk.yml'
+  workflow_dispatch:
+    inputs:
+      build_release:
+        description: 'Build and publish a signed GitHub Release APK?'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      version_name:
+        description: 'Version name (e.g. 1.0.0)'
+        required: false
+        default: '1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-android-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install npm dependencies & sync Capacitor Android
+        run: |
+          npm ci
+          npx cap sync android
+
+      - name: Grant execute permission on gradlew
+        working-directory: android
+        run: chmod +x gradlew
+
+      - name: Resolve version metadata
+        id: version
+        shell: bash
+        run: |
+          RAW_TAG=""
+          IS_RELEASE="false"
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            RAW_TAG="${GITHUB_REF_NAME#v}"
+            IS_RELEASE="true"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.build_release }}" == "true" ]]; then
+            RAW_TAG="${{ inputs.version_name }}"
+            IS_RELEASE="true"
+          else
+            RAW_TAG="1.0.0"
+          fi
+
+          if [[ "$RAW_TAG" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
+            VERSION_NAME="${MAJOR}.${MINOR}.${PATCH}"
+            VERSION_CODE="$((MAJOR * 10000 + MINOR * 100 + PATCH))"
+          else
+            VERSION_NAME="1.0.0"
+            VERSION_CODE="10000"
+          fi
+
+          if [[ "$VERSION_CODE" -lt 1 ]]; then
+            VERSION_CODE="1"
+          fi
+
+          echo "is_release=$IS_RELEASE" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Build Debug APK (CI verification)
+        if: steps.version.outputs.is_release != 'true'
+        working-directory: android
+        run: |
+          ./gradlew assembleDebug \
+            -PspotVersionCode="${{ steps.version.outputs.version_code }}" \
+            -PspotVersionName="${{ steps.version.outputs.version_name }}"
+
+      - name: Upload Debug APK artifact
+        if: steps.version.outputs.is_release != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-fitness-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+      - name: Verify Keystore secrets for Release build
+        if: steps.version.outputs.is_release == 'true'
+        shell: bash
+        run: |
+          if [[ -z "${{ secrets.KEYSTORE_BASE64 }}" || -z "${{ secrets.KEYSTORE_PASSWORD }}" || -z "${{ secrets.KEY_ALIAS }}" || -z "${{ secrets.KEY_PASSWORD }}" ]]; then
+            echo "::error::Missing Android signing secrets. Configure KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD in GitHub Actions Secrets."
+            exit 1
+          fi
+
+      - name: Decode Release Keystore
+        if: steps.version.outputs.is_release == 'true'
+        shell: bash
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '\n\r ' | base64 --decode > android/app/spot-release.jks
+
+      - name: Build Signed Release APK
+        if: steps.version.outputs.is_release == 'true'
+        working-directory: android
+        run: |
+          ./gradlew assembleRelease \
+            -PspotVersionCode="${{ steps.version.outputs.version_code }}" \
+            -PspotVersionName="${{ steps.version.outputs.version_name }}" \
+            -PspotKeystoreFile="spot-release.jks" \
+            -PspotKeystorePassword="${{ secrets.KEYSTORE_PASSWORD }}" \
+            -PspotKeyAlias="${{ secrets.KEY_ALIAS }}" \
+            -PspotKeyPassword="${{ secrets.KEY_PASSWORD }}"
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/spot-fitness-release.apk
+
+      - name: Upload Release APK workflow artifact
+        if: steps.version.outputs.is_release == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-fitness-release-apk
+          path: android/app/build/outputs/apk/release/spot-fitness-release.apk
+          retention-days: 30
+
+      - name: Publish Signed APK to GitHub Releases
+        if: steps.version.outputs.is_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version_name }}
+          name: SPOT Fitness Android v${{ steps.version.outputs.version_name }}
+          files: android/app/build/outputs/apk/release/spot-fitness-release.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clean decoded Keystore
+        if: always()
+        shell: bash
+        run: rm -f android/app/spot-release.jks

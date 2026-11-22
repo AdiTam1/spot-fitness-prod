@@ -57,6 +57,38 @@ function mergeLogsPreservingPendingAi(
 ): Record<string, DailyLog> {
   if (!incomingLogs) return existing.logs;
   const merged = { ...incomingLogs };
+
+  // 1. הגנה מפני דריסת סנכרון צעדים אוטומטי מ-APK/WorkManager ברקע כאשר הדפדפן שומר ארוחה עם מצב ישן יותר
+  for (const [dateKey, serverDay] of Object.entries(existing.logs || {})) {
+    if (!serverDay || dateKey === '__profile_meta') continue;
+    const clientDay = merged[dateKey];
+    if (!clientDay) {
+      merged[dateKey] = serverDay;
+      continue;
+    }
+    const serverSteps = serverDay.steps ?? 0;
+    const clientSteps = clientDay.steps ?? 0;
+    const serverTs = serverDay.stepsSyncedAt ? Date.parse(serverDay.stepsSyncedAt) : 0;
+    const clientTs = clientDay.stepsSyncedAt ? Date.parse(clientDay.stepsSyncedAt) : 0;
+    const shouldKeepServerSteps =
+      serverDay.steps !== undefined &&
+      (clientDay.steps === undefined ||
+        (serverTs > clientTs && clientDay.stepsSource !== 'manual') ||
+        (serverSteps > clientSteps &&
+          serverDay.stepsSource !== 'manual' &&
+          clientDay.stepsSource !== 'manual'));
+
+    if (shouldKeepServerSteps) {
+      merged[dateKey] = {
+        ...clientDay,
+        steps: serverDay.steps,
+        stepsSource: serverDay.stepsSource,
+        stepsSyncedAt: serverDay.stepsSyncedAt,
+      };
+    }
+  }
+
+  // 2. שמירת ארוחות שפוענחו ע"י AI ברקע ושטרם אושרו בקליינט
   const unackedCompleted = (existing.pendingAiJobs || []).filter(
     (j) => j.status === 'completed' && !j.acknowledged && j.autoSyncedToLog
   );
@@ -1071,6 +1103,9 @@ export async function POST(request: NextRequest) {
           4,
           14,
           7.5
+        ),
+        dailyStepsTarget: Math.round(
+          sanitizeNumber(incoming.dailyStepsTarget, 1000, 50000, 8000)
         ),
       };
 

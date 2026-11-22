@@ -12,6 +12,7 @@ import {
   WifiOff,
   AlertTriangle,
   RefreshCw,
+  Download,
 } from 'lucide-react';
 import {
   AccountStatus,
@@ -19,8 +20,8 @@ import {
   AuthSessionUser,
   BodyMeasurementEntry,
   CoachDirectoryItem,
-  CoachOnboardingData,
   CoachProfile,
+  CoachOnboardingData,
   DailyCardioLog,
   DailyWorkoutLog,
   DayType,
@@ -29,6 +30,7 @@ import {
   PendingAiMealJob,
   QuickContextChip,
   SavedMealPreset,
+  StepsSyncSource,
   TraineeActivityTargets,
   TraineeCustomUnit,
   TraineeGroup,
@@ -42,6 +44,15 @@ import { CoachDashboardView } from '@/components/CoachDashboardView';
 import { AuthGateView } from '@/components/AuthGateView';
 import { CoachOnboardingWizard } from '@/components/CoachOnboardingWizard';
 import { BackgroundAiSyncBanner } from '@/components/BackgroundAiSyncBanner';
+import {
+  AppUpdateInfo,
+  checkNativeAppUpdate,
+  configureBackgroundStepsSync,
+  getLocalDateOffsetIso,
+  isNativeAndroidApp,
+  readNativeDailySteps,
+  subscribeAndroidAppResume,
+} from '@/lib/capacitorSteps';
 
 export default function HomePage() {
   const [currentUser, setCurrentUser] = useState<AuthSessionUser | null>(null);
@@ -75,6 +86,10 @@ export default function HomePage() {
   const [isOffline, setIsOffline] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [manualSyncing, setManualSyncing] = useState(false);
+  const [androidUpdateInfo, setAndroidUpdateInfo] = useState<AppUpdateInfo | null>(
+    null
+  );
+  const [dismissedUpdateBanner, setDismissedUpdateBanner] = useState(false);
   const [localBgJobs, setLocalBgJobs] = useState<PendingAiMealJob[]>([]);
   const [externalOpenMealRequest, setExternalOpenMealRequest] = useState<{
     traineeId: string;
@@ -220,6 +235,110 @@ export default function HomePage() {
     };
   }, [currentUser, fetchAuthorizedData]);
 
+  // סנכרון צעדים אוטומטי מאפליקציית האנדרואיד (Health Connect + Google Play Services Local Recording + WorkManager)
+  const syncNativeAndroidSteps = useCallback(async () => {
+    if (!isNativeAndroidApp() || !currentUser || currentUser.role !== 'trainee') {
+      return;
+    }
+    try {
+      const datesToSync = [getLocalDateOffsetIso(1), getLocalDateOffsetIso(0)];
+      const [tokenRes, readings] = await Promise.all([
+        fetch('/api/steps/sync', { cache: 'no-store' }).catch(() => null),
+        readNativeDailySteps(datesToSync),
+      ]);
+
+      if (tokenRes && tokenRes.ok && typeof window !== 'undefined') {
+        const tokenJson = (await tokenRes.json().catch(() => null)) as {
+          syncToken?: string;
+        } | null;
+        if (tokenJson?.syncToken) {
+          await configureBackgroundStepsSync({
+            baseUrl: window.location.origin,
+            syncToken: tokenJson.syncToken,
+            enabled: true,
+          });
+        }
+      }
+
+      if (readings.length === 0) return;
+
+      const syncRes = await fetch('/api/steps/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entries: readings.map((r) => ({
+            date: r.date,
+            steps: r.steps,
+            source: r.source,
+            syncedAt: new Date().toISOString(),
+          })),
+        }),
+      });
+
+      if (syncRes.ok) {
+        const result = (await syncRes.json()) as {
+          synced?: Record<
+            string,
+            { steps: number; stepsSource: StepsSyncSource; stepsSyncedAt: string }
+          >;
+        };
+        const syncedMap = result.synced || {};
+        if (Object.keys(syncedMap).length > 0) {
+          const applyStepsUpdate = (list: TraineeProfile[]) =>
+            list.map((t) => {
+              if (t.id !== currentUser.id) return t;
+              const nextLogs = { ...t.logs };
+              for (const [dKey, sInfo] of Object.entries(syncedMap)) {
+                const prevDay = nextLogs[dKey] || {
+                  date: dKey,
+                  dayType: 'workout',
+                  waterCups: 0,
+                  waterGoal: 12,
+                  weightKg: t.currentWeight,
+                  meals: {},
+                };
+                nextLogs[dKey] = {
+                  ...prevDay,
+                  steps: sInfo.steps,
+                  stepsSource: sInfo.stepsSource,
+                  stepsSyncedAt: sInfo.stepsSyncedAt,
+                };
+              }
+              return { ...t, logs: nextLogs };
+            });
+          traineesRef.current = applyStepsUpdate(traineesRef.current);
+          setTrainees((prev) => applyStepsUpdate(prev));
+        }
+      }
+    } catch {
+      // שקט: לא חוסם את האפליקציה
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!isNativeAndroidApp()) return;
+    let active = true;
+    checkNativeAppUpdate().then((info) => {
+      if (active && info?.updateAvailable) {
+        setAndroidUpdateInfo(info);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isNativeAndroidApp() || !currentUser || currentUser.role !== 'trainee') {
+      return;
+    }
+    void syncNativeAndroidSteps();
+    const unsub = subscribeAndroidAppResume(() => {
+      void syncNativeAndroidSteps();
+    });
+    return unsub;
+  }, [currentUser, syncNativeAndroidSteps]);
+
   const postDataAction = async (payload: Record<string, unknown>) => {
     syncingCountRef.current += 1;
     mutationEpochRef.current += 1;
@@ -305,6 +424,11 @@ export default function HomePage() {
     if (loggingOut) return;
     setLoggingOut(true);
     try {
+      await configureBackgroundStepsSync({
+        baseUrl: '',
+        syncToken: '',
+        enabled: false,
+      }).catch(() => {});
       await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {});
       setCurrentUser(null);
       setTrainees([]);
@@ -407,6 +531,9 @@ export default function HomePage() {
     date: string,
     payload: {
       sleepHours?: number;
+      steps?: number;
+      stepsSource?: StepsSyncSource;
+      stepsSyncedAt?: string;
       workoutLog?: DailyWorkoutLog;
       cardioLog?: DailyCardioLog;
     }
@@ -429,6 +556,15 @@ export default function HomePage() {
             ...currentLog,
             ...(payload.sleepHours !== undefined
               ? { sleepHours: payload.sleepHours }
+              : {}),
+            ...(payload.steps !== undefined
+              ? { steps: payload.steps }
+              : {}),
+            ...(payload.stepsSource !== undefined
+              ? { stepsSource: payload.stepsSource }
+              : {}),
+            ...(payload.stepsSyncedAt !== undefined
+              ? { stepsSyncedAt: payload.stepsSyncedAt }
               : {}),
             ...(payload.workoutLog !== undefined
               ? { workoutLog: payload.workoutLog }
@@ -1637,18 +1773,7 @@ export default function HomePage() {
         </div>
       )}
 
-      <header
-        style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 80,
-          background: 'rgba(8, 9, 12, 0.85)',
-          backdropFilter: 'blur(18px)',
-          WebkitBackdropFilter: 'blur(18px)',
-          borderBottom: '1px solid var(--border-subtle)',
-          padding: '10px 18px',
-        }}
-      >
+      <header className="spot-sticky-header">
         <div
           style={{
             maxWidth: 1180,
@@ -1837,6 +1962,59 @@ export default function HomePage() {
         </div>
       </header>
 
+      {androidUpdateInfo?.updateAvailable && !dismissedUpdateBanner && (
+        <div
+          style={{
+            background: 'rgba(210, 255, 40, 0.14)',
+            borderBottom: '1px solid rgba(210, 255, 40, 0.35)',
+            color: 'var(--accent-volt)',
+            padding: '8px 16px',
+            fontSize: 12,
+            fontWeight: 800,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 10,
+            flexWrap: 'wrap',
+          }}
+        >
+          <Download size={15} />
+          <span>
+            גרסה חדשה לאפליקציית האנדרואיד זמינה (v
+            {androidUpdateInfo.latestVersionName})
+          </span>
+          <a
+            href={androidUpdateInfo.apkDownloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              background: 'var(--accent-volt)',
+              color: '#08090c',
+              padding: '3px 10px',
+              borderRadius: 999,
+              textDecoration: 'none',
+              fontSize: 11,
+              fontWeight: 900,
+            }}
+          >
+            הורד עדכון
+          </a>
+          <button
+            type="button"
+            onClick={() => setDismissedUpdateBanner(true)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              fontWeight: 800,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <main
         style={{
           maxWidth: 1180,
@@ -1878,6 +2056,7 @@ export default function HomePage() {
             onStartBackgroundAiAnalysis={handleStartBackgroundAiAnalysis}
             externalOpenMealRequest={externalOpenMealRequest}
             geminiApiKey={geminiApiKey}
+            onSyncNativeStepsNow={syncNativeAndroidSteps}
           />
         ) : (currentUser.role === 'admin' || currentUser.role === 'coach') &&
           coachPreviewTraineeId &&
@@ -1908,6 +2087,7 @@ export default function HomePage() {
             onStartBackgroundAiAnalysis={handleStartBackgroundAiAnalysis}
             externalOpenMealRequest={externalOpenMealRequest}
             geminiApiKey={geminiApiKey}
+            onSyncNativeStepsNow={syncNativeAndroidSteps}
           />
         ) : (
           <CoachDashboardView
