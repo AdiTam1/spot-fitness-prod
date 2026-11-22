@@ -57,6 +57,9 @@ export interface LoggedFoodItem {
   grams: number;
   macros: MacroTargets;
   source: FoodEntrySource;
+  aiEngine?: string;
+  isAiFallback?: boolean;
+  fallbackReason?: string;
 }
 
 export interface LoggedMealEntry {
@@ -134,6 +137,9 @@ export interface AiMealSuggestionOption {
   whyItFits: string;
   items: LoggedFoodItem[];
   totals: MacroTargets;
+  aiEngine?: string;
+  isAiFallback?: boolean;
+  fallbackReason?: string;
 }
 
 export interface TraineeOnboardingData {

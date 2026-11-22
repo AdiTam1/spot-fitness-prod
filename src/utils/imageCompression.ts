@@ -1,41 +1,57 @@
 /**
- * דחיסת תמונות בצד הלקוח (Client-side WebP Compression)
- * מקטינה תמונות מצלמה מ-4MB~ ל-50KB~ בפורמט WebP כדי לחסוך 98% מנפח האחסון ב-Supabase
- * ולהאיץ דרמטית את השליחה ל-Gemini Vision API.
+ * דחיסת תמונות בצד הלקוח (Client-side WebP / JPEG Compression)
+ * מקטינה תמונות מצלמה מ-4MB~ ל-80-250KB כדי לחסוך נפח ולהאיץ את השליחה ל-Gemini Vision API.
  */
 export async function compressMealImage(
   file: File,
   maxWidth = 800,
-  quality = 0.75
-): Promise<{ dataUrl: string; sizeKB: number }> {
+  quality = 0.72
+): Promise<{ dataUrl: string; sizeKB: number; formatLabel: 'WebP' | 'JPEG' }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
+        const encode = (wLimit: number, q: number) => {
+          let width = img.width;
+          let height = img.height;
+          if (width > wLimit) {
+            height = Math.round((height * wLimit) / width);
+            width = wLimit;
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return null;
+          ctx.drawImage(img, 0, 0, width, height);
 
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-        }
+          // חלק מהדפדפנים (בעיקר iOS Safari) עלולים להחזיר PNG ענק במקום WebP - נעבור ל-JPEG אם WebP לא נוצר
+          const webpUrl = canvas.toDataURL('image/webp', q);
+          if (webpUrl.startsWith('data:image/webp')) {
+            return { url: webpUrl, formatLabel: 'WebP' as const };
+          }
+          const jpegUrl = canvas.toDataURL('image/jpeg', q);
+          return { url: jpegUrl, formatLabel: 'JPEG' as const };
+        };
 
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
+        let result = encode(maxWidth, quality);
+        if (!result) {
           reject(new Error('Canvas context unavailable'));
           return;
         }
-        ctx.drawImage(img, 0, 0, width, height);
 
-        const dataUrl = canvas.toDataURL('image/webp', quality);
-        const approxBytes = Math.round((dataUrl.length * 3) / 4);
+        // אם התמונה עדיין גדולה מ-~450KB, נדחס צעד נוסף לשליחה מהירה ל-AI
+        if (result.url.length > 600_000) {
+          const smaller = encode(640, 0.58);
+          if (smaller) result = smaller;
+        }
+
+        const approxBytes = Math.round((result.url.length * 3) / 4);
         resolve({
-          dataUrl,
+          dataUrl: result.url,
           sizeKB: Math.max(1, Math.round(approxBytes / 1024)),
+          formatLabel: result.formatLabel,
         });
       };
       img.onerror = () => reject(new Error('Failed to decode image'));

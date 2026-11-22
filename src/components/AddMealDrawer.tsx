@@ -84,18 +84,36 @@ export function AddMealDrawer({
     undefined
   );
   const [photoSizeKB, setPhotoSizeKB] = useState<number | null>(null);
+  const [photoFormatLabel, setPhotoFormatLabel] = useState<'WebP' | 'JPEG'>('WebP');
   const [photoNote, setPhotoNote] = useState('');
   const [photoMode, setPhotoMode] = useState<'plate' | 'nutrition-label'>('plate');
   const [freeTextPrompt, setFreeTextPrompt] = useState('');
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [aiSummary, setAiSummary] = useState<{
+    msg: string;
+    isError?: boolean;
+    engine?: string;
+    isFallback?: boolean;
+    fallbackReason?: string;
+  } | null>(null);
 
   const [aiRecommendations, setAiRecommendations] = useState<AiMealSuggestionOption[]>([]);
+  const [aiRecDebug, setAiRecDebug] = useState<{
+    engine?: string;
+    isFallback?: boolean;
+    fallbackReason?: string;
+  } | null>(null);
   const [aiRecLoading, setAiRecLoading] = useState(false);
   const [preferenceFeedbackText, setPreferenceFeedbackText] = useState('');
   const [learningPrefLoading, setLearningPrefLoading] = useState(false);
-  const [learnedFeedbackBanner, setLearnedFeedbackBanner] = useState<string | null>(null);
+  const [learnedFeedbackBanner, setLearnedFeedbackBanner] = useState<{
+    msg: string;
+    isError?: boolean;
+    engine?: string;
+    isFallback?: boolean;
+    fallbackReason?: string;
+  } | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] =
@@ -140,10 +158,12 @@ export function AddMealDrawer({
       setItems(existingEntry?.items ? [...existingEntry.items] : []);
       setPhotoDataUrl(existingEntry?.photoDataUrl);
       setPhotoSizeKB(null);
+      setPhotoFormatLabel('WebP');
       setPhotoNote(existingEntry?.photoNote || '');
       setFreeTextPrompt('');
       setSearchQuery('');
       setAiRecommendations([]);
+      setAiRecDebug(null);
       setLearnedFeedbackBanner(null);
       setPreferenceFeedbackText('');
       setEditingItemId(null);
@@ -259,23 +279,24 @@ export function AddMealDrawer({
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      setAiSummary('נא לבחור קובץ תמונה תקין (JPG, PNG, WebP)');
+      setAiSummary({ msg: 'נא לבחור קובץ תמונה תקין (JPG, PNG, WebP)', isError: true });
       e.target.value = '';
       return;
     }
     if (file.size > 20 * 1024 * 1024) {
-      setAiSummary('קובץ התמונה גדול מדי (מקסימום 20MB)');
+      setAiSummary({ msg: 'קובץ התמונה גדול מדי (מקסימום 20MB)', isError: true });
       e.target.value = '';
       return;
     }
     setPhotoUploading(true);
     setAiSummary(null);
     try {
-      const compressed = await compressMealImage(file, 800, 0.75);
+      const compressed = await compressMealImage(file, 800, 0.72);
       setPhotoDataUrl(compressed.dataUrl);
       setPhotoSizeKB(compressed.sizeKB);
+      setPhotoFormatLabel(compressed.formatLabel);
     } catch {
-      setAiSummary('לא ניתן לקרוא את התמונה – נסה לצלם שוב');
+      setAiSummary({ msg: 'לא ניתן לקרוא את התמונה – נסה לצלם שוב', isError: true });
     } finally {
       setPhotoUploading(false);
       e.target.value = '';
@@ -289,6 +310,10 @@ export function AddMealDrawer({
   ) => {
     if (aiLockRef.current) return;
     const rawPrompt = customTextOverride ?? (mode === 'photo' ? photoNote : freeTextPrompt);
+    if (mode === 'photo' && !photoDataUrl && !rawPrompt.trim()) {
+      setAiSummary({ msg: 'נא להעלות תמונה או להזין תיאור של הארוחה', isError: true });
+      return;
+    }
     const promptToUse =
       mode === 'photo' && photoMode === 'nutrition-label'
         ? `קרא את טבלת הערכים התזונתיים מהתמונה וחלץ את המוצר והערכים שלו למנה/100 גרם: ${rawPrompt}`
@@ -302,29 +327,40 @@ export function AddMealDrawer({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageDataUrl:
-            mode === 'photo'
-              ? photoDataUrl || 'data:image/webp;base64,DEMO'
-              : undefined,
+          imageDataUrl: mode === 'photo' ? photoDataUrl || undefined : undefined,
           textPrompt: promptToUse,
           customApiKey: geminiApiKey,
         }),
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setAiSummary('שגיאה בפענוח ה-AI – נסה שוב');
+        setAiSummary({
+          msg: data.error || 'שגיאה בפענוח ה-AI – נסה שוב',
+          isError: true,
+        });
         return;
       }
-      const data = await res.json();
       if (Array.isArray(data.items) && data.items.length > 0) {
         setItems((prev) => [...prev, ...data.items]);
-        setAiSummary(
-          `זוהו ${data.items.length} מרכיבים ונוספו לארוחה (ניתן לערוך כמויות וערכים למטה)`
-        );
+        const isFallback = Boolean(data.isAiFallback || data.isFallback);
+        const detail =
+          isFallback && data.summary
+            ? `${data.summary} (ניתן לערוך כמויות וערכים למטה)`
+            : `זוהו ${data.items.length} מרכיבים ונוספו לארוחה (ניתן לערוך כמויות וערכים למטה)`;
+        setAiSummary({
+          msg: detail,
+          engine: data.engine,
+          isFallback,
+          fallbackReason: data.fallbackReason,
+        });
       } else {
-        setAiSummary('לא זוהו מרכיבים – נסה לתאר בצורה מפורטת יותר');
+        setAiSummary({
+          msg: 'לא זוהו מרכיבים – נסה לתאר בצורה מפורטת יותר',
+          isError: true,
+        });
       }
     } catch {
-      setAiSummary('שגיאה בפענוח ה-AI');
+      setAiSummary({ msg: 'שגיאה בפענוח ה-AI', isError: true });
     } finally {
       aiLockRef.current = false;
       setAiLoading(false);
@@ -344,7 +380,10 @@ export function AddMealDrawer({
       (window as unknown as { webkitSpeechRecognition?: new () => { lang: string; interimResults: boolean; onresult: (e: { results: { [k: number]: { [k: number]: { transcript: string } } } }) => void; onend: () => void; onerror: () => void; start: () => void; stop: () => void } }).webkitSpeechRecognition;
 
     if (!SpeechRec) {
-      setAiSummary('הדפדפן שלך אינו תומך בהקלטה קולית (נסה Chrome או Safari)');
+      setAiSummary({
+        msg: 'הדפדפן שלך אינו תומך בהקלטה קולית (נסה Chrome או Safari)',
+        isError: true,
+      });
       return;
     }
 
@@ -396,18 +435,32 @@ export function AddMealDrawer({
           action: 'recommend',
           traineeId,
           mealName: mealSlot.name,
-          remainingMacros,
+          targetMacros: remainingMacros,
           customApiKey: geminiApiKey,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setAiSummary({
+          msg: data.error || 'שגיאה בקבלת המלצות ארוחה מ-AI',
+          isError: true,
+        });
+        return;
+      }
       if (Array.isArray(data.options)) {
         setAiRecommendations(data.options);
+        setAiRecDebug({
+          engine: data.engine,
+          isFallback: Boolean(data.isAiFallback),
+          fallbackReason: data.fallbackReason,
+        });
       } else {
-        setAiSummary('לא התקבלו הצעות – נסה שוב');
+        setAiRecDebug(null);
+        setAiSummary({ msg: 'לא התקבלו הצעות – נסה שוב', isError: true });
       }
     } catch {
-      setAiSummary('שגיאה בקבלת המלצות ארוחה מ-AI');
+      setAiRecDebug(null);
+      setAiSummary({ msg: 'שגיאה בקבלת המלצות ארוחה מ-AI', isError: true });
     } finally {
       recLockRef.current = false;
       setAiRecLoading(false);
@@ -426,22 +479,34 @@ export function AddMealDrawer({
         body: JSON.stringify({
           action: 'learn-preference',
           traineeId,
-          feedbackText: preferenceFeedbackText.trim(),
+          userFeedbackText: preferenceFeedbackText.trim(),
           customApiKey: geminiApiKey,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok && data.learnedRule) {
-        setLearnedFeedbackBanner(`נלמד ונשמר לעתיד: "${data.learnedRule}"`);
+        setLearnedFeedbackBanner({
+          msg: `נלמד ונשמר לעתיד: "${data.learnedRule}"`,
+          engine: data.engine,
+          isFallback: Boolean(data.isAiFallback),
+          fallbackReason: data.fallbackReason,
+        });
         setPreferenceFeedbackText('');
-        if (onPreferenceLearned && Array.isArray(data.allPreferences)) {
-          onPreferenceLearned(data.allPreferences);
+        const nextPrefs = data.aiLearnedPreferences || data.allPreferences;
+        if (onPreferenceLearned && Array.isArray(nextPrefs)) {
+          onPreferenceLearned(nextPrefs);
         }
       } else {
-        setLearnedFeedbackBanner('שגיאה בשמירת ההעדפה');
+        setLearnedFeedbackBanner({
+          msg: data.error || 'שגיאה בשמירת ההעדפה',
+          isError: true,
+        });
       }
     } catch {
-      setLearnedFeedbackBanner('שגיאה בשמירת ההעדפה');
+      setLearnedFeedbackBanner({
+        msg: 'שגיאה בשמירת ההעדפה',
+        isError: true,
+      });
     } finally {
       prefLockRef.current = false;
       setLearningPrefLoading(false);
@@ -742,6 +807,31 @@ export function AddMealDrawer({
                   {/* רשימת 3 ההצעות מה-AI */}
                   {aiRecommendations.length > 0 && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                      {aiRecDebug?.engine && (
+                        <div
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            padding: '5px 10px',
+                            borderRadius: 8,
+                            background: aiRecDebug.isFallback
+                              ? 'rgba(245, 158, 11, 0.14)'
+                              : 'rgba(210, 255, 40, 0.08)',
+                            border: aiRecDebug.isFallback
+                              ? '1px solid rgba(245, 158, 11, 0.35)'
+                              : '1px solid rgba(210, 255, 40, 0.25)',
+                            color: aiRecDebug.isFallback ? '#fbbf24' : 'var(--accent-volt)',
+                          }}
+                        >
+                          {aiRecDebug.isFallback
+                            ? `⚠️ נוצר ע״י מנוע כללים מקומי (לא AI · ${aiRecDebug.engine})${
+                                aiRecDebug.fallbackReason
+                                  ? ` · סיבה לתחקור: ${aiRecDebug.fallbackReason}`
+                                  : ''
+                              }`
+                            : `✨ נוצר ע״י AI (${aiRecDebug.engine})`}
+                        </div>
+                      )}
                       {aiRecommendations.map((option) => (
                         <div
                           key={option.id}
@@ -769,7 +859,9 @@ export function AddMealDrawer({
                             <button
                               onClick={() => {
                                 setItems((prev) => [...prev, ...option.items]);
-                                setAiSummary(`נוספה לארוחה ההצעה: "${option.title}"`);
+                                setAiSummary({
+                                  msg: `נוספה לארוחה ההצעה: "${option.title}"`,
+                                });
                               }}
                               className="btn-volt"
                               style={{
@@ -875,14 +967,43 @@ export function AddMealDrawer({
                           marginTop: 8,
                           padding: '7px 10px',
                           borderRadius: 8,
-                          background: 'rgba(34, 197, 94, 0.12)',
-                          border: '1px solid rgba(34, 197, 94, 0.35)',
-                          color: '#4ade80',
+                          background: learnedFeedbackBanner.isError
+                            ? 'rgba(239, 68, 68, 0.14)'
+                            : 'rgba(34, 197, 94, 0.12)',
+                          border: learnedFeedbackBanner.isError
+                            ? '1px solid rgba(239, 68, 68, 0.35)'
+                            : '1px solid rgba(34, 197, 94, 0.35)',
+                          color: learnedFeedbackBanner.isError
+                            ? '#f87171'
+                            : '#4ade80',
                           fontSize: 11,
                           fontWeight: 700,
                         }}
                       >
-                        ✓ {learnedFeedbackBanner}
+                        <div>
+                          {learnedFeedbackBanner.isError
+                            ? learnedFeedbackBanner.msg
+                            : `✓ ${learnedFeedbackBanner.msg}`}
+                        </div>
+                        {!learnedFeedbackBanner.isError && learnedFeedbackBanner.engine && (
+                          <div
+                            style={{
+                              marginTop: 4,
+                              fontSize: 10,
+                              color: learnedFeedbackBanner.isFallback
+                                ? '#fbbf24'
+                                : 'var(--text-secondary)',
+                            }}
+                          >
+                            {learnedFeedbackBanner.isFallback
+                              ? `⚠️ נשמר ע״י מנגנון מקומי (לא AI · ${learnedFeedbackBanner.engine})${
+                                  learnedFeedbackBanner.fallbackReason
+                                    ? ` · סיבה: ${learnedFeedbackBanner.fallbackReason}`
+                                    : ''
+                                }`
+                              : `✨ נותח ע״י AI (${learnedFeedbackBanner.engine})`}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1257,7 +1378,7 @@ export function AddMealDrawer({
                             fontWeight: 700,
                           }}
                         >
-                          כווץ אוטומטית ל-{photoSizeKB}KB (WebP)
+                          כווץ אוטומטית ל-{photoSizeKB}KB ({photoFormatLabel})
                         </span>
                       )}
                     </div>
@@ -1340,7 +1461,11 @@ export function AddMealDrawer({
                 />
 
                 <button
-                  disabled={aiLoading}
+                  disabled={
+                    aiLoading ||
+                    photoUploading ||
+                    (!photoDataUrl && !photoNote.trim())
+                  }
                   onClick={() => runAiAnalysis('photo')}
                   className="btn-volt"
                   style={{
@@ -1566,14 +1691,37 @@ export function AddMealDrawer({
                 style={{
                   padding: '10px 14px',
                   borderRadius: 12,
-                  background: 'rgba(210, 255, 40, 0.1)',
-                  border: '1px solid rgba(210, 255, 40, 0.3)',
-                  color: 'var(--accent-volt)',
+                  background: aiSummary.isError
+                    ? 'rgba(239, 68, 68, 0.14)'
+                    : aiSummary.isFallback
+                    ? 'rgba(245, 158, 11, 0.14)'
+                    : 'rgba(210, 255, 40, 0.1)',
+                  border: aiSummary.isError
+                    ? '1px solid rgba(239, 68, 68, 0.35)'
+                    : aiSummary.isFallback
+                    ? '1px solid rgba(245, 158, 11, 0.35)'
+                    : '1px solid rgba(210, 255, 40, 0.3)',
+                  color: aiSummary.isError
+                    ? '#f87171'
+                    : aiSummary.isFallback
+                    ? '#fbbf24'
+                    : 'var(--accent-volt)',
                   fontSize: 12,
                   fontWeight: 700,
                 }}
               >
-                {aiSummary}
+                <div>{aiSummary.msg}</div>
+                {aiSummary.engine && (
+                  <div style={{ marginTop: 4, fontSize: 10, opacity: 0.95 }}>
+                    {aiSummary.isFallback
+                      ? `⚠️ תג תחקור: לא AI פיענח (${aiSummary.engine})${
+                          aiSummary.fallbackReason
+                            ? ` · סיבה: ${aiSummary.fallbackReason}`
+                            : ''
+                        }`
+                      : `✨ מנוע AI פעיל: ${aiSummary.engine}`}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1645,7 +1793,8 @@ export function AddMealDrawer({
                               style={{
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: 8,
+                                gap: 6,
+                                flexWrap: 'wrap',
                               }}
                             >
                               <span style={{ fontSize: 13, fontWeight: 700 }}>
@@ -1662,6 +1811,34 @@ export function AddMealDrawer({
                               >
                                 {item.unitLabel}
                               </span>
+                              {(item.isAiFallback || item.aiEngine) && (
+                                <span
+                                  title={
+                                    item.fallbackReason
+                                      ? `סיבת גיבוי: ${item.fallbackReason}`
+                                      : item.aiEngine
+                                  }
+                                  style={{
+                                    fontSize: 9,
+                                    padding: '1px 6px',
+                                    borderRadius: 999,
+                                    fontWeight: 800,
+                                    background: item.isAiFallback
+                                      ? 'rgba(245, 158, 11, 0.16)'
+                                      : 'rgba(210, 255, 40, 0.1)',
+                                    border: item.isAiFallback
+                                      ? '1px solid rgba(245, 158, 11, 0.38)'
+                                      : '1px solid rgba(210, 255, 40, 0.28)',
+                                    color: item.isAiFallback
+                                      ? '#fbbf24'
+                                      : 'var(--accent-volt)',
+                                  }}
+                                >
+                                  {item.isAiFallback
+                                    ? `לא AI · ${item.aiEngine || 'Fallback'}`
+                                    : `AI · ${item.aiEngine}`}
+                                </span>
+                              )}
                             </div>
                             <div
                               className="num-mono"
