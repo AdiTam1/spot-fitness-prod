@@ -34,6 +34,10 @@ const config: CapacitorConfig = {
       // DARK = אייקונים וטקסט בהירים בסטטוס-בר על הרקע הכהה של SPOT
       style: 'DARK',
     },
+    PushNotifications: {
+      // הסתרה אוטומטית של באנר מערכת כשהאפליקציה פתוחה בחזית (מונע התראות AI כפולות כשהמשתמש במסך)
+      presentationOptions: [],
+    },
   },
 };
 

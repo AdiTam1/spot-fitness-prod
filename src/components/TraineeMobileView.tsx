@@ -14,6 +14,7 @@ import {
   Copy,
   Activity,
   Utensils,
+  User,
   MessageSquare,
   Ruler,
   Eye,
@@ -39,6 +40,7 @@ import {
   TraineeCustomUnit,
   TraineeOnboardingData,
   TraineeProfile,
+  TraineePushPreferences,
   TraineeServingTool,
   WeeklyCheckInEntry,
 } from '@/types/nutrition';
@@ -47,6 +49,15 @@ import { AddMealDrawer } from './AddMealDrawer';
 import { TraineeOnboardingWizard } from './TraineeOnboardingWizard';
 import { BodyMeasurementGuide } from './BodyMeasurementGuide';
 import { DailyStepsCard } from './DailyStepsCard';
+import { TraineeProfileView } from './TraineeProfileView';
+
+function findTraineeMealSlotById(trainee: TraineeProfile, mealSlotId: string) {
+  const allSlots = [
+    ...(trainee.workoutTemplate?.meals || []),
+    ...(trainee.restTemplate?.meals || []),
+  ];
+  return allSlots.find((s) => s.id === mealSlotId);
+}
 
 interface TraineeMobileViewProps {
   trainee: TraineeProfile;
@@ -146,6 +157,14 @@ interface TraineeMobileViewProps {
     mealSlotId: string;
     nonce: number;
   } | null;
+  externalSectionRequest?: {
+    traineeId: string;
+    section: 'journal' | 'metrics' | 'profile';
+    date?: string;
+    nonce: number;
+  } | null;
+  onRenameProfile?: (name: string) => Promise<{ error?: string }>;
+  onPushPreferencesUpdated?: (prefs: TraineePushPreferences) => void;
   geminiApiKey?: string;
   onSyncNativeStepsNow?: () => Promise<void>;
 }
@@ -195,14 +214,17 @@ export function TraineeMobileView({
   backgroundAiJobs = [],
   onStartBackgroundAiAnalysis,
   externalOpenMealRequest,
+  externalSectionRequest,
+  onRenameProfile,
+  onPushPreferencesUpdated,
   geminiApiKey,
   onSyncNativeStepsNow,
 }: TraineeMobileViewProps) {
   const todayIso = getTodayIso();
   const [selectedDate, setSelectedDate] = useState<string>(todayIso);
-  const [mobileSection, setMobileSection] = useState<'journal' | 'metrics'>(
-    'journal'
-  );
+  const [mobileSection, setMobileSection] = useState<
+    'journal' | 'metrics' | 'profile'
+  >('journal');
   const [editingOnboarding, setEditingOnboarding] = useState(false);
   const [measurementModalOpen, setMeasurementModalOpen] = useState(false);
 
@@ -256,18 +278,28 @@ export function TraineeMobileView({
     }
     setMobileSection('journal');
     setSelectedDate(externalOpenMealRequest.date);
-    const allSlots = [
-      ...(trainee.workoutTemplate?.meals || []),
-      ...(trainee.restTemplate?.meals || []),
-    ];
-    const targetSlot = allSlots.find(
-      (s) => s.id === externalOpenMealRequest.mealSlotId
+    const targetSlot = findTraineeMealSlotById(
+      trainee,
+      externalOpenMealRequest.mealSlotId
     );
     if (targetSlot) {
       setActiveMealSlot(targetSlot);
       setDrawerTab('catalog');
     }
-  }, [externalOpenMealRequest, trainee.id, trainee.workoutTemplate, trainee.restTemplate]);
+  }, [externalOpenMealRequest, trainee]);
+
+  useEffect(() => {
+    if (
+      !externalSectionRequest ||
+      externalSectionRequest.traineeId !== trainee.id
+    ) {
+      return;
+    }
+    setMobileSection(externalSectionRequest.section);
+    if (externalSectionRequest.date) {
+      setSelectedDate(externalSectionRequest.date);
+    }
+  }, [externalSectionRequest, trainee.id]);
 
   // אם המתאמן מתחבר בפעם הראשונה וטרם השלים Onboarding -> מציג את אשף ה-Onboarding
   if (
@@ -2001,7 +2033,7 @@ export function TraineeMobileView({
               })}
             </div>
           </motion.div>
-        ) : (
+        ) : mobileSection === 'metrics' ? (
           /* טאב מדדים, מים, משקל גוף והיקפים */
           <motion.div
             key="metrics"
@@ -2653,6 +2685,38 @@ export function TraineeMobileView({
               </div>
             </div>
           </motion.div>
+        ) : (
+          /* טאב פרופיל: הארוחות שלי, סטטיסטיקות, הגדרות פושים ושינוי שם */
+          <motion.div
+            key="profile"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
+          >
+            <TraineeProfileView
+              trainee={trainee}
+              todayIso={todayIso}
+              isCoachPreview={isCoachPreview}
+              onRenameProfile={
+                onRenameProfile ??
+                (async () => ({
+                  error: 'שינוי שם זמין רק מהחשבון של המתאמן עצמו',
+                }))
+              }
+              onPushPreferencesUpdated={onPushPreferencesUpdated}
+              onOpenMealFromHistory={(date, mealSlotId) => {
+                setMobileSection('journal');
+                setSelectedDate(date);
+                const targetSlot = findTraineeMealSlotById(trainee, mealSlotId);
+                if (targetSlot) {
+                  setActiveMealSlot(targetSlot);
+                  setDrawerTab('catalog');
+                }
+              }}
+            />
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -2661,20 +2725,22 @@ export function TraineeMobileView({
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '1fr auto 1fr',
+            gridTemplateColumns:
+              'minmax(0, 1fr) auto minmax(0, 1fr) minmax(0, 1fr)',
             alignItems: 'center',
-            gap: 8,
+            gap: 4,
           }}
         >
           <button
             onClick={() => setMobileSection('journal')}
             style={{
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 6,
-              padding: '10px 14px',
-              borderRadius: 999,
+              gap: 3,
+              padding: '7px 4px',
+              borderRadius: 14,
               border: 'none',
               background:
                 mobileSection === 'journal'
@@ -2684,13 +2750,13 @@ export function TraineeMobileView({
                 mobileSection === 'journal'
                   ? 'var(--text-primary)'
                   : 'var(--text-secondary)',
-              fontSize: 13,
+              fontSize: 11,
               fontWeight: 700,
               cursor: 'pointer',
             }}
           >
-            <Utensils size={15} />
-            <span>יומן ארוחות</span>
+            <Utensils size={16} />
+            <span>יומן</span>
           </button>
 
           <button
@@ -2705,10 +2771,11 @@ export function TraineeMobileView({
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
-              padding: '10px 18px',
+              gap: 5,
+              padding: '10px 14px',
               borderRadius: 999,
-              fontSize: 13,
+              fontSize: 12.5,
+              whiteSpace: 'nowrap',
               cursor: 'pointer',
               boxShadow: '0 4px 18px rgba(210, 255, 40, 0.35)',
             }}
@@ -2721,11 +2788,12 @@ export function TraineeMobileView({
             onClick={() => setMobileSection('metrics')}
             style={{
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 6,
-              padding: '10px 14px',
-              borderRadius: 999,
+              gap: 3,
+              padding: '7px 4px',
+              borderRadius: 14,
               border: 'none',
               background:
                 mobileSection === 'metrics'
@@ -2735,13 +2803,41 @@ export function TraineeMobileView({
                 mobileSection === 'metrics'
                   ? 'var(--text-primary)'
                   : 'var(--text-secondary)',
-              fontSize: 13,
+              fontSize: 11,
               fontWeight: 700,
               cursor: 'pointer',
             }}
           >
-            <Activity size={15} />
-            <span>משקל והיקפים</span>
+            <Activity size={16} />
+            <span>מדדים</span>
+          </button>
+
+          <button
+            onClick={() => setMobileSection('profile')}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 3,
+              padding: '7px 4px',
+              borderRadius: 14,
+              border: 'none',
+              background:
+                mobileSection === 'profile'
+                  ? 'rgba(255, 255, 255, 0.08)'
+                  : 'transparent',
+              color:
+                mobileSection === 'profile'
+                  ? 'var(--text-primary)'
+                  : 'var(--text-secondary)',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            <User size={16} />
+            <span>פרופיל</span>
           </button>
         </div>
       </div>

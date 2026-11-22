@@ -123,6 +123,10 @@ interface EmbeddedTraineeMeta {
   customFoodUnits?: TraineeCustomUnit[];
   recentContextChips?: QuickContextChip[];
   pendingAiJobs?: PendingAiMealJob[];
+  fcmTokens?: TraineeProfile['fcmTokens'];
+  pushPreferences?: TraineeProfile['pushPreferences'];
+  lastForegroundState?: TraineeProfile['lastForegroundState'];
+  pushHistory?: TraineeProfile['pushHistory'];
   primaryCoachId?: string;
   sharedCoachIds?: string[];
   groupId?: string | null;
@@ -269,6 +273,17 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
       ? embeddedMeta.pendingAiJobs
       : Array.isArray(row.pending_ai_jobs)
       ? (row.pending_ai_jobs as PendingAiMealJob[])
+      : [],
+    fcmTokens: Array.isArray(embeddedMeta.fcmTokens)
+      ? embeddedMeta.fcmTokens
+      : [],
+    pushPreferences: embeddedMeta.pushPreferences || {
+      aiMealReady: true,
+      coachMessages: true,
+    },
+    lastForegroundState: embeddedMeta.lastForegroundState,
+    pushHistory: Array.isArray(embeddedMeta.pushHistory)
+      ? embeddedMeta.pushHistory
       : [],
     logs: rawLogs as TraineeProfile['logs'],
   };
@@ -855,6 +870,13 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
       customFoodUnits: t.customFoodUnits || [],
       recentContextChips: t.recentContextChips || [],
       pendingAiJobs: t.pendingAiJobs || [],
+      fcmTokens: t.fcmTokens || [],
+      pushPreferences: t.pushPreferences || {
+        aiMealReady: true,
+        coachMessages: true,
+      },
+      lastForegroundState: t.lastForegroundState,
+      pushHistory: t.pushHistory || [],
       primaryCoachId: t.primaryCoachId || 'coach-admin',
       sharedCoachIds: t.sharedCoachIds || [],
       groupId: t.groupId || null,

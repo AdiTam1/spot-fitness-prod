@@ -1,0 +1,975 @@
+'use client';
+
+import React, { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import {
+  User,
+  Bell,
+  BellOff,
+  Check,
+  Search,
+  Utensils,
+  TrendingUp,
+  Footprints,
+  Droplets,
+  Flame,
+  Smartphone,
+  Settings,
+  Send,
+  Loader2,
+  ExternalLink,
+  AlertTriangle,
+} from 'lucide-react';
+import { Switch } from '@mantine/core';
+import { TraineeProfile, TraineePushPreferences } from '@/types/nutrition';
+import { sumMacros } from '@/data/israeliFoodCatalog';
+import {
+  AndroidPushStatus,
+  getAndroidPushStatus,
+  openAndroidNotificationSettings,
+  requestAndRegisterAndroidPush,
+} from '@/lib/capacitorPush';
+
+interface TraineeProfileViewProps {
+  trainee: TraineeProfile;
+  todayIso: string;
+  isCoachPreview?: boolean;
+  onRenameProfile: (name: string) => Promise<{ error?: string }>;
+  onOpenMealFromHistory: (date: string, mealSlotId: string) => void;
+  onPushPreferencesUpdated?: (prefs: TraineePushPreferences) => void;
+}
+
+export function TraineeProfileView({
+  trainee,
+  todayIso,
+  isCoachPreview = false,
+  onRenameProfile,
+  onOpenMealFromHistory,
+  onPushPreferencesUpdated,
+}: TraineeProfileViewProps) {
+  const [nameInput, setNameInput] = useState(trainee.name);
+  const [savingName, setSavingName] = useState(false);
+  const [nameMessage, setNameMessage] = useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
+
+  const [mealSearch, setMealSearch] = useState('');
+
+  const [pushStatus, setPushStatus] = useState<AndroidPushStatus | null>(null);
+  const [prefs, setPrefs] = useState<TraineePushPreferences>({
+    aiMealReady: trainee.pushPreferences?.aiMealReady !== false,
+    coachMessages: trainee.pushPreferences?.coachMessages !== false,
+  });
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushFeedback, setPushFeedback] = useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
+
+  useEffect(() => {
+    setNameInput(trainee.name);
+  }, [trainee.name]);
+
+  useEffect(() => {
+    setPrefs({
+      aiMealReady: trainee.pushPreferences?.aiMealReady !== false,
+      coachMessages: trainee.pushPreferences?.coachMessages !== false,
+    });
+  }, [trainee.pushPreferences]);
+
+  const refreshPushStatus = async () => {
+    const st = await getAndroidPushStatus();
+    setPushStatus(st);
+  };
+
+  useEffect(() => {
+    void refreshPushStatus();
+  }, []);
+
+  // מיני-דשבורד סטטיסטיקות (7 ימים אחרונים + מגמת משקל)
+  const stats = useMemo(() => {
+    const recentDates: string[] = [];
+    const base = new Date(`${todayIso}T12:00:00`);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(base);
+      d.setDate(base.getDate() - i);
+      recentDates.push(
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+          d.getDate()
+        ).padStart(2, '0')}`
+      );
+    }
+
+    let calDays = 0;
+    let totalCal = 0;
+    let totalProtein = 0;
+    let waterDays = 0;
+    let totalWater = 0;
+    let stepDays = 0;
+    let totalSteps = 0;
+    let mealsLoggedCount = 0;
+
+    for (const dIso of recentDates) {
+      const log = trainee.logs?.[dIso];
+      if (!log) continue;
+      const dayItems = Object.values(log.meals || {}).flatMap(
+        (m) => m?.items || []
+      );
+      if (dayItems.length > 0) {
+        const dayMac = sumMacros(dayItems.map((item) => item.macros));
+        totalCal += dayMac.calories;
+        totalProtein += dayMac.protein;
+        calDays += 1;
+        mealsLoggedCount += Object.values(log.meals || {}).filter(
+          (m) => (m?.items?.length || 0) > 0
+        ).length;
+      }
+      if ((log.waterCups || 0) > 0) {
+        totalWater += log.waterCups;
+        waterDays += 1;
+      }
+      if ((log.steps || 0) > 0) {
+        totalSteps += log.steps || 0;
+        stepDays += 1;
+      }
+    }
+
+    const firstWeight = trainee.weightHistory?.[0]?.weight;
+    const weightDelta =
+      typeof firstWeight === 'number'
+        ? Number((trainee.currentWeight - firstWeight).toFixed(1))
+        : null;
+
+    return {
+      avgCalories: calDays > 0 ? Math.round(totalCal / calDays) : 0,
+      avgProtein: calDays > 0 ? Math.round(totalProtein / calDays) : 0,
+      avgWater: waterDays > 0 ? (totalWater / waterDays).toFixed(1) : '0',
+      avgSteps: stepDays > 0 ? Math.round(totalSteps / stepDays) : 0,
+      mealsLoggedCount,
+      activeDays: calDays,
+      weightDelta,
+    };
+  }, [trainee, todayIso]);
+
+  // רשימת ארוחות המתאמן מדף הפרופיל (חיפוש + צפייה היסטורית)
+  const loggedMealsList = useMemo(() => {
+    const slotNames = new Map<string, string>();
+    for (const s of trainee.workoutTemplate?.meals || []) {
+      slotNames.set(s.id, s.name);
+    }
+    for (const s of trainee.restTemplate?.meals || []) {
+      if (!slotNames.has(s.id)) slotNames.set(s.id, s.name);
+    }
+
+    const rows: Array<{
+      id: string;
+      date: string;
+      mealSlotId: string;
+      mealSlotName: string;
+      updatedAt?: string;
+      calories: number;
+      protein: number;
+      itemsSummary: string;
+      itemsCount: number;
+    }> = [];
+
+    const sortedDates = Object.keys(trainee.logs || {})
+      .filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k))
+      .sort((a, b) => b.localeCompare(a))
+      .slice(0, 30);
+
+    for (const date of sortedDates) {
+      const dayLog = trainee.logs[date];
+      if (!dayLog?.meals) continue;
+      for (const [slotId, entry] of Object.entries(dayLog.meals)) {
+        if (!entry || !entry.items || entry.items.length === 0) continue;
+        const m = sumMacros(entry.items.map((item) => item.macros));
+        const slotName = slotNames.get(slotId) || slotId;
+        const summary = entry.items.map((i) => i.name).join(', ');
+        rows.push({
+          id: `${date}-${slotId}`,
+          date,
+          mealSlotId: slotId,
+          mealSlotName: slotName,
+          updatedAt: entry.updatedAt,
+          calories: Math.round(m.calories),
+          protein: Math.round(m.protein),
+          itemsSummary: summary,
+          itemsCount: entry.items.length,
+        });
+      }
+    }
+
+    const q = mealSearch.trim().toLowerCase();
+    if (!q) return rows.slice(0, 40);
+    return rows
+      .filter(
+        (r) =>
+          r.itemsSummary.toLowerCase().includes(q) ||
+          r.mealSlotName.toLowerCase().includes(q) ||
+          r.date.includes(q)
+      )
+      .slice(0, 40);
+  }, [trainee, mealSearch]);
+
+  const handleSaveName = async () => {
+    const clean = nameInput.trim();
+    if (clean.length < 2) {
+      setNameMessage({ ok: false, text: 'יש להזין לפחות 2 תווים' });
+      return;
+    }
+    setSavingName(true);
+    setNameMessage(null);
+    try {
+      const res = await onRenameProfile(clean);
+      if (res?.error) {
+        setNameMessage({ ok: false, text: res.error });
+      } else {
+        setNameMessage({ ok: true, text: 'שם המשתמש עודכן בהצלחה ✓' });
+      }
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  const handleUpdatePushPrefs = async (next: TraineePushPreferences) => {
+    setPrefs(next);
+    if (isCoachPreview) return;
+    try {
+      const res = await fetch('/api/push/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          op: 'update-preferences',
+          ...next,
+        }),
+      });
+      if (res.ok && onPushPreferencesUpdated) {
+        onPushPreferencesUpdated(next);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleEnablePushFromProfile = async () => {
+    if (pushBusy || isCoachPreview) return;
+    setPushBusy(true);
+    setPushFeedback(null);
+    try {
+      const res = await requestAndRegisterAndroidPush();
+      await refreshPushStatus();
+      if (res.ok) {
+        setPushFeedback({
+          ok: true,
+          text: 'התראות הופעלו והמכשיר נרשם בהצלחה ✓',
+        });
+      } else if (res.reason === 'firebase-not-configured') {
+        setPushFeedback({
+          ok: false,
+          text: 'שרת ההתראות (google-services.json) עדיין בתהליך חיבור ל־APK.',
+        });
+      } else if (res.reason === 'denied') {
+        setPushFeedback({
+          ok: false,
+          text: 'המערכת חוסמת התראות כרגע — לחץ על "פתח הגדרות התראות במכשיר" כדי לאשר.',
+        });
+      } else {
+        setPushFeedback({
+          ok: false,
+          text: 'לא ניתן להשלים רישום התראות כרגע. נסה שוב בעוד רגע.',
+        });
+      }
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const handleTestPush = async () => {
+    if (pushBusy || isCoachPreview) return;
+    setPushBusy(true);
+    setPushFeedback(null);
+    try {
+      const res = await fetch('/api/push/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ op: 'test-self' }),
+      });
+      const json = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      if (!res.ok) {
+        setPushFeedback({
+          ok: false,
+          text: json?.error || 'שגיאה בשליחת התראת בדיקה',
+        });
+      } else {
+        setPushFeedback({
+          ok: true,
+          text: 'נשלחה התראת בדיקה למכשיר שלך!',
+        });
+      }
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* 1. כרטיס זהות ושינוי שם משתמש */}
+      <div className="pro-card-elevated" style={{ padding: 18 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            marginBottom: 14,
+          }}
+        >
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: '50%',
+              background: 'var(--accent-volt)',
+              color: '#08090c',
+              display: 'grid',
+              placeItems: 'center',
+              fontSize: 20,
+              fontWeight: 900,
+              flexShrink: 0,
+            }}
+          >
+            {trainee.name.charAt(0) || 'מ'}
+          </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 17, fontWeight: 900 }}>{trainee.name}</div>
+            <div
+              style={{
+                fontSize: 12,
+                color: 'var(--text-secondary)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {trainee.email || 'מתאמן SPOT'} • מטרה: {trainee.goal || 'מעקב תזונה'}
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: 'var(--text-secondary)',
+            marginBottom: 6,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          <User size={13} color="var(--accent-volt)" />
+          <span>שינוי שם משתמש (שם תצוגה באפליקציה ובהתראות)</span>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            type="text"
+            value={nameInput}
+            maxLength={60}
+            disabled={isCoachPreview || savingName}
+            onChange={(e) => setNameInput(e.target.value)}
+            placeholder="הקלד שם חדש..."
+            style={{
+              flex: 1,
+              background: 'var(--bg-surface-2)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 10,
+              padding: '9px 12px',
+              color: 'var(--text-primary)',
+              fontSize: 13,
+            }}
+          />
+          <button
+            type="button"
+            disabled={isCoachPreview || savingName}
+            onClick={handleSaveName}
+            className="btn-volt"
+            style={{
+              padding: '9px 14px',
+              fontSize: 12,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              cursor: 'pointer',
+            }}
+          >
+            {savingName ? (
+              <Loader2 size={14} className="spot-spinner" />
+            ) : (
+              <Check size={14} />
+            )}
+            <span>שמור שם</span>
+          </button>
+        </div>
+        {nameMessage && (
+          <div
+            style={{
+              marginTop: 7,
+              fontSize: 11.5,
+              fontWeight: 700,
+              color: nameMessage.ok ? '#4ade80' : '#fca5a5',
+            }}
+          >
+            {nameMessage.text}
+          </div>
+        )}
+      </div>
+
+      {/* 2. מיני-דשבורד סטטיסטיקות (7 ימים אחרונים) */}
+      <div className="pro-card" style={{ padding: 16 }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 12,
+          }}
+        >
+          <span style={{ fontSize: 14, fontWeight: 800 }}>
+            סטטיסטיקות שבוע אחרון
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+            {stats.activeDays} ימים מתועדים • {stats.mealsLoggedCount} ארוחות
+          </span>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, 1fr)',
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--bg-surface-2)',
+              padding: '10px 12px',
+              borderRadius: 12,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                fontSize: 11,
+                color: 'var(--text-secondary)',
+                marginBottom: 4,
+              }}
+            >
+              <Flame size={13} color="var(--accent-volt)" />
+              <span>ממוצע קלורי וחלבון</span>
+            </div>
+            <div className="num-mono" style={{ fontSize: 16, fontWeight: 900 }}>
+              {stats.avgCalories.toLocaleString()} קק״ל
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--macro-protein)', fontWeight: 700 }}>
+              ממוצע {stats.avgProtein}g חלבון ליום
+            </div>
+          </div>
+
+          <div
+            style={{
+              background: 'var(--bg-surface-2)',
+              padding: '10px 12px',
+              borderRadius: 12,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                fontSize: 11,
+                color: 'var(--text-secondary)',
+                marginBottom: 4,
+              }}
+            >
+              <Footprints size={13} color="#4ade80" />
+              <span>ממוצע צעדים יומי</span>
+            </div>
+            <div className="num-mono" style={{ fontSize: 16, fontWeight: 900 }}>
+              {stats.avgSteps.toLocaleString()}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              יעד:{' '}
+              {(trainee.activityTargets?.dailyStepsTarget ?? 8000).toLocaleString()}
+            </div>
+          </div>
+
+          <div
+            style={{
+              background: 'var(--bg-surface-2)',
+              padding: '10px 12px',
+              borderRadius: 12,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                fontSize: 11,
+                color: 'var(--text-secondary)',
+                marginBottom: 4,
+              }}
+            >
+              <Droplets size={13} color="#38bdf8" />
+              <span>ממוצע מים יומי</span>
+            </div>
+            <div className="num-mono" style={{ fontSize: 16, fontWeight: 900 }}>
+              {stats.avgWater} כוסות
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              יעד יומי: ~12 כוסות
+            </div>
+          </div>
+
+          <div
+            style={{
+              background: 'var(--bg-surface-2)',
+              padding: '10px 12px',
+              borderRadius: 12,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                fontSize: 11,
+                color: 'var(--text-secondary)',
+                marginBottom: 4,
+              }}
+            >
+              <TrendingUp size={13} color="#c084fc" />
+              <span>שינוי משקל כולל</span>
+            </div>
+            <div className="num-mono" style={{ fontSize: 16, fontWeight: 900 }}>
+              {trainee.currentWeight} ק״ג
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {stats.weightDelta === null
+                ? `יעד: ${trainee.targetWeight} ק״ג`
+                : `${stats.weightDelta > 0 ? '+' : ''}${stats.weightDelta} ק״ג מתחילת המעקב`}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. הגדרות פושים והתראות */}
+      <div className="pro-card" style={{ padding: 16 }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 8,
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            {pushStatus?.permissionState === 'granted' &&
+            pushStatus.systemNotificationsEnabled ? (
+              <Bell size={16} color="var(--accent-volt)" />
+            ) : (
+              <BellOff size={16} color="var(--text-secondary)" />
+            )}
+            <span style={{ fontSize: 14, fontWeight: 800 }}>
+              הגדרות פושים והתראות
+            </span>
+          </div>
+
+          {pushStatus?.isNativeAndroid && (
+            <span
+              style={{
+                fontSize: 10.5,
+                fontWeight: 800,
+                padding: '3px 8px',
+                borderRadius: 999,
+                background:
+                  pushStatus.permissionState === 'granted' &&
+                  pushStatus.systemNotificationsEnabled
+                    ? 'rgba(34, 197, 94, 0.16)'
+                    : 'rgba(245, 158, 11, 0.16)',
+                color:
+                  pushStatus.permissionState === 'granted' &&
+                  pushStatus.systemNotificationsEnabled
+                    ? '#4ade80'
+                    : '#fcd34d',
+              }}
+            >
+              {pushStatus.permissionState === 'granted' &&
+              pushStatus.systemNotificationsEnabled
+                ? 'מאושר במכשיר ✓'
+                : 'כבוי / ממתין לאישור'}
+            </span>
+          )}
+        </div>
+
+        {pushStatus?.isNativeAndroid && !isCoachPreview ? (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              marginBottom: 14,
+            }}
+          >
+            {!pushStatus.firebaseConfigured && (
+              <div
+                style={{
+                  background: 'rgba(245, 158, 11, 0.1)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: 10,
+                  padding: '8px 10px',
+                  fontSize: 11.5,
+                  color: '#fcd34d',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+                <span>
+                  חבילת Firebase (`google-services.json`) טרם שולבה ב־APK הזה —
+                  ניתן כבר לאשר הרשאת מערכת, והרישום יפעל אוטומטית בגרסה הבאה.
+                </span>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {(pushStatus.permissionState !== 'granted' ||
+                !pushStatus.systemNotificationsEnabled ||
+                !pushStatus.hasSavedToken) && (
+                <button
+                  type="button"
+                  disabled={pushBusy}
+                  onClick={handleEnablePushFromProfile}
+                  className="btn-volt"
+                  style={{
+                    flex: 1,
+                    minWidth: 160,
+                    padding: '9px 12px',
+                    fontSize: 12,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Bell size={14} />
+                  <span>
+                    {pushBusy ? 'בודק הרשאות...' : 'אשר / חבר קבלת התראות'}
+                  </span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => void openAndroidNotificationSettings()}
+                className="btn-surface"
+                style={{
+                  padding: '9px 12px',
+                  fontSize: 12,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  cursor: 'pointer',
+                }}
+              >
+                <Settings size={13} />
+                <span>הגדרות התראות במכשיר</span>
+              </button>
+
+              {pushStatus.permissionState === 'granted' &&
+                pushStatus.systemNotificationsEnabled &&
+                pushStatus.firebaseConfigured && (
+                  <button
+                    type="button"
+                    disabled={pushBusy}
+                    onClick={handleTestPush}
+                    className="btn-surface"
+                    style={{
+                      padding: '9px 12px',
+                      fontSize: 12,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Send size={13} color="var(--accent-volt)" />
+                    <span>שלח התראת בדיקה</span>
+                  </button>
+                )}
+            </div>
+
+            {pushFeedback && (
+              <div
+                style={{
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  color: pushFeedback.ok ? '#4ade80' : '#fca5a5',
+                }}
+              >
+                {pushFeedback.text}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div
+            style={{
+              background: 'var(--bg-surface-2)',
+              borderRadius: 10,
+              padding: '9px 12px',
+              marginBottom: 12,
+              fontSize: 12,
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              flexWrap: 'wrap',
+            }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Smartphone size={14} color="var(--accent-volt)" />
+              <span>התראות פוש פועלות באפליקציית האנדרואיד (APK) בלבד.</span>
+            </span>
+            {!isCoachPreview && (
+              <Link
+                href="/download"
+                style={{
+                  color: 'var(--accent-volt)',
+                  fontSize: 11.5,
+                  fontWeight: 800,
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <span>להורדת האפליקציה</span>
+                <ExternalLink size={11} />
+              </Link>
+            )}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+              background: 'var(--bg-surface-2)',
+              padding: '10px 12px',
+              borderRadius: 10,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 12.5, fontWeight: 700 }}>
+                סיום זיהוי ארוחה ב־AI ברקע
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                שולח התראה עם שם המנה והקלוריות רק אם יצאת מהאפליקציה בזמן הטעינה
+              </div>
+            </div>
+            <Switch
+              checked={prefs.aiMealReady}
+              disabled={isCoachPreview}
+              color="lime"
+              onChange={(e) =>
+                void handleUpdatePushPrefs({
+                  ...prefs,
+                  aiMealReady: e.currentTarget.checked,
+                })
+              }
+            />
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+              background: 'var(--bg-surface-2)',
+              padding: '10px 12px',
+              borderRadius: 10,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 12.5, fontWeight: 700 }}>
+                הודעות ותזכורות מהמאמן
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                קבלת תזכורות אישיות ומעבר ישיר לארוחה שהמאמן ביקש
+              </div>
+            </div>
+            <Switch
+              checked={prefs.coachMessages}
+              disabled={isCoachPreview}
+              color="lime"
+              onChange={(e) =>
+                void handleUpdatePushPrefs({
+                  ...prefs,
+                  coachMessages: e.currentTarget.checked,
+                })
+              }
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* 4. הארוחות שלי — היסטוריה מלאה וחיפוש */}
+      <div className="pro-card" style={{ padding: 16 }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 8,
+            marginBottom: 10,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 14,
+              fontWeight: 800,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <Utensils size={15} color="var(--accent-volt)" />
+            <span>הארוחות שלי ({loggedMealsList.length})</span>
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+            לחץ על ארוחה לפתיחה ביומן
+          </span>
+        </div>
+
+        <div
+          style={{
+            position: 'relative',
+            marginBottom: 12,
+          }}
+        >
+          <Search
+            size={14}
+            color="var(--text-muted)"
+            style={{
+              position: 'absolute',
+              right: 11,
+              top: '50%',
+              transform: 'translateY(-50%)',
+            }}
+          />
+          <input
+            type="text"
+            value={mealSearch}
+            onChange={(e) => setMealSearch(e.target.value)}
+            placeholder="חפש מאכל, שם ארוחה או תאריך (YYYY-MM-DD)..."
+            style={{
+              width: '100%',
+              background: 'var(--bg-surface-2)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 10,
+              padding: '8px 34px 8px 12px',
+              color: 'var(--text-primary)',
+              fontSize: 12.5,
+            }}
+          />
+        </div>
+
+        {loggedMealsList.length === 0 ? (
+          <div
+            style={{
+              padding: '22px 12px',
+              textAlign: 'center',
+              fontSize: 12.5,
+              color: 'var(--text-muted)',
+            }}
+          >
+            לא נמצאו ארוחות מתועדות התואמות לחיפוש
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {loggedMealsList.map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                onClick={() => onOpenMealFromHistory(row.date, row.mealSlotId)}
+                style={{
+                  textAlign: 'right',
+                  width: '100%',
+                  background: 'var(--bg-surface-2)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 12,
+                  padding: '10px 12px',
+                  cursor: 'pointer',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginBottom: 4,
+                  }}
+                >
+                  <span style={{ fontSize: 12.5, fontWeight: 800 }}>
+                    {row.mealSlotName} •{' '}
+                    <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
+                      {row.date}
+                      {row.updatedAt ? ` (${row.updatedAt})` : ''}
+                    </span>
+                  </span>
+                  <span
+                    className="num-mono"
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: 'var(--accent-volt)',
+                    }}
+                  >
+                    {row.calories} קק״ל • {row.protein}g ח׳
+                  </span>
+                </div>
+                <div
+                  style={{
+                    fontSize: 11.5,
+                    color: 'var(--text-secondary)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {row.itemsSummary}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

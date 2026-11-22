@@ -8,6 +8,7 @@ import {
   MantineProvider,
   createTheme,
 } from '@mantine/core';
+import { Notifications } from '@mantine/notifications';
 import type { Metadata, Viewport } from 'next';
 
 export const metadata: Metadata = {
@@ -45,6 +46,7 @@ export default function RootLayout({
       <body>
         <DirectionProvider initialDirection="rtl">
           <MantineProvider theme={theme} defaultColorScheme="dark">
+            <Notifications position="top-center" zIndex={220} />
             {children}
           </MantineProvider>
         </DirectionProvider>

@@ -32,6 +32,21 @@ export interface NativeDailyStepsReading {
   source: Exclude<StepsSyncSource, 'manual'>;
 }
 
+export interface NativeNotificationSystemStatus {
+  firebaseConfigured: boolean;
+  areNotificationsEnabled: boolean;
+  androidSdkInt: number;
+}
+
+export interface NativePendingPushTarget {
+  hasTarget: boolean;
+  pushId?: string;
+  screen?: string;
+  mealSlotId?: string;
+  date?: string;
+  kind?: string;
+}
+
 export interface SpotHealthStepsPlugin {
   getStatus(): Promise<NativeStepEngineStatus>;
   requestStepPermissions(): Promise<
@@ -48,12 +63,19 @@ export interface SpotHealthStepsPlugin {
     enabled: boolean;
   }): Promise<{ ok: boolean }>;
   getAppVersion(): Promise<{ versionCode: number; versionName: string }>;
+  getNotificationSystemStatus(): Promise<NativeNotificationSystemStatus>;
+  openNotificationSettings(): Promise<{ opened: boolean }>;
+  consumePendingPushTarget(): Promise<NativePendingPushTarget>;
 }
 
 const SpotHealthSteps =
   typeof window !== 'undefined'
     ? registerPlugin<SpotHealthStepsPlugin>('SpotHealthSteps')
     : null;
+
+export function getSpotNativePlugin(): SpotHealthStepsPlugin | null {
+  return SpotHealthSteps;
+}
 
 export function isNativeAndroidApp(): boolean {
   if (typeof window === 'undefined') return false;

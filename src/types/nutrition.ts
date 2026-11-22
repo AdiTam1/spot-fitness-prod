@@ -344,6 +344,28 @@ export interface TraineeGroup {
   customQuickChips?: QuickContextChip[];
 }
 
+export interface TraineeFcmTokenEntry {
+  token: string;
+  platform: 'android';
+  updatedAt: string;
+  deviceLabel?: string;
+}
+
+export interface TraineePushPreferences {
+  aiMealReady: boolean;
+  coachMessages: boolean;
+}
+
+export interface TraineePushHistoryEntry {
+  id: string;
+  title: string;
+  body: string;
+  sentAt: string;
+  sentByCoachName?: string;
+  targetScreen?: 'meal' | 'journal' | 'metrics' | 'profile';
+  targetMealSlotId?: string;
+}
+
 export interface TraineeProfile {
   id: string;
   email: string;
@@ -377,6 +399,10 @@ export interface TraineeProfile {
   customFoodUnits?: TraineeCustomUnit[]; // יחידות מידה מוגדרות אישית בגרמים
   recentContextChips?: QuickContextChip[]; // צ'יפים מהירים פר-משתמש מסודרים לפי MRU
   pendingAiJobs?: PendingAiMealJob[]; // משימות פענוח AI שמתבצעות ברקע ומסתנכרנות אוטומטית ליומן
+  fcmTokens?: TraineeFcmTokenEntry[]; // טוקנים רשומים של אפליקציית האנדרואיד (FCM)
+  pushPreferences?: TraineePushPreferences; // העדפות פושים של המתאמן
+  lastForegroundState?: { isInForeground: boolean; updatedAt: string }; // מעקב חזית כדי לשלוח פוש AI רק אם יצא
+  pushHistory?: TraineePushHistoryEntry[]; // היסטוריית פושים אחרונים למתאמן
   logs: Record<string, DailyLog>;
   createdAt?: string;
 }

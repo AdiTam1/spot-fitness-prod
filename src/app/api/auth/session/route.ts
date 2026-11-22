@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // אימות חי למתאמן: אם הושהה או נמחק – הסשן מבוטל מיד
+  // אימות חי למתאמן: אם הושהה או נמחק – הסשן מבוטל מיד (וכן סנכרון שם משתמש עדכני)
   if (user.role === 'trainee') {
     const liveTrainee = await getSingleTraineeFromServer(user.id);
     if (!liveTrainee || liveTrainee.status !== 'active') {
@@ -46,6 +46,10 @@ export async function GET(request: NextRequest) {
       );
       return clearSessionCookie(res);
     }
+    return NextResponse.json(
+      { user: { ...user, name: liveTrainee.name } },
+      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+    );
   }
 
   // אימות חי למאמן: אם המנהל הראשי השהה או מחק את המאמן – הסשן מבוטל מיד

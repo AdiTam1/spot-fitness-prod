@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { waitUntil } from '@vercel/functions';
 import { ISRAELI_FOOD_CATALOG, calculateMacrosForGrams } from '@/data/israeliFoodCatalog';
 import {
   AiContextParams,
@@ -28,6 +29,11 @@ import {
   callGeminiJson,
   cleanGeminiKey,
 } from '@/lib/geminiClient';
+import {
+  isFcmConfigured,
+  sendFcmNotificationToTokens,
+  shouldNotifyAiBackgroundCompletion,
+} from '@/lib/fcmServer';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -572,7 +578,7 @@ export async function POST(request: NextRequest) {
           ? imageDataUrls[0]
           : undefined;
 
-      await updateServerDbState((prev) => ({
+      const updatedState = await updateServerDbState((prev) => ({
         ...prev,
         trainees: prev.trainees.map((t) => {
           if (t.id !== authorizedBgJob!.targetTraineeId) return t;
@@ -624,8 +630,66 @@ export async function POST(request: NextRequest) {
         }),
       }));
 
+      // פוש אוטומטי אך ורק כשהפענוח הצליח והמתאמן יצא מהאפליקציה בזמן הטעינה
+      if (succeeded && isFcmConfigured()) {
+        const latestTrainee = updatedState.trainees.find(
+          (t) => t.id === authorizedBgJob!.targetTraineeId
+        );
+        if (latestTrainee && shouldNotifyAiBackgroundCompletion(latestTrainee)) {
+          const itemsList = params.items!;
+          const dishNames = itemsList.map((i) => i.name).filter(Boolean);
+          const dishLabel =
+            dishNames.length === 0
+              ? finishedJob.mealSlotName
+              : dishNames.length === 1
+              ? dishNames[0]
+              : dishNames.length === 2
+              ? `${dishNames[0]} ו${dishNames[1]}`
+              : `${dishNames[0]}, ${dishNames[1]} ועוד ${dishNames.length - 2}`;
+          const totalCalories = Math.round(
+            itemsList.reduce((sum, i) => sum + (Number(i.macros?.calories) || 0), 0)
+          );
+
+          const sendRes = await sendFcmNotificationToTokens(
+            (latestTrainee.fcmTokens || []).map((x) => x.token),
+            {
+              title: `זיהוי ${finishedJob.mealSlotName} הושלם ✨`,
+              body: `זיהוי הארוחה הושלם: "${dishLabel} (${totalCalories} קלוריות)"`,
+              channelId: 'spot_ai_meals',
+              data: {
+                spotPushId: finishedJob.id,
+                spotKind: 'ai-meal',
+                spotScreen: 'meal',
+                spotMealSlotId: finishedJob.mealSlotId,
+                spotDate: finishedJob.date,
+              },
+            }
+          ).catch(() => null);
+
+          if (sendRes && sendRes.invalidTokens.length > 0) {
+            const deadSet = new Set(sendRes.invalidTokens);
+            await updateServerDbState((prev) => ({
+              ...prev,
+              trainees: prev.trainees.map((t) =>
+                t.id === latestTrainee.id
+                  ? {
+                      ...t,
+                      fcmTokens: (t.fcmTokens || []).filter(
+                        (x) => !deadSet.has(x.token)
+                      ),
+                    }
+                  : t
+              ),
+            })).catch(() => {});
+          }
+        }
+      }
+
       return finishedJob;
     };
+
+    // הגנת waitUntil: ממשיכה להריץ את הפענוח, השמירה והפוש ב-Vercel גם אם המשתמש סגר את האפליקציה
+    const executeAnalyzePipeline = async (): Promise<NextResponse> => {
 
     // =========================================================================
     // מצב A: מדידת כלי הגשה (צלחת / קערה / קופסה / כוס) בעזרת AI + אובייקט ייחוס
@@ -958,6 +1022,15 @@ ${contextBlock ? `\nנתוני הקשר מעודכנים מהמשתמש:\n${cont
       },
       { status: 422 }
     );
+    };
+
+    const workPromise = executeAnalyzePipeline();
+    try {
+      waitUntil(workPromise.then(() => undefined).catch(() => undefined));
+    } catch {
+      // בסביבת Node רגילה מחוץ ל-Vercel waitUntil אינו פעיל
+    }
+    return await workPromise;
   } catch (error) {
     console.error('AI analyze error:', error);
     return NextResponse.json({ error: 'שגיאה בפענוח הארוחה' }, { status: 500 });

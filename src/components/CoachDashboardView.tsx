@@ -35,6 +35,7 @@ import {
   AlertTriangle,
   Search,
   MessageCircle,
+  Bell,
 } from 'lucide-react';
 import {
   AccountStatus,
@@ -53,6 +54,7 @@ import {
 } from '@/types/nutrition';
 import { QuickChipsAdminPanel } from './QuickChipsAdminPanel';
 import { CoachSavedMealsPanel } from './CoachSavedMealsPanel';
+import { CoachPushModal } from './CoachPushModal';
 import {
   DEFAULT_TEMPLATES,
   getTodayIso,
@@ -181,6 +183,7 @@ interface CoachDashboardViewProps {
     traineeId: string,
     payload: { presetId: string; reply: string; promoteToSlotId?: string }
   ) => Promise<{ error?: string }>;
+  onRefreshData?: () => Promise<void> | void;
 }
 
 const GROUP_COLOR_SWATCHES = [
@@ -242,6 +245,7 @@ export function CoachDashboardView({
   onManageToolsAndUnits,
   onManageQuickChips,
   onReplySavedMeal,
+  onRefreshData,
 }: CoachDashboardViewProps) {
   const today = getTodayIso();
   const isSuperAdmin = currentUser.role === 'admin';
@@ -306,6 +310,9 @@ export function CoachDashboardView({
 
   // מודאל שיתוף מתאמן עם מאמנים נוספים
   const [sharingModalTrainee, setSharingModalTrainee] =
+    useState<TraineeProfile | null>(null);
+  // מודאל שליחת התראת פוש אישית למתאמן
+  const [pushModalTrainee, setPushModalTrainee] =
     useState<TraineeProfile | null>(null);
   const [sharingPrimaryId, setSharingPrimaryId] =
     useState<string>('coach-admin');
@@ -1815,6 +1822,27 @@ export function CoachDashboardView({
                                 תפריט ויומן
                               </button>
 
+                              <button
+                                title="שלח פוש אישי למתאמן"
+                                onClick={() => setPushModalTrainee(t)}
+                                className="btn-surface"
+                                style={{
+                                  padding: '6px 10px',
+                                  fontSize: 12,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  color:
+                                    (t.fcmTokens?.length || 0) > 0
+                                      ? 'var(--accent-volt)'
+                                      : 'var(--text-secondary)',
+                                }}
+                              >
+                                <Bell size={13} />
+                                <span>פוש</span>
+                              </button>
+
                               {isOwner && (
                                 <button
                                   title="שתף מתאמן עם מאמנים נוספים"
@@ -1968,6 +1996,28 @@ export function CoachDashboardView({
                     </div>
                   );
                 })()}
+
+                <button
+                  type="button"
+                  onClick={() => setPushModalTrainee(selectedTrainee)}
+                  className="btn-surface"
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: 12,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    color: 'var(--accent-volt)',
+                    borderColor: 'rgba(210, 255, 40, 0.35)',
+                    alignSelf: 'center',
+                  }}
+                >
+                  <Bell size={14} />
+                  <span>שלח פוש אישי</span>
+                </button>
               </div>
             </div>
 
@@ -5137,6 +5187,14 @@ export function CoachDashboardView({
           </button>
         </form>
       </Modal>
+
+      <CoachPushModal
+        opened={Boolean(pushModalTrainee)}
+        onClose={() => setPushModalTrainee(null)}
+        trainee={pushModalTrainee}
+        todayIso={today}
+        onPushSent={onRefreshData}
+      />
     </div>
   );
 }

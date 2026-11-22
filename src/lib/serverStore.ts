@@ -432,6 +432,11 @@ export function sanitizeTraineeForClient(
   return {
     ...trainee,
     password: '',
+    // מסתיר את מפתח ה-FCM הגולמי מפני חשיפה ללקוח, ומשאיר ספירה ומטא-דאטה של המכשיר
+    fcmTokens: (trainee.fcmTokens || []).map((entry) => ({
+      ...entry,
+      token: entry.token ? `fcm_${entry.token.slice(-6)}` : '',
+    })),
   };
 }
 

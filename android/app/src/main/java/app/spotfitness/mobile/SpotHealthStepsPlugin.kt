@@ -12,6 +12,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.NotificationManagerCompat
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import com.getcapacitor.JSArray
@@ -271,6 +272,66 @@ class SpotHealthStepsPlugin : Plugin(), SensorEventListener {
             false
         }
         call.resolve(JSObject().put("opened", opened))
+    }
+
+    @PluginMethod
+    fun getNotificationSystemStatus(call: PluginCall) {
+        val firebaseConfigured = try {
+            context.resources.getIdentifier("google_app_id", "string", context.packageName) != 0
+        } catch (_: Throwable) {
+            false
+        }
+        val areEnabled = try {
+            NotificationManagerCompat.from(context).areNotificationsEnabled()
+        } catch (_: Throwable) {
+            false
+        }
+        call.resolve(
+            JSObject().apply {
+                put("firebaseConfigured", firebaseConfigured)
+                put("areNotificationsEnabled", areEnabled)
+                put("androidSdkInt", Build.VERSION.SDK_INT)
+            }
+        )
+    }
+
+    @PluginMethod
+    fun openNotificationSettings(call: PluginCall) {
+        val opened = try {
+            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                }
+            } else {
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", context.packageName, null)
+                }
+            }
+            bridge.activity.startActivity(intent)
+            true
+        } catch (_: Exception) {
+            false
+        }
+        call.resolve(JSObject().put("opened", opened))
+    }
+
+    @PluginMethod
+    fun consumePendingPushTarget(call: PluginCall) {
+        val target = SpotPendingPushTarget.consume()
+        if (target == null) {
+            call.resolve(JSObject().put("hasTarget", false))
+            return
+        }
+        call.resolve(
+            JSObject().apply {
+                put("hasTarget", true)
+                put("pushId", target.pushId)
+                put("screen", target.screen)
+                put("mealSlotId", target.mealSlotId)
+                put("date", target.date)
+                put("kind", target.kind)
+            }
+        )
     }
 
     @PluginMethod

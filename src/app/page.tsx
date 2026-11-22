@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Modal, TextInput } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import {
   Crown,
   KeyRound,
@@ -13,6 +14,7 @@ import {
   AlertTriangle,
   RefreshCw,
   Download,
+  Bell,
 } from 'lucide-react';
 import {
   AccountStatus,
@@ -36,6 +38,7 @@ import {
   TraineeGroup,
   TraineeOnboardingData,
   TraineeProfile,
+  TraineePushPreferences,
   TraineeServingTool,
   WeeklyCheckInEntry,
 } from '@/types/nutrition';
@@ -53,6 +56,16 @@ import {
   readNativeDailySteps,
   subscribeAndroidAppResume,
 } from '@/lib/capacitorSteps';
+import {
+  PushDeepLinkTarget,
+  getAndroidPushStatus,
+  hasPromptedAndroidPushBefore,
+  markAndroidPushPrompted,
+  requestAndRegisterAndroidPush,
+  sendPushForegroundHeartbeat,
+  subscribeAndroidPushLifecycle,
+  unregisterAndroidPushOnLogout,
+} from '@/lib/capacitorPush';
 
 export default function HomePage() {
   const [currentUser, setCurrentUser] = useState<AuthSessionUser | null>(null);
@@ -97,6 +110,14 @@ export default function HomePage() {
     mealSlotId: string;
     nonce: number;
   } | null>(null);
+  const [externalSectionRequest, setExternalSectionRequest] = useState<{
+    traineeId: string;
+    section: 'journal' | 'metrics' | 'profile';
+    date?: string;
+    nonce: number;
+  } | null>(null);
+  const [pushPromptOpen, setPushPromptOpen] = useState(false);
+  const [pushPromptBusy, setPushPromptBusy] = useState(false);
 
   const traineesRef = useRef<TraineeProfile[]>([]);
   const syncingCountRef = useRef<number>(0);
@@ -339,6 +360,142 @@ export default function HomePage() {
     return unsub;
   }, [currentUser, syncNativeAndroidSteps]);
 
+  const activeAndroidTraineeId =
+    isNativeAndroidApp() && currentUser?.role === 'trainee'
+      ? currentUser.id
+      : '';
+
+  useEffect(() => {
+    if (!activeAndroidTraineeId) {
+      return;
+    }
+
+    let cancelled = false;
+    const applyDeepLinkTarget = (target: PushDeepLinkTarget) => {
+      if (cancelled) return;
+      void fetchAuthorizedData({ force: true });
+      const targetDate = target.date || getLocalDateOffsetIso(0);
+      if (target.screen === 'meal' && target.mealSlotId) {
+        setExternalOpenMealRequest({
+          traineeId: activeAndroidTraineeId,
+          date: targetDate,
+          mealSlotId: target.mealSlotId,
+          nonce: Date.now(),
+        });
+      } else {
+        setExternalSectionRequest({
+          traineeId: activeAndroidTraineeId,
+          section: target.screen === 'meal' ? 'journal' : target.screen,
+          date: target.date,
+          nonce: Date.now(),
+        });
+      }
+    };
+
+    void getAndroidPushStatus().then((status) => {
+      if (cancelled || !status.firebaseConfigured) return;
+      if (
+        status.permissionState === 'granted' &&
+        status.systemNotificationsEnabled
+      ) {
+        void requestAndRegisterAndroidPush();
+      } else if (
+        status.permissionState === 'prompt' &&
+        !hasPromptedAndroidPushBefore()
+      ) {
+        setPushPromptOpen(true);
+      }
+    });
+
+    sendPushForegroundHeartbeat(!document.hidden);
+    const heartbeatTimer = window.setInterval(() => {
+      if (!document.hidden) {
+        sendPushForegroundHeartbeat(true);
+      }
+    }, 25000);
+    const onVisibilityChange = () => {
+      sendPushForegroundHeartbeat(!document.hidden);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    const unsubPush = subscribeAndroidPushLifecycle({
+      onDeepLinkTarget: applyDeepLinkTarget,
+      onForegroundCoachPush: (notif) => {
+        if (cancelled) return;
+        void fetchAuthorizedData({ force: true });
+        notifications.show({
+          title: notif.title || 'הודעה אישית מהמאמן',
+          message: notif.body || 'המאמן שלך שלח לך עדכון חדש',
+          color: 'lime',
+          autoClose: 6000,
+        });
+      },
+    });
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(heartbeatTimer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      unsubPush();
+    };
+  }, [activeAndroidTraineeId, fetchAuthorizedData]);
+
+  const handleRenameTraineeProfile = useCallback(
+    async (newName: string): Promise<{ error?: string }> => {
+      if (!currentUser || currentUser.role !== 'trainee') {
+        return { error: 'שינוי שם זמין רק במצב מתאמן' };
+      }
+      try {
+        const res = await fetch('/api/profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newName }),
+        });
+        const data = (await res.json()) as {
+          error?: string;
+          name?: string;
+          avatar?: string;
+          user?: AuthSessionUser;
+        };
+        if (!res.ok) {
+          return { error: data.error || 'שגיאה בעדכון שם המשתמש' };
+        }
+        const cleanName = data.name || newName.trim();
+        const nextAvatar = data.avatar || cleanName.charAt(0) || 'מ';
+        if (data.user) {
+          setCurrentUser(data.user);
+        } else {
+          setCurrentUser((prev) => (prev ? { ...prev, name: cleanName } : prev));
+        }
+        const updateList = (list: TraineeProfile[]) =>
+          list.map((t) =>
+            t.id === currentUser.id
+              ? { ...t, name: cleanName, avatar: nextAvatar }
+              : t
+          );
+        traineesRef.current = updateList(traineesRef.current);
+        setTrainees((prev) => updateList(prev));
+        return {};
+      } catch {
+        return { error: 'שגיאת תקשורת בעדכון השם' };
+      }
+    },
+    [currentUser]
+  );
+
+  const handlePushPreferencesUpdated = useCallback(
+    (prefs: TraineePushPreferences) => {
+      if (!currentUser || currentUser.role !== 'trainee') return;
+      const updateList = (list: TraineeProfile[]) =>
+        list.map((t) =>
+          t.id === currentUser.id ? { ...t, pushPreferences: prefs } : t
+        );
+      traineesRef.current = updateList(traineesRef.current);
+      setTrainees((prev) => updateList(prev));
+    },
+    [currentUser]
+  );
+
   const postDataAction = async (payload: Record<string, unknown>) => {
     syncingCountRef.current += 1;
     mutationEpochRef.current += 1;
@@ -424,11 +581,15 @@ export default function HomePage() {
     if (loggingOut) return;
     setLoggingOut(true);
     try {
-      await configureBackgroundStepsSync({
-        baseUrl: '',
-        syncToken: '',
-        enabled: false,
-      }).catch(() => {});
+      await Promise.all([
+        configureBackgroundStepsSync({
+          baseUrl: '',
+          syncToken: '',
+          enabled: false,
+        }).catch(() => {}),
+        unregisterAndroidPushOnLogout().catch(() => {}),
+      ]);
+      setPushPromptOpen(false);
       await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {});
       setCurrentUser(null);
       setTrainees([]);
@@ -2055,6 +2216,9 @@ export default function HomePage() {
             backgroundAiJobs={mergeTraineeBgJobs(loggedInTraineeProfile)}
             onStartBackgroundAiAnalysis={handleStartBackgroundAiAnalysis}
             externalOpenMealRequest={externalOpenMealRequest}
+            externalSectionRequest={externalSectionRequest}
+            onRenameProfile={handleRenameTraineeProfile}
+            onPushPreferencesUpdated={handlePushPreferencesUpdated}
             geminiApiKey={geminiApiKey}
             onSyncNativeStepsNow={syncNativeAndroidSteps}
           />
@@ -2086,6 +2250,7 @@ export default function HomePage() {
             backgroundAiJobs={mergeTraineeBgJobs(loggedInTraineeProfile)}
             onStartBackgroundAiAnalysis={handleStartBackgroundAiAnalysis}
             externalOpenMealRequest={externalOpenMealRequest}
+            externalSectionRequest={externalSectionRequest}
             geminiApiKey={geminiApiKey}
             onSyncNativeStepsNow={syncNativeAndroidSteps}
           />
@@ -2102,6 +2267,7 @@ export default function HomePage() {
             onManageToolsAndUnits={handleManageToolsAndUnits}
             onManageQuickChips={handleManageQuickChips}
             onReplySavedMeal={handleReplySavedMeal}
+            onRefreshData={() => fetchAuthorizedData({ force: true })}
             onUpdateCoachInviteCode={async (code) => {
               const prev = coachInviteCode;
               setCoachInviteCode(code);
@@ -2209,6 +2375,118 @@ export default function HomePage() {
               שמור הגדרות
             </button>
           </form>
+        </Modal>
+      )}
+
+      {isNativeAndroidApp() && currentUser.role === 'trainee' && (
+        <Modal
+          opened={pushPromptOpen}
+          onClose={() => {
+            markAndroidPushPrompted();
+            setPushPromptOpen(false);
+          }}
+          centered
+          radius="lg"
+          title={
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                fontWeight: 800,
+                fontSize: 16,
+              }}
+            >
+              <Bell size={18} color="var(--accent-volt)" />
+              <span>הפעלת התראות חכמות באנדרואיד</span>
+            </span>
+          }
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div
+              style={{
+                fontSize: 13,
+                color: 'var(--text-secondary)',
+                lineHeight: 1.6,
+              }}
+            >
+              רוצה לקבל עדכון כשסריקת הארוחה של ה-AI מסתיימת ברקע, וגם תזכורות
+              אישיות מהמאמן שלך?
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: 'var(--text-secondary)',
+                background: 'var(--bg-surface-2)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 12,
+                padding: '10px 12px',
+              }}
+            >
+              אפשר לשנות או לאשר מחדש בכל רגע מתוך <strong>פרופיל &gt; הגדרות פושים</strong>.
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <button
+                type="button"
+                disabled={pushPromptBusy}
+                onClick={async () => {
+                  setPushPromptBusy(true);
+                  try {
+                    const res = await requestAndRegisterAndroidPush();
+                    setPushPromptOpen(false);
+                    if (res.ok) {
+                      notifications.show({
+                        title: 'התראות הופעלו בהצלחה',
+                        message:
+                          'תקבל/י התראה בסיום זיהוי AI ברקע והודעות מהמאמן',
+                        color: 'lime',
+                      });
+                    } else if (res.reason === 'denied') {
+                      notifications.show({
+                        title: 'ההרשאה לא אושרה כעת',
+                        message:
+                          'ניתן לאשר בכל עת ממסך הפרופיל > הגדרות התראות',
+                        color: 'yellow',
+                      });
+                    }
+                  } finally {
+                    setPushPromptBusy(false);
+                  }
+                }}
+                className="btn-volt"
+                style={{
+                  flex: 1,
+                  padding: '11px 14px',
+                  fontSize: 13,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                }}
+              >
+                {pushPromptBusy && <Loader2 size={14} className="spot-spinner" />}
+                <span>כן, הפעל התראות</span>
+              </button>
+              <button
+                type="button"
+                disabled={pushPromptBusy}
+                onClick={() => {
+                  markAndroidPushPrompted();
+                  setPushPromptOpen(false);
+                }}
+                className="btn-surface"
+                style={{
+                  padding: '11px 14px',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                לא עכשיו
+              </button>
+            </div>
+          </div>
         </Modal>
       )}
     </div>
