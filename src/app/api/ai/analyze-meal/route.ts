@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
 import { ISRAELI_FOOD_CATALOG, calculateMacrosForGrams } from '@/data/israeliFoodCatalog';
-import { getMergedCatalogItems } from '@/lib/scrapers/scraperStore';
+import {
+  getMergedCatalogItems,
+  searchSqlAndCachedCatalog,
+} from '@/lib/scrapers/scraperStore';
 import {
   AiContextParams,
   FoodCatalogItem,
@@ -994,9 +997,16 @@ ${contextBlock ? `\nנתוני הקשר מעודכנים מהמשתמש:\n${cont
       .filter((s) => s && !s.includes('ללא'))
       .join(', ');
 
-    const mergedCatalogPool = await getMergedCatalogItems().catch(
-      () => ISRAELI_FOOD_CATALOG
-    );
+    const [cachedPool, sqlFallbackRes] = await Promise.all([
+      getMergedCatalogItems().catch(() => ISRAELI_FOOD_CATALOG),
+      textPrompt
+        ? searchSqlAndCachedCatalog({ query: textPrompt.slice(0, 60), limit: 35 }).catch(() => ({
+            items: [] as FoodCatalogItem[],
+            sqlCount: 0,
+          }))
+        : Promise.resolve({ items: [] as FoodCatalogItem[], sqlCount: 0 }),
+    ]);
+    const mergedCatalogPool = [...sqlFallbackRes.items, ...cachedPool];
     let items = smartHebrewMealParser(
       combinedFallbackText,
       sourceType,

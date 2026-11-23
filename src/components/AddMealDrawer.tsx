@@ -1327,6 +1327,7 @@ export function AddMealDrawer({
                 >
                   {[
                     { id: 'all', label: 'הכל (מאגר משולב)' },
+                    { id: 'shufersal', label: 'שופרסל (DB)' },
                     { id: 'victory', label: 'ויקטורי' },
                     { id: 'nizat', label: 'ניצת הדובדבן' },
                     { id: 'tevabari', label: 'טבע בריא' },
@@ -1339,6 +1340,7 @@ export function AddMealDrawer({
                     { id: 'foodik', label: 'Foodik' },
                     { id: 'netogreen', label: 'NetoGreen' },
                     { id: 'moh_gov', label: 'משרד הבריאות' },
+                    { id: 'openfoodfacts', label: 'ברקוד / סופרים' },
                     { id: 'local', label: 'בסיס SPOT' },
                   ].map((src) => {
                     const active = sourceFilter === src.id;

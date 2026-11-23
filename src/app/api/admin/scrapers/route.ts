@@ -1,13 +1,30 @@
+import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest, sanitizeText, verifyCsrfOrigin } from '@/lib/serverAuth';
+import { isValidMacroSet, roundMacros } from '@/lib/scrapers/helpers';
 import {
   getScraperState,
   isScraperReportStale,
+  persistCatalogItemsToDb,
   runScrapersHealthCheck,
+  syncOpenFoodFactsToCatalog,
   syncScrapersCatalog,
   testSingleScraperSearch,
 } from '@/lib/scrapers/scraperStore';
-import { ScraperSourceId } from '@/types/nutrition';
+import { FoodCatalogItem, ScraperSourceId } from '@/types/nutrition';
+
+function hasValidSyncSecret(request: NextRequest): boolean {
+  const secret = process.env.CRON_SECRET?.trim() || '';
+  if (!secret) return false;
+  const authHeader = request.headers.get('authorization') || '';
+  const expected = `Bearer ${secret}`;
+  if (authHeader.length !== expected.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(authHeader), Buffer.from(expected));
+  } catch {
+    return false;
+  }
+}
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -69,19 +86,21 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/admin/scrapers
- * פעולות מנהל: check_all, check_one, sync_catalog, sync_one, test_search
+ * פעולות מנהל: check_all, check_one, sync_catalog, sync_one, test_search, sync_openfoodfacts, seed_items
  */
 export async function POST(request: NextRequest) {
-  if (!verifyCsrfOrigin(request)) {
-    return NextResponse.json({ error: 'בקשה אינה מורשית' }, { status: 403 });
-  }
-
-  const session = getSessionFromRequest(request);
-  if (!session || session.role !== 'admin') {
-    return NextResponse.json(
-      { error: 'גישה מותרת למנהל מערכת ראשי בלבד' },
-      { status: 403 }
-    );
+  const secretAuthed = hasValidSyncSecret(request);
+  if (!secretAuthed) {
+    if (!verifyCsrfOrigin(request)) {
+      return NextResponse.json({ error: 'בקשה אינה מורשית' }, { status: 403 });
+    }
+    const session = getSessionFromRequest(request);
+    if (!session || session.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'גישה מותרת למנהל מערכת ראשי בלבד' },
+        { status: 403 }
+      );
+    }
   }
 
   try {
@@ -89,7 +108,13 @@ export async function POST(request: NextRequest) {
       action?: string;
       scraperId?: ScraperSourceId;
       query?: string;
+      pages?: number;
+      items?: FoodCatalogItem[];
     };
+
+    if (secretAuthed && body.action !== 'seed_items' && body.action !== 'sync_openfoodfacts') {
+      return NextResponse.json({ error: 'פעולה מוגבלת לממשק המנהל' }, { status: 403 });
+    }
 
     switch (body.action) {
       case 'check_all': {
@@ -131,6 +156,30 @@ export async function POST(request: NextRequest) {
         const q = sanitizeText(body.query || "קוטג'", 60) || "קוטג'";
         const items = await testSingleScraperSearch(body.scraperId, q);
         return NextResponse.json({ ok: true, query: q, items });
+      }
+      case 'sync_openfoodfacts': {
+        const pages = Math.min(12, Math.max(1, Number(body.pages) || 5));
+        const res = await syncOpenFoodFactsToCatalog(pages);
+        return NextResponse.json({ ok: true, ...res });
+      }
+      case 'seed_items': {
+        const incoming = Array.isArray(body.items) ? body.items.slice(0, 600) : [];
+        const validItems = incoming.filter(
+          (it) =>
+            it &&
+            typeof it.id === 'string' &&
+            typeof it.name === 'string' &&
+            isValidMacroSet(roundMacros(it.per100g))
+        );
+        const saved = await persistCatalogItemsToDb(validItems);
+        const { report } = await getScraperState(true);
+        return NextResponse.json({
+          ok: saved.ok,
+          tableReady: saved.tableReady,
+          savedCount: saved.savedCount,
+          error: saved.error,
+          report,
+        });
       }
       default:
         return NextResponse.json({ error: 'פעולה לא מוכרת' }, { status: 400 });

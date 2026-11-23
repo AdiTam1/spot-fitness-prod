@@ -220,11 +220,44 @@ set
   end
 where logs ? '__profile_meta';
 
--- 7. הגדרות הרשאות גישה (Row Level Security)
+-- 7. טבלת קטלוג מזון מנורמלת ומאונדקסת (עשרות אלפי מוצרים מסופרים/ברקוד ללא עומס RAM)
+create extension if not exists pg_trgm;
+
+create table if not exists public.food_catalog_items (
+  id text primary key,
+  name text not null,
+  name_norm text not null,
+  brand text not null default '',
+  category text not null default '',
+  barcode text,
+  calories numeric(6,1) not null,
+  protein numeric(6,1) not null,
+  carbs numeric(6,1) not null,
+  fat numeric(6,1) not null,
+  units jsonb not null default '[]'::jsonb,
+  source text not null default 'scraper',
+  source_site_id text,
+  source_site_name text,
+  source_url text,
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_food_catalog_name_trgm
+  on public.food_catalog_items using gin (name_norm gin_trgm_ops);
+create index if not exists idx_food_catalog_barcode
+  on public.food_catalog_items (barcode)
+  where barcode is not null;
+create index if not exists idx_food_catalog_source_site
+  on public.food_catalog_items (source_site_id);
+create index if not exists idx_food_catalog_updated
+  on public.food_catalog_items (updated_at desc);
+
+-- 8. הגדרות הרשאות גישה (Row Level Security)
 alter table public.coaches enable row level security;
 alter table public.trainee_groups enable row level security;
 alter table public.nutrition_templates enable row level security;
 alter table public.trainees enable row level security;
+alter table public.food_catalog_items enable row level security;
 
 drop policy if exists "Allow full access to coaches" on public.coaches;
 create policy "Allow full access to coaches"
@@ -242,5 +275,9 @@ drop policy if exists "Allow full access to trainees" on public.trainees;
 create policy "Allow full access to trainees"
   on public.trainees for all using (true) with check (true);
 
--- 8. רענון מיידי של Schema Cache ב-PostgREST
+drop policy if exists "Allow full access to food_catalog_items" on public.food_catalog_items;
+create policy "Allow full access to food_catalog_items"
+  on public.food_catalog_items for all using (true) with check (true);
+
+-- 9. רענון מיידי של Schema Cache ב-PostgREST
 notify pgrst, 'reload schema';

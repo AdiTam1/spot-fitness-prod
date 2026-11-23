@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getMergedCatalogItems } from '@/lib/scrapers/scraperStore';
+import { waitUntil } from '@vercel/functions';
+import { isValidMacroSet } from '@/lib/scrapers/helpers';
+import {
+  lookupBarcodeUnified,
+  persistCatalogItemsToDb,
+} from '@/lib/scrapers/scraperStore';
 import { FoodCatalogItem } from '@/types/nutrition';
 import { getSessionFromRequest, sanitizeText } from '@/lib/serverAuth';
+
+export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   const session = getSessionFromRequest(request);
@@ -20,9 +27,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // 1. בדיקה במאגר המוצרים המשולב (מקומי + סקרייפרים)
-  const mergedCatalog = await getMergedCatalogItems();
-  const localItem = mergedCatalog.find((item) => item.barcode === code);
+  // 1. בדיקה במאגר המוצרים המשולב (מקומי + טבלת SQL + קאש)
+  const localItem = await lookupBarcodeUnified(code);
   if (localItem) {
     return NextResponse.json({ item: localItem, source: localItem.source || 'local' });
   }
@@ -57,7 +63,7 @@ export async function GET(request: NextRequest) {
         const servingGrams = Number(p.serving_quantity) || 100;
 
         const item: FoodCatalogItem = {
-          id: `off-${code}`,
+          id: `openfoodfacts-${code}`,
           name,
           brand,
           category: 'סריקת ברקוד (OpenFoodFacts)',
@@ -75,7 +81,26 @@ export async function GET(request: NextRequest) {
             { label: '100 גרם', grams: 100 },
           ],
           source: 'openfoodfacts',
+          sourceSiteId: 'openfoodfacts',
+          sourceSiteName: 'Open Food Facts ישראל',
+          sourceUrl: `https://world.openfoodfacts.org/product/${code}`,
+          updatedAt: new Date().toISOString(),
         };
+
+        // שמירה אוטומטית ברקע לטבלת food_catalog_items אם למוצר יש ערכים מלאים ותקינים
+        if (
+          nutriments['energy-kcal_100g'] != null &&
+          nutriments.proteins_100g != null &&
+          nutriments.carbohydrates_100g != null &&
+          nutriments.fat_100g != null &&
+          isValidMacroSet(item.per100g)
+        ) {
+          try {
+            waitUntil(persistCatalogItemsToDb([item]).catch(() => undefined));
+          } catch {
+            // ignore outside Vercel lifecycle
+          }
+        }
 
         return NextResponse.json({ item, source: 'openfoodfacts' });
       }

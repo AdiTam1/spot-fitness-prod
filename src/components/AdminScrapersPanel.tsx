@@ -136,6 +136,28 @@ export function AdminScrapersPanel({
     }
   };
 
+  const handleSyncOpenFoodFacts = async () => {
+    setBusyAction('sync_off');
+    try {
+      const data = await callScraperApi({ action: 'sync_openfoodfacts', pages: 5 });
+      onReportUpdate(data.report);
+      if (!data.tableReady) {
+        onNotify(
+          'טבלת food_catalog_items טרם נוצרה ב-Supabase — יש להריץ את supabase/schema.sql ב-SQL Editor.',
+          true
+        );
+      } else {
+        onNotify(
+          `סונכרנו ${Number(data.savedCount || 0)} מוצרי סופרים וברקוד מ-Open Food Facts ישראל ישירות לטבלת ה-DB!`
+        );
+      }
+    } catch (err) {
+      onNotify(err instanceof Error ? err.message : 'ייבוא Open Food Facts נכשל', true);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   const handleRunTestSearch = async (scraperId: ScraperSourceId) => {
     setTestingId(scraperId);
     try {
@@ -334,15 +356,20 @@ export function AdminScrapersPanel({
               border: '1px solid var(--border-subtle)',
             }}
           >
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>מוצרים מסונכרנים במאגר</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>מוצרים שמורים במאגר</div>
             <div
               className="num-mono"
               style={{ fontSize: 20, fontWeight: 900, marginTop: 4, color: 'var(--accent-volt)' }}
             >
-              {(report?.totalScrapedCatalogItems ?? 0).toLocaleString('he-IL')}
+              {Math.max(
+                report?.totalScrapedCatalogItems ?? 0,
+                report?.sqlCatalogStats?.totalCount ?? 0
+              ).toLocaleString('he-IL')}
             </div>
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-              + חיפוש חי על 25,000+ פריטים בזמן אמת
+              {report?.sqlCatalogStats?.available
+                ? `טבלת SQL מאונדקסת (${report.sqlCatalogStats.totalCount.toLocaleString('he-IL')} שורות) + חיפוש חי`
+                : '+ חיפוש חי על 25,000+ פריטים בזמן אמת'}
             </div>
           </div>
 
@@ -387,7 +414,104 @@ export function AdminScrapersPanel({
         </div>
       </div>
 
-      {/* גריד 10 הסקרייפרים */}
+      {/* טבלת SQL קבועה למוצרי סופרים (שופרסל + OpenFoodFacts + קאש חיפוש/ברקוד) */}
+      <div
+        className="pro-card"
+        style={{
+          padding: 16,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 12,
+          borderColor: report?.sqlCatalogStats?.available
+            ? 'rgba(210, 255, 40, 0.25)'
+            : 'rgba(250, 204, 21, 0.35)',
+        }}
+      >
+        <div style={{ minWidth: 260, flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <Database size={16} color="var(--accent-volt)" />
+            <strong style={{ fontSize: 13.5 }}>
+              טבלת SQL מאונדקסת (<code dir="ltr">food_catalog_items</code>) — שופרסל, ברקוד ושמירת חיפושים
+            </strong>
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                padding: '2px 8px',
+                borderRadius: 999,
+                background: report?.sqlCatalogStats?.available
+                  ? 'rgba(74, 222, 128, 0.14)'
+                  : 'rgba(250, 204, 21, 0.14)',
+                color: report?.sqlCatalogStats?.available ? '#4ade80' : '#facc15',
+              }}
+            >
+              {report?.sqlCatalogStats?.available ? 'מחובר ופעיל' : 'ממתין להרצת SQL ב-Supabase'}
+            </span>
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 6, lineHeight: 1.55 }}>
+            {report?.sqlCatalogStats?.available ? (
+              <>
+                סה״כ שמור בטבלת SQL (ללא עומס RAM):{' '}
+                <strong className="num-mono" style={{ color: 'var(--text-primary)' }}>
+                  {report.sqlCatalogStats.totalCount.toLocaleString('he-IL')}
+                </strong>{' '}
+                מוצרים · שופרסל:{' '}
+                <strong className="num-mono">
+                  {(report.sqlCatalogStats.bySource?.shufersal || 0).toLocaleString('he-IL')}
+                </strong>{' '}
+                · OpenFoodFacts ישראל:{' '}
+                <strong className="num-mono">
+                  {(report.sqlCatalogStats.bySource?.openfoodfacts || 0).toLocaleString('he-IL')}
+                </strong>
+                . כל חיפוש חי או סריקת ברקוד של מתאמן נשמר אוטומטית לטבלה!
+              </>
+            ) : (
+              <>
+                העתק והרץ את <code dir="ltr">supabase/schema.sql</code> ב-SQL Editor של Supabase כדי להפעיל אחסון
+                לאלפי מוצרי שופרסל, OpenFoodFacts וקאש אוטומטי לחיפושים וברקודים.
+              </>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+            להזנת שופרסל אונליין מהרשת הישראלית:{' '}
+            <code dir="ltr" style={{ color: 'var(--accent-volt)' }}>
+              node --use-system-ca scripts/seed-shufersal.mjs
+            </code>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          disabled={Boolean(busyAction) || loading}
+          onClick={handleSyncOpenFoodFacts}
+          className="btn-surface"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '8px 14px',
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: 'pointer',
+            borderColor: 'rgba(210, 255, 40, 0.35)',
+          }}
+        >
+          {busyAction === 'sync_off' ? (
+            <Loader2 size={14} className="spot-spinner" />
+          ) : (
+            <Database size={14} color="var(--accent-volt)" />
+          )}
+          <span>
+            {busyAction === 'sync_off'
+              ? 'מייבא מ-OpenFoodFacts...'
+              : 'ייבא Open Food Facts ישראל (ברקודים)'}
+          </span>
+        </button>
+      </div>
+
+      {/* גריד הסקרייפרים */}
       <div
         style={{
           display: 'grid',

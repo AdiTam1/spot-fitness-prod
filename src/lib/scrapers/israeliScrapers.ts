@@ -1,5 +1,6 @@
 import {
   FoodCatalogItem,
+  FoodCatalogSourceId,
   FoodUnit,
   MacroTargets,
   ScraperHealthResult,
@@ -48,9 +49,10 @@ function makeCatalogItem(params: {
   name: string;
   brand?: string;
   category: string;
+  barcode?: string;
   per100g: MacroTargets;
   units?: FoodUnit[];
-  sourceSiteId: ScraperSourceId;
+  sourceSiteId: FoodCatalogSourceId;
   sourceSiteName: string;
   sourceUrl?: string;
   legacySource?: FoodCatalogItem['source'];
@@ -65,6 +67,7 @@ function makeCatalogItem(params: {
     name: cleanName,
     brand: params.brand ? decodeHtmlEntities(params.brand).trim() : params.sourceSiteName,
     category: params.category || 'מאגר ישראלי',
+    ...(params.barcode ? { barcode: params.barcode } : {}),
     per100g: rounded,
     units:
       params.units && params.units.length > 0
@@ -1936,4 +1939,92 @@ export const ISRAELI_SCRAPERS: IsraeliFoodScraper[] = [
 
 export function getScraperById(id: string): IsraeliFoodScraper | undefined {
   return ISRAELI_SCRAPERS.find((s) => s.meta.id === id);
+}
+
+/**
+ * שולף מוצרי מדף ישראליים מאומתים עם ברקוד ו-4 ערכי מאקרו מלאים מ-Open Food Facts Israel (9,300+ מוצרים).
+ * משמש להזנת טבלת food_catalog_items ב-Supabase ישירות מהענן ללא חסימת WAF.
+ */
+export async function fetchOpenFoodFactsIsraelItems(
+  pages = 5,
+  pageSize = 60
+): Promise<FoodCatalogItem[]> {
+  const pageNumbers = Array.from({ length: Math.max(1, pages) }, (_, i) => i + 1);
+  const batches = await mapConcurrent(pageNumbers, 3, async (page) => {
+    const url = `https://world.openfoodfacts.org/api/v2/search?countries_tags_en=israel&sort_by=unique_scans_n&page_size=${pageSize}&page=${page}&fields=code,product_name_he,product_name,brands,stores,serving_quantity,nutriments`;
+    const res = await fetchWithTimeout(url, {
+      timeoutMs: 9500,
+      headers: {
+        'User-Agent': 'SpotFitnessIsrael/1.0 (https://spot-fitness.vercel.app)',
+        Accept: 'application/json',
+      },
+    });
+    if (!res.ok) return [] as FoodCatalogItem[];
+
+    try {
+      const data = JSON.parse(res.text) as {
+        products?: Array<{
+          code?: string;
+          product_name_he?: string;
+          product_name?: string;
+          brands?: string;
+          stores?: string;
+          serving_quantity?: number | string;
+          nutriments?: Record<string, unknown>;
+        }>;
+      };
+      const results: FoodCatalogItem[] = [];
+      for (const p of data.products || []) {
+        const code = String(p.code || '').replace(/[^0-9]/g, '');
+        const rawName = String(p.product_name_he || p.product_name || '').trim();
+        const nut = p.nutriments || {};
+        const calRaw = nut['energy-kcal_100g'];
+        const proRaw = nut.proteins_100g;
+        const carbRaw = nut.carbohydrates_100g;
+        const fatRaw = nut.fat_100g;
+
+        if (
+          !code ||
+          !rawName ||
+          typeof calRaw !== 'number' ||
+          typeof proRaw !== 'number' ||
+          typeof carbRaw !== 'number' ||
+          typeof fatRaw !== 'number'
+        ) {
+          continue;
+        }
+
+        const brand = String(p.brands || '').split(',')[0]?.trim() || 'סופרים בישראל';
+        const displayName =
+          brand && brand !== 'סופרים בישראל' && !rawName.includes(brand)
+            ? `${rawName} — ${brand}`
+            : rawName;
+        const units = inferSmartUnits(displayName, p.stores || 'Open Food Facts ישראל');
+        const srvG = Number(p.serving_quantity);
+        if (Number.isFinite(srvG) && srvG > 5 && srvG < 1000 && srvG !== 100) {
+          units.unshift({ label: `מנה (${Math.round(srvG)} גרם)`, grams: Math.round(srvG) });
+        }
+
+        const item = makeCatalogItem({
+          idSuffix: code,
+          name: displayName,
+          brand,
+          category: p.stores ? `ברקוד וסופרים (${String(p.stores).slice(0, 36)})` : 'ברקוד וסופרים — ישראל',
+          barcode: code,
+          per100g: { calories: calRaw, protein: proRaw, carbs: carbRaw, fat: fatRaw },
+          units,
+          sourceSiteId: 'openfoodfacts',
+          sourceSiteName: 'Open Food Facts ישראל',
+          sourceUrl: `https://world.openfoodfacts.org/product/${code}`,
+          legacySource: 'openfoodfacts',
+        });
+        if (item) results.push(item);
+      }
+      return results;
+    } catch {
+      return [] as FoodCatalogItem[];
+    }
+  });
+
+  return batches.flat();
 }

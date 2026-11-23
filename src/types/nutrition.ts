@@ -44,6 +44,18 @@ export type ScraperSourceId =
   | 'netogreen'
   | 'moh_gov';
 
+export type FoodCatalogSourceId =
+  | ScraperSourceId
+  | 'shufersal'
+  | 'openfoodfacts'
+  | 'local';
+
+export interface SqlFoodCatalogStats {
+  available: boolean;
+  totalCount: number;
+  bySource: Record<string, number>;
+}
+
 export type ScraperHealthStatus = 'healthy' | 'warning' | 'broken';
 
 export interface ScraperHealthResult {
@@ -93,6 +105,7 @@ export interface ScraperSuiteReport {
   totalScrapedCatalogItems: number;
   results: ScraperHealthResult[];
   history: ScraperCheckHistoryEntry[];
+  sqlCatalogStats?: SqlFoodCatalogStats;
 }
 
 export interface FoodCatalogItem {
@@ -105,7 +118,7 @@ export interface FoodCatalogItem {
   units: FoodUnit[];
   isPopular?: boolean;
   source?: 'local' | 'moh' | 'openfoodfacts' | 'scraper';
-  sourceSiteId?: ScraperSourceId;
+  sourceSiteId?: FoodCatalogSourceId;
   sourceSiteName?: string;
   sourceUrl?: string;
   updatedAt?: string;

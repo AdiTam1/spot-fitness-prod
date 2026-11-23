@@ -2,9 +2,13 @@ import fs from 'fs';
 import path from 'path';
 import { ISRAELI_FOOD_CATALOG } from '@/data/israeliFoodCatalog';
 import {
+  findFoodByBarcodeSql,
+  getSqlFoodCatalogStats,
   loadScraperSuiteFromSupabase,
   saveScraperSuiteCatalogToSupabase,
   saveScraperSuiteMetaToSupabase,
+  searchFoodCatalogSql,
+  upsertFoodCatalogItemsToSupabase,
 } from '@/lib/supabase';
 import {
   FoodCatalogItem,
@@ -14,7 +18,11 @@ import {
   ScraperSuiteReport,
 } from '@/types/nutrition';
 import { normalizeFoodKey } from './helpers';
-import { getScraperById, ISRAELI_SCRAPERS } from './israeliScrapers';
+import {
+  fetchOpenFoodFactsIsraelItems,
+  getScraperById,
+  ISRAELI_SCRAPERS,
+} from './israeliScrapers';
 
 export const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // בדיקה אוטומטית כל 6 שעות
 const MEMORY_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -164,10 +172,17 @@ export async function getScraperState(forceReload = false): Promise<{
     catalog = local.catalog;
   }
 
-  const activeIds = new Set<string>(ISRAELI_SCRAPERS.map((s) => s.meta.id));
+  const activeIds = new Set<string>([
+    ...ISRAELI_SCRAPERS.map((s) => s.meta.id),
+    'shufersal',
+    'openfoodfacts',
+  ]);
   catalog = catalog.filter((item) => !item.sourceSiteId || activeIds.has(item.sourceSiteId));
 
-  const finalReport = recomputeReportSummary(report || buildInitialReport(catalog), catalog);
+  const sqlStats = await getSqlFoodCatalogStats(ISRAELI_SCRAPERS.map((s) => s.meta.id));
+  const baseReport = recomputeReportSummary(report || buildInitialReport(catalog), catalog);
+  const finalReport: ScraperSuiteReport = { ...baseReport, sqlCatalogStats: sqlStats };
+
   globalThis.__spotScraperCache = {
     report: finalReport,
     catalog,
@@ -183,6 +198,9 @@ async function persistScraperState(
   opts: { saveMeta?: boolean; saveCatalog?: boolean } = { saveMeta: true, saveCatalog: true }
 ) {
   const normalized = recomputeReportSummary(report, catalog);
+  if (report.sqlCatalogStats) {
+    normalized.sqlCatalogStats = report.sqlCatalogStats;
+  }
   globalThis.__spotScraperCache = {
     report: normalized,
     catalog,
@@ -376,10 +394,15 @@ export async function syncScrapersCatalog(targetScraperId?: ScraperSourceId): Pr
       }
     }
 
+    const allFreshItems = syncedPerSite.flatMap((b) => b.items);
+    await upsertFoodCatalogItemsToSupabase(allFreshItems).catch(() => undefined);
+    const sqlStats = await getSqlFoodCatalogStats(ISRAELI_SCRAPERS.map((s) => s.meta.id));
+
     const updatedReport = await persistScraperState(
       {
         ...report,
         lastSyncedAt: new Date().toISOString(),
+        sqlCatalogStats: sqlStats,
       },
       merged,
       { saveMeta: true, saveCatalog: true }
@@ -388,7 +411,7 @@ export async function syncScrapersCatalog(targetScraperId?: ScraperSourceId): Pr
     return {
       report: updatedReport,
       addedCount: freshAdded,
-      totalCount: merged.length,
+      totalCount: sqlStats.available ? Math.max(merged.length, sqlStats.totalCount) : merged.length,
     };
   };
 
@@ -401,6 +424,78 @@ export async function syncScrapersCatalog(targetScraperId?: ScraperSourceId): Pr
   });
   globalThis.__spotScraperSyncPromise = p;
   return p;
+}
+
+/**
+ * שומר מוצרים חדשים שנתגלו דרך חיפוש חי, סריקת ברקוד או ייבוא חיצוני ישירות לטבלת ה-SQL (ללא העמסת RAM).
+ */
+export async function persistCatalogItemsToDb(
+  items: FoodCatalogItem[]
+): Promise<{ ok: boolean; tableReady: boolean; savedCount: number; error?: string }> {
+  if (!items || items.length === 0) {
+    return { ok: true, tableReady: true, savedCount: 0 };
+  }
+  const res = await upsertFoodCatalogItemsToSupabase(items);
+  if (res.savedCount > 0 && globalThis.__spotScraperCache) {
+    // מאפס את החותמת כדי שבבדיקת הדשבורד הבאה יוצג המונה המעודכן
+    globalThis.__spotScraperCache.loadedAt = 0;
+  }
+  return res;
+}
+
+/**
+ * מאחזר מוצרי מדף ישראליים עם ברקוד מ-Open Food Facts ישראל ושומר לטבלת food_catalog_items.
+ */
+export async function syncOpenFoodFactsToCatalog(pages = 5): Promise<{
+  savedCount: number;
+  extractedCount: number;
+  tableReady: boolean;
+  report: ScraperSuiteReport;
+}> {
+  const offItems = await fetchOpenFoodFactsIsraelItems(pages, 60);
+  const res = await upsertFoodCatalogItemsToSupabase(offItems);
+  const { report } = await getScraperState(true);
+  return {
+    savedCount: res.savedCount,
+    extractedCount: offItems.length,
+    tableReady: res.tableReady,
+    report,
+  };
+}
+
+/**
+ * חיפוש מהיר משולב: קטלוג הבסיס + זיכרון RAM + שאילתת SQL מאונדקסת על עשרות אלפי פריטים.
+ */
+export async function searchSqlAndCachedCatalog(opts: {
+  query?: string;
+  sourceFilter?: string;
+  limit?: number;
+}): Promise<{ items: FoodCatalogItem[]; sqlCount: number }> {
+  const limit = Math.min(120, Math.max(10, opts.limit || 60));
+  const shouldHitSql = !opts.sourceFilter || opts.sourceFilter !== 'local';
+  const sqlRes = shouldHitSql
+    ? await searchFoodCatalogSql({
+        query: opts.query,
+        sourceSiteId: opts.sourceFilter && opts.sourceFilter !== 'all' ? opts.sourceFilter : undefined,
+        limit,
+      })
+    : { items: [], tableReady: false };
+
+  return { items: sqlRes.items, sqlCount: sqlRes.items.length };
+}
+
+/**
+ * בדיקת ברקוד משולבת: מקומי -> SQL (אינדקס B-tree על barcode) -> זיכרון מסונכרן.
+ */
+export async function lookupBarcodeUnified(barcode: string): Promise<FoodCatalogItem | null> {
+  const localMatch = ISRAELI_FOOD_CATALOG.find((i) => i.barcode === barcode);
+  if (localMatch) return localMatch;
+
+  const sqlMatch = await findFoodByBarcodeSql(barcode);
+  if (sqlMatch.item) return sqlMatch.item;
+
+  const { catalog } = await getScraperState();
+  return catalog.find((i) => i.barcode === barcode) || null;
 }
 
 /**

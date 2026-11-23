@@ -6,11 +6,14 @@ import {
   CoachProfile,
   CoachPushSubscriptionSettings,
   FoodCatalogItem,
+  FoodCatalogSourceId,
+  FoodUnit,
   NutritionTemplate,
   PendingAiMealJob,
   QuickContextChip,
   SavedMealPreset,
   ScraperSuiteReport,
+  SqlFoodCatalogStats,
   TraineeActivityTargets,
   TraineeCustomUnit,
   TraineeGroup,
@@ -19,6 +22,11 @@ import {
   TraineeServingTool,
   WeeklyCheckInEntry,
 } from '@/types/nutrition';
+import {
+  isValidMacroSet,
+  normalizeFoodKey,
+  roundMacros,
+} from '@/lib/scrapers/helpers';
 
 const cleanEnv = (v?: string) =>
   (v || '')
@@ -1164,4 +1172,251 @@ export async function saveScraperSuiteCatalogToSupabase(
     'Synced Israeli food catalog from web scrapers',
     { updatedAt: new Date().toISOString(), count: items.length, items }
   );
+}
+
+// =====================================================================
+// טבלת קטלוג המזון המנורמלת והמאונדקסת: public.food_catalog_items
+// =====================================================================
+
+const FOOD_CATALOG_SELECT_COLS =
+  'id, name, brand, category, barcode, calories, protein, carbs, fat, units, source, source_site_id, source_site_name, source_url, updated_at';
+
+function isMissingFoodTableError(err: SbErrorLike): boolean {
+  if (!err) return false;
+  const code = String(err.code || '').toUpperCase();
+  const msg = String(err.message || '').toLowerCase();
+  return (
+    code === '42P01' ||
+    code === 'PGRST205' ||
+    msg.includes('does not exist') ||
+    msg.includes('could not find the table')
+  );
+}
+
+function mapSqlRowToFoodCatalogItem(row: Record<string, unknown>): FoodCatalogItem | null {
+  const name = String(row.name || '').trim();
+  if (!name) return null;
+  const per100g = roundMacros({
+    calories: Number(row.calories) || 0,
+    protein: Number(row.protein) || 0,
+    carbs: Number(row.carbs) || 0,
+    fat: Number(row.fat) || 0,
+  });
+  if (!isValidMacroSet(per100g)) return null;
+
+  const rawUnits = Array.isArray(row.units) ? (row.units as FoodUnit[]) : [];
+  const units =
+    rawUnits.length > 0 ? rawUnits : [{ label: '100 גרם', grams: 100 }];
+
+  return {
+    id: String(row.id),
+    name,
+    brand: row.brand ? String(row.brand) : undefined,
+    category: String(row.category || 'מאגר סופרים'),
+    barcode: row.barcode ? String(row.barcode) : undefined,
+    per100g,
+    units,
+    source: (row.source as FoodCatalogItem['source']) || 'scraper',
+    sourceSiteId: row.source_site_id
+      ? (String(row.source_site_id) as FoodCatalogSourceId)
+      : undefined,
+    sourceSiteName: row.source_site_name ? String(row.source_site_name) : undefined,
+    sourceUrl: row.source_url ? String(row.source_url) : undefined,
+    updatedAt: row.updated_at ? String(row.updated_at) : undefined,
+  };
+}
+
+/**
+ * שומר אצוות מוצרי מזון מאומתים לטבלת food_catalog_items ב-Supabase (Upsert בבאצ'ים של 250).
+ */
+export async function upsertFoodCatalogItemsToSupabase(
+  items: FoodCatalogItem[]
+): Promise<{ ok: boolean; tableReady: boolean; savedCount: number; error?: string }> {
+  if (!supabase || items.length === 0) {
+    return { ok: Boolean(supabase), tableReady: true, savedCount: 0 };
+  }
+
+  const dedupedById = new Map<string, Record<string, unknown>>();
+  const nowIso = new Date().toISOString();
+
+  for (const item of items) {
+    if (!item?.id || !item?.name) continue;
+    const rounded = roundMacros(item.per100g);
+    if (!isValidMacroSet(rounded)) continue;
+
+    const cleanName = item.name.replace(/\s+/g, ' ').trim().slice(0, 180);
+    const cleanBrand = (item.brand || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+    const nameNorm = [normalizeFoodKey(cleanName), normalizeFoodKey(cleanBrand)]
+      .filter(Boolean)
+      .join(' ')
+      .slice(0, 280);
+
+    dedupedById.set(item.id, {
+      id: item.id.slice(0, 120),
+      name: cleanName,
+      name_norm: nameNorm || normalizeFoodKey(cleanName),
+      brand: cleanBrand,
+      category: (item.category || '').slice(0, 100),
+      barcode: item.barcode ? item.barcode.replace(/[^0-9]/g, '').slice(0, 20) || null : null,
+      calories: rounded.calories,
+      protein: rounded.protein,
+      carbs: rounded.carbs,
+      fat: rounded.fat,
+      units: Array.isArray(item.units) ? item.units.slice(0, 8) : [{ label: '100 גרם', grams: 100 }],
+      source: item.source || 'scraper',
+      source_site_id: item.sourceSiteId || null,
+      source_site_name: item.sourceSiteName || null,
+      source_url: item.sourceUrl || null,
+      updated_at: item.updatedAt || nowIso,
+    });
+  }
+
+  const rows = Array.from(dedupedById.values());
+  if (rows.length === 0) {
+    return { ok: true, tableReady: true, savedCount: 0 };
+  }
+
+  let savedCount = 0;
+  for (let i = 0; i < rows.length; i += 250) {
+    const chunk = rows.slice(i, i + 250);
+    const { error } = await supabase
+      .from('food_catalog_items')
+      .upsert(chunk, { onConflict: 'id' });
+    if (error) {
+      if (isMissingFoodTableError(error)) {
+        return {
+          ok: false,
+          tableReady: false,
+          savedCount,
+          error: 'טבלת food_catalog_items טרם נוצרה ב-Supabase',
+        };
+      }
+      return {
+        ok: false,
+        tableReady: true,
+        savedCount,
+        error: formatSupabaseError('food_catalog_items', error),
+      };
+    }
+    savedCount += chunk.length;
+  }
+
+  return { ok: true, tableReady: true, savedCount };
+}
+
+/**
+ * חיפוש מהיר ישירות מול PostgreSQL (GIN trigram index) — אינו טוען שורות מיותרות ל-RAM.
+ */
+export async function searchFoodCatalogSql(opts: {
+  query?: string;
+  sourceSiteId?: string;
+  limit?: number;
+}): Promise<{ items: FoodCatalogItem[]; tableReady: boolean }> {
+  if (!supabase) return { items: [], tableReady: false };
+  const limit = Math.min(120, Math.max(1, opts.limit || 50));
+
+  try {
+    let req = supabase
+      .from('food_catalog_items')
+      .select(FOOD_CATALOG_SELECT_COLS);
+
+    if (opts.sourceSiteId && opts.sourceSiteId !== 'all' && opts.sourceSiteId !== 'local') {
+      req = req.eq('source_site_id', opts.sourceSiteId);
+    }
+
+    const qNorm = opts.query ? normalizeFoodKey(opts.query) : '';
+    if (qNorm) {
+      const tokens = qNorm.split(/\s+/).filter((t) => t.length >= 1).slice(0, 4);
+      for (const tok of tokens) {
+        req = req.ilike('name_norm', `%${tok}%`);
+      }
+    }
+
+    const { data, error } = await req
+      .order('updated_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      if (isMissingFoodTableError(error)) {
+        return { items: [], tableReady: false };
+      }
+      return { items: [], tableReady: true };
+    }
+
+    const items = (data || [])
+      .map((r) => mapSqlRowToFoodCatalogItem(r as Record<string, unknown>))
+      .filter((x): x is FoodCatalogItem => Boolean(x));
+
+    return { items, tableReady: true };
+  } catch {
+    return { items: [], tableReady: false };
+  }
+}
+
+export async function findFoodByBarcodeSql(
+  barcode: string
+): Promise<{ item: FoodCatalogItem | null; tableReady: boolean }> {
+  if (!supabase || !barcode) return { item: null, tableReady: false };
+  try {
+    const { data, error } = await supabase
+      .from('food_catalog_items')
+      .select(FOOD_CATALOG_SELECT_COLS)
+      .eq('barcode', barcode)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      return { item: null, tableReady: !isMissingFoodTableError(error) };
+    }
+    if (!data) return { item: null, tableReady: true };
+    return {
+      item: mapSqlRowToFoodCatalogItem(data as Record<string, unknown>),
+      tableReady: true,
+    };
+  } catch {
+    return { item: null, tableReady: false };
+  }
+}
+
+/**
+ * מחזיר סטטיסטיקת ספירת שורות מדויקת מהטבלה ב-SQL (head-only COUNT, 0 שורות עוברות ברשת).
+ */
+export async function getSqlFoodCatalogStats(
+  sourceIds: string[] = []
+): Promise<SqlFoodCatalogStats> {
+  if (!supabase) return { available: false, totalCount: 0, bySource: {} };
+
+  try {
+    const totalRes = await supabase
+      .from('food_catalog_items')
+      .select('id', { count: 'exact', head: true });
+
+    if (totalRes.error) {
+      return { available: false, totalCount: 0, bySource: {} };
+    }
+
+    const tracked = Array.from(new Set(['shufersal', 'openfoodfacts', ...sourceIds]));
+    const countEntries = await Promise.all(
+      tracked.map(async (sid) => {
+        const res = await supabase!
+          .from('food_catalog_items')
+          .select('id', { count: 'exact', head: true })
+          .eq('source_site_id', sid);
+        return [sid, res.count || 0] as const;
+      })
+    );
+
+    const bySource: Record<string, number> = {};
+    for (const [sid, cnt] of countEntries) {
+      if (cnt > 0) bySource[sid] = cnt;
+    }
+
+    return {
+      available: true,
+      totalCount: totalRes.count || 0,
+      bySource,
+    };
+  } catch {
+    return { available: false, totalCount: 0, bySource: {} };
+  }
 }

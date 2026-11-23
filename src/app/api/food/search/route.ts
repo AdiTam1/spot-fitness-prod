@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
 import { ISRAELI_FOOD_CATALOG } from '@/data/israeliFoodCatalog';
-import { FoodCatalogItem, ScraperSourceId } from '@/types/nutrition';
+import { FoodCatalogItem, FoodCatalogSourceId, ScraperSourceId } from '@/types/nutrition';
 import { getSessionFromRequest, sanitizeText } from '@/lib/serverAuth';
 import { normalizeFoodKey } from '@/lib/scrapers/helpers';
 import {
   getMergedCatalogItems,
   getScraperState,
+  persistCatalogItemsToDb,
   searchLiveScrapers,
+  searchSqlAndCachedCatalog,
   syncScrapersCatalog,
 } from '@/lib/scrapers/scraperStore';
 
@@ -42,8 +44,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const query = sanitizeText(searchParams.get('q') || '', 80);
   const sourceFilter = sanitizeText(searchParams.get('source') || '', 30) as
-    | ScraperSourceId
-    | 'local'
+    | FoodCatalogSourceId
     | '';
   const limit = Math.min(120, Math.max(10, Number(searchParams.get('limit')) || 60));
 
@@ -66,8 +67,21 @@ export async function GET(request: NextRequest) {
       )
     : mergedCatalog;
 
-  // במצב דפדוף (חיפוש ריק): מציג את המאגר המקומי + נציגות מאוזנת מכל הסופרים והאתרים המסונכרנים
+  const totalCatalogEstimate = Math.max(
+    mergedCatalog.length,
+    ISRAELI_FOOD_CATALOG.length + (report.sqlCatalogStats?.totalCount || 0)
+  );
+
+  // במצב דפדוף (חיפוש ריק): מציג את המאגר המקומי + נציגות מאוזנת מכל הסופרים והאתרים המסונכרנים + תוצאות SQL
   if (!query.trim()) {
+    const sqlBrowse =
+      sourceFilter === 'shufersal' || sourceFilter === 'openfoodfacts' || sourceFilter === ''
+        ? await searchSqlAndCachedCatalog({
+            sourceFilter: sourceFilter || undefined,
+            limit: sourceFilter ? limit : 20,
+          })
+        : { items: [] as FoodCatalogItem[], sqlCount: 0 };
+
     const localItems = filteredPool.filter((i) => !i.sourceSiteId);
     const scrapedItems = filteredPool.filter((i) => Boolean(i.sourceSiteId));
 
@@ -85,10 +99,19 @@ export async function GET(request: NextRequest) {
       diversifiedScraped.push(...group.slice(0, maxPerSite));
     });
 
-    const combined = [...localItems, ...diversifiedScraped].slice(0, limit);
+    const combinedSeen = new Set<string>();
+    const combined: FoodCatalogItem[] = [];
+    for (const item of [...localItems, ...sqlBrowse.items, ...diversifiedScraped]) {
+      const key = `${normalizeFoodKey(item.name)}:${Math.round(item.per100g.calories)}`;
+      if (combinedSeen.has(key)) continue;
+      combinedSeen.add(key);
+      combined.push(item);
+      if (combined.length >= limit) break;
+    }
+
     return NextResponse.json({
       items: combined,
-      totalAvailable: mergedCatalog.length,
+      totalAvailable: totalCatalogEstimate,
       localCount: ISRAELI_FOOD_CATALOG.length,
       syncedCount: syncedCatalog.length,
       mohCount: 0,
@@ -103,20 +126,41 @@ export async function GET(request: NextRequest) {
     .sort((a, b) => b.score - a.score)
     .map((x) => x.item);
 
-  // חיפוש חי במקביל מול כל הרשתות, הסופרים ואתרי התזונה התומכים בחיפוש דינמי
-  let liveMatches: FoodCatalogItem[] = [];
-  if (query.trim().length >= 2 && sourceFilter !== 'local') {
-    liveMatches = await searchLiveScrapers(
-      query.trim(),
-      sourceFilter ? (sourceFilter as ScraperSourceId) : undefined
-    );
+  const shouldQueryLive =
+    query.trim().length >= 2 &&
+    sourceFilter !== 'local' &&
+    sourceFilter !== 'shufersal' &&
+    sourceFilter !== 'openfoodfacts';
+
+  // חיפוש מקביל: SQL (שופרסל/ברקוד/סופרים ששמור ב-DB) + סקרייפרים חיים
+  const [sqlRes, liveMatches] = await Promise.all([
+    searchSqlAndCachedCatalog({
+      query: query.trim(),
+      sourceFilter: sourceFilter || undefined,
+      limit: Math.min(limit, 50),
+    }),
+    shouldQueryLive
+      ? searchLiveScrapers(
+          query.trim(),
+          sourceFilter ? (sourceFilter as ScraperSourceId) : undefined
+        )
+      : Promise.resolve([] as FoodCatalogItem[]),
+  ]);
+
+  // שמירה אוטומטית ברקע של תוצאות החיפוש החי בטבלת SQL כדי להאיץ חיפושים עתידיים
+  if (liveMatches.length > 0) {
+    try {
+      waitUntil(persistCatalogItemsToDb(liveMatches).catch(() => undefined));
+    } catch {
+      // ignore outside Vercel lifecycle
+    }
   }
 
-  // איחוד ודה-דופליקציה לפי שם מנורמל
+  // איחוד ודה-דופליקציה לפי שם מנורמל (שמירה על עדיפות תוצאות מדויקות מהמקומי וה-SQL לפני החיפוש החי)
   const seen = new Set<string>();
   const deduped: FoodCatalogItem[] = [];
 
-  for (const item of [...localMatches, ...liveMatches]) {
+  for (const item of [...localMatches, ...sqlRes.items, ...liveMatches]) {
     const key = `${normalizeFoodKey(item.name)}:${Math.round(item.per100g.calories)}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -131,10 +175,11 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     items: deduped,
-    totalAvailable: mergedCatalog.length,
+    totalAvailable: totalCatalogEstimate,
     localCount: localMatches.length,
     syncedCount: syncedCatalog.length,
     liveCount: liveMatches.length,
+    sqlCount: sqlRes.sqlCount,
     scraperCount,
     mohCount,
   });
