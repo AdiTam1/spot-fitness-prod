@@ -18,21 +18,90 @@ export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
 function scoreMatch(item: FoodCatalogItem, qLower: string): number {
-  const name = item.name.toLowerCase();
-  const brand = (item.brand || '').toLowerCase();
-  const cat = (item.category || '').toLowerCase();
+  const qNorm = normalizeFoodKey(qLower);
+  const nameNorm = normalizeFoodKey(item.name);
+  const brandNorm = normalizeFoodKey(item.brand || '');
+  const catNorm = normalizeFoodKey(item.category || '');
+  const lenPenalty = Math.min(10, Math.floor(Math.max(0, nameNorm.length - qNorm.length) / 7));
 
-  if (name === qLower) return 100;
-  if (name.startsWith(qLower)) return 85;
-  if (name.includes(qLower)) return 70;
-  if (brand.includes(qLower)) return 50;
-  if (cat.includes(qLower)) return 35;
+  if (!qNorm) return 0;
+  if (nameNorm === qNorm) return 100;
+  if (nameNorm.startsWith(`${qNorm} `)) return 93 - Math.min(4, Math.floor(lenPenalty / 2));
+  if (nameNorm.startsWith(qNorm)) return 88 - Math.min(4, Math.floor(lenPenalty / 2));
 
-  const words = qLower.split(/\s+/).filter((w) => w.length >= 2);
-  if (words.length > 1 && words.every((w) => name.includes(w) || brand.includes(w))) {
-    return 65;
+  // התאמת מילה שלמה בתוך שם המוצר (למשל "דבש טהור" / "יוגורט דבש" מקבלים עדיפות גבוהה ממחרוזות ארוכות)
+  const paddedName = ` ${nameNorm} `;
+  if (paddedName.includes(` ${qNorm} `)) {
+    return 82 - lenPenalty;
   }
+
+  const words = qNorm.split(/\s+/).filter((w) => w.length >= 2);
+  if (words.length > 1 && words.every((w) => nameNorm.includes(w) || brandNorm.includes(w))) {
+    return 74 - Math.min(8, lenPenalty);
+  }
+
+  if (nameNorm.includes(qNorm)) return 64 - lenPenalty;
+  if (brandNorm.includes(qNorm)) return 48;
+  if (catNorm.includes(qNorm)) return 32;
   return 0;
+}
+
+/**
+ * מדרג תוצאות מכל המקורות לפי ציון התאמה, ותחת "הכל" מאזן מקורות קרובים כך שמקור בודד לא ידחוק אחרים.
+ */
+function rankAndDedupeMatches(
+  candidates: FoodCatalogItem[],
+  qLower: string,
+  limit: number,
+  interleaveBySource: boolean
+): Array<{ item: FoodCatalogItem; score: number }> {
+  const scoredByKey = new Map<string, { item: FoodCatalogItem; score: number }>();
+
+  for (const item of candidates) {
+    const score = scoreMatch(item, qLower);
+    if (score <= 0) continue;
+    const key = `${normalizeFoodKey(item.name)}:${Math.round(item.per100g.calories)}`;
+    const prev = scoredByKey.get(key);
+    if (!prev || score > prev.score) {
+      scoredByKey.set(key, { item, score });
+    }
+  }
+
+  const pool = Array.from(scoredByKey.values()).sort((a, b) => b.score - a.score);
+  if (!interleaveBySource) {
+    return pool.slice(0, limit);
+  }
+
+  const picked: Array<{ item: FoodCatalogItem; score: number }> = [];
+  const usedIndices = new Set<number>();
+  const countPerSource = new Map<string, number>();
+
+  while (picked.length < limit && usedIndices.size < pool.length) {
+    let bestIdx = -1;
+    let bestEffective = -Infinity;
+
+    // בוחן חלון של המועמדים המובילים שטרם נבחרו ומפחית קלות רצף מאותו מקור
+    for (let i = 0; i < pool.length && i < 180; i++) {
+      if (usedIndices.has(i)) continue;
+      const entry = pool[i];
+      const srcKey = entry.item.sourceSiteId || entry.item.source || 'local';
+      const seenCnt = countPerSource.get(srcKey) || 0;
+      const effective = entry.score - seenCnt * 4;
+      if (effective > bestEffective) {
+        bestEffective = effective;
+        bestIdx = i;
+      }
+    }
+
+    if (bestIdx < 0) break;
+    usedIndices.add(bestIdx);
+    const chosen = pool[bestIdx];
+    const srcKey = chosen.item.sourceSiteId || chosen.item.source || 'local';
+    countPerSource.set(srcKey, (countPerSource.get(srcKey) || 0) + 1);
+    picked.push(chosen);
+  }
+
+  return picked;
 }
 
 export async function GET(request: NextRequest) {
@@ -74,13 +143,21 @@ export async function GET(request: NextRequest) {
 
   // במצב דפדוף (חיפוש ריק): מציג את המאגר המקומי + נציגות מאוזנת מכל הסופרים והאתרים המסונכרנים + תוצאות SQL
   if (!query.trim()) {
-    const sqlBrowse =
+    let sqlBrowse =
       sourceFilter === 'shufersal' || sourceFilter === 'openfoodfacts' || sourceFilter === ''
         ? await searchSqlAndCachedCatalog({
             sourceFilter: sourceFilter || undefined,
             limit: sourceFilter ? limit : 20,
           })
         : { items: [] as FoodCatalogItem[], sqlCount: 0 };
+
+    // גיבוי עבור טאב שופרסל טרם הרצת הסקריפט: הצג מותגי שופרסל מ-Fuder/Foodik ב-SQL
+    if (sourceFilter === 'shufersal' && sqlBrowse.items.length === 0) {
+      sqlBrowse = await searchSqlAndCachedCatalog({
+        query: 'שופרסל',
+        limit,
+      });
+    }
 
     const localItems = filteredPool.filter((i) => !i.sourceSiteId);
     const scrapedItems = filteredPool.filter((i) => Boolean(i.sourceSiteId));
@@ -122,29 +199,36 @@ export async function GET(request: NextRequest) {
   const qLower = query.trim().toLowerCase();
   const forceLive = searchParams.get('forceLive') === '1';
 
-  // שלב 1 (מיידי, ~15-35ms): חיפוש בקטלוג המקומי + שאילתת SQL מאונדקסת על עשרות אלפי פריטים
-  const sqlRes = await searchSqlAndCachedCatalog({
+  // שלב 1 (מיידי, ~15-35ms): חיפוש בקטלוג המקומי + שאילתת SQL מאונדקסת (מפרידה בין רשתות שיווק למשרד הבריאות)
+  let sqlRes = await searchSqlAndCachedCatalog({
     query: query.trim(),
     sourceFilter: sourceFilter || undefined,
-    limit: 100,
+    limit: 120,
   });
 
-  // דירוג משולב לפי התאמה מדויקת כדי שפריטים מרכזיים ("קוטג' 5%", "חלב 3%") יקפצו לפני זנב רשימה
-  const rankedDbAndLocal = [...filteredPool, ...sqlRes.items]
-    .map((item) => ({ item, score: scoreMatch(item, qLower) }))
-    .filter((x) => x.score > 0)
-    .sort((a, b) => b.score - a.score);
+  // גיבוי חכם למסנן "שופרסל" לפני הרצת הסקריפט המלא: מציאת מוצרי מותג שופרסל שנמשכו מ-Fuder/Foodik/OpenFoodFacts
+  if (sourceFilter === 'shufersal' && sqlRes.items.length === 0) {
+    sqlRes = await searchSqlAndCachedCatalog({
+      query: `${query.trim()} שופרסל`,
+      limit: 60,
+    });
+  }
 
-  const preSeen = new Set<string>();
-  const fastMatches: FoodCatalogItem[] = [];
-  let strongFastHits = 0;
-  for (const entry of rankedDbAndLocal) {
-    const key = `${normalizeFoodKey(entry.item.name)}:${Math.round(entry.item.per100g.calories)}`;
-    if (preSeen.has(key)) continue;
-    preSeen.add(key);
-    fastMatches.push(entry.item);
-    if (entry.score >= 60) strongFastHits += 1;
-    if (fastMatches.length >= limit) break;
+  const fastRanked = rankAndDedupeMatches(
+    [...filteredPool, ...sqlRes.items],
+    qLower,
+    limit,
+    !sourceFilter
+  );
+
+  const retailSitesSeen = new Set<string>();
+  let retailStrongHits = 0;
+  for (const { item, score } of fastRanked) {
+    const sid = item.sourceSiteId;
+    if (sid && sid !== 'moh_gov' && item.source !== 'moh') {
+      retailSitesSeen.add(sid);
+      if (score >= 60) retailStrongHits += 1;
+    }
   }
 
   const supportsLiveSite =
@@ -155,11 +239,14 @@ export async function GET(request: NextRequest) {
     sourceFilter !== 'tara' &&
     sourceFilter !== 'berman';
 
-  // Fast-Path חכם: אם כבר יש לנו מספיק התאמות מדויקות מה-DB (לפחות 8 חזקות או 12 כלליות), מחזירים מיד (~30ms) בלי להמתין ל-10 אתרים!
-  // רק אם מדובר במילה נדירה/חדשה שאין לה די תוצאות אצלנו — יוצאים לחיפוש חי ושומרים אותו להבא.
-  const hasEnoughFromDb = !forceLive && (strongFastHits >= 8 || fastMatches.length >= 12);
-  let liveMatches: FoodCatalogItem[] = [];
+  // Fast-Path רק כשכבר קיים ב-DB גיוון אמיתי מרשתות השיווק (ולא רק משרד הבריאות שממלא מכסה לבדו!)
+  const hasEnoughFromDb =
+    !forceLive &&
+    (sourceFilter
+      ? fastRanked.length >= 10
+      : retailSitesSeen.size >= 3 && retailStrongHits >= 6);
 
+  let liveMatches: FoodCatalogItem[] = [];
   if (supportsLiveSite && !hasEnoughFromDb) {
     liveMatches = await searchLiveScrapers(
       query.trim(),
@@ -176,15 +263,15 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // איחוד סופי (שמירה על דירוג המדויקים תחילה + השלמה מהחיפוש החי)
-  const deduped: FoodCatalogItem[] = [...fastMatches];
-  for (const item of liveMatches) {
-    if (deduped.length >= limit) break;
-    const key = `${normalizeFoodKey(item.name)}:${Math.round(item.per100g.calories)}`;
-    if (preSeen.has(key)) continue;
-    preSeen.add(key);
-    deduped.push(item);
-  }
+  // איחוד ודירוג סופי של כל המקורות יחד (מקומי + SQL + חיפוש חי) לפי התאמה + גיוון בין מקורות
+  const combinedCandidates = [...filteredPool, ...sqlRes.items, ...liveMatches];
+  const finalRanked = rankAndDedupeMatches(
+    combinedCandidates,
+    qLower,
+    limit,
+    !sourceFilter
+  );
+  const deduped = finalRanked.map((entry) => entry.item);
 
   const mohCount = deduped.filter(
     (i) => i.source === 'moh' || i.sourceSiteId === 'moh_gov'
@@ -194,7 +281,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     items: deduped,
     totalAvailable: totalCatalogEstimate,
-    localCount: fastMatches.length,
+    localCount: fastRanked.length,
     syncedCount: syncedCatalog.length,
     liveCount: liveMatches.length,
     sqlCount: sqlRes.sqlCount,

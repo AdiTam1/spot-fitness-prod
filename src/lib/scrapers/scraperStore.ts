@@ -523,7 +523,8 @@ export async function getMergedCatalogItems(): Promise<FoodCatalogItem[]> {
  */
 export async function searchLiveScrapers(
   query: string,
-  onlySourceId?: ScraperSourceId
+  onlySourceId?: ScraperSourceId,
+  maxWaitMs?: number
 ): Promise<FoodCatalogItem[]> {
   const cleanQ = query.trim();
   if (cleanQ.length < 2) return [];
@@ -532,14 +533,16 @@ export async function searchLiveScrapers(
     ? ISRAELI_SCRAPERS.filter((s) => s.meta.id === onlySourceId && typeof s.searchLive === 'function')
     : ISRAELI_SCRAPERS.filter((s) => typeof s.searchLive === 'function');
 
+  // קאפ זמן קשיח לכל סקרייפר בחיפוש משולב כדי שאתר איטי יחיד לא יעכב תוצאות של כלל האתרים
+  const timeoutCap = maxWaitMs ?? (onlySourceId ? 6500 : 3400);
+
   const batches = await Promise.all(
-    liveScrapers.map(async (scraper) => {
-      try {
-        return (await scraper.searchLive?.(cleanQ, 6)) || [];
-      } catch {
-        return [];
-      }
-    })
+    liveScrapers.map((scraper) =>
+      Promise.race([
+        scraper.searchLive?.(cleanQ, 6).catch(() => []) ?? Promise.resolve([]),
+        new Promise<FoodCatalogItem[]>((resolve) => setTimeout(() => resolve([]), timeoutCap)),
+      ])
+    )
   );
 
   return batches.flat();

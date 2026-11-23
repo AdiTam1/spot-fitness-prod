@@ -1325,15 +1325,19 @@ export async function searchFoodCatalogSql(opts: {
   limit?: number;
 }): Promise<{ items: FoodCatalogItem[]; tableReady: boolean }> {
   if (!supabase) return { items: [], tableReady: false };
-  const limit = Math.min(120, Math.max(1, opts.limit || 50));
+  const limit = Math.min(120, Math.max(1, opts.limit || 60));
 
-  try {
-    let req = supabase
+  const runFilteredQuery = async (mode: 'exact_site' | 'retail_only' | 'moh_only', rowLimit: number) => {
+    let req = supabase!
       .from('food_catalog_items')
       .select(FOOD_CATALOG_SELECT_COLS);
 
-    if (opts.sourceSiteId && opts.sourceSiteId !== 'all' && opts.sourceSiteId !== 'local') {
+    if (mode === 'exact_site' && opts.sourceSiteId) {
       req = req.eq('source_site_id', opts.sourceSiteId);
+    } else if (mode === 'retail_only') {
+      req = req.neq('source_site_id', 'moh_gov');
+    } else if (mode === 'moh_only') {
+      req = req.eq('source_site_id', 'moh_gov');
     }
 
     const qNorm = opts.query ? normalizeFoodKey(opts.query) : '';
@@ -1344,18 +1348,34 @@ export async function searchFoodCatalogSql(opts: {
       }
     }
 
-    const { data, error } = await req
-      .order('updated_at', { ascending: false })
-      .limit(limit);
+    return req.order('updated_at', { ascending: false }).limit(rowLimit);
+  };
 
-    if (error) {
-      if (isMissingFoodTableError(error)) {
-        return { items: [], tableReady: false };
+  try {
+    const specificSite = opts.sourceSiteId && opts.sourceSiteId !== 'all' && opts.sourceSiteId !== 'local';
+    if (specificSite) {
+      const { data, error } = await runFilteredQuery('exact_site', limit);
+      if (error) {
+        return { items: [], tableReady: !isMissingFoodTableError(error) };
       }
-      return { items: [], tableReady: true };
+      const items = (data || [])
+        .map((r) => mapSqlRowToFoodCatalogItem(r as Record<string, unknown>))
+        .filter((x): x is FoodCatalogItem => Boolean(x));
+      return { items, tableReady: true };
     }
 
-    const items = (data || [])
+    // בחיפוש "הכל": מונע מ-4,610 רשומות משרד הבריאות להסתיר מוצרי סופרים ורשתות שיווק מהתוצאות
+    const [retailRes, mohRes] = await Promise.all([
+      runFilteredQuery('retail_only', Math.min(90, limit)),
+      runFilteredQuery('moh_only', Math.min(35, Math.ceil(limit / 2))),
+    ]);
+
+    if (retailRes.error && isMissingFoodTableError(retailRes.error)) {
+      return { items: [], tableReady: false };
+    }
+
+    const combinedRows = [...(retailRes.data || []), ...(mohRes.data || [])];
+    const items = combinedRows
       .map((r) => mapSqlRowToFoodCatalogItem(r as Record<string, unknown>))
       .filter((x): x is FoodCatalogItem => Boolean(x));
 
