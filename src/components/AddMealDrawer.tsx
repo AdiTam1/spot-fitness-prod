@@ -202,10 +202,13 @@ export function AddMealDrawer({
   } | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [searchResults, setSearchResults] =
     useState<FoodCatalogItem[]>(ISRAELI_FOOD_CATALOG);
   const [searchLoading, setSearchLoading] = useState(false);
   const [mohCount, setMohCount] = useState(0);
+  const [scraperCount, setScraperCount] = useState(0);
+  const [totalAvailable, setTotalAvailable] = useState(ISRAELI_FOOD_CATALOG.length);
 
   const [selectedFood, setSelectedFood] = useState<FoodCatalogItem | null>(
     ISRAELI_FOOD_CATALOG[0]
@@ -318,24 +321,27 @@ export function AddMealDrawer({
   }, [opened, mealSlot, existingEntry, initialTab, customFoodUnits, selectedDate]);
 
   useEffect(() => {
+    if (!opened) return;
     const controller = new AbortController();
     const timer = setTimeout(async () => {
-      if (!searchQuery.trim()) {
-        setSearchResults(ISRAELI_FOOD_CATALOG);
-        setMohCount(0);
-        setSearchLoading(false);
-        return;
-      }
       setSearchLoading(true);
       try {
-        const res = await fetch(
-          `/api/food/search?q=${encodeURIComponent(searchQuery.trim())}`,
-          { signal: controller.signal }
-        );
+        const qs = new URLSearchParams({
+          q: searchQuery.trim(),
+          limit: '80',
+        });
+        if (sourceFilter && sourceFilter !== 'all') {
+          qs.set('source', sourceFilter);
+        }
+        const res = await fetch(`/api/food/search?${qs.toString()}`, {
+          signal: controller.signal,
+        });
         if (res.ok) {
           const data = await res.json();
-          setSearchResults(data.items || []);
+          setSearchResults(data.items || ISRAELI_FOOD_CATALOG);
           setMohCount(data.mohCount || 0);
+          setScraperCount(data.scraperCount || data.syncedCount || 0);
+          setTotalAvailable(data.totalAvailable || (data.items || []).length);
         }
       } catch (err) {
         if ((err as { name?: string })?.name === 'AbortError') return;
@@ -344,12 +350,12 @@ export function AddMealDrawer({
           setSearchLoading(false);
         }
       }
-    }, 260);
+    }, searchQuery.trim() ? 240 : 40);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [searchQuery]);
+  }, [searchQuery, sourceFilter, opened]);
 
   const handleSelectCatalogFood = (food: FoodCatalogItem) => {
     setSelectedFood(food);
@@ -1314,6 +1320,60 @@ export function AddMealDrawer({
                 <div
                   style={{
                     display: 'flex',
+                    gap: 6,
+                    overflowX: 'auto',
+                    paddingBottom: 2,
+                  }}
+                >
+                  {[
+                    { id: 'all', label: 'הכל (מאגר משולב)' },
+                    { id: 'shufersal', label: 'שופרסל' },
+                    { id: 'victory', label: 'ויקטורי' },
+                    { id: 'nizat', label: 'ניצת הדובדבן' },
+                    { id: 'tevabari', label: 'טבע בריא' },
+                    { id: 'fuder', label: 'Fuder סופרים' },
+                    { id: 'foodgroups', label: 'FoodGroups' },
+                    { id: 'tara', label: 'טרה' },
+                    { id: 'berman', label: 'ברמן' },
+                    { id: 'foodsdictionary', label: 'FoodsDictionary' },
+                    { id: 'foodik', label: 'Foodik' },
+                    { id: 'netogreen', label: 'NetoGreen' },
+                    { id: 'moh_gov', label: 'משרד הבריאות' },
+                    { id: 'local', label: 'בסיס SPOT' },
+                  ].map((src) => {
+                    const active = sourceFilter === src.id;
+                    return (
+                      <button
+                        key={src.id}
+                        type="button"
+                        onClick={() => setSourceFilter(src.id)}
+                        style={{
+                          flexShrink: 0,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          padding: '4px 10px',
+                          borderRadius: 999,
+                          cursor: 'pointer',
+                          border: active
+                            ? '1px solid var(--accent-volt)'
+                            : '1px solid var(--border-subtle)',
+                          background: active
+                            ? 'rgba(210, 255, 40, 0.14)'
+                            : 'var(--bg-surface-2)',
+                          color: active
+                            ? 'var(--accent-volt)'
+                            : 'var(--text-secondary)',
+                        }}
+                      >
+                        {src.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
                     justifyContent: 'space-between',
                     fontSize: 11,
                     color: 'var(--text-muted)',
@@ -1321,17 +1381,17 @@ export function AddMealDrawer({
                 >
                   <span>
                     {searchLoading
-                      ? 'מחפש במאגר המזון...'
-                      : `${searchResults.length} תוצאות ${
-                          mohCount > 0
-                            ? `(כולל ${mohCount} ממאגר משרד הבריאות)`
+                      ? 'מחפש במאגר המשולב (סופרים ישראליים, חנויות טבע + משרד הבריאות)...'
+                      : `${searchResults.length} תוצאות מתוך ${totalAvailable.toLocaleString('he-IL')}+ פריטים במאגר ${
+                          mohCount > 0 || scraperCount > 0
+                            ? `(משרד הבריאות: ${mohCount}, אתרים ישראלים: ${scraperCount})`
                             : ''
                         }`}
                   </span>
                   <span>ערכים ל-100 גרם / יחידת מידה</span>
                 </div>
 
-                <ScrollArea.Autosize mah={180} type="always">
+                <ScrollArea.Autosize mah={210} type="always">
                   {searchResults.length === 0 && !searchLoading ? (
                     <div
                       style={{
@@ -1350,11 +1410,11 @@ export function AddMealDrawer({
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))',
                       gap: 8,
                     }}
                   >
-                    {searchResults.slice(0, 20).map((food) => {
+                    {searchResults.slice(0, 48).map((food) => {
                       const isSelected = selectedFood?.id === food.id;
                       const isFav = favoriteIds.includes(food.id);
                       return (
@@ -1374,9 +1434,10 @@ export function AddMealDrawer({
                             display: 'flex',
                             justifyContent: 'space-between',
                             alignItems: 'center',
+                            gap: 6,
                           }}
                         >
-                          <div style={{ minWidth: 0 }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
                             <div
                               style={{
                                 fontSize: 13,
@@ -1395,9 +1456,22 @@ export function AddMealDrawer({
                                 color: 'var(--text-secondary)',
                               }}
                             >
-                              {food.brand ? `${food.brand} · ` : ''}
-                              {food.per100g.calories} קק״ל
+                              {food.per100g.calories} קק״ל · ח:{food.per100g.protein} פ:{food.per100g.carbs} ש:{food.per100g.fat}
                             </div>
+                            {food.sourceSiteName && (
+                              <div
+                                style={{
+                                  marginTop: 2,
+                                  fontSize: 10,
+                                  color: food.sourceSiteId ? 'var(--accent-volt)' : 'var(--text-muted)',
+                                  opacity: food.sourceSiteId ? 0.9 : 0.8,
+                                }}
+                              >
+                                {food.brand && food.brand !== food.sourceSiteName
+                                  ? `${food.brand} · ${food.sourceSiteName}`
+                                  : food.sourceSiteName}
+                              </div>
+                            )}
                           </div>
                           <button
                             onClick={(e) => {

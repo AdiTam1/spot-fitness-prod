@@ -30,6 +30,71 @@ export interface FoodUnit {
   grams: number;
 }
 
+export type ScraperSourceId =
+  | 'shufersal'
+  | 'victory'
+  | 'nizat'
+  | 'tevabari'
+  | 'fuder'
+  | 'foodgroups'
+  | 'tara'
+  | 'berman'
+  | 'foodsdictionary'
+  | 'foodik'
+  | 'netogreen'
+  | 'moh_gov';
+
+export type ScraperHealthStatus = 'healthy' | 'warning' | 'broken';
+
+export interface ScraperHealthResult {
+  id: ScraperSourceId;
+  name: string;
+  domain: string;
+  category: string;
+  mode: 'hybrid' | 'live' | 'sync';
+  estimatedCatalogSize: string;
+  description: string;
+  targetUrl: string;
+  status: ScraperHealthStatus;
+  httpStatus: number;
+  latencyMs: number;
+  checkedAt: string;
+  schemaValid: boolean;
+  itemsExtracted: number;
+  syncedCatalogCount: number;
+  needsUpdate: boolean;
+  sampleItem?: {
+    name: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    unitLabel?: string;
+  };
+  errorDiagnosis?: string;
+}
+
+export interface ScraperCheckHistoryEntry {
+  checkedAt: string;
+  trigger: 'auto' | 'manual' | 'cron';
+  healthy: number;
+  warning: number;
+  broken: number;
+}
+
+export interface ScraperSuiteReport {
+  lastCheckedAt: string | null;
+  lastSyncedAt: string | null;
+  nextAutoCheckAt: string | null;
+  trigger: 'auto' | 'manual' | 'cron';
+  totalHealthy: number;
+  totalWarning: number;
+  totalBroken: number;
+  totalScrapedCatalogItems: number;
+  results: ScraperHealthResult[];
+  history: ScraperCheckHistoryEntry[];
+}
+
 export interface FoodCatalogItem {
   id: string;
   name: string;
@@ -39,7 +104,11 @@ export interface FoodCatalogItem {
   per100g: MacroTargets;
   units: FoodUnit[];
   isPopular?: boolean;
-  source?: 'local' | 'moh' | 'openfoodfacts';
+  source?: 'local' | 'moh' | 'openfoodfacts' | 'scraper';
+  sourceSiteId?: ScraperSourceId;
+  sourceSiteName?: string;
+  sourceUrl?: string;
+  updatedAt?: string;
 }
 
 export type FoodEntrySource =

@@ -37,6 +37,7 @@ import {
   MessageCircle,
   Bell,
   BellRing,
+  Globe,
 } from 'lucide-react';
 import {
   AccountStatus,
@@ -48,6 +49,7 @@ import {
   MealTemplateSlot,
   NutritionTemplate,
   QuickContextChip,
+  ScraperSuiteReport,
   TraineeActivityTargets,
   TraineeCustomUnit,
   TraineeGroup,
@@ -58,6 +60,7 @@ import { QuickChipsAdminPanel } from './QuickChipsAdminPanel';
 import { CoachSavedMealsPanel } from './CoachSavedMealsPanel';
 import { CoachPushModal } from './CoachPushModal';
 import { CoachAlertSettingsModal } from './CoachAlertSettingsModal';
+import { AdminScrapersPanel } from './AdminScrapersPanel';
 import {
   DEFAULT_TEMPLATES,
   getTodayIso,
@@ -272,8 +275,32 @@ export function CoachDashboardView({
   );
 
   const [activeSection, setActiveSection] = useState<
-    'roster' | 'templates' | 'inspector' | 'users' | 'coaches'
+    'roster' | 'templates' | 'inspector' | 'users' | 'coaches' | 'scrapers'
   >('roster');
+
+  const [scraperReport, setScraperReport] = useState<ScraperSuiteReport | null>(
+    null
+  );
+  const [scraperLoading, setScraperLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    let cancelled = false;
+    setScraperLoading(true);
+    fetch('/api/admin/scrapers?autoCheck=1', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.report) return;
+        setScraperReport(data.report as ScraperSuiteReport);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setScraperLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isSuperAdmin]);
 
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>('all');
   const [selectedCoachFilter, setSelectedCoachFilter] = useState<string>('all');
@@ -1012,6 +1039,18 @@ export function CoachDashboardView({
               icon: Crown,
               show: isSuperAdmin, // מוצג אך ורק למנהל הראשי!
             },
+            {
+              id: 'scrapers',
+              label: scraperReport
+                ? scraperReport.totalBroken > 0
+                  ? `סקרייפרים (⚠️ ${scraperReport.totalBroken} שבור)`
+                  : `סקרייפרים ומאגר (${scraperReport.totalHealthy}/${scraperReport.results.length} תקין)`
+                : scraperLoading
+                  ? 'בודק סקרייפרים...'
+                  : 'סקרייפרים ורשתות שיווק',
+              icon: Globe,
+              show: isSuperAdmin, // בדיקה אוטומטית אצל מנהל המערכת!
+            },
           ]
             .filter((t) => t.show)
             .map((tab) => {
@@ -1028,6 +1067,7 @@ export function CoachDashboardView({
                         | 'inspector'
                         | 'users'
                         | 'coaches'
+                        | 'scrapers'
                     )
                   }
                   style={{
@@ -4628,6 +4668,18 @@ export function CoachDashboardView({
             onManageQuickChips={onManageQuickChips}
           />
         </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* לשונית סקרייפרים וניטור מאגר המזון (SUPER ADMIN בלבד)                */}
+      {/* ===================================================================== */}
+      {activeSection === 'scrapers' && isSuperAdmin && (
+        <AdminScrapersPanel
+          report={scraperReport}
+          loading={scraperLoading}
+          onReportUpdate={(next) => setScraperReport(next)}
+          onNotify={(msg, isErr) => showToast(msg, isErr)}
+        />
       )}
 
       {/* ===================================================================== */}

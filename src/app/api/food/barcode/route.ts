@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ISRAELI_FOOD_CATALOG } from '@/data/israeliFoodCatalog';
+import { getMergedCatalogItems } from '@/lib/scrapers/scraperStore';
 import { FoodCatalogItem } from '@/types/nutrition';
 import { getSessionFromRequest, sanitizeText } from '@/lib/serverAuth';
 
@@ -20,10 +20,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // 1. בדיקה במאגר המוצרים הישראלי המובנה
-  const localItem = ISRAELI_FOOD_CATALOG.find((item) => item.barcode === code);
+  // 1. בדיקה במאגר המוצרים המשולב (מקומי + סקרייפרים)
+  const mergedCatalog = await getMergedCatalogItems();
+  const localItem = mergedCatalog.find((item) => item.barcode === code);
   if (localItem) {
-    return NextResponse.json({ item: localItem, source: 'local' });
+    return NextResponse.json({ item: localItem, source: localItem.source || 'local' });
   }
 
   // 2. שליפה מ-Open Food Facts API החינמי

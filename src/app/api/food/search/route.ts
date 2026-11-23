@@ -1,25 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { waitUntil } from '@vercel/functions';
 import { ISRAELI_FOOD_CATALOG } from '@/data/israeliFoodCatalog';
-import { FoodCatalogItem, FoodUnit } from '@/types/nutrition';
+import { FoodCatalogItem, ScraperSourceId } from '@/types/nutrition';
 import { getSessionFromRequest, sanitizeText } from '@/lib/serverAuth';
+import { normalizeFoodKey } from '@/lib/scrapers/helpers';
+import {
+  getMergedCatalogItems,
+  getScraperState,
+  searchLiveScrapers,
+  syncScrapersCatalog,
+} from '@/lib/scrapers/scraperStore';
 
-const MOH_RESOURCE_ID = 'c3cb0630-0650-46c1-a068-82d575c094b2';
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
 
-function inferSmartUnits(name: string): FoodUnit[] {
-  const units: FoodUnit[] = [];
-  if (name.includes('לחם') || name.includes('פרוס') || name.includes('גבינה צהובה')) {
-    units.push({ label: 'פרוסה (30 גרם)', grams: 30 }, { label: '2 פרוסות (60 גרם)', grams: 60 });
-  } else if (name.includes('קוטג') || name.includes('יוגורט') || name.includes('גבינה לבנה') || name.includes('מעדן')) {
-    units.push({ label: 'גביע (200 גרם)', grams: 200 }, { label: 'חצי גביע (100 גרם)', grams: 100 }, { label: 'כף (25 גרם)', grams: 25 });
-  } else if (name.includes('טחינה') || name.includes('שמן') || name.includes('חמאה') || name.includes('מיונז') || name.includes('דבש')) {
-    units.push({ label: 'כף (15 גרם)', grams: 15 }, { label: 'כפית (5 גרם)', grams: 5 });
-  } else if (name.includes('חזה עוף') || name.includes('בקר') || name.includes('דג') || name.includes('סלמון') || name.includes('אורז') || name.includes('פסטה')) {
-    units.push({ label: 'מנה בינונית (150 גרם)', grams: 150 }, { label: 'מנה גדולה (200 גרם)', grams: 200 });
-  } else {
-    units.push({ label: 'יחידה / מנה (50 גרם)', grams: 50 });
+function scoreMatch(item: FoodCatalogItem, qLower: string): number {
+  const name = item.name.toLowerCase();
+  const brand = (item.brand || '').toLowerCase();
+  const cat = (item.category || '').toLowerCase();
+
+  if (name === qLower) return 100;
+  if (name.startsWith(qLower)) return 85;
+  if (name.includes(qLower)) return 70;
+  if (brand.includes(qLower)) return 50;
+  if (cat.includes(qLower)) return 35;
+
+  const words = qLower.split(/\s+/).filter((w) => w.length >= 2);
+  if (words.length > 1 && words.every((w) => name.includes(w) || brand.includes(w))) {
+    return 65;
   }
-  units.push({ label: '100 גרם', grams: 100 });
-  return units;
+  return 0;
 }
 
 export async function GET(request: NextRequest) {
@@ -30,77 +41,101 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const query = sanitizeText(searchParams.get('q') || '', 80);
+  const sourceFilter = sanitizeText(searchParams.get('source') || '', 30) as
+    | ScraperSourceId
+    | 'local'
+    | '';
+  const limit = Math.min(120, Math.max(10, Number(searchParams.get('limit')) || 60));
 
-  if (!query) {
-    return NextResponse.json({
-      items: ISRAELI_FOOD_CATALOG,
-      source: 'local',
-    });
-  }
-
-  const normalizedQuery = query.toLowerCase();
-  const localMatches = ISRAELI_FOOD_CATALOG.filter(
-    (item) =>
-      item.name.toLowerCase().includes(normalizedQuery) ||
-      (item.brand && item.brand.toLowerCase().includes(normalizedQuery)) ||
-      item.category.toLowerCase().includes(normalizedQuery) ||
-      (item.barcode && item.barcode.includes(normalizedQuery))
-  );
-
-  const externalMatches: FoodCatalogItem[] = [];
-
-  // חיפוש חי במאגר מצרכי המזון של משרד הבריאות (data.gov.il) - חינמי לחלוטין
-  try {
-    const mohUrl = `https://data.gov.il/api/3/action/datastore_search?resource_id=${MOH_RESOURCE_ID}&q=${encodeURIComponent(
-      query
-    )}&limit=10`;
-    const mohRes = await fetch(mohUrl, {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(3500),
-    });
-
-    if (mohRes.ok) {
-      const mohData = await mohRes.json();
-      const records = mohData?.result?.records || [];
-      for (const rec of records) {
-        const name = (rec.shmmitzrach || '').trim();
-        if (!name) continue;
-        const calories = Number(rec.food_energy) || 0;
-        const protein = Number(rec.protein) || 0;
-        const carbs = Number(rec.carbohydrates) || 0;
-        const fat = Number(rec.total_fat) || 0;
-
-        if (calories <= 0 && protein <= 0 && carbs <= 0) continue;
-
-        const alreadyExists =
-          localMatches.some((l) => l.name === name) ||
-          externalMatches.some((e) => e.name === name);
-
-        if (!alreadyExists) {
-          externalMatches.push({
-            id: `moh-${rec._id || Math.random().toString(36).slice(2, 8)}`,
-            name,
-            brand: 'מאגר משרד הבריאות',
-            category: 'מאגר משרד הבריאות (data.gov.il)',
-            per100g: {
-              calories: Math.round(calories),
-              protein: Math.round(protein * 10) / 10,
-              carbs: Math.round(carbs * 10) / 10,
-              fat: Math.round(fat * 10) / 10,
-            },
-            units: inferSmartUnits(name),
-            source: 'moh',
-          });
-        }
-      }
+  const { report, catalog: syncedCatalog } = await getScraperState();
+  // אם טרם סונכרנו מוצרים מהאתרים או שנוספו מקורות חדשים שטרם נבדקו, הפעל סנכרון ברקע בלי לעכב את התגובה
+  if (syncedCatalog.length === 0 || report.results.some((r) => !r.checkedAt)) {
+    try {
+      waitUntil(syncScrapersCatalog().catch(() => undefined));
+    } catch {
+      // ignore if outside Vercel request lifecycle
     }
-  } catch {
-    // במידה ואין חיבור רשת רגעי, ממשיכים עם המאגר המקומי ללא שגיאה
   }
+
+  const mergedCatalog = await getMergedCatalogItems();
+  const filteredPool = sourceFilter
+    ? mergedCatalog.filter((item) =>
+        sourceFilter === 'local'
+          ? (item.source || 'local') === 'local' && !item.sourceSiteId
+          : item.sourceSiteId === sourceFilter
+      )
+    : mergedCatalog;
+
+  // במצב דפדוף (חיפוש ריק): מציג את המאגר המקומי + נציגות מאוזנת מכל הסופרים והאתרים המסונכרנים
+  if (!query.trim()) {
+    const localItems = filteredPool.filter((i) => !i.sourceSiteId);
+    const scrapedItems = filteredPool.filter((i) => Boolean(i.sourceSiteId));
+
+    // בחירה מגוונת של פריטים מכל אתר מסונכרן
+    const bySite = new Map<string, FoodCatalogItem[]>();
+    for (const item of scrapedItems) {
+      const k = item.sourceSiteId || 'other';
+      if (!bySite.has(k)) bySite.set(k, []);
+      bySite.get(k)!.push(item);
+    }
+
+    const diversifiedScraped: FoodCatalogItem[] = [];
+    const maxPerSite = sourceFilter ? limit : 6;
+    Array.from(bySite.values()).forEach((group) => {
+      diversifiedScraped.push(...group.slice(0, maxPerSite));
+    });
+
+    const combined = [...localItems, ...diversifiedScraped].slice(0, limit);
+    return NextResponse.json({
+      items: combined,
+      totalAvailable: mergedCatalog.length,
+      localCount: ISRAELI_FOOD_CATALOG.length,
+      syncedCount: syncedCatalog.length,
+      mohCount: 0,
+      liveCount: 0,
+    });
+  }
+
+  const qLower = query.trim().toLowerCase();
+  const localMatches = filteredPool
+    .map((item) => ({ item, score: scoreMatch(item, qLower) }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((x) => x.item);
+
+  // חיפוש חי במקביל מול כל הרשתות, הסופרים ואתרי התזונה התומכים בחיפוש דינמי
+  let liveMatches: FoodCatalogItem[] = [];
+  if (query.trim().length >= 2 && sourceFilter !== 'local') {
+    liveMatches = await searchLiveScrapers(
+      query.trim(),
+      sourceFilter ? (sourceFilter as ScraperSourceId) : undefined
+    );
+  }
+
+  // איחוד ודה-דופליקציה לפי שם מנורמל
+  const seen = new Set<string>();
+  const deduped: FoodCatalogItem[] = [];
+
+  for (const item of [...localMatches, ...liveMatches]) {
+    const key = `${normalizeFoodKey(item.name)}:${Math.round(item.per100g.calories)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(item);
+    if (deduped.length >= limit) break;
+  }
+
+  const mohCount = deduped.filter(
+    (i) => i.source === 'moh' || i.sourceSiteId === 'moh_gov'
+  ).length;
+  const scraperCount = deduped.filter((i) => Boolean(i.sourceSiteId)).length;
 
   return NextResponse.json({
-    items: [...localMatches, ...externalMatches],
+    items: deduped,
+    totalAvailable: mergedCatalog.length,
     localCount: localMatches.length,
-    mohCount: externalMatches.length,
+    syncedCount: syncedCatalog.length,
+    liveCount: liveMatches.length,
+    scraperCount,
+    mohCount,
   });
 }

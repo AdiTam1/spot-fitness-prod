@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
 import { ISRAELI_FOOD_CATALOG, calculateMacrosForGrams } from '@/data/israeliFoodCatalog';
+import { getMergedCatalogItems } from '@/lib/scrapers/scraperStore';
 import {
   AiContextParams,
+  FoodCatalogItem,
   LoggedFoodItem,
   PendingAiMealJob,
   ReferenceObjectKind,
@@ -51,7 +53,8 @@ export const fetchCache = 'force-no-store';
 function smartHebrewMealParser(
   text: string,
   sourceType: 'ai-photo' | 'ai-text',
-  customUnits?: TraineeCustomUnit[]
+  customUnits?: TraineeCustomUnit[],
+  catalogPool: FoodCatalogItem[] = ISRAELI_FOOD_CATALOG
 ): LoggedFoodItem[] {
   const normalized = text.trim();
   if (!normalized) return [];
@@ -126,7 +129,7 @@ function smartHebrewMealParser(
         .replace(/(?:גרם|ק"ג|יחידות|יחידה|כוסות|כוס|כפות|כף|פרוסות|פרוסה|גביע|חצי)/g, '')
         .trim();
       if (cleanedWord.length >= 2) {
-        const directMatch = ISRAELI_FOOD_CATALOG.find((c) =>
+        const directMatch = catalogPool.find((c) =>
           c.name.toLowerCase().includes(cleanedWord)
         );
         matchedCatalogId = directMatch?.id;
@@ -135,7 +138,7 @@ function smartHebrewMealParser(
 
     if (!matchedCatalogId) continue;
     if (usedCatalogIds.has(`${matchedCatalogId}-${seg}`)) continue;
-    const catalogItem = ISRAELI_FOOD_CATALOG.find((c) => c.id === matchedCatalogId);
+    const catalogItem = catalogPool.find((c) => c.id === matchedCatalogId);
     if (!catalogItem) continue;
 
     usedCatalogIds.add(`${matchedCatalogId}-${seg}`);
@@ -991,10 +994,14 @@ ${contextBlock ? `\nנתוני הקשר מעודכנים מהמשתמש:\n${cont
       .filter((s) => s && !s.includes('ללא'))
       .join(', ');
 
+    const mergedCatalogPool = await getMergedCatalogItems().catch(
+      () => ISRAELI_FOOD_CATALOG
+    );
     let items = smartHebrewMealParser(
       combinedFallbackText,
       sourceType,
-      contextParams?.customUnits
+      contextParams?.customUnits,
+      mergedCatalogPool
     ).map((it) => ({
       ...it,
       aiEngine: 'smart-hebrew-builtin',
@@ -1008,7 +1015,7 @@ ${contextBlock ? `\nנתוני הקשר מעודכנים מהמשתמש:\n${cont
       !(textPrompt && /\d+\s*(?:גרם|ג'|g)/i.test(textPrompt)) &&
       contextParams?.servingToolLabel
     ) {
-      const catMatch = ISRAELI_FOOD_CATALOG.find((c) => c.name === items[0].name);
+      const catMatch = mergedCatalogPool.find((c) => c.name === items[0].name);
       const customGrams = contextParams?.portionOrGrams?.match(/(\d+)\s*(?:גרם|g)/i)?.[1];
       const toolGrams = customGrams ? Number(customGrams) : undefined;
       if (catMatch && toolGrams && toolGrams > 0) {

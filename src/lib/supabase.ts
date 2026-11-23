@@ -5,10 +5,12 @@ import {
   CoachOnboardingData,
   CoachProfile,
   CoachPushSubscriptionSettings,
+  FoodCatalogItem,
   NutritionTemplate,
   PendingAiMealJob,
   QuickContextChip,
   SavedMealPreset,
+  ScraperSuiteReport,
   TraineeActivityTargets,
   TraineeCustomUnit,
   TraineeGroup,
@@ -295,6 +297,8 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
 }
 
 const SYSTEM_META_TEMPLATE_ID = '__spot_system_coaches_and_groups__';
+const SCRAPER_META_TEMPLATE_ID = '__spot_system_food_scrapers_meta__';
+const SCRAPER_CATALOG_TEMPLATE_ID = '__spot_system_food_scrapers_catalog__';
 
 type SbErrorLike = {
   message?: string;
@@ -371,7 +375,10 @@ export async function loadStateFromSupabase(): Promise<{
   const [coachesRes, groupsRes, tplRes, trRes] = await Promise.all([
     supabase.from('coaches').select('*'),
     supabase.from('trainee_groups').select('*'),
-    supabase.from('nutrition_templates').select('*'),
+    supabase
+      .from('nutrition_templates')
+      .select('*')
+      .not('id', 'like', '__spot_system_food_%'),
     supabase.from('trainees').select('*'),
   ]);
 
@@ -464,7 +471,7 @@ export async function loadStateFromSupabase(): Promise<{
   const groups = Array.from(groupMap.values());
 
   const templates: NutritionTemplate[] = rawTemplates
-    .filter((row) => row.id !== SYSTEM_META_TEMPLATE_ID)
+    .filter((row) => !String(row.id || '').startsWith('__spot_system_'))
     .map((row) => ({
       id: row.id,
       name: row.name,
@@ -1057,4 +1064,104 @@ export async function deleteTraineeFromSupabase(traineeId: string) {
   if (error) {
     throw new Error(formatSupabaseError('trainees', error));
   }
+}
+
+async function upsertHiddenTemplatePayload(
+  id: string,
+  description: string,
+  payload: unknown
+): Promise<{ ok: boolean; error?: string }> {
+  if (!supabase) return { ok: false, error: 'Supabase not configured' };
+  const now = new Date().toISOString();
+  const attempts: Record<string, unknown>[] = [
+    {
+      id,
+      name: '__SYSTEM_SCRAPER__',
+      description,
+      day_type: 'workout',
+      tolerance_percent: 10,
+      owner_coach_id: 'coach-admin',
+      meals: payload,
+      updated_at: now,
+    },
+    {
+      id,
+      name: '__SYSTEM_SCRAPER__',
+      day_type: 'workout',
+      tolerance_percent: 10,
+      meals: payload,
+    },
+  ];
+  let lastErr: SbErrorLike = null;
+  for (const row of attempts) {
+    const { error } = await supabase
+      .from('nutrition_templates')
+      .upsert([row], { onConflict: 'id' });
+    if (!error) return { ok: true };
+    lastErr = error;
+  }
+  return {
+    ok: false,
+    error: formatSupabaseError(`nutrition_templates(${id})`, lastErr),
+  };
+}
+
+/**
+ * טוען את דוח תקינות הסקרייפרים ואת מאגר המזון המסונכרן מ-Supabase מבלי להכביד על /api/data.
+ */
+export async function loadScraperSuiteFromSupabase(): Promise<{
+  report: ScraperSuiteReport | null;
+  catalog: FoodCatalogItem[];
+}> {
+  if (!supabase) return { report: null, catalog: [] };
+  try {
+    const { data, error } = await supabase
+      .from('nutrition_templates')
+      .select('id, meals')
+      .in('id', [SCRAPER_META_TEMPLATE_ID, SCRAPER_CATALOG_TEMPLATE_ID]);
+    if (error || !Array.isArray(data)) return { report: null, catalog: [] };
+
+    const metaRow = data.find((r) => r.id === SCRAPER_META_TEMPLATE_ID);
+    const catalogRow = data.find((r) => r.id === SCRAPER_CATALOG_TEMPLATE_ID);
+
+    const report =
+      metaRow?.meals && typeof metaRow.meals === 'object'
+        ? (metaRow.meals as ScraperSuiteReport)
+        : null;
+
+    const rawCatalogObj =
+      catalogRow?.meals && typeof catalogRow.meals === 'object'
+        ? (catalogRow.meals as { items?: FoodCatalogItem[] } | FoodCatalogItem[])
+        : null;
+
+    const catalog = Array.isArray(rawCatalogObj)
+      ? rawCatalogObj
+      : Array.isArray(rawCatalogObj?.items)
+        ? rawCatalogObj.items
+        : [];
+
+    return { report, catalog };
+  } catch {
+    return { report: null, catalog: [] };
+  }
+}
+
+export async function saveScraperSuiteMetaToSupabase(
+  report: ScraperSuiteReport
+): Promise<{ ok: boolean; error?: string }> {
+  return upsertHiddenTemplatePayload(
+    SCRAPER_META_TEMPLATE_ID,
+    'Israeli food scraper health check report',
+    report
+  );
+}
+
+export async function saveScraperSuiteCatalogToSupabase(
+  items: FoodCatalogItem[]
+): Promise<{ ok: boolean; error?: string }> {
+  return upsertHiddenTemplatePayload(
+    SCRAPER_CATALOG_TEMPLATE_ID,
+    'Synced Israeli food catalog from web scrapers',
+    { updatedAt: new Date().toISOString(), count: items.length, items }
+  );
 }
