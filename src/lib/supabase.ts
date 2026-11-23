@@ -1276,29 +1276,41 @@ export async function upsertFoodCatalogItemsToSupabase(
     return { ok: true, tableReady: true, savedCount: 0 };
   }
 
+  const chunks: Record<string, unknown>[][] = [];
+  for (let i = 0; i < rows.length; i += 400) {
+    chunks.push(rows.slice(i, i + 400));
+  }
+
   let savedCount = 0;
-  for (let i = 0; i < rows.length; i += 250) {
-    const chunk = rows.slice(i, i + 250);
-    const { error } = await supabase
-      .from('food_catalog_items')
-      .upsert(chunk, { onConflict: 'id' });
-    if (error) {
-      if (isMissingFoodTableError(error)) {
+  for (let i = 0; i < chunks.length; i += 3) {
+    const wave = chunks.slice(i, i + 3);
+    const waveRes = await Promise.all(
+      wave.map((chunk) =>
+        supabase!
+          .from('food_catalog_items')
+          .upsert(chunk, { onConflict: 'id' })
+          .then(({ error }) => ({ error, len: chunk.length }))
+      )
+    );
+    for (const r of waveRes) {
+      if (r.error) {
+        if (isMissingFoodTableError(r.error)) {
+          return {
+            ok: false,
+            tableReady: false,
+            savedCount,
+            error: 'טבלת food_catalog_items טרם נוצרה ב-Supabase',
+          };
+        }
         return {
           ok: false,
-          tableReady: false,
+          tableReady: true,
           savedCount,
-          error: 'טבלת food_catalog_items טרם נוצרה ב-Supabase',
+          error: formatSupabaseError('food_catalog_items', r.error),
         };
       }
-      return {
-        ok: false,
-        tableReady: true,
-        savedCount,
-        error: formatSupabaseError('food_catalog_items', error),
-      };
+      savedCount += r.len;
     }
-    savedCount += chunk.length;
   }
 
   return { ok: true, tableReady: true, savedCount };

@@ -139,7 +139,7 @@ export function AdminScrapersPanel({
   const handleSyncOpenFoodFacts = async () => {
     setBusyAction('sync_off');
     try {
-      const data = await callScraperApi({ action: 'sync_openfoodfacts', pages: 5 });
+      const data = await callScraperApi({ action: 'sync_openfoodfacts', pages: 10 });
       onReportUpdate(data.report);
       if (!data.tableReady) {
         onNotify(
@@ -475,9 +475,9 @@ export function AdminScrapersPanel({
             )}
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-            להזנת שופרסל אונליין מהרשת הישראלית:{' '}
+            להזנה מלאה של אלפי מוצרים (שופרסל, משרד הבריאות 4,624+, Fuder וברקודים):{' '}
             <code dir="ltr" style={{ color: 'var(--accent-volt)' }}>
-              node --use-system-ca scripts/seed-shufersal.mjs
+              node --use-system-ca scripts/seed-shufersal.mjs --full
             </code>
           </div>
         </div>

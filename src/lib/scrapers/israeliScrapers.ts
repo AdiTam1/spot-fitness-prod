@@ -445,15 +445,15 @@ const sugatScraper: IsraeliFoodScraper = {
     return res.items;
   },
   async syncCatalog() {
-    const res = await fetchWithTimeout('https://www.sugat.com/wp-json/wp/v2/products?per_page=55&page=1', {
+    const res = await fetchWithTimeout('https://www.sugat.com/wp-json/wp/v2/products?per_page=100&page=1', {
       timeoutMs: 9000,
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) return [];
     try {
       const posts = JSON.parse(res.text) as Array<{ link?: string; title?: { rendered?: string } }>;
-      const valid = (Array.isArray(posts) ? posts : []).filter((p) => p.link).slice(0, 55);
-      const parsed = await mapConcurrent(valid, 8, (p) => scrapeSugatProduct(p.link!, p.title?.rendered));
+      const valid = (Array.isArray(posts) ? posts : []).filter((p) => p.link).slice(0, 100);
+      const parsed = await mapConcurrent(valid, 10, (p) => scrapeSugatProduct(p.link!, p.title?.rendered));
       return parsed.map((p) => p.item).filter((x): x is FoodCatalogItem => Boolean(x));
     } catch {
       return [];
@@ -748,8 +748,10 @@ const mohGovScraper: IsraeliFoodScraper = {
     return res.items;
   },
   async syncCatalog() {
-    const queries = ['גבינה', 'עוף', 'לחם', 'יוגורט', 'אורז', 'דג', 'חומוס', 'ביצה', 'בקר'];
-    const batches = await mapConcurrent(queries, 3, (q) => queryMohGov({ q, limit: 20 }));
+    const offsets = [0, 1000, 2000, 3000, 4000];
+    const batches = await mapConcurrent(offsets, 5, (offset) =>
+      queryMohGov({ limit: 1000, offset })
+    );
     return batches.flatMap((b) => b.items);
   },
 };

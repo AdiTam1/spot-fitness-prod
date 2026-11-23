@@ -120,34 +120,54 @@ export async function GET(request: NextRequest) {
   }
 
   const qLower = query.trim().toLowerCase();
-  const localMatches = filteredPool
+  const forceLive = searchParams.get('forceLive') === '1';
+
+  // שלב 1 (מיידי, ~15-35ms): חיפוש בקטלוג המקומי + שאילתת SQL מאונדקסת על עשרות אלפי פריטים
+  const sqlRes = await searchSqlAndCachedCatalog({
+    query: query.trim(),
+    sourceFilter: sourceFilter || undefined,
+    limit: 100,
+  });
+
+  // דירוג משולב לפי התאמה מדויקת כדי שפריטים מרכזיים ("קוטג' 5%", "חלב 3%") יקפצו לפני זנב רשימה
+  const rankedDbAndLocal = [...filteredPool, ...sqlRes.items]
     .map((item) => ({ item, score: scoreMatch(item, qLower) }))
     .filter((x) => x.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .map((x) => x.item);
+    .sort((a, b) => b.score - a.score);
 
-  const shouldQueryLive =
+  const preSeen = new Set<string>();
+  const fastMatches: FoodCatalogItem[] = [];
+  let strongFastHits = 0;
+  for (const entry of rankedDbAndLocal) {
+    const key = `${normalizeFoodKey(entry.item.name)}:${Math.round(entry.item.per100g.calories)}`;
+    if (preSeen.has(key)) continue;
+    preSeen.add(key);
+    fastMatches.push(entry.item);
+    if (entry.score >= 60) strongFastHits += 1;
+    if (fastMatches.length >= limit) break;
+  }
+
+  const supportsLiveSite =
     query.trim().length >= 2 &&
     sourceFilter !== 'local' &&
     sourceFilter !== 'shufersal' &&
-    sourceFilter !== 'openfoodfacts';
+    sourceFilter !== 'openfoodfacts' &&
+    sourceFilter !== 'tara' &&
+    sourceFilter !== 'berman';
 
-  // חיפוש מקביל: SQL (שופרסל/ברקוד/סופרים ששמור ב-DB) + סקרייפרים חיים
-  const [sqlRes, liveMatches] = await Promise.all([
-    searchSqlAndCachedCatalog({
-      query: query.trim(),
-      sourceFilter: sourceFilter || undefined,
-      limit: Math.min(limit, 50),
-    }),
-    shouldQueryLive
-      ? searchLiveScrapers(
-          query.trim(),
-          sourceFilter ? (sourceFilter as ScraperSourceId) : undefined
-        )
-      : Promise.resolve([] as FoodCatalogItem[]),
-  ]);
+  // Fast-Path חכם: אם כבר יש לנו מספיק התאמות מדויקות מה-DB (לפחות 8 חזקות או 12 כלליות), מחזירים מיד (~30ms) בלי להמתין ל-10 אתרים!
+  // רק אם מדובר במילה נדירה/חדשה שאין לה די תוצאות אצלנו — יוצאים לחיפוש חי ושומרים אותו להבא.
+  const hasEnoughFromDb = !forceLive && (strongFastHits >= 8 || fastMatches.length >= 12);
+  let liveMatches: FoodCatalogItem[] = [];
 
-  // שמירה אוטומטית ברקע של תוצאות החיפוש החי בטבלת SQL כדי להאיץ חיפושים עתידיים
+  if (supportsLiveSite && !hasEnoughFromDb) {
+    liveMatches = await searchLiveScrapers(
+      query.trim(),
+      sourceFilter ? (sourceFilter as ScraperSourceId) : undefined
+    );
+  }
+
+  // שמירה אוטומטית ברקע של תוצאות החיפוש החי בטבלת SQL כדי שחיפושים עתידיים יהיו מיידיים
   if (liveMatches.length > 0) {
     try {
       waitUntil(persistCatalogItemsToDb(liveMatches).catch(() => undefined));
@@ -156,16 +176,14 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // איחוד ודה-דופליקציה לפי שם מנורמל (שמירה על עדיפות תוצאות מדויקות מהמקומי וה-SQL לפני החיפוש החי)
-  const seen = new Set<string>();
-  const deduped: FoodCatalogItem[] = [];
-
-  for (const item of [...localMatches, ...sqlRes.items, ...liveMatches]) {
-    const key = `${normalizeFoodKey(item.name)}:${Math.round(item.per100g.calories)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(item);
+  // איחוד סופי (שמירה על דירוג המדויקים תחילה + השלמה מהחיפוש החי)
+  const deduped: FoodCatalogItem[] = [...fastMatches];
+  for (const item of liveMatches) {
     if (deduped.length >= limit) break;
+    const key = `${normalizeFoodKey(item.name)}:${Math.round(item.per100g.calories)}`;
+    if (preSeen.has(key)) continue;
+    preSeen.add(key);
+    deduped.push(item);
   }
 
   const mohCount = deduped.filter(
@@ -176,10 +194,11 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     items: deduped,
     totalAvailable: totalCatalogEstimate,
-    localCount: localMatches.length,
+    localCount: fastMatches.length,
     syncedCount: syncedCatalog.length,
     liveCount: liveMatches.length,
     sqlCount: sqlRes.sqlCount,
+    fastPath: hasEnoughFromDb && liveMatches.length === 0,
     scraperCount,
     mohCount,
   });
