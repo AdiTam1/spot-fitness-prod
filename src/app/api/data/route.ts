@@ -118,6 +118,7 @@ function mergeLogsPreservingPendingAi(
           ...clientDay.meals,
           [job.mealSlotId]: {
             ...(clientMeal || serverMeal),
+            mealTime: clientMeal?.mealTime || serverMeal.mealTime,
             items: [...(clientMeal?.items || []), ...missingFromClient],
             photoDataUrl: clientMeal?.photoDataUrl || serverMeal.photoDataUrl,
             photoDataUrls:
@@ -1072,7 +1073,7 @@ export async function POST(request: NextRequest) {
         })
       );
 
-      const palette = ['#ea580c', '#38bdf8', '#ff5e7e', '#ffb800', '#22c55e'];
+      const palette = ['#d67d09', '#38bdf8', '#ff5e7e', '#ffb800', '#22c55e'];
       const newGroups: TraineeGroup[] = starterGroupNames
         .map((gName) => sanitizeText(gName, 50))
         .filter(Boolean)
@@ -1783,7 +1784,7 @@ export async function POST(request: NextRequest) {
     // ז. יצירת קבוצת מתאמנים חדשה
     if (action === 'create-group') {
       const name = sanitizeText(body.name, 60);
-      const color = sanitizeText(body.color, 25) || '#ea580c';
+      const color = sanitizeText(body.color, 25) || '#d67d09';
       if (!name) {
         return NextResponse.json({ error: 'חסר שם קבוצה' }, { status: 400 });
       }

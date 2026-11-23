@@ -25,6 +25,8 @@ function scoreMatch(item: FoodCatalogItem, qLower: string): number {
   const lenPenalty = Math.min(10, Math.floor(Math.max(0, nameNorm.length - qNorm.length) / 7));
 
   if (!qNorm) return 0;
+  const digitsQ = qLower.replace(/[^0-9]/g, '');
+  if (digitsQ.length >= 6 && item.barcode && item.barcode === digitsQ) return 100;
   if (nameNorm === qNorm) return 100;
   if (nameNorm.startsWith(`${qNorm} `)) return 93 - Math.min(4, Math.floor(lenPenalty / 2));
   if (nameNorm.startsWith(qNorm)) return 88 - Math.min(4, Math.floor(lenPenalty / 2));

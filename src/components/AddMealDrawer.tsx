@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Drawer,
+  Modal,
   TextInput,
   Textarea,
   NumberInput,
@@ -30,9 +31,11 @@ import {
   Image as ImageIcon,
   X,
   ChevronRight,
-  ChevronLeft,
   Utensils,
   FolderOpen,
+  CalendarDays,
+  Clock,
+  Ruler,
 } from 'lucide-react';
 import {
   AiContextParams,
@@ -51,15 +54,35 @@ import {
 import {
   ISRAELI_FOOD_CATALOG,
   calculateMacrosForGrams,
+  getTodayIso,
   sumMacros,
 } from '@/data/israeliFoodCatalog';
 import { compressMealImage } from '@/utils/imageCompression';
-import { compressDataUrlToThumbnail } from '@/lib/dateUtils';
+import {
+  compressDataUrlToThumbnail,
+  HEBREW_MONTH_NAMES,
+} from '@/lib/dateUtils';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { ServingToolsManagerModal } from './ServingToolsManagerModal';
 import { SavedMealsLibraryTab } from './SavedMealsLibraryTab';
 import { AiQuickContextPanel } from './AiQuickContextPanel';
 import { useAiProgressMessage } from './BackgroundAiSyncBanner';
+
+function formatDrawerDateLabel(selectedDate?: string): { dayTag: string; shortDate: string } | null {
+  if (!selectedDate || !/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) return null;
+  const todayIso = getTodayIso();
+  const [y, m, d] = selectedDate.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  const monthShort = (HEBREW_MONTH_NAMES[dt.getMonth()] || '').slice(0, 4);
+  const shortDate = `${String(d).padStart(2, '0')}.${String(m).padStart(2, '0')}.${y}`;
+  if (selectedDate === todayIso) return { dayTag: 'היום', shortDate };
+  const tParts = todayIso.split('-').map(Number);
+  const yest = new Date(tParts[0], tParts[1] - 1, tParts[2] - 1);
+  const yestIso = `${yest.getFullYear()}-${String(yest.getMonth() + 1).padStart(2, '0')}-${String(yest.getDate()).padStart(2, '0')}`;
+  if (selectedDate === yestIso) return { dayTag: 'אתמול', shortDate };
+  const weekNames = ['יום א׳', 'יום ב׳', 'יום ג׳', 'יום ד׳', 'יום ה׳', 'יום ו׳', 'שבת'];
+  return { dayTag: `${weekNames[dt.getDay()]} · ${d} ${monthShort}`, shortDate };
+}
 
 interface AddMealDrawerProps {
   opened: boolean;
@@ -73,7 +96,8 @@ interface AddMealDrawerProps {
     items: LoggedFoodItem[],
     photoDataUrl?: string,
     photoNote?: string,
-    photoDataUrls?: string[]
+    photoDataUrls?: string[],
+    mealTime?: string
   ) => void | Promise<void>;
   geminiApiKey?: string;
   initialTab?: string;
@@ -218,6 +242,14 @@ export function AddMealDrawer({
   const [quantity, setQuantity] = useState<number>(1);
   const [customGrams, setCustomGrams] = useState<number>(100);
   const [cameraChooserOpen, setCameraChooserOpen] = useState(false);
+  const [mealTime, setMealTime] = useState<string>('');
+  const [toolsInitialSection, setToolsInitialSection] = useState<'tools' | 'units'>('units');
+  const [enrichingFood, setEnrichingFood] = useState(false);
+  const [inlineUnitOpen, setInlineUnitOpen] = useState(false);
+  const [inlineUnitName, setInlineUnitName] = useState('');
+  const [inlineUnitGrams, setInlineUnitGrams] = useState<number | string>(100);
+  const [inlineUnitForFoodOnly, setInlineUnitForFoodOnly] = useState(true);
+  const [savingInlineUnit, setSavingInlineUnit] = useState(false);
 
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [barcodeModalOpen, setBarcodeModalOpen] = useState(false);
@@ -301,6 +333,11 @@ export function AddMealDrawer({
         setSearchQuery('');
         setSelectedFood(null);
         setCameraChooserOpen(false);
+        setMealTime(existingEntry?.mealTime || mealSlot.timeHint || '');
+        setInlineUnitOpen(false);
+        setInlineUnitName('');
+        setInlineUnitGrams(100);
+        setEnrichingFood(false);
         setAiRecommendations([]);
         setAiRecDebug(null);
         setLearnedFeedbackBanner(null);
@@ -388,23 +425,141 @@ export function AddMealDrawer({
     };
   }, [searchQuery, sourceFilter, opened]);
 
-  const handleSelectCatalogFood = (food: FoodCatalogItem, openPortion = true) => {
-    setSelectedFood(food);
-    const firstUnit = food.units[0] || { label: '100 גרם', grams: 100 };
-    setSelectedUnitLabel(firstUnit.label);
-    setQuantity(1);
-    setCustomGrams(firstUnit.grams);
-    if (openPortion) {
-      setActiveTab('portion-focus');
+  const extractNamePackageGrams = (raw: string): number | null => {
+    const cleaned = String(raw || '')
+      .replace(/ל[-\s]?100\s*(?:גרם|ג'|ג"|מ"ל|מל|מ״ל)/gi, ' ')
+      .replace(/\b100\s*(?:גרם|ג'|ג"|מ"ל|מל|מ״ל)\b/gi, ' ');
+    const kg = cleaned.match(/(\d+(?:[.,]\d+)?)\s*(?:ק"ג|ק״ג|קג|ליטר|ל'|kg)(?=$|\s|[,.)\]\-/])/i);
+    if (kg) {
+      const v = Number(kg[1].replace(',', '.'));
+      if (Number.isFinite(v) && v > 0 && v <= 5) return Math.round(v * 1000);
     }
+    const g = cleaned.match(/(\d+(?:[.,]\d+)?)\s*(?:גרם|ג'|ג"|ג|מ"ל|מ״ל|מל|g|gr|ml)(?=$|\s|[,.)\]\-/])/i);
+    if (g) {
+      const v = Number(g[1].replace(',', '.'));
+      if (Number.isFinite(v) && v >= 5 && v <= 5000) return Math.round(v);
+    }
+    return null;
   };
 
   const getCombinedUnitsForFood = (food: FoodCatalogItem) => {
-    const personal = customFoodUnits.map((u) => ({
-      label: `★ ${u.unitName} (${u.grams} גרם)`,
-      grams: u.grams,
-    }));
-    return [...food.units, ...personal];
+    const out: Array<{ label: string; grams: number; isUserUnit?: boolean }> = [];
+    const seenGrams = new Set<number>();
+    const pushUnit = (label: string, grams: number, isUserUnit = false) => {
+      const g = Math.round(Number(grams) || 0);
+      if (!label || g <= 0) return;
+      if (g !== 100 && seenGrams.has(g) && !isUserUnit) return;
+      if (!isUserUnit && g !== 100) seenGrams.add(g);
+      out.push({ label, grams: g, isUserUnit });
+    };
+
+    const namePkgG = extractNamePackageGrams(food.name);
+    if (namePkgG && namePkgG !== 100 && !food.units.some((u) => Math.round(u.grams) === namePkgG)) {
+      pushUnit(`חבילה / יחידה (${namePkgG} גרם)`, namePkgG, false);
+    }
+    for (const u of food.units) {
+      pushUnit(u.label, u.grams, false);
+    }
+
+    const foodLower = food.name.toLowerCase();
+    const sortedCustomUnits = [...customFoodUnits].sort((a, b) => {
+      const aMatch = a.foodNameKeyword && foodLower.includes(a.foodNameKeyword.toLowerCase()) ? 1 : 0;
+      const bMatch = b.foodNameKeyword && foodLower.includes(b.foodNameKeyword.toLowerCase()) ? 1 : 0;
+      return bMatch - aMatch;
+    });
+    for (const u of sortedCustomUnits) {
+      pushUnit(`★ ${u.unitName} (${u.grams} גרם)`, u.grams, true);
+    }
+    for (const t of customServingTools) {
+      const g = Number(t.defaultFoodGrams || t.volumeMl || 0);
+      if (g > 0) {
+        pushUnit(`🍽️ ${t.name} (${Math.round(g)} גרם)`, Math.round(g), true);
+      }
+    }
+    if (!out.some((u) => u.grams === 100)) {
+      pushUnit('100 גרם', 100, false);
+    }
+    return out;
+  };
+
+  const handleSelectCatalogFood = async (food: FoodCatalogItem, openPortion = true) => {
+    if (!openPortion) {
+      setSelectedFood(null);
+      return;
+    }
+    setInlineUnitOpen(false);
+    setSelectedFood(food);
+    const combined = getCombinedUnitsForFood(food);
+    const firstNon100 = combined.find((u) => u.grams !== 100);
+    const firstUnit = firstNon100 || combined[0] || { label: '100 גרם', grams: 100 };
+    setSelectedUnitLabel(firstUnit.label);
+    setQuantity(1);
+    setCustomGrams(firstUnit.grams);
+
+    const needsEnrich =
+      Boolean(food.sourceUrl) &&
+      (!food.barcode || !food.units.some((u) => Math.round(u.grams) !== 100));
+    if (needsEnrich) {
+      setEnrichingFood(true);
+      try {
+        const res = await fetch('/api/food/enrich', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item: food }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { item?: FoodCatalogItem };
+          if (data.item) {
+            const enriched = data.item;
+            setSearchResults((prev) =>
+              prev.map((x) => (x.id === enriched.id ? enriched : x))
+            );
+            setSelectedFood((prev) => {
+              if (!prev || prev.id !== enriched.id) return prev;
+              const nextCombined = getCombinedUnitsForFood(enriched);
+              const betterPkg = nextCombined.find((u) => !u.isUserUnit && u.grams !== 100);
+              if (betterPkg && firstUnit.grams === 100) {
+                setSelectedUnitLabel(betterPkg.label);
+                setQuantity(1);
+                setCustomGrams(betterPkg.grams);
+              }
+              return enriched;
+            });
+          }
+        }
+      } catch {
+        // ignore lazy enrichment network failure
+      } finally {
+        setEnrichingFood(false);
+      }
+    }
+  };
+
+  const handleSaveInlineCustomUnit = async () => {
+    if (!inlineUnitName.trim() || !onManageToolsAndUnits || !selectedFood) return;
+    const gramsNum = Math.max(1, Math.min(3000, Math.round(Number(inlineUnitGrams) || 100)));
+    setSavingInlineUnit(true);
+    try {
+      const nextUnit: TraineeCustomUnit = {
+        id: `unit-${Date.now()}`,
+        unitName: inlineUnitName.trim(),
+        foodNameKeyword: inlineUnitForFoodOnly ? selectedFood.name.slice(0, 40) : undefined,
+        grams: gramsNum,
+        updatedAt: new Date().toISOString(),
+      };
+      const updatedList = [...customFoodUnits, nextUnit];
+      const res = await onManageToolsAndUnits({ customFoodUnits: updatedList });
+      if (!res?.error) {
+        const newLabel = `★ ${nextUnit.unitName} (${nextUnit.grams} גרם)`;
+        setSelectedUnitLabel(newLabel);
+        setQuantity(1);
+        setCustomGrams(nextUnit.grams);
+        setInlineUnitName('');
+        setInlineUnitOpen(false);
+      }
+    } finally {
+      setSavingInlineUnit(false);
+    }
   };
 
   const handleUnitChange = (unitLabel: string | null) => {
@@ -893,7 +1048,8 @@ export function AddMealDrawer({
         items,
         primaryPhoto,
         photoNote,
-        allMealPhotos.length > 0 ? allMealPhotos : undefined
+        allMealPhotos.length > 0 ? allMealPhotos : undefined,
+        mealTime || undefined
       );
       if (saveAsPreset && items.length > 0 && onSavedMealAction) {
         const autoTitle =
@@ -941,6 +1097,8 @@ export function AddMealDrawer({
         .slice(0, 5)
     : [];
 
+  const dateInfo = formatDrawerDateLabel(selectedDate);
+
   return (
     <>
       <Drawer
@@ -950,6 +1108,8 @@ export function AddMealDrawer({
         }}
         position="bottom"
         size="93%"
+        zIndex={200}
+        overlayProps={{ backgroundOpacity: 0.8, blur: 6 }}
         withCloseButton={false}
         styles={{
           content: {
@@ -1020,10 +1180,7 @@ export function AddMealDrawer({
                 <button
                   type="button"
                   onClick={() => {
-                    if (activeTab === 'portion-focus') {
-                      setSelectedFood(null);
-                      setActiveTab(trimmedQuery ? 'hub' : 'catalog');
-                    } else if (trimmedQuery) {
+                    if (trimmedQuery) {
                       setSearchQuery('');
                       setActiveTab('hub');
                     } else {
@@ -1050,7 +1207,7 @@ export function AddMealDrawer({
                 </button>
               )}
 
-              <div style={{ minWidth: 0 }}>
+              <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div
                   style={{
                     fontWeight: 900,
@@ -1062,27 +1219,94 @@ export function AddMealDrawer({
                 >
                   {mealSlot.name}
                 </div>
+                <label
+                  title="שינוי שעת הארוחה"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '3px 8px',
+                    borderRadius: 999,
+                    background: 'rgba(214, 125, 9, 0.14)',
+                    border: '1px solid rgba(214, 125, 9, 0.38)',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Clock size={11} color="var(--accent-orange-bright)" />
+                  <input
+                    type="time"
+                    value={mealTime || mealSlot.timeHint || '12:00'}
+                    onChange={(e) => setMealTime(e.target.value)}
+                    dir="ltr"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      outline: 'none',
+                      color: '#ffffff',
+                      fontSize: 11,
+                      fontWeight: 800,
+                      width: 58,
+                      cursor: 'pointer',
+                      fontFamily: "'Space Grotesk', 'Heebo', sans-serif",
+                    }}
+                  />
+                </label>
               </div>
             </div>
 
-            <span
-              className="num-mono"
-              style={{
-                fontSize: 11,
-                padding: '3px 9px',
-                borderRadius: 999,
-                background: 'var(--bg-surface-2)',
-                color: 'var(--text-secondary)',
-                border: '1px solid var(--border-subtle)',
-                whiteSpace: 'nowrap',
-                flexShrink: 0,
-              }}
-            >
-              {selectedDate ? `${selectedDate} · ` : ''}יעד {mealSlot.targets.calories}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+              {dateInfo && (
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    padding: '4px 9px',
+                    borderRadius: 999,
+                    background: 'var(--bg-surface-2)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    color: '#ffffff',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <CalendarDays size={11} color="var(--accent-orange-bright)" />
+                  <span>{dateInfo.dayTag}</span>
+                  <span
+                    dir="ltr"
+                    className="num-mono"
+                    style={{ color: 'var(--text-secondary)', fontSize: 10, fontWeight: 600 }}
+                  >
+                    {dateInfo.shortDate}
+                  </span>
+                </div>
+              )}
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '4px 9px',
+                  borderRadius: 999,
+                  background: 'rgba(214, 125, 9, 0.14)',
+                  border: '1px solid rgba(214, 125, 9, 0.35)',
+                  fontSize: 10.5,
+                  fontWeight: 800,
+                  color: 'var(--accent-orange-bright)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <span>יעד</span>
+                <span dir="ltr" className="num-mono">
+                  {mealSlot.targets.calories}
+                </span>
+              </div>
+            </div>
           </div>
 
-          {/* סרגל חיפוש כולל (כשהמשתמש במצב בחירה או קטלוג) + מצלמה ישירה מהחיפוש */}
+          {/* סרגל חיפוש כולל + כפתור כוכבים (AI) ידני בלבד + מצלמה מהחיפוש */}
           {(activeTab === 'hub' || activeTab === 'catalog') && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div
@@ -1091,12 +1315,12 @@ export function AddMealDrawer({
                   alignItems: 'center',
                   background: 'var(--bg-surface-2)',
                   border: trimmedQuery
-                    ? '1px solid rgba(234, 88, 12, 0.5)'
+                    ? '1px solid rgba(214, 125, 9, 0.5)'
                     : '1px solid var(--border-strong)',
                   borderRadius: 999,
                   padding: '0 10px 0 6px',
                   height: 42,
-                  gap: 6,
+                  gap: 5,
                 }}
               >
                 <Search size={15} color="var(--text-muted)" style={{ flexShrink: 0 }} />
@@ -1105,13 +1329,12 @@ export function AddMealDrawer({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && trimmedQuery) {
+                    if (e.key === 'Enter') {
                       e.preventDefault();
-                      setFreeTextPrompt(trimmedQuery);
-                      void runAiAnalysis('text', trimmedQuery);
+                      e.currentTarget.blur();
                     }
                   }}
-                  placeholder="חפש מוצר, ארוחה שמורה או תאר ל-AI..."
+                  placeholder="חפש מוצר, ברקוד, שמורות או כתוב ל-AI..."
                   style={{
                     flex: 1,
                     minWidth: 0,
@@ -1154,7 +1377,7 @@ export function AddMealDrawer({
                     borderRadius: '50%',
                     border: 'none',
                     background: isRecordingVoice
-                      ? 'rgba(234, 88, 12, 0.22)'
+                      ? 'rgba(214, 125, 9, 0.22)'
                       : 'transparent',
                     color: isRecordingVoice
                       ? 'var(--accent-orange-bright)'
@@ -1167,6 +1390,49 @@ export function AddMealDrawer({
                   }}
                 >
                   {isRecordingVoice ? <MicOff size={15} /> : <Mic size={15} />}
+                </button>
+                <button
+                  type="button"
+                  disabled={isSlotBgProcessing || aiLoading}
+                  title={
+                    trimmedQuery
+                      ? `שלח לפיענוח AI: "${trimmedQuery}"`
+                      : 'פיענוח חופשי באמצעות AI'
+                  }
+                  onClick={() => {
+                    if (trimmedQuery) {
+                      setFreeTextPrompt(trimmedQuery);
+                      void runAiAnalysis('text', trimmedQuery);
+                    } else {
+                      setActiveTab('ai-text');
+                    }
+                  }}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: '50%',
+                    border: trimmedQuery
+                      ? '1px solid rgba(168, 85, 247, 0.65)'
+                      : '1px solid var(--border-subtle)',
+                    background: trimmedQuery
+                      ? 'linear-gradient(135deg, #9333ea 0%, #6d28d9 100%)'
+                      : 'var(--bg-surface-3)',
+                    color: trimmedQuery ? '#ffffff' : '#c084fc',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                    boxShadow: trimmedQuery
+                      ? '0 2px 10px rgba(147, 51, 234, 0.45)'
+                      : 'none',
+                  }}
+                >
+                  {isSlotBgProcessing || aiLoading ? (
+                    <Loader2 size={14} className="spot-spinner" />
+                  ) : (
+                    <Sparkles size={15} />
+                  )}
                 </button>
                 <button
                   type="button"
@@ -1199,7 +1465,7 @@ export function AddMealDrawer({
                     padding: 6,
                     borderRadius: 14,
                     background: 'var(--bg-surface-2)',
-                    border: '1px solid rgba(234, 88, 12, 0.35)',
+                    border: '1px solid rgba(214, 125, 9, 0.35)',
                   }}
                 >
                   <label
@@ -1213,7 +1479,7 @@ export function AddMealDrawer({
                       justifyContent: 'center',
                       gap: 4,
                       cursor: 'pointer',
-                      borderColor: 'rgba(234, 88, 12, 0.4)',
+                      borderColor: 'rgba(214, 125, 9, 0.4)',
                     }}
                   >
                     <Camera size={13} color="var(--accent-volt)" />
@@ -1311,7 +1577,7 @@ export function AddMealDrawer({
                     id: 'ai-photo',
                     title: 'צילום AI',
                     subtitle: 'צלחת או תווית ערכים',
-                    bg: 'linear-gradient(145deg, #ea580c 0%, #9a3412 100%)',
+                    bg: 'linear-gradient(145deg, #d67d09 0%, #8a4f04 100%)',
                     icon: <Camera size={22} color="#ffffff" />,
                   },
                   {
@@ -1409,281 +1675,52 @@ export function AddMealDrawer({
             </div>
           )}
 
-          {/* פאנל ב׳: תוצאות חיפוש מאוחדות (AI כאופציה #1 + שמורות + מאגר) */}
-          {(activeTab === 'hub' || activeTab === 'catalog') && trimmedQuery.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {/* אופציה #1 קבועה בראש הרשימה: שלח ל-AI */}
-              <button
-                type="button"
-                disabled={isSlotBgProcessing || aiLoading}
-                onClick={() => {
-                  setFreeTextPrompt(trimmedQuery);
-                  void runAiAnalysis('text', trimmedQuery);
-                }}
-                style={{
-                  width: '100%',
-                  textAlign: 'right',
-                  padding: '12px 14px',
-                  borderRadius: 16,
-                  border: '1px solid rgba(234, 88, 12, 0.55)',
-                  background:
-                    'linear-gradient(135deg, rgba(234, 88, 12, 0.22) 0%, rgba(194, 65, 12, 0.14) 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 10,
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                  <div
-                    style={{
-                      width: 34,
-                      height: 34,
-                      borderRadius: 11,
-                      background: 'var(--accent-volt)',
-                      color: '#ffffff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Sparkles size={16} />
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 900, color: '#ffffff' }}>
-                      שלח ל-AI את הטקסט שנרשם
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: 'var(--accent-orange-bright)',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      &ldquo;{trimmedQuery}&rdquo; · פיענוח והוספה אוטומטית
-                    </div>
-                  </div>
-                </div>
-                <ChevronLeft size={16} color="var(--accent-orange-bright)" style={{ flexShrink: 0 }} />
-              </button>
-
-              {/* ארוחות שמורות תואמות */}
-              {matchedSavedPresets.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 800, color: '#38bdf8' }}>
-                    ארוחות שמורות תואמות ({matchedSavedPresets.length})
-                  </div>
-                  {matchedSavedPresets.map((preset) => (
-                    <div
-                      key={preset.id}
-                      style={{
-                        background: 'var(--bg-surface-2)',
-                        border: '1px solid rgba(56, 189, 248, 0.28)',
-                        borderRadius: 12,
-                        padding: '9px 12px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        gap: 8,
-                      }}
-                    >
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 800 }}>{preset.title}</div>
-                        <div className="num-mono" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                          {Math.round(preset.totalCalories)} קק״ל · {preset.items.length} מרכיבים
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const cloned = preset.items.map((it, i) => ({
-                            ...it,
-                            id: `srch-pre-${Date.now()}-${i}`,
-                          }));
-                          setItems((prev) => [...prev, ...cloned]);
-                          if (preset.photoDataUrl && !photoDataUrl) {
-                            setPhotoDataUrl(preset.photoDataUrl);
-                          }
-                          setAiSummary({ msg: `נוספה המנה "${preset.title}"` });
-                        }}
-                        className="btn-volt"
-                        style={{ padding: '6px 11px', fontSize: 11.5, cursor: 'pointer', flexShrink: 0 }}
-                      >
-                        + הוסף
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* פאנל ג׳: בחירת כמות ממוקדת למאכל שנבחר (ללא תפריטים מיותרים — השראת תמונה 15) */}
-          {activeTab === 'portion-focus' && selectedFood && (
-            <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                border: '1px solid rgba(234, 88, 12, 0.3)',
-                borderRadius: 18,
-                padding: 16,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 14,
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-                <div>
-                  <div style={{ fontSize: 16, fontWeight: 900 }}>
-                    {selectedFood.name}
-                    {selectedFood.brand ? ` (${selectedFood.brand})` : ''}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                    ל-100 גרם: {selectedFood.per100g.calories} קק״ל · ח׳ {selectedFood.per100g.protein}g
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onToggleFavorite(selectedFood.id)}
-                  className="btn-surface"
-                  style={{ width: 34, height: 34, padding: 0, display: 'grid', placeItems: 'center', cursor: 'pointer' }}
-                >
-                  <Heart
-                    size={16}
-                    color={favoriteIds.includes(selectedFood.id) ? '#ff5e7e' : 'var(--text-secondary)'}
-                    fill={favoriteIds.includes(selectedFood.id) ? '#ff5e7e' : 'none'}
-                  />
-                </button>
+          {/* פאנל ב׳: תוצאות חיפוש מאוחדות (ארוחות שמורות תואמות + מאגר מוצרים + כפתור ✨ ל-AI למעלה) */}
+          {(activeTab === 'hub' || activeTab === 'catalog') && trimmedQuery.length > 0 && matchedSavedPresets.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 800, color: '#38bdf8' }}>
+                ארוחות שמורות תואמות ({matchedSavedPresets.length})
               </div>
-
-              {/* תצוגת ערכים גדולה וברורה */}
-              <div
-                style={{
-                  background: 'var(--bg-surface-1)',
-                  borderRadius: 16,
-                  padding: '16px 14px',
-                  textAlign: 'center',
-                  border: '1px solid var(--border-subtle)',
-                }}
-              >
+              {matchedSavedPresets.map((preset) => (
                 <div
-                  className="num-mono"
-                  style={{ fontSize: 30, fontWeight: 900, color: 'var(--accent-orange-bright)' }}
-                >
-                  {previewMacros.calories} קק״ל
-                </div>
-                <div
-                  className="num-mono"
+                  key={preset.id}
                   style={{
+                    background: 'var(--bg-surface-2)',
+                    border: '1px solid rgba(56, 189, 248, 0.28)',
+                    borderRadius: 12,
+                    padding: '9px 12px',
                     display: 'flex',
-                    justifyContent: 'center',
-                    gap: 14,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    marginTop: 6,
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 8,
                   }}
                 >
-                  <span style={{ color: 'var(--macro-protein)' }}>חלבון: {previewMacros.protein}g</span>
-                  <span style={{ color: 'var(--macro-carbs)' }}>פחמימה: {previewMacros.carbs}g</span>
-                  <span style={{ color: 'var(--macro-fat)' }}>שומן: {previewMacros.fat}g</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800 }}>{preset.title}</div>
+                    <div className="num-mono" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                      {Math.round(preset.totalCalories)} קק״ל · {preset.items.length} מרכיבים
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cloned = preset.items.map((it, i) => ({
+                        ...it,
+                        id: `srch-pre-${Date.now()}-${i}`,
+                      }));
+                      setItems((prev) => [...prev, ...cloned]);
+                      if (preset.photoDataUrl && !photoDataUrl) {
+                        setPhotoDataUrl(preset.photoDataUrl);
+                      }
+                      setAiSummary({ msg: `נוספה המנה "${preset.title}"` });
+                    }}
+                    className="btn-volt"
+                    style={{ padding: '6px 11px', fontSize: 11.5, cursor: 'pointer', flexShrink: 0 }}
+                  >
+                    + הוסף
+                  </button>
                 </div>
-              </div>
-
-              {/* בחירת יחידה בקפסולות */}
-              <div>
-                <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>
-                  יחידת מידה:
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {[
-                    ...getCombinedUnitsForFood(selectedFood).map((u) => ({
-                      value: u.label,
-                      label: u.label,
-                    })),
-                    { value: 'custom-grams', label: 'משקל חופשי (גרם)' },
-                  ].map((uOpt) => {
-                    const active = selectedUnitLabel === uOpt.value;
-                    return (
-                      <button
-                        key={uOpt.value}
-                        type="button"
-                        onClick={() => handleUnitChange(uOpt.value)}
-                        style={{
-                          padding: '6px 11px',
-                          borderRadius: 999,
-                          border: active
-                            ? '1px solid var(--accent-volt)'
-                            : '1px solid var(--border-subtle)',
-                          background: active
-                            ? 'rgba(234, 88, 12, 0.16)'
-                            : 'var(--bg-surface-1)',
-                          color: active ? '#ffffff' : 'var(--text-secondary)',
-                          fontSize: 11.5,
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {uOpt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: 10,
-                }}
-              >
-                <NumberInput
-                  size="sm"
-                  label="כמות"
-                  value={quantity}
-                  onChange={handleQuantityChange}
-                  min={0.25}
-                  max={20}
-                  step={0.5}
-                  disabled={selectedUnitLabel === 'custom-grams'}
-                />
-                <NumberInput
-                  size="sm"
-                  label="סה״כ גרמים"
-                  value={customGrams}
-                  onChange={(val) => setCustomGrams(Math.max(1, Number(val) || 100))}
-                  min={1}
-                  max={2000}
-                  step={5}
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  addSelectedFoodToMeal('catalog');
-                  setAiSummary({ msg: `נוסף לארוחה: ${selectedFood.name}` });
-                  setSelectedFood(null);
-                  setActiveTab('hub');
-                }}
-                className="btn-volt"
-                style={{
-                  padding: '12px 16px',
-                  fontSize: 14,
-                  fontWeight: 900,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                  cursor: 'pointer',
-                }}
-              >
-                <Plus size={16} />
-                <span>הוסף לארוחה</span>
-              </button>
+              ))}
             </div>
           )}
 
@@ -1703,7 +1740,10 @@ export function AddMealDrawer({
                   setPhotoDataUrl(img);
                 }
               }}
-              onOpenToolsModal={() => setToolsModalOpen(true)}
+              onOpenToolsModal={() => {
+                    setToolsInitialSection('tools');
+                    setToolsModalOpen(true);
+                  }}
               onSavedMealAction={onSavedMealAction}
             />
           )}
@@ -1716,7 +1756,7 @@ export function AddMealDrawer({
                   <div
                     style={{
                       background: 'var(--bg-surface-2)',
-                      border: '1px solid rgba(234, 88, 12, 0.25)',
+                      border: '1px solid rgba(214, 125, 9, 0.25)',
                       borderRadius: 14,
                       padding: 12,
                     }}
@@ -1862,10 +1902,10 @@ export function AddMealDrawer({
                             borderRadius: 8,
                             background: aiRecDebug.isFallback
                               ? 'rgba(245, 158, 11, 0.14)'
-                              : 'rgba(234, 88, 12, 0.08)',
+                              : 'rgba(214, 125, 9, 0.08)',
                             border: aiRecDebug.isFallback
                               ? '1px solid rgba(245, 158, 11, 0.35)'
-                              : '1px solid rgba(234, 88, 12, 0.25)',
+                              : '1px solid rgba(214, 125, 9, 0.25)',
                             color: aiRecDebug.isFallback ? '#fbbf24' : 'var(--accent-volt)',
                           }}
                         >
@@ -1884,8 +1924,8 @@ export function AddMealDrawer({
                           style={{
                             padding: 12,
                             borderRadius: 12,
-                            background: 'rgba(234, 88, 12, 0.05)',
-                            border: '1px solid rgba(234, 88, 12, 0.25)',
+                            background: 'rgba(214, 125, 9, 0.05)',
+                            border: '1px solid rgba(214, 125, 9, 0.25)',
                             display: 'flex',
                             flexDirection: 'column',
                             gap: 6,
@@ -2134,7 +2174,7 @@ export function AddMealDrawer({
                             ? '1px solid var(--accent-volt)'
                             : '1px solid var(--border-subtle)',
                           background: active
-                            ? 'rgba(234, 88, 12, 0.16)'
+                            ? 'rgba(214, 125, 9, 0.16)'
                             : 'var(--bg-surface-2)',
                           color: active
                             ? 'var(--accent-orange-bright)'
@@ -2175,7 +2215,7 @@ export function AddMealDrawer({
                       fontSize: 12,
                     }}
                   >
-                    לא נמצאו מוצרים המתאימים ל־&ldquo;{searchQuery}&rdquo;. אפשר ללחוץ למעלה על <b>&quot;שלח ל-AI את הטקסט שנרשם&quot;</b> לפיענוח מיידי!
+                    לא נמצאו מוצרים המתאימים ל־&ldquo;{searchQuery}&rdquo;. אפשר ללחוץ על כפתור <b>✨</b> בשורת החיפוש למעלה לפיענוח ב-AI!
                   </div>
                 ) : (
                   <div
@@ -2191,7 +2231,7 @@ export function AddMealDrawer({
                       return (
                         <div
                           key={food.id}
-                          onClick={() => handleSelectCatalogFood(food)}
+                          onClick={() => void handleSelectCatalogFood(food)}
                           style={{
                             padding: '10px 12px',
                             borderRadius: 12,
@@ -2200,7 +2240,7 @@ export function AddMealDrawer({
                               ? '1px solid var(--accent-volt)'
                               : '1px solid var(--border-subtle)',
                             background: isSelected
-                              ? 'rgba(234, 88, 12, 0.1)'
+                              ? 'rgba(214, 125, 9, 0.1)'
                               : 'var(--bg-surface-2)',
                             display: 'flex',
                             justifyContent: 'space-between',
@@ -2229,19 +2269,46 @@ export function AddMealDrawer({
                             >
                               {food.per100g.calories} קק״ל · ח:{food.per100g.protein} פ:{food.per100g.carbs} ש:{food.per100g.fat}
                             </div>
-                            {food.sourceSiteName && (
+                            {(food.sourceSiteName || food.barcode) && (
                               <div
                                 style={{
                                   marginTop: 2,
                                   fontSize: 10,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  flexWrap: 'wrap',
+                                  gap: 6,
                                   color: food.sourceSiteId
                                     ? 'var(--accent-orange-bright)'
                                     : 'var(--text-muted)',
                                 }}
                               >
-                                {food.brand && food.brand !== food.sourceSiteName
-                                  ? `${food.brand} · ${food.sourceSiteName}`
-                                  : food.sourceSiteName}
+                                {food.sourceSiteName && (
+                                  <span>
+                                    {food.brand && food.brand !== food.sourceSiteName
+                                      ? `${food.brand} · ${food.sourceSiteName}`
+                                      : food.sourceSiteName}
+                                  </span>
+                                )}
+                                {food.barcode && (
+                                  <span
+                                    dir="ltr"
+                                    className="num-mono"
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 2,
+                                      padding: '0 5px',
+                                      borderRadius: 6,
+                                      background: 'rgba(255,255,255,0.06)',
+                                      color: 'var(--text-secondary)',
+                                      fontSize: 9.5,
+                                    }}
+                                  >
+                                    <Barcode size={9} />
+                                    {food.barcode}
+                                  </span>
+                                )}
                               </div>
                             )}
                           </div>
@@ -2255,7 +2322,7 @@ export function AddMealDrawer({
                               background: 'transparent',
                               border: 'none',
                               color: isFav
-                                ? 'var(--macro-protein)'
+                                ? '#ff5e7e'
                                 : 'var(--text-muted)',
                               cursor: 'pointer',
                               padding: 4,
@@ -2287,8 +2354,8 @@ export function AddMealDrawer({
                       justifyContent: 'space-between',
                       padding: '9px 12px',
                       borderRadius: 12,
-                      background: 'rgba(234, 88, 12, 0.14)',
-                      border: '1px solid rgba(234, 88, 12, 0.42)',
+                      background: 'rgba(214, 125, 9, 0.14)',
+                      border: '1px solid rgba(214, 125, 9, 0.42)',
                       color: '#ffffff',
                       fontSize: 12,
                       fontWeight: 800,
@@ -2368,7 +2435,7 @@ export function AddMealDrawer({
                 <div
                   style={{
                     background: 'var(--bg-surface-2)',
-                    border: '1px dashed rgba(234, 88, 12, 0.35)',
+                    border: '1px dashed rgba(214, 125, 9, 0.35)',
                     borderRadius: 16,
                     padding: 16,
                     textAlign: 'center',
@@ -2393,7 +2460,7 @@ export function AddMealDrawer({
                               height: photoItems.length === 1 ? 140 : 102,
                               borderRadius: 12,
                               overflow: 'hidden',
-                              border: '1px solid rgba(234, 88, 12, 0.35)',
+                              border: '1px solid rgba(214, 125, 9, 0.35)',
                             }}
                           >
                             <img
@@ -2567,7 +2634,7 @@ export function AddMealDrawer({
                           fontSize: 12,
                           cursor: photoUploading ? 'wait' : 'pointer',
                           opacity: photoUploading ? 0.65 : 1,
-                          borderColor: 'rgba(234, 88, 12, 0.35)',
+                          borderColor: 'rgba(214, 125, 9, 0.35)',
                         }}
                       >
                         <Camera size={14} color="var(--accent-volt)" />
@@ -2601,7 +2668,10 @@ export function AddMealDrawer({
                   globalQuickChips={globalQuickChips}
                   contextParams={contextParams}
                   onChangeContextParams={setContextParams}
-                  onOpenToolsModal={() => setToolsModalOpen(true)}
+                  onOpenToolsModal={() => {
+                    setToolsInitialSection('tools');
+                    setToolsModalOpen(true);
+                  }}
                   onManageQuickChips={onManageQuickChips}
                 />
 
@@ -2737,7 +2807,10 @@ export function AddMealDrawer({
                   globalQuickChips={globalQuickChips}
                   contextParams={contextParams}
                   onChangeContextParams={setContextParams}
-                  onOpenToolsModal={() => setToolsModalOpen(true)}
+                  onOpenToolsModal={() => {
+                    setToolsInitialSection('tools');
+                    setToolsModalOpen(true);
+                  }}
                   onManageQuickChips={onManageQuickChips}
                 />
 
@@ -2880,8 +2953,8 @@ export function AddMealDrawer({
                 style={{
                   padding: '12px 14px',
                   borderRadius: 14,
-                  background: 'rgba(234, 88, 12, 0.08)',
-                  border: '1px solid rgba(234, 88, 12, 0.35)',
+                  background: 'rgba(214, 125, 9, 0.08)',
+                  border: '1px solid rgba(214, 125, 9, 0.35)',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 8,
@@ -2901,7 +2974,7 @@ export function AddMealDrawer({
                       fontWeight: 800,
                       padding: '2px 8px',
                       borderRadius: 999,
-                      background: 'rgba(234, 88, 12, 0.14)',
+                      background: 'rgba(214, 125, 9, 0.14)',
                       color: 'var(--accent-volt)',
                     }}
                   >
@@ -2921,7 +2994,7 @@ export function AddMealDrawer({
                     fontSize: 11,
                     fontWeight: 700,
                     cursor: 'pointer',
-                    borderColor: 'rgba(234, 88, 12, 0.35)',
+                    borderColor: 'rgba(214, 125, 9, 0.35)',
                     color: 'var(--accent-volt)',
                   }}
                 >
@@ -2955,12 +3028,12 @@ export function AddMealDrawer({
                     ? 'rgba(239, 68, 68, 0.14)'
                     : aiSummary.isFallback
                     ? 'rgba(245, 158, 11, 0.14)'
-                    : 'rgba(234, 88, 12, 0.1)',
+                    : 'rgba(214, 125, 9, 0.1)',
                   border: aiSummary.isError
                     ? '1px solid rgba(239, 68, 68, 0.35)'
                     : aiSummary.isFallback
                     ? '1px solid rgba(245, 158, 11, 0.35)'
-                    : '1px solid rgba(234, 88, 12, 0.3)',
+                    : '1px solid rgba(214, 125, 9, 0.3)',
                   color: aiSummary.isError
                     ? '#f87171'
                     : aiSummary.isFallback
@@ -3028,7 +3101,7 @@ export function AddMealDrawer({
                           height: 64,
                           borderRadius: 12,
                           objectFit: 'cover',
-                          border: '1px solid rgba(234, 88, 12, 0.45)',
+                          border: '1px solid rgba(214, 125, 9, 0.45)',
                           cursor: 'pointer',
                           flexShrink: 0,
                         }}
@@ -3060,7 +3133,7 @@ export function AddMealDrawer({
                           style={{
                             background: 'var(--bg-surface-2)',
                             border: isEditing
-                              ? '1px solid rgba(234, 88, 12, 0.45)'
+                              ? '1px solid rgba(214, 125, 9, 0.45)'
                               : '1px solid var(--border-subtle)',
                             borderRadius: 14,
                             padding: '10px 12px',
@@ -3111,10 +3184,10 @@ export function AddMealDrawer({
                                       fontWeight: 800,
                                       background: item.isAiFallback
                                         ? 'rgba(245, 158, 11, 0.16)'
-                                        : 'rgba(234, 88, 12, 0.14)',
+                                        : 'rgba(214, 125, 9, 0.14)',
                                       border: item.isAiFallback
                                         ? '1px solid rgba(245, 158, 11, 0.38)'
-                                        : '1px solid rgba(234, 88, 12, 0.32)',
+                                        : '1px solid rgba(214, 125, 9, 0.32)',
                                       color: item.isAiFallback
                                         ? '#fbbf24'
                                         : 'var(--accent-orange-bright)',
@@ -3390,7 +3463,7 @@ export function AddMealDrawer({
                 background: 'var(--bg-surface-2)',
                 border:
                   items.length > 0
-                    ? '1px solid rgba(234, 88, 12, 0.42)'
+                    ? '1px solid rgba(214, 125, 9, 0.42)'
                     : '1px solid var(--border-subtle)',
                 cursor: 'pointer',
               }}
@@ -3414,8 +3487,8 @@ export function AddMealDrawer({
                     width: 40,
                     height: 40,
                     borderRadius: 10,
-                    background: 'rgba(234, 88, 12, 0.14)',
-                    border: '1px solid rgba(234, 88, 12, 0.3)',
+                    background: 'rgba(214, 125, 9, 0.14)',
+                    border: '1px solid rgba(214, 125, 9, 0.3)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -3470,8 +3543,10 @@ export function AddMealDrawer({
                     marginTop: 2,
                   }}
                 >
-                  <b style={{ color: '#ffffff' }}>{currentTotals.calories}</b>/{mealSlot.targets.calories} קק״ל · ח׳{' '}
-                  {currentTotals.protein} · פ׳ {currentTotals.carbs} · ש׳ {currentTotals.fat}
+                  <span dir="ltr">
+                    <b style={{ color: '#ffffff' }}>{currentTotals.calories}</b> / {mealSlot.targets.calories}
+                  </span>{' '}
+                  קק״ל · ח׳ {currentTotals.protein} · פ׳ {currentTotals.carbs} · ש׳ {currentTotals.fat}
                 </div>
               </div>
             </div>
@@ -3503,12 +3578,352 @@ export function AddMealDrawer({
         )}
       </Drawer>
 
+      {/* פופ-אפ ממוקד לבחירת כמות/אריזה/מידה אישית עם החשכה מלאה מאחור וכפתור סגירה עצמאי */}
+      <Modal
+        opened={Boolean(selectedFood)}
+        onClose={() => {
+          setInlineUnitOpen(false);
+          setSelectedFood(null);
+        }}
+        centered
+        radius="xl"
+        size="md"
+        zIndex={230}
+        withCloseButton={false}
+        overlayProps={{ backgroundOpacity: 0.82, blur: 6 }}
+      >
+        {selectedFood && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+              <button
+                type="button"
+                aria-label="סגור חלון בחירת כמות"
+                onClick={() => {
+                  setInlineUnitOpen(false);
+                  setSelectedFood(null);
+                }}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  border: '1px solid var(--border-strong)',
+                  background: 'var(--bg-surface-2)',
+                  color: 'var(--text-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                <X size={15} />
+              </button>
+
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15.5, fontWeight: 900, lineHeight: 1.3 }}>
+                  {selectedFood.name}
+                  {selectedFood.brand ? ` (${selectedFood.brand})` : ''}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 3, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                  <span>
+                    ל-100 גרם: {selectedFood.per100g.calories} קק״ל · ח׳ {selectedFood.per100g.protein}g
+                  </span>
+                  {selectedFood.barcode && (
+                    <span
+                      dir="ltr"
+                      className="num-mono"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 3,
+                        padding: '1px 6px',
+                        borderRadius: 999,
+                        background: 'rgba(214, 125, 9, 0.14)',
+                        border: '1px solid rgba(214, 125, 9, 0.32)',
+                        color: 'var(--accent-orange-bright)',
+                        fontSize: 10,
+                        fontWeight: 700,
+                      }}
+                    >
+                      <Barcode size={10} />
+                      {selectedFood.barcode}
+                    </span>
+                  )}
+                  {enrichingFood && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--accent-orange-bright)', fontSize: 10 }}>
+                      <Loader2 size={10} className="spot-spinner" />
+                      <span>מושך מידות אריזה וברקוד...</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                aria-label="מועדף"
+                onClick={() => onToggleFavorite(selectedFood.id)}
+                className="btn-surface"
+                style={{ width: 32, height: 32, padding: 0, display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}
+              >
+                <Heart
+                  size={15}
+                  color={favoriteIds.includes(selectedFood.id) ? '#ff5e7e' : 'var(--text-secondary)'}
+                  fill={favoriteIds.includes(selectedFood.id) ? '#ff5e7e' : 'none'}
+                />
+              </button>
+            </div>
+
+            {/* תצוגת ערכים גדולה וברורה */}
+            <div
+              style={{
+                background: 'var(--bg-surface-2)',
+                borderRadius: 16,
+                padding: '14px 12px',
+                textAlign: 'center',
+                border: '1px solid var(--border-subtle)',
+              }}
+            >
+              <div
+                className="num-mono"
+                style={{ fontSize: 28, fontWeight: 900, color: 'var(--accent-orange-bright)' }}
+              >
+                {previewMacros.calories} קק״ל
+              </div>
+              <div
+                className="num-mono"
+                style={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  gap: 14,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  marginTop: 6,
+                }}
+              >
+                <span style={{ color: 'var(--macro-protein)' }}>חלבון: {previewMacros.protein}g</span>
+                <span style={{ color: 'var(--macro-carbs)' }}>פחמימה: {previewMacros.carbs}g</span>
+                <span style={{ color: 'var(--macro-fat)' }}>שומן: {previewMacros.fat}g</span>
+              </div>
+            </div>
+
+            {/* בחירת יחידה בקפסולות + מידות המשתמש */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                  יחידת מידה (אריזה, מידות אישיות וגרם):
+                </span>
+                {onManageToolsAndUnits && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setToolsInitialSection('units');
+                      setToolsModalOpen(true);
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--accent-orange-bright)',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 3,
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                  >
+                    <Ruler size={11} />
+                    <span>ניהול המידות שלי</span>
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {[
+                  ...getCombinedUnitsForFood(selectedFood).map((u) => ({
+                    value: u.label,
+                    label: u.label,
+                    isUser: Boolean(u.isUserUnit),
+                  })),
+                  { value: 'custom-grams', label: 'משקל חופשי (גרם)', isUser: false },
+                ].map((uOpt) => {
+                  const active = selectedUnitLabel === uOpt.value;
+                  return (
+                    <button
+                      key={uOpt.value}
+                      type="button"
+                      onClick={() => handleUnitChange(uOpt.value)}
+                      style={{
+                        padding: '6px 11px',
+                        borderRadius: 999,
+                        border: active
+                          ? '1px solid var(--accent-volt)'
+                          : uOpt.isUser
+                          ? '1px solid rgba(56, 189, 248, 0.38)'
+                          : '1px solid var(--border-subtle)',
+                        background: active
+                          ? 'rgba(214, 125, 9, 0.18)'
+                          : uOpt.isUser
+                          ? 'rgba(56, 189, 248, 0.1)'
+                          : 'var(--bg-surface-2)',
+                        color: active ? '#ffffff' : uOpt.isUser ? '#7dd3fc' : 'var(--text-secondary)',
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {uOpt.label}
+                    </button>
+                  );
+                })}
+
+                {onManageToolsAndUnits && (
+                  <button
+                    type="button"
+                    onClick={() => setInlineUnitOpen((v) => !v)}
+                    style={{
+                      padding: '6px 11px',
+                      borderRadius: 999,
+                      border: '1px dashed rgba(214, 125, 9, 0.55)',
+                      background: inlineUnitOpen ? 'rgba(214, 125, 9, 0.16)' : 'transparent',
+                      color: 'var(--accent-orange-bright)',
+                      fontSize: 11.5,
+                      fontWeight: 800,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Plus size={12} />
+                    <span>הוסף מידה אישית</span>
+                  </button>
+                )}
+              </div>
+
+              {inlineUnitOpen && onManageToolsAndUnits && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: 10,
+                    borderRadius: 12,
+                    background: 'var(--bg-surface-2)',
+                    border: '1px solid rgba(214, 125, 9, 0.35)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr', gap: 8 }}>
+                    <TextInput
+                      size="xs"
+                      label="שם המידה"
+                      placeholder="למשל: חבילה / קערה שלי"
+                      value={inlineUnitName}
+                      onChange={(e) => setInlineUnitName(e.currentTarget.value)}
+                    />
+                    <NumberInput
+                      size="xs"
+                      label="גרם"
+                      min={1}
+                      max={3000}
+                      value={inlineUnitGrams}
+                      onChange={setInlineUnitGrams}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <Switch
+                      size="xs"
+                      color="orange"
+                      checked={inlineUnitForFoodOnly}
+                      onChange={(e) => setInlineUnitForFoodOnly(e.currentTarget.checked)}
+                      label={<span style={{ fontSize: 11 }}>שייך למוצר זה</span>}
+                    />
+                    <button
+                      type="button"
+                      disabled={savingInlineUnit || !inlineUnitName.trim()}
+                      onClick={() => void handleSaveInlineCustomUnit()}
+                      className="btn-volt"
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: 11.5,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                      }}
+                    >
+                      {savingInlineUnit ? <Loader2 size={12} className="spot-spinner" /> : <Check size={12} />}
+                      <span>שמור ובחר</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 10,
+              }}
+            >
+              <NumberInput
+                size="sm"
+                label="כמות"
+                value={quantity}
+                onChange={handleQuantityChange}
+                min={0.25}
+                max={20}
+                step={0.5}
+                disabled={selectedUnitLabel === 'custom-grams'}
+              />
+              <NumberInput
+                size="sm"
+                label="סה״כ גרמים"
+                value={customGrams}
+                onChange={(val) => setCustomGrams(Math.max(1, Number(val) || 100))}
+                min={1}
+                max={2000}
+                step={5}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                addSelectedFoodToMeal('catalog');
+                setAiSummary({ msg: `נוסף לארוחה: ${selectedFood.name}` });
+                setInlineUnitOpen(false);
+                setSelectedFood(null);
+              }}
+              className="btn-volt"
+              style={{
+                padding: '12px 16px',
+                fontSize: 14,
+                fontWeight: 900,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                cursor: 'pointer',
+              }}
+            >
+              <Plus size={16} />
+              <span>הוסף לארוחה</span>
+            </button>
+          </div>
+        )}
+      </Modal>
+
       <ServingToolsManagerModal
         opened={toolsModalOpen}
         onClose={() => setToolsModalOpen(false)}
         tools={customServingTools}
         customUnits={customFoodUnits}
         geminiApiKey={geminiApiKey}
+        initialSection={toolsInitialSection}
+        zIndex={260}
         onSave={async (payload) => {
           if (!onManageToolsAndUnits) return { error: 'פעולת שמירה אינה מחוברת' };
           return await onManageToolsAndUnits(payload);
@@ -3519,7 +3934,7 @@ export function AddMealDrawer({
         opened={barcodeModalOpen}
         onClose={() => setBarcodeModalOpen(false)}
         onProductFound={(product) => {
-          handleSelectCatalogFood(product, false);
+          void handleSelectCatalogFood(product, false);
           const defaultUnit = product.units[0] || {
             label: '100 גרם',
             grams: 100,

@@ -142,7 +142,7 @@ export function CoachSavedMealsPanel({
               alignItems: 'center',
               gap: 6,
               cursor: 'pointer',
-              borderColor: 'rgba(234, 88, 12, 0.35)',
+              borderColor: 'rgba(214, 125, 9, 0.35)',
             }}
           >
             <Ruler size={13} color="var(--accent-volt)" />
@@ -163,7 +163,7 @@ export function CoachSavedMealsPanel({
             fontWeight: 700,
             background: banner.isError
               ? 'rgba(239, 68, 68, 0.14)'
-              : 'rgba(234, 88, 12, 0.1)',
+              : 'rgba(214, 125, 9, 0.1)',
             color: banner.isError ? '#f87171' : 'var(--accent-volt)',
           }}
         >
@@ -227,7 +227,7 @@ export function CoachSavedMealsPanel({
                             fontWeight: 800,
                             background: m.isAiFallback
                               ? 'rgba(245, 158, 11, 0.16)'
-                              : 'rgba(234, 88, 12, 0.12)',
+                              : 'rgba(214, 125, 9, 0.12)',
                             color: m.isAiFallback ? '#fbbf24' : 'var(--accent-volt)',
                           }}
                         >

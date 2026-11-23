@@ -226,6 +226,92 @@ export function inferSmartUnits(name: string, category?: string): FoodUnit[] {
   return units;
 }
 
+/**
+ * מחלץ משקל אריזה / מנת מוצר בגרם או מ"ל מטקסט (שם מוצר, כותרת משנה או weightText).
+ */
+export function extractPackageGramsFromText(raw: string): number | null {
+  const clean = decodeHtmlEntities(String(raw || ''))
+    .replace(/ל[-\s]?100\s*(?:גרם|ג'|ג"|מ"ל|מל|מ״ל)/gi, ' ')
+    .replace(/\b100\s*(?:גרם|ג'|ג"|מ"ל|מל|מ״ל)\b/gi, ' ');
+
+  const kgMatch = clean.match(/(\d+(?:[.,]\d+)?)\s*(?:ק"ג|ק״ג|קג|ליטר|ל'|kg)(?=$|\s|[,.)\]\-/])/i);
+  if (kgMatch) {
+    const val = Number(kgMatch[1].replace(',', '.'));
+    if (Number.isFinite(val) && val > 0 && val <= 5) {
+      return Math.round(val * 1000);
+    }
+  }
+
+  const gMatch = clean.match(/(\d+(?:[.,]\d+)?)\s*(?:גרם|ג'|ג"|ג|מ"ל|מ״ל|מל|g|gr|ml)(?=$|\s|[,.)\]\-/])/i);
+  if (gMatch) {
+    const val = Number(gMatch[1].replace(',', '.'));
+    if (Number.isFinite(val) && val >= 5 && val <= 5000) {
+      return Math.round(val);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * מחלץ ברקוד תקני (EAN-8 / EAN-13 / UPC, 6–16 ספרות) מדפי מוצר או JSON.
+ */
+export function extractBarcodeFromText(raw: string): string | undefined {
+  const s = String(raw || '');
+  if (!s) return undefined;
+
+  const patterns = [
+    /"productSku"\s*:\s*"(\d{6,16})"/i,
+    /"sku"\s*:\s*"(\d{6,16})"/i,
+    /"gtin13"\s*:\s*"(\d{6,16})"/i,
+    /"gtin12"\s*:\s*"(\d{6,16})"/i,
+    /"gtin"\s*:\s*"(\d{6,16})"/i,
+    /"ean"\s*:\s*"(\d{6,16})"/i,
+    /"barcode"\s*:\s*"(\d{6,16})"/i,
+    /cloudfront\.net\/gs1\/(\d{6,16})\//i,
+    /(?:^|\/|-)P_(\d{6,16})(?:["/?#&]|$)/i,
+    /ברקוד\s*[:\-]?\s*(\d{7,14})/i,
+  ];
+
+  for (const rx of patterns) {
+    const m = s.match(rx);
+    if (m?.[1]) {
+      const clean = m[1].replace(/[^0-9]/g, '');
+      if (clean.length >= 6 && clean.length <= 16) return clean;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * מאחד רשימות יחידות מידה ללא כפילויות לפי משקל זהה או תווית זהה, עם חבילה בראש במידת הצורך.
+ */
+export function mergeUniqueUnits(...lists: Array<FoodUnit[] | undefined>): FoodUnit[] {
+  const out: FoodUnit[] = [];
+  const seenLabels = new Set<string>();
+  const seenNon100Grams = new Set<number>();
+
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    for (const u of list) {
+      const grams = Math.round(Number(u?.grams) || 0);
+      const label = String(u?.label || '').trim();
+      if (!label || grams <= 0) continue;
+      const lblKey = label.toLowerCase();
+      if (seenLabels.has(lblKey)) continue;
+      if (grams !== 100 && seenNon100Grams.has(grams)) continue;
+      seenLabels.add(lblKey);
+      if (grams !== 100) seenNon100Grams.add(grams);
+      out.push({ label, grams });
+    }
+  }
+
+  if (!out.some((u) => u.grams === 100)) {
+    out.push({ label: '100 גרם', grams: 100 });
+  }
+  return out;
+}
+
 export async function mapConcurrent<T, R>(
   items: T[],
   concurrency: number,

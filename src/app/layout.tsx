@@ -5,6 +5,7 @@ import React from 'react';
 import {
   ColorSchemeScript,
   DirectionProvider,
+  MantineColorsTuple,
   MantineProvider,
   createTheme,
 } from '@mantine/core';
@@ -38,8 +39,25 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 };
 
+const spotOrange: MantineColorsTuple = [
+  '#fef5e7',
+  '#fae8cb',
+  '#f4cf97',
+  '#eeb45f',
+  '#e99c2f',
+  '#e68e13',
+  '#d67d09',
+  '#be6c03',
+  '#a95f00',
+  '#935000',
+];
+
 const theme = createTheme({
   primaryColor: 'orange',
+  primaryShade: { dark: 6, light: 6 },
+  colors: {
+    orange: spotOrange,
+  },
   defaultRadius: 'md',
   fontFamily:
     '"Heebo", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',

@@ -11,6 +11,7 @@ import {
   syncScrapersCatalog,
   testSingleScraperSearch,
 } from '@/lib/scrapers/scraperStore';
+import { backfillFoodCatalogBarcodesAndUnits } from '@/lib/supabase';
 import { FoodCatalogItem, ScraperSourceId } from '@/types/nutrition';
 
 function hasValidSyncSecret(request: NextRequest): boolean {
@@ -112,7 +113,12 @@ export async function POST(request: NextRequest) {
       items?: FoodCatalogItem[];
     };
 
-    if (secretAuthed && body.action !== 'seed_items' && body.action !== 'sync_openfoodfacts') {
+    if (
+      secretAuthed &&
+      body.action !== 'seed_items' &&
+      body.action !== 'sync_openfoodfacts' &&
+      body.action !== 'backfill_catalog_meta'
+    ) {
       return NextResponse.json({ error: 'פעולה מוגבלת לממשק המנהל' }, { status: 403 });
     }
 
@@ -161,6 +167,14 @@ export async function POST(request: NextRequest) {
         const pages = Math.min(12, Math.max(1, Number(body.pages) || 5));
         const res = await syncOpenFoodFactsToCatalog(pages);
         return NextResponse.json({ ok: true, ...res });
+      }
+      case 'backfill_catalog_meta': {
+        const stats = await backfillFoodCatalogBarcodesAndUnits();
+        const { report } = await getScraperState(true);
+        return NextResponse.json({
+          ...stats,
+          report,
+        });
       }
       case 'seed_items': {
         const incoming = Array.isArray(body.items) ? body.items.slice(0, 600) : [];

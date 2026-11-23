@@ -86,7 +86,7 @@ export function BackgroundAiSyncBanner({
             pointerEvents: 'auto',
             background: 'rgba(13, 16, 22, 0.96)',
             backdropFilter: 'blur(14px)',
-            border: '1px solid rgba(234, 88, 12, 0.48)',
+            border: '1px solid rgba(214, 125, 9, 0.48)',
             boxShadow: '0 10px 30px rgba(0, 0, 0, 0.55)',
             borderRadius: 16,
             padding: '11px 14px',
@@ -119,7 +119,7 @@ export function BackgroundAiSyncBanner({
                   fontSize: 10,
                   padding: '2px 7px',
                   borderRadius: 999,
-                  background: 'rgba(234, 88, 12, 0.14)',
+                  background: 'rgba(214, 125, 9, 0.14)',
                   color: 'var(--accent-volt)',
                   fontWeight: 800,
                 }}
@@ -164,7 +164,7 @@ export function BackgroundAiSyncBanner({
                 : 'rgba(48, 14, 14, 0.97)',
               backdropFilter: 'blur(14px)',
               border: isOk
-                ? '1px solid rgba(234, 88, 12, 0.55)'
+                ? '1px solid rgba(214, 125, 9, 0.55)'
                 : '1px solid rgba(239, 68, 68, 0.5)',
               boxShadow: '0 10px 30px rgba(0, 0, 0, 0.55)',
               borderRadius: 16,
@@ -186,7 +186,7 @@ export function BackgroundAiSyncBanner({
                     height: 34,
                     borderRadius: 9,
                     objectFit: 'cover',
-                    border: '1px solid rgba(234, 88, 12, 0.45)',
+                    border: '1px solid rgba(214, 125, 9, 0.45)',
                     flexShrink: 0,
                   }}
                 />

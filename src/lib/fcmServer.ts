@@ -304,7 +304,7 @@ export async function sendFcmNotificationToTokens(
               notification: {
                 channel_id: payload.channelId,
                 icon: 'ic_stat_spot',
-                color: '#ea580c',
+                color: '#d67d09',
                 click_action: 'FCM_PLUGIN_ACTIVITY',
                 sound: 'default',
               },

@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
-import { isValidMacroSet } from '@/lib/scrapers/helpers';
+import {
+  extractPackageGramsFromText,
+  isValidMacroSet,
+  mergeUniqueUnits,
+} from '@/lib/scrapers/helpers';
 import {
   lookupBarcodeUnified,
   persistCatalogItemsToDb,
 } from '@/lib/scrapers/scraperStore';
+import { lookupRetailerByBarcodeLive } from '@/lib/scrapers/israeliScrapers';
 import { FoodCatalogItem } from '@/types/nutrition';
 import { getSessionFromRequest, sanitizeText } from '@/lib/serverAuth';
 
@@ -61,6 +66,20 @@ export async function GET(request: NextRequest) {
         const carbs = Number(nutriments.carbohydrates_100g) || 0;
         const fat = Number(nutriments.fat_100g) || 0;
         const servingGrams = Number(p.serving_quantity) || 100;
+        const rawPkg = Number(p.product_quantity);
+        const pkgGrams =
+          (Number.isFinite(rawPkg) && rawPkg > 5 && rawPkg <= 5000 ? Math.round(rawPkg) : null) ||
+          extractPackageGramsFromText(String(p.quantity || ''));
+
+        const offUnits = mergeUniqueUnits(
+          pkgGrams && pkgGrams !== 100
+            ? [{ label: `חבילה שלמה (${pkgGrams} גרם)`, grams: pkgGrams }]
+            : [],
+          servingGrams !== 100 && servingGrams > 0
+            ? [{ label: `מנה (${Math.round(servingGrams)} גרם)`, grams: Math.round(servingGrams) }]
+            : [],
+          [{ label: '100 גרם', grams: 100 }]
+        );
 
         const item: FoodCatalogItem = {
           id: `openfoodfacts-${code}`,
@@ -74,12 +93,7 @@ export async function GET(request: NextRequest) {
             carbs: Math.round(carbs * 10) / 10,
             fat: Math.round(fat * 10) / 10,
           },
-          units: [
-            ...(servingGrams !== 100
-              ? [{ label: `מנה (${servingGrams} גרם)`, grams: servingGrams }]
-              : []),
-            { label: '100 גרם', grams: 100 },
-          ],
+          units: offUnits,
           source: 'openfoodfacts',
           sourceSiteId: 'openfoodfacts',
           sourceSiteName: 'Open Food Facts ישראל',
@@ -107,6 +121,24 @@ export async function GET(request: NextRequest) {
     }
   } catch {
     // Fallback if offline
+  }
+
+  // 3. שליפה חיה מרשתות שיווק ישראליות (ויקטורי + שופרסל) לפי ברקוד
+  try {
+    const retailItem = await lookupRetailerByBarcodeLive(code);
+    if (retailItem && isValidMacroSet(retailItem.per100g)) {
+      try {
+        waitUntil(persistCatalogItemsToDb([retailItem]).catch(() => undefined));
+      } catch {
+        // ignore outside Vercel lifecycle
+      }
+      return NextResponse.json({
+        item: retailItem,
+        source: retailItem.sourceSiteId || 'scraper',
+      });
+    }
+  } catch {
+    // ignore live retailer timeout
   }
 
   return NextResponse.json(

@@ -810,7 +810,7 @@ export function TraineeProfileView({
           <div
             style={{
               background: 'var(--bg-surface-2)',
-              border: '1px solid rgba(234, 88, 12, 0.25)',
+              border: '1px solid rgba(214, 125, 9, 0.25)',
               borderRadius: 12,
               padding: 12,
               marginBottom: 14,
@@ -1168,7 +1168,7 @@ export function TraineeProfileView({
                       ? '1px solid var(--accent-volt)'
                       : '1px solid var(--border-subtle)',
                     background: active
-                      ? 'rgba(234, 88, 12, 0.14)'
+                      ? 'rgba(214, 125, 9, 0.14)'
                       : 'var(--bg-surface-2)',
                     color: active ? '#ffffff' : 'var(--text-secondary)',
                     opacity: atLimit ? 0.45 : 1,

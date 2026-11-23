@@ -1344,7 +1344,8 @@ export default function HomePage() {
     items: LoggedFoodItem[],
     photoDataUrl?: string,
     photoNote?: string,
-    photoDataUrls?: string[]
+    photoDataUrls?: string[],
+    mealTime?: string
   ) => {
     if (currentUser?.role === 'trainee' && currentUser.id !== traineeId) {
       return;
@@ -1354,6 +1355,11 @@ export default function HomePage() {
       hour: '2-digit',
       minute: '2-digit',
     });
+
+    const cleanMealTime =
+      mealTime !== undefined && /^\d{1,2}:\d{2}$/.test(mealTime.trim())
+        ? mealTime.trim()
+        : undefined;
 
     await commitTraineeMutation(traineeId, (t) => {
       const currentLog = t.logs[date] || {
@@ -1382,6 +1388,7 @@ export default function HomePage() {
               [mealSlotId]: {
                 mealSlotId,
                 items,
+                mealTime: cleanMealTime ?? existingMeal?.mealTime,
                 photoDataUrl: nextPhotos?.[0] ?? photoDataUrl,
                 photoDataUrls: nextPhotos,
                 photoNote,
@@ -1389,6 +1396,51 @@ export default function HomePage() {
                 coachFeedbackAuthor: existingMeal?.coachFeedbackAuthor,
                 coachFeedbackAt: existingMeal?.coachFeedbackAt,
                 updatedAt: nowTime,
+              },
+            },
+          },
+        },
+      };
+    });
+  };
+
+  const handleUpdateMealTime = async (
+    traineeId: string,
+    date: string,
+    mealSlotId: string,
+    mealTime: string
+  ) => {
+    if (currentUser?.role === 'trainee' && currentUser.id !== traineeId) {
+      return;
+    }
+    const clean = mealTime.trim();
+    if (!/^\d{1,2}:\d{2}$/.test(clean)) return;
+
+    await commitTraineeMutation(traineeId, (t) => {
+      const currentLog = t.logs[date] || {
+        date,
+        dayType: 'workout',
+        waterCups: 0,
+        waterGoal: 12,
+        weightKg: t.currentWeight,
+        meals: {},
+      };
+      const existingMeal = currentLog.meals[mealSlotId] || {
+        mealSlotId,
+        items: [],
+        updatedAt: clean,
+      };
+      return {
+        ...t,
+        logs: {
+          ...t.logs,
+          [date]: {
+            ...currentLog,
+            meals: {
+              ...currentLog.meals,
+              [mealSlotId]: {
+                ...existingMeal,
+                mealTime: clean,
               },
             },
           },
@@ -1946,7 +1998,7 @@ export default function HomePage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 10px 28px rgba(234, 88, 12, 0.35)',
+            boxShadow: '0 10px 28px rgba(214, 125, 9, 0.35)',
           }}
         >
           S
@@ -2143,8 +2195,8 @@ export default function HomePage() {
                   gap: 4,
                   padding: '4px 8px',
                   borderRadius: 999,
-                  background: 'rgba(234, 88, 12, 0.14)',
-                  border: '1px solid rgba(234, 88, 12, 0.38)',
+                  background: 'rgba(214, 125, 9, 0.14)',
+                  border: '1px solid rgba(214, 125, 9, 0.38)',
                   color: 'var(--accent-orange-bright)',
                   fontSize: 11,
                   fontWeight: 700,
@@ -2256,8 +2308,8 @@ export default function HomePage() {
       {androidUpdateInfo?.updateAvailable && !dismissedUpdateBanner && (
         <div
           style={{
-            background: 'rgba(234, 88, 12, 0.14)',
-            borderBottom: '1px solid rgba(234, 88, 12, 0.35)',
+            background: 'rgba(214, 125, 9, 0.14)',
+            borderBottom: '1px solid rgba(214, 125, 9, 0.35)',
             color: 'var(--accent-volt)',
             padding: '8px 16px',
             fontSize: 12,
@@ -2403,6 +2455,7 @@ export default function HomePage() {
             isCoachPreview={false}
             onUpdateDayType={handleUpdateDayType}
             onSaveMeal={handleSaveMeal}
+            onUpdateMealTime={handleUpdateMealTime}
             onUpdateWater={handleUpdateWater}
             onUpdateWeight={handleUpdateWeight}
             onToggleFavorite={handleToggleFavorite}
@@ -2434,6 +2487,7 @@ export default function HomePage() {
             onExitCoachPreview={() => setCoachPreviewTraineeId(null)}
             onUpdateDayType={handleUpdateDayType}
             onSaveMeal={handleSaveMeal}
+            onUpdateMealTime={handleUpdateMealTime}
             onUpdateWater={handleUpdateWater}
             onUpdateWeight={handleUpdateWeight}
             onToggleFavorite={handleToggleFavorite}

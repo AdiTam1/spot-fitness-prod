@@ -111,7 +111,7 @@ function mapRowToGroup(row: Record<string, unknown>): TraineeGroup {
   return {
     id: String(row.id),
     name: String(row.name || 'קבוצה'),
-    color: String(row.color || '#ea580c'),
+    color: String(row.color || '#d67d09'),
     ownerCoachId: String(row.owner_coach_id || 'coach-admin'),
     customQuickChips: Array.isArray(row.custom_quick_chips)
       ? (row.custom_quick_chips as QuickContextChip[])
@@ -1348,11 +1348,17 @@ export async function searchFoodCatalogSql(opts: {
       req = req.eq('source_site_id', 'moh_gov');
     }
 
-    const qNorm = opts.query ? normalizeFoodKey(opts.query) : '';
-    if (qNorm) {
-      const tokens = qNorm.split(/\s+/).filter((t) => t.length >= 1).slice(0, 4);
-      for (const tok of tokens) {
-        req = req.ilike('name_norm', `%${tok}%`);
+    const qTrimmed = (opts.query || '').trim();
+    const digitsOnly = qTrimmed.replace(/[^0-9]/g, '');
+    if (digitsOnly.length >= 6 && digitsOnly.length === qTrimmed.length) {
+      req = req.or(`barcode.eq.${digitsOnly},id.eq.shufersal-P_${digitsOnly},name_norm.ilike.%${digitsOnly}%`);
+    } else {
+      const qNorm = opts.query ? normalizeFoodKey(opts.query) : '';
+      if (qNorm) {
+        const tokens = qNorm.split(/\s+/).filter((t) => t.length >= 1).slice(0, 4);
+        for (const tok of tokens) {
+          req = req.ilike('name_norm', `%${tok}%`);
+        }
       }
     }
 
@@ -1396,12 +1402,13 @@ export async function searchFoodCatalogSql(opts: {
 export async function findFoodByBarcodeSql(
   barcode: string
 ): Promise<{ item: FoodCatalogItem | null; tableReady: boolean }> {
-  if (!supabase || !barcode) return { item: null, tableReady: false };
+  const clean = String(barcode || '').replace(/[^0-9]/g, '');
+  if (!supabase || !clean) return { item: null, tableReady: false };
   try {
     const { data, error } = await supabase
       .from('food_catalog_items')
       .select(FOOD_CATALOG_SELECT_COLS)
-      .eq('barcode', barcode)
+      .or(`barcode.eq.${clean},id.eq.shufersal-P_${clean},id.eq.openfoodfacts-${clean}`)
       .limit(1)
       .maybeSingle();
 
@@ -1409,12 +1416,127 @@ export async function findFoodByBarcodeSql(
       return { item: null, tableReady: !isMissingFoodTableError(error) };
     }
     if (!data) return { item: null, tableReady: true };
+    const mapped = mapSqlRowToFoodCatalogItem(data as Record<string, unknown>);
+    if (mapped && !mapped.barcode) mapped.barcode = clean;
     return {
-      item: mapSqlRowToFoodCatalogItem(data as Record<string, unknown>),
+      item: mapped,
       tableReady: true,
     };
   } catch {
     return { item: null, tableReady: false };
+  }
+}
+
+/**
+ * סורק שורות קיימות ב-food_catalog_items בבאצ'ים ומשלים ברקודים (למשל משופרסל P_729...) ומידות אריזה מתוך שם המוצר.
+ */
+export async function backfillFoodCatalogBarcodesAndUnits(): Promise<{
+  ok: boolean;
+  scanned: number;
+  updatedBarcodes: number;
+  updatedUnits: number;
+  error?: string;
+}> {
+  if (!supabase) {
+    return { ok: false, scanned: 0, updatedBarcodes: 0, updatedUnits: 0, error: 'Supabase לא מוגדר' };
+  }
+
+  let offset = 0;
+  const pageSize = 500;
+  let scanned = 0;
+  let updatedBarcodes = 0;
+  let updatedUnits = 0;
+
+  try {
+    while (offset < 30000) {
+      const { data, error } = await supabase
+        .from('food_catalog_items')
+        .select(FOOD_CATALOG_SELECT_COLS)
+        .order('id', { ascending: true })
+        .range(offset, offset + pageSize - 1);
+
+      if (error) {
+        return {
+          ok: false,
+          scanned,
+          updatedBarcodes,
+          updatedUnits,
+          error: formatSupabaseError('food_catalog_items', error),
+        };
+      }
+
+      const rows = (data || []) as Record<string, unknown>[];
+      if (rows.length === 0) break;
+      scanned += rows.length;
+
+      const toUpsert: FoodCatalogItem[] = [];
+      for (const row of rows) {
+        const mapped = mapSqlRowToFoodCatalogItem(row);
+        if (!mapped) continue;
+
+        let changedBarcode = false;
+        let nextBarcode = mapped.barcode;
+        if (!nextBarcode) {
+          const fromId =
+            mapped.id.match(/^shufersal-P_(\d{6,16})$/i)?.[1] ||
+            mapped.id.match(/^openfoodfacts-(\d{6,16})$/i)?.[1] ||
+            mapped.sourceUrl?.match(/\/p\/P_(\d{6,16})/i)?.[1] ||
+            mapped.sourceUrl?.match(/\/product\/(\d{6,16})/i)?.[1];
+          if (fromId) {
+            nextBarcode = fromId;
+            changedBarcode = true;
+          }
+        }
+
+        let changedUnits = false;
+        let nextUnits = mapped.units || [];
+        const hasPkgUnit = nextUnits.some((u) => u.grams !== 100);
+        if (!hasPkgUnit) {
+          const clean = mapped.name.replace(/ל[-\s]?100\s*(?:גרם|ג|מ"ל|מל)/gi, ' ');
+          const kgM = clean.match(/(\d+(?:[.,]\d+)?)\s*(?:ק"ג|ק״ג|קג|ליטר|ל'|kg)(?=$|\s|[,.)\]\-/])/i);
+          const gM = clean.match(/(\d+(?:[.,]\d+)?)\s*(?:גרם|ג'|ג"|ג|מ"ל|מ״ל|מל|g|ml)(?=$|\s|[,.)\]\-/])/i);
+          let pkgG = 0;
+          if (kgM) {
+            const v = Number(kgM[1].replace(',', '.'));
+            if (v > 0 && v <= 5) pkgG = Math.round(v * 1000);
+          } else if (gM) {
+            const v = Number(gM[1].replace(',', '.'));
+            if (v >= 5 && v <= 5000) pkgG = Math.round(v);
+          }
+          if (pkgG > 0 && pkgG !== 100) {
+            nextUnits = [{ label: `חבילה / יחידה (${pkgG} גרם)`, grams: pkgG }, ...nextUnits];
+            changedUnits = true;
+          }
+        }
+
+        if (changedBarcode || changedUnits) {
+          if (changedBarcode) updatedBarcodes += 1;
+          if (changedUnits) updatedUnits += 1;
+          toUpsert.push({
+            ...mapped,
+            ...(nextBarcode ? { barcode: nextBarcode } : {}),
+            units: nextUnits,
+          });
+        }
+      }
+
+      if (toUpsert.length > 0) {
+        await upsertFoodCatalogItemsToSupabase(toUpsert);
+      }
+
+      if (rows.length < pageSize) break;
+      offset += pageSize;
+    }
+
+    return { ok: true, scanned, updatedBarcodes, updatedUnits };
+  } catch (err) {
+    return {
+      ok: false,
+      scanned,
+      updatedBarcodes,
+      updatedUnits,
+      error: err instanceof Error ? err.message : 'שגיאה בעדכון DB',
+    };
   }
 }
 

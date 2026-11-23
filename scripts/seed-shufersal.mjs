@@ -148,17 +148,68 @@ function isValidMacros(m) {
   return true;
 }
 
-function inferUnits(name, isLiquid = false) {
+function extractPkgGrams(text) {
+  const clean = decodeHtml(String(text || ''))
+    .replace(/ל[-\s]?100\s*(?:גרם|ג'|ג"|מ"ל|מל|מ״ל)/gi, ' ')
+    .replace(/\b100\s*(?:גרם|ג'|ג"|מ"ל|מל|מ״ל)\b/gi, ' ');
+  const kg = clean.match(/(\d+(?:[.,]\d+)?)\s*(?:ק"ג|ק״ג|קג|ליטר|ל'|kg)(?=$|\s|[,.)\]\-/])/i);
+  if (kg) {
+    const v = Number(kg[1].replace(',', '.'));
+    if (Number.isFinite(v) && v > 0 && v <= 5) return Math.round(v * 1000);
+  }
+  const g = clean.match(/(\d+(?:[.,]\d+)?)\s*(?:גרם|ג'|ג"|ג|מ"ל|מ״ל|מל|g|gr|ml)(?=$|\s|[,.)\]\-/])/i);
+  if (g) {
+    const v = Number(g[1].replace(',', '.'));
+    if (Number.isFinite(v) && v >= 5 && v <= 5000) return Math.round(v);
+  }
+  return null;
+}
+
+function extractBarcodeFromHtml(raw) {
+  const s = String(raw || '');
+  for (const rx of [
+    /"productSku"\s*:\s*"(\d{6,16})"/i,
+    /"sku"\s*:\s*"(\d{6,16})"/i,
+    /"gtin13"\s*:\s*"(\d{6,16})"/i,
+    /"gtin"\s*:\s*"(\d{6,16})"/i,
+    /"ean"\s*:\s*"(\d{6,16})"/i,
+    /cloudfront\.net\/gs1\/(\d{6,16})\//i,
+    /(?:^|\/|-)P_(\d{6,16})(?:["/?#&]|$)/i,
+    /ברקוד\s*[:\-]?\s*(\d{7,14})/i,
+  ]) {
+    const m = s.match(rx);
+    if (m?.[1] && m[1].length >= 6 && m[1].length <= 16) return m[1];
+  }
+  return '';
+}
+
+function inferUnits(name, isLiquid = false, explicitUnits = []) {
   const lower = name.toLowerCase();
-  const units = [{ label: isLiquid ? '100 מ״ל' : '100 גרם', grams: 100 }];
-  if (/קוטג|גבינה לבנה|לבן|שמנת/.test(lower)) units.unshift({ label: 'גביע (250 גרם)', grams: 250 });
-  else if (/יוגורט|מילקי|דנונה/.test(lower)) units.unshift({ label: 'גביע (150-200 גרם)', grams: 175 });
-  else if (/לחם|חלה/.test(lower)) units.unshift({ label: 'פרוסה (32 גרם)', grams: 32 });
-  else if (/פיתה/.test(lower)) units.unshift({ label: 'פיתה (90 גרם)', grams: 90 });
-  else if (/טורטיה/.test(lower)) units.unshift({ label: 'טורטיה (50 גרם)', grams: 50 });
-  else if (/חטיף/.test(lower)) units.unshift({ label: 'יחידה (45 גרם)', grams: 45 });
-  else if (/משקה|חלב|סויה|שייק/.test(lower) || isLiquid) units.unshift({ label: 'כוס (240 מ״ל)', grams: 240 });
-  return units;
+  const base = [];
+  for (const u of explicitUnits) {
+    if (u?.label && Number(u.grams) > 0) base.push({ label: u.label, grams: Math.round(Number(u.grams)) });
+  }
+  const pkgG = extractPkgGrams(name);
+  if (pkgG && pkgG !== 100 && !base.some((u) => u.grams === pkgG)) {
+    base.push({ label: `חבילה / יחידה (${pkgG} ${isLiquid ? 'מ״ל' : 'גרם'})`, grams: pkgG });
+  }
+  if (/קוטג|גבינה לבנה|לבן|שמנת/.test(lower)) base.push({ label: 'גביע (250 גרם)', grams: 250 });
+  else if (/יוגורט|מילקי|דנונה/.test(lower)) base.push({ label: 'גביע (150-200 גרם)', grams: 175 });
+  else if (/לחם|חלה/.test(lower)) base.push({ label: 'פרוסה (32 גרם)', grams: 32 });
+  else if (/פיתה/.test(lower)) base.push({ label: 'פיתה (90 גרם)', grams: 90 });
+  else if (/טורטיה/.test(lower)) base.push({ label: 'טורטיה (50 גרם)', grams: 50 });
+  else if (/חטיף/.test(lower)) base.push({ label: 'יחידה (45 גרם)', grams: 45 });
+  else if (/משקה|חלב|סויה|שייק/.test(lower) || isLiquid) base.push({ label: 'כוס (240 מ״ל)', grams: 240 });
+
+  const out = [];
+  const seenG = new Set();
+  for (const u of base) {
+    if (u.grams === 100 || seenG.has(u.grams)) continue;
+    seenG.add(u.grams);
+    out.push(u);
+  }
+  out.push({ label: isLiquid ? '100 מ״ל' : '100 גרם', grams: 100 });
+  return out;
 }
 
 async function mapConcurrent(arr, limit, fn) {
@@ -385,12 +436,19 @@ async function seedShufersalDeep(uploader, maxPagesPerTerm = 2) {
         if (list.length === 0) break;
         for (const r of list) {
           if (!r?.code || !r?.name) continue;
+          const rawCodeDigits = String(r.code || '').replace(/^P_/i, '').replace(/[^0-9]/g, '');
+          const rawBaseDigits = String(r.baseProduct || '').replace(/^P_/i, '').replace(/[^0-9]/g, '');
+          const eanClean =
+            (r.ean ? String(r.ean).replace(/[^0-9]/g, '') : '') ||
+            (rawCodeDigits.length >= 6 ? rawCodeDigits : '') ||
+            (rawBaseDigits.length >= 6 ? rawBaseDigits : '');
           if (!candidates.has(r.code)) {
             candidates.set(r.code, {
               code: String(r.code),
               name: decodeHtml(r.name),
-              brandName: r.brandName ? decodeHtml(r.brandName) : '',
-              ean: r.ean ? String(r.ean).replace(/[^0-9]/g, '') : '',
+              summary: r.summary ? decodeHtml(r.summary) : '',
+              brandName: r.brandName ? decodeHtml(r.brandName) : r.manufacturer ? decodeHtml(r.manufacturer) : '',
+              ean: eanClean,
             });
           }
         }
@@ -423,6 +481,7 @@ async function seedShufersalDeep(uploader, maxPagesPerTerm = 2) {
 
       const block = res.text.slice(nlStart, nlStart + 6500);
       const subInfo = decodeHtml(block.match(/<div class="subInfo">([\s\S]*?)<\/div>/i)?.[1] || '');
+      if (subInfo && !/100/.test(subInfo)) return null;
       let calories = NaN;
       let protein = NaN;
       let carbs = NaN;
@@ -445,14 +504,23 @@ async function seedShufersalDeep(uploader, maxPagesPerTerm = 2) {
 
       const fullName =
         c.brandName && !c.name.includes(c.brandName) ? `${c.name} — ${c.brandName}` : c.name;
+      const barcode = c.ean || extractBarcodeFromHtml(res.text);
+      const smallText = decodeHtml(res.text.match(/<div class="smallText[^"]*">([\s\S]*?)<\/div>/i)?.[1] || '');
+      const isLiquid = /מ"ל|מל|מ״ל|ליטר/.test(`${subInfo} ${smallText} ${c.summary || ''}`);
+      const pkgGrams = extractPkgGrams(`${smallText} ${c.summary || ''} ${c.name}`);
+      const explicitUnits =
+        pkgGrams && pkgGrams !== 100
+          ? [{ label: `אריזה שלמה (${pkgGrams} ${isLiquid ? 'מ״ל' : 'גרם'})`, grams: pkgGrams }]
+          : [];
+
       return {
         id: `shufersal-${c.code.replace(/[^a-zA-Z0-9_-]/g, '')}`,
         name: fullName,
         brand: c.brandName || 'שופרסל אונליין',
         category: 'סופרמרקט שופרסל',
-        ...(c.ean.length >= 6 ? { barcode: c.ean } : {}),
+        ...(barcode.length >= 6 ? { barcode } : {}),
         per100g,
-        units: inferUnits(fullName, /מ"ל|מל|מ״ל/.test(subInfo)),
+        units: inferUnits(fullName, isLiquid, explicitUnits),
         source: 'scraper',
         sourceSiteId: 'shufersal',
         sourceSiteName: 'שופרסל אונליין',
@@ -507,18 +575,32 @@ async function seedFuder(uploader, maxPages = 12) {
 
       const titleName = ogTitle.split('—')[0]?.trim() || decodeHtml(p.title?.rendered || '');
       const slug = decodeURIComponent(p.link.split('/foods/')[1] || '').replace(/\//g, '');
-      const units = inferUnits(titleName, false);
+      const extraUnits = [];
+      const portionAttr = res.text.match(/data-fuder-portion=['"]([^'"]+)['"]/i)?.[1];
+      if (portionAttr) {
+        try {
+          const pj = JSON.parse(decodeHtml(portionAttr));
+          for (const po of pj?.portions || []) {
+            const g = Math.round(Number(po?.grams ?? po?.weight) || 0);
+            const lbl = String(po?.label || po?.name || '').trim();
+            if (lbl && g > 0 && g !== 100) extraUnits.push({ label: `${lbl} (${g} גרם)`, grams: g });
+          }
+        } catch {}
+      }
       const pkg = metaDesc.match(/\?\s*([^\(]+?)\s*\((\d+(?:[.,]\d+)?)\s*(?:גרם|מ"ל|מל)\)/);
       if (pkg) {
         const g = parseMacro(pkg[2]);
-        if (g > 0 && g !== 100) units.unshift({ label: `${pkg[1].trim()} (${g} גרם)`, grams: g });
+        if (g > 0 && g !== 100) extraUnits.push({ label: `${pkg[1].trim()} (${g} גרם)`, grams: g });
       }
+      const barcode = extractBarcodeFromHtml(res.text);
+      const units = inferUnits(titleName, false, extraUnits);
 
       return {
         id: `fuder-${normalizeFoodKey(slug || titleName).slice(0, 48)}`,
         name: titleName,
         brand: 'Fuder סופרים',
         category: 'מותגי סופרים — Fuder',
+        ...(barcode ? { barcode } : {}),
         per100g,
         units,
         source: 'scraper',
@@ -545,7 +627,7 @@ async function seedOpenFoodFacts(uploader, maxPages = 15) {
   for (let page = 1; page <= maxPages; page++) {
     if (page > 1) await sleep(1500);
     const res = await fetchWithRetry(
-      `https://world.openfoodfacts.org/api/v2/search?countries_tags_en=israel&sort_by=unique_scans_n&page_size=100&page=${page}&fields=code,product_name_he,product_name,brands,stores,serving_quantity,nutriments`,
+      `https://world.openfoodfacts.org/api/v2/search?countries_tags_en=israel&sort_by=unique_scans_n&page_size=100&page=${page}&fields=code,product_name_he,product_name,brands,stores,serving_quantity,product_quantity,quantity,nutriments`,
       {
         'User-Agent': 'SpotFitnessIsrael/1.0 (https://spot-fitness.vercel.app)',
         Accept: 'application/json',
@@ -583,11 +665,19 @@ async function seedOpenFoodFacts(uploader, maxPages = 15) {
             ? `${rawName} — ${brand}`
             : rawName;
 
-        const units = inferUnits(fullName, false);
+        const extraUnits = [];
         const srv = Number(p.serving_quantity);
         if (Number.isFinite(srv) && srv > 5 && srv < 1000 && srv !== 100) {
-          units.unshift({ label: `מנה (${Math.round(srv)} גרם)`, grams: Math.round(srv) });
+          extraUnits.push({ label: `מנה (${Math.round(srv)} גרם)`, grams: Math.round(srv) });
         }
+        const rawPkg = Number(p.product_quantity);
+        const pkgG =
+          (Number.isFinite(rawPkg) && rawPkg > 5 && rawPkg <= 5000 ? Math.round(rawPkg) : null) ||
+          extractPkgGrams(String(p.quantity || ''));
+        if (pkgG && pkgG !== 100) {
+          extraUnits.push({ label: `חבילה שלמה (${pkgG} גרם)`, grams: pkgG });
+        }
+        const units = inferUnits(fullName, false, extraUnits);
 
         batch.push({
           id: `openfoodfacts-${code}`,
@@ -787,6 +877,151 @@ async function seedFoodikWide(uploader, maxPagesPerTerm = 3) {
   console.log(`   ✅ Foodik: הוזרמו ${count} פריטים.`);
 }
 
+// 7. ויקטורי אונליין (ברקודים + weightText) + ניצת הדובדבן (משקל תכולה)
+async function seedVictoryAndNizat(uploader, fullMode = false) {
+  console.log('\n🛍️  [7/7] סורק ויקטורי אונליין וניצת הדובדבן (כולל ברקודים ומידות אריזה)...');
+  const terms = fullMode
+    ? SHUFERSAL_SEARCH_TERMS.slice(0, 35)
+    : SHUFERSAL_SEARCH_TERMS.slice(0, 18);
+
+  const victoryPaths = new Set();
+  for (const q of terms) {
+    const res = await fetchText(`https://www.victoryonline.co.il/search?q=${encodeURIComponent(q)}`);
+    if (!res.ok) continue;
+    for (const m of res.text.matchAll(/href="(\/product\/[^"]+)"/g)) {
+      victoryPaths.add(m[1]);
+    }
+  }
+
+  let vCount = 0;
+  const vArr = Array.from(victoryPaths);
+  for (let i = 0; i < vArr.length; i += 60) {
+    const slice = vArr.slice(i, i + 60);
+    const items = await mapConcurrent(slice, 5, async (p) => {
+      const fullUrl = `https://www.victoryonline.co.il${encodeURI(decodeURIComponent(p))}`;
+      const res = await fetchText(fullUrl);
+      if (!res.ok) return null;
+      const unesc = res.text.replace(/\\"/g, '"');
+      const nfIdx = unesc.indexOf('"nutritionFacts":{');
+      if (nfIdx < 0) return null;
+      const chunk = unesc.slice(Math.max(0, nfIdx - 3000), nfIdx + 1800);
+      const nfMatch = chunk.match(/"nutritionFacts"\s*:\s*(\{[\s\S]*?\})\s*,\s*"nutritionServingSize"/);
+      let nf = null;
+      try {
+        nf = nfMatch ? JSON.parse(nfMatch[1]) : null;
+      } catch {
+        nf = null;
+      }
+      if (!nf) {
+        const altStart = nfIdx + '"nutritionFacts":'.length;
+        let depth = 0, inStr = false, esc = false, endPos = -1;
+        for (let k = altStart; k < Math.min(unesc.length, altStart + 4000); k++) {
+          const ch = unesc[k];
+          if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+          if (ch === '"') inStr = true;
+          else if (ch === '{') depth++;
+          else if (ch === '}') { depth--; if (depth === 0) { endPos = k + 1; break; } }
+        }
+        if (endPos > altStart) {
+          try { nf = JSON.parse(unesc.slice(altStart, endPos)); } catch {}
+        }
+      }
+      if (!nf) return null;
+      const readM = (k) => parseMacro(nf[k]?.per100g || nf[k]?.per100ml || '');
+      const per100g = roundMacros({ calories: readM('energy'), protein: readM('protein'), carbs: readM('carbs'), fat: readM('fat') });
+      if (!isValidMacros(per100g)) return null;
+
+      const h1 = res.text.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || '';
+      const rawName = decodeHtml(h1 || decodeURIComponent(p.split('/product/')[1] || '').replace(/-/g, ' '))
+        .replace(/\s*[-|]\s*ויקטורי.*$/i, '').trim();
+      const barcode = chunk.match(/"sku"\s*:\s*"(\d{6,16})"/i)?.[1] || extractBarcodeFromHtml(chunk);
+      const wt = chunk.match(/"weightText"\s*:\s*"([^"]+)"/i)?.[1] || '';
+      const srvName = chunk.match(/"nutritionServingSize"\s*:\s*"([^"]+)"/i)?.[1]?.trim() || '';
+      const isLiquid = Boolean(nf.energy?.per100ml && !nf.energy?.per100g) || /מ"ל|מל|מ״ל|ליטר/.test(wt);
+      let pkgG = extractPkgGrams(wt) || extractPkgGrams(rawName);
+      if (!pkgG && nf.energy?.perServing && per100g.calories > 0) {
+        const est = Math.round((parseMacro(nf.energy.perServing) / per100g.calories) * 100);
+        if (est >= 5 && est <= 3000 && est !== 100) pkgG = est;
+      }
+      const explicitUnits = pkgG && pkgG !== 100
+        ? [{ label: `${srvName && srvName !== '100 גרם' ? srvName + ' / ' : ''}חבילה (${pkgG} ${isLiquid ? 'מ״ל' : 'גרם'})`, grams: pkgG }]
+        : [];
+
+      return {
+        id: `victory-${normalizeFoodKey(rawName).slice(0, 44)}`,
+        name: rawName,
+        brand: 'ויקטורי אונליין',
+        category: 'סופרמרקט ויקטורי',
+        ...(barcode ? { barcode } : {}),
+        per100g,
+        units: inferUnits(rawName, isLiquid, explicitUnits),
+        source: 'scraper',
+        sourceSiteId: 'victory',
+        sourceSiteName: 'ויקטורי אונליין',
+        sourceUrl: fullUrl,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    const clean = items.filter(Boolean);
+    vCount += clean.length;
+    await uploader.push(clean);
+  }
+
+  const nizatIds = new Map();
+  for (const q of ['קמח', 'שיבולת שועל', 'טחינה', 'עדשים', 'חמאת בוטנים', 'שקדים', 'גרנולה', 'פריכיות', 'חלב', 'פסטה', 'נודלס', 'שוקולד']) {
+    const res = await fetchText(`https://www.nizat.com/autosuggestproducts.ashx?term=${encodeURIComponent(q)}`, { Accept: 'application/json' });
+    if (!res.ok) continue;
+    try {
+      const arr = JSON.parse(res.text);
+      for (const x of arr || []) {
+        if (x?.id && x?.value && !nizatIds.has(x.id)) nizatIds.set(x.id, decodeHtml(x.value));
+      }
+    } catch {}
+  }
+
+  let nCount = 0;
+  const nArr = Array.from(nizatIds.entries());
+  for (let i = 0; i < nArr.length; i += 60) {
+    const slice = nArr.slice(i, i + 60);
+    const items = await mapConcurrent(slice, 5, async ([id, titleHint]) => {
+      const url = `https://www.nizat.com/productinfo.aspx?prodid=${id}`;
+      const res = await fetchText(url);
+      if (!res.ok) return null;
+      const specs = res.text.match(/id="ContentPlaceHolder1_specs"[^>]*>([\s\S]*?)<\/span>/i)?.[1] || '';
+      const clean = decodeHtml(specs || '');
+      const calM = clean.match(/(?:אנרגיה\s*(?:\([^)]*\))?|קלוריות)\s*[:\-]?\s*(\d+(?:[.,]\d+)?)/i);
+      const fatM = clean.match(/(?:סך\s*ה?שומנים|שומנים)\s*(?:\([^)]*\))?\s*[:\-]?\s*(\d+(?:[.,]\d+)?)/i);
+      const carbM = clean.match(/(?:סך\s*ה?פחמימות|פחמימות)\s*(?:\([^)]*\))?\s*[:\-]?\s*(\d+(?:[.,]\d+)?)/i);
+      const proM = clean.match(/חלבונים?\s*(?:\([^)]*\))?\s*[:\-]?\s*(\d+(?:[.,]\d+)?)/i);
+      if (!calM || !fatM || !carbM || !proM) return null;
+      const per100g = roundMacros({ calories: parseMacro(calM[1]), protein: parseMacro(proM[1]), carbs: parseMacro(carbM[1]), fat: parseMacro(fatM[1]) });
+      if (!isValidMacros(per100g)) return null;
+      const wtEl = res.text.match(/id="ContentPlaceHolder1_lblweight"[^>]*>([\s\S]*?)<\/span>/i)?.[1] || '';
+      const pkgG = extractPkgGrams(wtEl) || extractPkgGrams(titleHint);
+      const barcode = extractBarcodeFromHtml(res.text);
+      const explicitUnits = pkgG && pkgG !== 100 ? [{ label: `אריזה שלמה (${pkgG} גרם)`, grams: pkgG }] : [];
+      return {
+        id: `nizat-${id}`,
+        name: titleHint,
+        brand: 'ניצת הדובדבן',
+        category: 'טבע ואורגני — ניצת הדובדבן',
+        ...(barcode ? { barcode } : {}),
+        per100g,
+        units: inferUnits(titleHint, false, explicitUnits),
+        source: 'scraper',
+        sourceSiteId: 'nizat',
+        sourceSiteName: 'ניצת הדובדבן',
+        sourceUrl: url,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    const clean = items.filter(Boolean);
+    nCount += clean.length;
+    await uploader.push(clean);
+  }
+  console.log(`   ✅ ויקטורי: ${vCount} מוצרים (עם ברקוד + משקל) | ניצת הדובדבן: ${nCount} מוצרים.`);
+}
+
 async function main() {
   loadLocalEnv();
   const args = process.argv.slice(2);
@@ -794,24 +1029,30 @@ async function main() {
   const offOnly = args.includes('--off-only');
   const shufersalOnly = args.includes('--shufersal-only');
   const extrasOnly = args.includes('--extras-only');
+  const backfillOnly = args.includes('--backfill-only');
   const apiUrlArg = args.find((a) => a.startsWith('--api-url='))?.split('=')[1] || process.env.SPOT_API_URL || '';
   const secretArg = args.find((a) => a.startsWith('--secret='))?.split('=')[1] || process.env.CRON_SECRET || '';
 
-  const modeLabel = extrasOnly
-    ? 'EXTRAS (Foodik + Fuder + OFF משלים)'
-    : fullMode
-      ? 'FULL 14K–18K+'
-      : 'BALANCED 8K–11K+';
+  const modeLabel = backfillOnly
+    ? 'BACKFILL (השלמת ברקודים ומידות קיימות)'
+    : extrasOnly
+      ? 'EXTRAS (Foodik + Fuder + OFF + Victory/Nizat)'
+      : fullMode
+        ? 'FULL 14K–18K+'
+        : 'BALANCED 8K–11K+';
   console.log(`🚀 מתחיל הזנת קטלוג מזון ל-Supabase (מצב: ${modeLabel})...`);
   const uploader = createUploader(apiUrlArg, secretArg);
 
-  if (offOnly) {
+  if (backfillOnly) {
+    // Runs backfill endpoint directly if API mode is configured
+  } else if (offOnly) {
     await seedOpenFoodFacts(uploader, fullMode ? 35 : 15);
   } else if (shufersalOnly) {
     await seedShufersalDeep(uploader, fullMode ? 4 : 2);
   } else if (extrasOnly) {
     await seedFoodikWide(uploader, fullMode ? 4 : 3);
     await seedOpenFoodFacts(uploader, fullMode ? 35 : 20);
+    await seedVictoryAndNizat(uploader, fullMode);
     await seedFuder(uploader, fullMode ? 54 : 30);
   } else {
     await seedMohFull(uploader);
@@ -819,10 +1060,31 @@ async function main() {
     await seedFoodikWide(uploader, fullMode ? 4 : 3);
     await seedOpenFoodFacts(uploader, fullMode ? 35 : 12);
     await seedSugatAndFoodGroups(uploader);
+    await seedVictoryAndNizat(uploader, fullMode);
     await seedFuder(uploader, fullMode ? 54 : 15);
   }
 
   const totalUploaded = await uploader.flush();
+
+  if (apiUrlArg && secretArg) {
+    try {
+      const bfRes = await fetch(`${apiUrlArg.replace(/\/+$/, '')}/api/admin/scrapers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${secretArg}`,
+        },
+        body: JSON.stringify({ action: 'backfill_catalog_meta' }),
+      });
+      const bfJson = await bfRes.json();
+      if (bfRes.ok && bfJson.ok) {
+        console.log(
+          `   🏷️  השלמת ברקודים ומידות ב-DB: נסרקו ${bfJson.scanned}, הושלמו ${bfJson.updatedBarcodes} ברקודים ו-${bfJson.updatedUnits} מידות אריזה.`
+        );
+      }
+    } catch {}
+  }
+
   console.log(`\n🎉 הסתיים בהצלחה! הועלו/עודכנו סה"כ ${totalUploaded.toLocaleString('he-IL')} מוצרים ייחודיים לטבלת food_catalog_items!`);
 }
 

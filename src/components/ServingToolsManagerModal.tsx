@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, NumberInput, Select, TextInput, Textarea } from '@mantine/core';
 import {
   Camera,
@@ -28,6 +28,8 @@ interface ServingToolsManagerModalProps {
   tools: TraineeServingTool[];
   customUnits: TraineeCustomUnit[];
   geminiApiKey?: string;
+  initialSection?: 'tools' | 'units';
+  zIndex?: number;
   onSave: (payload: {
     customServingTools?: TraineeServingTool[];
     customFoodUnits?: TraineeCustomUnit[];
@@ -60,9 +62,16 @@ export function ServingToolsManagerModal({
   tools,
   customUnits,
   geminiApiKey,
+  initialSection = 'tools',
+  zIndex = 240,
   onSave,
 }: ServingToolsManagerModalProps) {
-  const [section, setSection] = useState<'tools' | 'units'>('tools');
+  const [section, setSection] = useState<'tools' | 'units'>(initialSection);
+  useEffect(() => {
+    if (opened && initialSection) {
+      setSection(initialSection);
+    }
+  }, [opened, initialSection]);
   const [measureMode, setMeasureMode] = useState<'manual' | 'ai'>('ai');
 
   // שדות הוספת / מדידת כלי
@@ -277,6 +286,8 @@ export function ServingToolsManagerModal({
     <Modal
       opened={opened}
       onClose={onClose}
+      zIndex={zIndex}
+      overlayProps={{ backgroundOpacity: 0.78, blur: 5 }}
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Ruler size={16} color="var(--accent-volt)" />
@@ -405,7 +416,7 @@ export function ServingToolsManagerModal({
               <div
                 style={{
                   background: 'var(--bg-surface-2)',
-                  border: '1px solid rgba(234, 88, 12, 0.28)',
+                  border: '1px solid rgba(214, 125, 9, 0.28)',
                   borderRadius: 14,
                   padding: 12,
                   display: 'flex',
@@ -597,10 +608,10 @@ export function ServingToolsManagerModal({
                       fontWeight: 600,
                       background: aiResultNote.isError
                         ? 'rgba(239, 68, 68, 0.14)'
-                        : 'rgba(234, 88, 12, 0.1)',
+                        : 'rgba(214, 125, 9, 0.1)',
                       border: aiResultNote.isError
                         ? '1px solid rgba(239, 68, 68, 0.35)'
-                        : '1px solid rgba(234, 88, 12, 0.3)',
+                        : '1px solid rgba(214, 125, 9, 0.3)',
                       color: aiResultNote.isError ? '#fca5a5' : 'var(--accent-volt)',
                     }}
                   >
@@ -735,7 +746,7 @@ export function ServingToolsManagerModal({
                             fontSize: 9,
                             padding: '1px 6px',
                             borderRadius: 999,
-                            background: 'rgba(234, 88, 12, 0.14)',
+                            background: 'rgba(214, 125, 9, 0.14)',
                             color: 'var(--accent-volt)',
                           }}
                         >

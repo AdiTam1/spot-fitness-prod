@@ -158,6 +158,27 @@ export function AdminScrapersPanel({
     }
   };
 
+  const handleBackfillCatalogMeta = async () => {
+    setBusyAction('backfill_meta');
+    try {
+      const data = await callScraperApi({ action: 'backfill_catalog_meta' });
+      if (data.report) onReportUpdate(data.report);
+      if (data.ok) {
+        onNotify(
+          `נסרקו ${Number(data.scanned || 0).toLocaleString('he-IL')} שורות ב-DB: הושלמו ${Number(
+            data.updatedBarcodes || 0
+          )} ברקודים ו-${Number(data.updatedUnits || 0)} מידות חבילה/אריזה.`
+        );
+      } else {
+        onNotify(data.error || 'עדכון הברקודים נכשל', true);
+      }
+    } catch (err) {
+      onNotify(err instanceof Error ? err.message : 'השלמת ברקודים נכשלה', true);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   const handleRunTestSearch = async (scraperId: ScraperSourceId) => {
     setTestingId(scraperId);
     try {
@@ -259,7 +280,7 @@ export function AdminScrapersPanel({
                 fontSize: 13,
                 fontWeight: 700,
                 cursor: 'pointer',
-                borderColor: 'rgba(234, 88, 12, 0.35)',
+                borderColor: 'rgba(214, 125, 9, 0.35)',
               }}
             >
               {busyAction === 'sync_catalog' ? (
@@ -425,7 +446,7 @@ export function AdminScrapersPanel({
           flexWrap: 'wrap',
           gap: 12,
           borderColor: report?.sqlCatalogStats?.available
-            ? 'rgba(234, 88, 12, 0.25)'
+            ? 'rgba(214, 125, 9, 0.25)'
             : 'rgba(250, 204, 21, 0.35)',
         }}
       >
@@ -482,33 +503,63 @@ export function AdminScrapersPanel({
           </div>
         </div>
 
-        <button
-          type="button"
-          disabled={Boolean(busyAction) || loading}
-          onClick={handleSyncOpenFoodFacts}
-          className="btn-surface"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '8px 14px',
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: 'pointer',
-            borderColor: 'rgba(234, 88, 12, 0.35)',
-          }}
-        >
-          {busyAction === 'sync_off' ? (
-            <Loader2 size={14} className="spot-spinner" />
-          ) : (
-            <Database size={14} color="var(--accent-volt)" />
-          )}
-          <span>
-            {busyAction === 'sync_off'
-              ? 'מייבא מ-OpenFoodFacts...'
-              : 'ייבא Open Food Facts ישראל (ברקודים)'}
-          </span>
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            disabled={Boolean(busyAction) || loading}
+            onClick={handleBackfillCatalogMeta}
+            className="btn-surface"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '8px 14px',
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+              borderColor: 'rgba(214, 125, 9, 0.35)',
+            }}
+          >
+            {busyAction === 'backfill_meta' ? (
+              <Loader2 size={14} className="spot-spinner" />
+            ) : (
+              <CheckCircle2 size={14} color="var(--accent-volt)" />
+            )}
+            <span>
+              {busyAction === 'backfill_meta'
+                ? 'משלים ברקודים ומידות...'
+                : 'השלם ברקודים ומידות אריזה ב-DB'}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            disabled={Boolean(busyAction) || loading}
+            onClick={handleSyncOpenFoodFacts}
+            className="btn-surface"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '8px 14px',
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+              borderColor: 'rgba(214, 125, 9, 0.35)',
+            }}
+          >
+            {busyAction === 'sync_off' ? (
+              <Loader2 size={14} className="spot-spinner" />
+            ) : (
+              <Database size={14} color="var(--accent-volt)" />
+            )}
+            <span>
+              {busyAction === 'sync_off'
+                ? 'מייבא מ-OpenFoodFacts...'
+                : 'ייבא Open Food Facts ישראל (ברקודים)'}
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* גריד הסקרייפרים */}
@@ -638,8 +689,8 @@ export function AdminScrapersPanel({
                   style={{
                     padding: '8px 10px',
                     borderRadius: 10,
-                    background: 'rgba(234, 88, 12, 0.05)',
-                    border: '1px solid rgba(234, 88, 12, 0.2)',
+                    background: 'rgba(214, 125, 9, 0.05)',
+                    border: '1px solid rgba(214, 125, 9, 0.2)',
                     fontSize: 11.5,
                   }}
                 >

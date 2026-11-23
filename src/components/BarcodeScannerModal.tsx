@@ -129,6 +129,8 @@ export function BarcodeScannerModal({
         stopCamera();
         onClose();
       }}
+      zIndex={250}
+      overlayProps={{ backgroundOpacity: 0.82, blur: 6 }}
       title={
         <Group gap="xs">
           <Barcode size={20} color="#10b981" />

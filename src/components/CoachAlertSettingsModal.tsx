@@ -503,10 +503,10 @@ export function CoachAlertSettingsModal({
                   style={{
                     textAlign: 'right',
                     background: active
-                      ? 'rgba(234, 88, 12, 0.08)'
+                      ? 'rgba(214, 125, 9, 0.08)'
                       : 'var(--bg-surface-2)',
                     border: active
-                      ? '1px solid rgba(234, 88, 12, 0.45)'
+                      ? '1px solid rgba(214, 125, 9, 0.45)'
                       : '1px solid var(--border-subtle)',
                     borderRadius: 12,
                     padding: '9px 11px',
@@ -635,7 +635,7 @@ export function CoachAlertSettingsModal({
                         ? `1px solid ${grp.color || 'var(--accent-volt)'}`
                         : '1px solid var(--border-subtle)',
                       background: isSelected
-                        ? 'rgba(234, 88, 12, 0.14)'
+                        ? 'rgba(214, 125, 9, 0.14)'
                         : 'var(--bg-surface-2)',
                       color: isSelected
                         ? 'var(--text-primary)'
@@ -647,7 +647,7 @@ export function CoachAlertSettingsModal({
                         width: 8,
                         height: 8,
                         borderRadius: '50%',
-                        background: grp.color || '#ea580c',
+                        background: grp.color || '#d67d09',
                       }}
                     />
                     <span>
@@ -768,10 +768,10 @@ export function CoachAlertSettingsModal({
                       cursor: 'pointer',
                       background:
                         direct || viaGroup
-                          ? 'rgba(234, 88, 12, 0.06)'
+                          ? 'rgba(214, 125, 9, 0.06)'
                           : 'var(--bg-surface-2)',
                       border: direct
-                        ? '1px solid rgba(234, 88, 12, 0.35)'
+                        ? '1px solid rgba(214, 125, 9, 0.35)'
                         : '1px solid var(--border-subtle)',
                     }}
                   >

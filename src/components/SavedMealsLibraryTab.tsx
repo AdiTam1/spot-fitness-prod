@@ -30,7 +30,7 @@ import {
 import { sumMacros } from '@/data/israeliFoodCatalog';
 
 const SHORTCUT_GRADIENTS = [
-  'linear-gradient(145deg, #ea580c 0%, #9a3412 100%)',
+  'linear-gradient(145deg, #d67d09 0%, #8a4f04 100%)',
   'linear-gradient(145deg, #e11d48 0%, #881337 100%)',
   'linear-gradient(145deg, #0284c7 0%, #1e3a8a 100%)',
   'linear-gradient(145deg, #7c3aed 0%, #4c1d95 100%)',
@@ -425,7 +425,7 @@ export function SavedMealsLibraryTab({
             alignItems: 'center',
             gap: 4,
             cursor: 'pointer',
-            borderColor: 'rgba(234, 88, 12, 0.35)',
+            borderColor: 'rgba(214, 125, 9, 0.35)',
             whiteSpace: 'nowrap',
             flexShrink: 0,
           }}
@@ -463,7 +463,7 @@ export function SavedMealsLibraryTab({
                   : '1px solid var(--border-subtle)',
               background:
                 filterMode === f.id
-                  ? 'rgba(234, 88, 12, 0.16)'
+                  ? 'rgba(214, 125, 9, 0.16)'
                   : 'var(--bg-surface-2)',
               color:
                 filterMode === f.id
@@ -485,10 +485,10 @@ export function SavedMealsLibraryTab({
             fontWeight: 600,
             background: feedbackBanner.isError
               ? 'rgba(239, 68, 68, 0.14)'
-              : 'rgba(234, 88, 12, 0.1)',
+              : 'rgba(214, 125, 9, 0.1)',
             border: feedbackBanner.isError
               ? '1px solid rgba(239, 68, 68, 0.35)'
-              : '1px solid rgba(234, 88, 12, 0.3)',
+              : '1px solid rgba(214, 125, 9, 0.3)',
             color: feedbackBanner.isError ? '#fca5a5' : 'var(--accent-volt)',
           }}
         >
@@ -749,7 +749,7 @@ export function SavedMealsLibraryTab({
                     style={{
                       background: 'var(--bg-surface-2)',
                       border: preset.isPinned
-                        ? '1px solid rgba(234, 88, 12, 0.45)'
+                        ? '1px solid rgba(214, 125, 9, 0.45)'
                         : '1px solid var(--border-subtle)',
                       borderRadius: 16,
                       padding: 12,
@@ -800,7 +800,7 @@ export function SavedMealsLibraryTab({
                                 fontWeight: 800,
                                 background: preset.isAiFallback
                                   ? 'rgba(245, 158, 11, 0.16)'
-                                  : 'rgba(234, 88, 12, 0.12)',
+                                  : 'rgba(214, 125, 9, 0.12)',
                                 color: preset.isAiFallback ? '#fbbf24' : 'var(--accent-volt)',
                               }}
                             >
@@ -914,11 +914,11 @@ export function SavedMealsLibraryTab({
                         borderRadius: 10,
                         background:
                           preset.coachQuestion.status === 'answered'
-                            ? 'rgba(234, 88, 12, 0.08)'
+                            ? 'rgba(214, 125, 9, 0.08)'
                             : 'rgba(56, 189, 248, 0.08)',
                         border:
                           preset.coachQuestion.status === 'answered'
-                            ? '1px solid rgba(234, 88, 12, 0.25)'
+                            ? '1px solid rgba(214, 125, 9, 0.25)'
                             : '1px solid rgba(56, 189, 248, 0.25)',
                         fontSize: 11,
                       }}
@@ -974,7 +974,7 @@ export function SavedMealsLibraryTab({
                         alignItems: 'center',
                         gap: 4,
                         cursor: 'pointer',
-                        borderColor: 'rgba(234, 88, 12, 0.35)',
+                        borderColor: 'rgba(214, 125, 9, 0.35)',
                         color: 'var(--accent-volt)',
                       }}
                     >
@@ -1029,8 +1029,8 @@ export function SavedMealsLibraryTab({
                       style={{
                         padding: 10,
                         borderRadius: 10,
-                        background: 'rgba(234, 88, 12, 0.06)',
-                        border: '1px solid rgba(234, 88, 12, 0.25)',
+                        background: 'rgba(214, 125, 9, 0.06)',
+                        border: '1px solid rgba(214, 125, 9, 0.25)',
                         display: 'flex',
                         flexDirection: 'column',
                         gap: 8,

@@ -65,8 +65,8 @@ function getSourceBadge(source?: StepsSyncSource): {
     case 'device-sensor':
       return {
         label: 'חיישן מכשיר',
-        color: '#ea580c',
-        bg: 'rgba(234, 88, 12, 0.14)',
+        color: '#d67d09',
+        bg: 'rgba(214, 125, 9, 0.14)',
       };
     case 'manual':
       return {
@@ -248,7 +248,7 @@ export function DailyStepsCard({
             width: `${pct}%`,
             background:
               steps >= dailyStepsTarget
-                ? 'linear-gradient(90deg, #22c55e, #ea580c)'
+                ? 'linear-gradient(90deg, #22c55e, #d67d09)'
                 : 'linear-gradient(90deg, #38bdf8, #22c55e)',
             borderRadius: 999,
             transition: 'width 0.35s ease',

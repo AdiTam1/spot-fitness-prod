@@ -147,6 +147,7 @@ export interface LoggedFoodItem {
 export interface LoggedMealEntry {
   mealSlotId: string;
   items: LoggedFoodItem[];
+  mealTime?: string; // שעה מותאמת אישית לבחירת המשתמש (HH:MM)
   photoDataUrl?: string;
   photoDataUrls?: string[];
   photoNote?: string;

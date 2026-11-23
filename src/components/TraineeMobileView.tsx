@@ -29,6 +29,7 @@ import {
   Barcode,
   Heart,
   Footprints,
+  Clock,
 } from 'lucide-react';
 import {
   AiContextParams,
@@ -88,7 +89,14 @@ interface TraineeMobileViewProps {
     items: LoggedFoodItem[],
     photoDataUrl?: string,
     photoNote?: string,
-    photoDataUrls?: string[]
+    photoDataUrls?: string[],
+    mealTime?: string
+  ) => void | Promise<void>;
+  onUpdateMealTime?: (
+    traineeId: string,
+    date: string,
+    mealSlotId: string,
+    mealTime: string
   ) => void | Promise<void>;
   onUpdateWater: (traineeId: string, date: string, cups: number) => void | Promise<void>;
   onUpdateWeight: (traineeId: string, date: string, weightKg: number) => void | Promise<void>;
@@ -237,6 +245,7 @@ export function TraineeMobileView({
   onExitCoachPreview,
   onUpdateDayType,
   onSaveMeal,
+  onUpdateMealTime,
   onUpdateWater,
   onUpdateWeight,
   onToggleFavorite,
@@ -276,6 +285,9 @@ export function TraineeMobileView({
     null
   );
   const [drawerTab, setDrawerTab] = useState<string>('hub');
+  const [timeEditSlot, setTimeEditSlot] = useState<MealTemplateSlot | null>(null);
+  const [draftMealTime, setDraftMealTime] = useState<string>('12:00');
+  const [savingMealTime, setSavingMealTime] = useState(false);
   const [weightInput, setWeightInput] = useState<string>(
     String(trainee.currentWeight)
   );
@@ -438,8 +450,8 @@ export function TraineeMobileView({
             justifyContent: 'space-between',
             padding: '10px 14px',
             borderRadius: 14,
-            background: 'rgba(234, 88, 12, 0.12)',
-            border: '1px solid rgba(234, 88, 12, 0.35)',
+            background: 'rgba(214, 125, 9, 0.12)',
+            border: '1px solid rgba(214, 125, 9, 0.35)',
             marginBottom: 14,
           }}
         >
@@ -740,8 +752,8 @@ export function TraineeMobileView({
               style={{
                 padding: '4px 10px',
                 borderRadius: 999,
-                border: '1px solid rgba(234, 88, 12, 0.45)',
-                background: 'rgba(234, 88, 12, 0.14)',
+                border: '1px solid rgba(214, 125, 9, 0.45)',
+                background: 'rgba(214, 125, 9, 0.14)',
                 color: 'var(--accent-orange-bright)',
                 fontSize: 11,
                 fontWeight: 800,
@@ -791,12 +803,12 @@ export function TraineeMobileView({
                   border: isSelected
                     ? isObs
                       ? '1px solid rgba(56, 189, 248, 0.55)'
-                      : '1px solid rgba(234, 88, 12, 0.55)'
+                      : '1px solid rgba(214, 125, 9, 0.55)'
                     : '1px solid transparent',
                   background: isSelected
                     ? isObs
                       ? 'rgba(56, 189, 248, 0.14)'
-                      : 'rgba(234, 88, 12, 0.16)'
+                      : 'rgba(214, 125, 9, 0.16)'
                     : 'transparent',
                   color: isSelected
                     ? isObs
@@ -914,7 +926,7 @@ export function TraineeMobileView({
                   height: 140,
                   background: isObservationDay
                     ? 'radial-gradient(circle, rgba(56, 189, 248, 0.16) 0%, transparent 70%)'
-                    : 'radial-gradient(circle, rgba(234, 88, 12, 0.13) 0%, transparent 70%)',
+                    : 'radial-gradient(circle, rgba(214, 125, 9, 0.13) 0%, transparent 70%)',
                   pointerEvents: 'none',
                 }}
               />
@@ -987,7 +999,7 @@ export function TraineeMobileView({
                           ? '#38bdf8'
                           : isOverLimit
                           ? '#f59e0b'
-                          : '#ea580c'
+                          : '#d67d09'
                       }
                       strokeWidth="12"
                       strokeDasharray={`${filledArc} ${circumference}`}
@@ -999,7 +1011,7 @@ export function TraineeMobileView({
                           ? 'drop-shadow(0 0 10px rgba(56, 189, 248, 0.35))'
                           : isOverLimit
                           ? 'drop-shadow(0 0 8px rgba(245, 158, 11, 0.35))'
-                          : 'drop-shadow(0 0 10px rgba(234, 88, 12, 0.35))',
+                          : 'drop-shadow(0 0 10px rgba(214, 125, 9, 0.35))',
                       }}
                     />
                   </svg>
@@ -1190,11 +1202,13 @@ export function TraineeMobileView({
                       <div>
                         <div
                           className="num-mono"
+                          dir="ltr"
                           style={{
                             fontSize: 14,
                             fontWeight: 800,
                             marginBottom: 7,
                             whiteSpace: 'nowrap',
+                            textAlign: 'right',
                           }}
                         >
                           {m.consumed}g
@@ -1316,7 +1330,7 @@ export function TraineeMobileView({
                         padding: '10px 8px',
                         border:
                           remainingWorkouts === 0
-                            ? '1px solid rgba(234, 88, 12, 0.42)'
+                            ? '1px solid rgba(214, 125, 9, 0.42)'
                             : '1px solid var(--border-subtle)',
                         display: 'flex',
                         flexDirection: 'column',
@@ -1454,7 +1468,7 @@ export function TraineeMobileView({
                       padding: '10px 12px',
                       borderRadius: 12,
                       border: todayWorkout?.completed
-                        ? '1px solid rgba(234, 88, 12, 0.35)'
+                        ? '1px solid rgba(214, 125, 9, 0.35)'
                         : '1px solid var(--border-subtle)',
                     }}
                   >
@@ -1535,7 +1549,7 @@ export function TraineeMobileView({
                                 ? '1px solid var(--accent-volt)'
                                 : '1px solid var(--border-subtle)',
                               background: isSelected
-                                ? 'rgba(234, 88, 12, 0.16)'
+                                ? 'rgba(214, 125, 9, 0.16)'
                                 : 'var(--bg-surface-1)',
                               color: isSelected
                                 ? 'var(--accent-volt)'
@@ -1813,7 +1827,7 @@ export function TraineeMobileView({
                       cursor: 'pointer',
                       borderColor:
                         answeredCount > 0
-                          ? 'rgba(234, 88, 12, 0.45)'
+                          ? 'rgba(214, 125, 9, 0.45)'
                           : 'var(--border-subtle)',
                       color:
                         answeredCount > 0
@@ -1830,7 +1844,7 @@ export function TraineeMobileView({
                           fontSize: 10,
                           padding: '1px 5px',
                           borderRadius: 999,
-                          background: 'rgba(234, 88, 12, 0.14)',
+                          background: 'rgba(214, 125, 9, 0.14)',
                           color: 'var(--accent-volt)',
                         }}
                       >
@@ -1867,7 +1881,7 @@ export function TraineeMobileView({
                       borderColor: hasItems
                         ? isObservationDay
                           ? 'rgba(56, 189, 248, 0.3)'
-                          : 'rgba(234, 88, 12, 0.22)'
+                          : 'rgba(214, 125, 9, 0.22)'
                         : 'var(--border-subtle)',
                     }}
                   >
@@ -1951,16 +1965,41 @@ export function TraineeMobileView({
                             <span style={{ fontSize: 16, fontWeight: 800 }}>
                               {slot.name}
                             </span>
-                            {slot.timeHint && (
-                              <span
-                                className="num-mono"
+                            {(entry?.mealTime || slot.timeHint || onUpdateMealTime) && (
+                              <button
+                                type="button"
+                                title="שינוי שעת הארוחה"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const baseTime = entry?.mealTime || slot.timeHint || '12:00';
+                                  setDraftMealTime(/^\d{1,2}:\d{2}$/.test(baseTime) ? baseTime : '12:00');
+                                  setTimeEditSlot(slot);
+                                }}
                                 style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  padding: '2px 8px',
+                                  borderRadius: 999,
+                                  border: entry?.mealTime
+                                    ? '1px solid rgba(214, 125, 9, 0.4)'
+                                    : '1px solid rgba(255, 255, 255, 0.08)',
+                                  background: entry?.mealTime
+                                    ? 'rgba(214, 125, 9, 0.14)'
+                                    : 'rgba(255, 255, 255, 0.04)',
+                                  color: entry?.mealTime
+                                    ? 'var(--accent-orange-bright)'
+                                    : 'var(--text-secondary)',
                                   fontSize: 11,
-                                  color: 'var(--text-muted)',
+                                  fontWeight: 700,
+                                  cursor: onUpdateMealTime ? 'pointer' : 'default',
                                 }}
                               >
-                                {slot.timeHint}
-                              </span>
+                                <Clock size={10} />
+                                <span dir="ltr" className="num-mono">
+                                  {entry?.mealTime || slot.timeHint || 'שעה'}
+                                </span>
+                              </button>
                             )}
                           </div>
                           <div
@@ -1969,20 +2008,29 @@ export function TraineeMobileView({
                               color: 'var(--text-secondary)',
                               display: 'flex',
                               gap: 10,
-                              marginTop: 2,
+                              marginTop: 3,
                             }}
                           >
                             <span style={{ color: 'var(--macro-protein)' }}>
-                              ח׳ {mealMacros.protein}
-                              {!isObservationDay && `/${slot.targets.protein}`}g
+                              ח׳{' '}
+                              <span dir="ltr" className="num-mono">
+                                {mealMacros.protein}
+                                {!isObservationDay && `/${slot.targets.protein}`}g
+                              </span>
                             </span>
                             <span style={{ color: 'var(--macro-carbs)' }}>
-                              פ׳ {mealMacros.carbs}
-                              {!isObservationDay && `/${slot.targets.carbs}`}g
+                              פ׳{' '}
+                              <span dir="ltr" className="num-mono">
+                                {mealMacros.carbs}
+                                {!isObservationDay && `/${slot.targets.carbs}`}g
+                              </span>
                             </span>
                             <span style={{ color: 'var(--macro-fat)' }}>
-                              ש׳ {mealMacros.fat}
-                              {!isObservationDay && `/${slot.targets.fat}`}g
+                              ש׳{' '}
+                              <span dir="ltr" className="num-mono">
+                                {mealMacros.fat}
+                                {!isObservationDay && `/${slot.targets.fat}`}g
+                              </span>
                             </span>
                           </div>
                         </div>
@@ -1991,12 +2039,14 @@ export function TraineeMobileView({
                       <div style={{ textAlign: 'left' }}>
                         <div
                           className="num-mono"
+                          dir="ltr"
                           style={{
                             fontSize: 16,
                             fontWeight: 800,
                             color: hasItems
                               ? 'var(--text-primary)'
                               : 'var(--text-muted)',
+                            whiteSpace: 'nowrap',
                           }}
                         >
                           {mealMacros.calories}
@@ -2152,8 +2202,8 @@ export function TraineeMobileView({
                           gap: 10,
                           padding: '10px 12px',
                           borderRadius: 12,
-                          background: 'rgba(234, 88, 12, 0.07)',
-                          border: '1px solid rgba(234, 88, 12, 0.22)',
+                          background: 'rgba(214, 125, 9, 0.07)',
+                          border: '1px solid rgba(214, 125, 9, 0.22)',
                           marginBottom: 12,
                         }}
                       >
@@ -2260,7 +2310,7 @@ export function TraineeMobileView({
                                 cursor: 'pointer',
                                 borderColor:
                                   scId === 'ai-recommend' || scId === 'ai-photo'
-                                    ? 'rgba(234, 88, 12, 0.35)'
+                                    ? 'rgba(214, 125, 9, 0.35)'
                                     : undefined,
                               }}
                             >
@@ -2301,7 +2351,7 @@ export function TraineeMobileView({
                       width: 36,
                       height: 36,
                       borderRadius: 10,
-                      background: 'rgba(234, 88, 12, 0.12)',
+                      background: 'rgba(214, 125, 9, 0.12)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -2484,7 +2534,7 @@ export function TraineeMobileView({
                       width: 36,
                       height: 36,
                       borderRadius: 10,
-                      background: 'rgba(234, 88, 12, 0.12)',
+                      background: 'rgba(214, 125, 9, 0.12)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -2738,7 +2788,7 @@ export function TraineeMobileView({
                     fontWeight: 700,
                     cursor: 'pointer',
                     color: 'var(--accent-volt)',
-                    borderColor: 'rgba(234, 88, 12, 0.35)',
+                    borderColor: 'rgba(214, 125, 9, 0.35)',
                   }}
                 >
                   <Share2 size={13} />
@@ -2752,8 +2802,8 @@ export function TraineeMobileView({
                     marginBottom: 12,
                     padding: '8px 12px',
                     borderRadius: 10,
-                    background: 'rgba(234, 88, 12, 0.12)',
-                    border: '1px solid rgba(234, 88, 12, 0.35)',
+                    background: 'rgba(214, 125, 9, 0.12)',
+                    border: '1px solid rgba(214, 125, 9, 0.35)',
                     color: 'var(--accent-volt)',
                     fontSize: 11,
                     fontWeight: 700,
@@ -2837,7 +2887,7 @@ export function TraineeMobileView({
                                 : '1px solid var(--border-subtle)',
                             background:
                               row.val === num
-                                ? 'rgba(234, 88, 12, 0.18)'
+                                ? 'rgba(214, 125, 9, 0.18)'
                                 : 'var(--bg-surface-1)',
                             color:
                               row.val === num
@@ -3095,7 +3145,7 @@ export function TraineeMobileView({
               justifyContent: 'center',
               flexShrink: 0,
               cursor: 'pointer',
-              boxShadow: '0 4px 18px rgba(234, 88, 12, 0.45)',
+              boxShadow: '0 4px 18px rgba(214, 125, 9, 0.45)',
             }}
           >
             <svg
@@ -3239,7 +3289,7 @@ export function TraineeMobileView({
                         border: isSelected
                           ? '1px solid var(--accent-volt)'
                           : isToday
-                          ? '1px solid rgba(234, 88, 12, 0.5)'
+                          ? '1px solid rgba(214, 125, 9, 0.5)'
                           : isObs
                           ? '1px solid rgba(56, 189, 248, 0.4)'
                           : '1px solid transparent',
@@ -3357,7 +3407,7 @@ export function TraineeMobileView({
         }
         favoriteIds={trainee.favoriteFoodIds}
         onToggleFavorite={(foodId) => onToggleFavorite(trainee.id, foodId)}
-        onSaveMeal={(slotId, items, photoDataUrl, photoNote, photoDataUrls) =>
+        onSaveMeal={(slotId, items, photoDataUrl, photoNote, photoDataUrls, mealTime) =>
           onSaveMeal(
             trainee.id,
             selectedDate,
@@ -3365,7 +3415,8 @@ export function TraineeMobileView({
             items,
             photoDataUrl,
             photoNote,
-            photoDataUrls
+            photoDataUrls,
+            mealTime
           )
         }
         initialTab={drawerTab}
@@ -3399,6 +3450,111 @@ export function TraineeMobileView({
         backgroundAiJobs={backgroundAiJobs}
         onStartBackgroundAiAnalysis={onStartBackgroundAiAnalysis}
       />
+
+      {/* מודאל עדכון שעת הזנת ארוחה */}
+      <Modal
+        opened={Boolean(timeEditSlot)}
+        onClose={() => !savingMealTime && setTimeEditSlot(null)}
+        centered
+        size="xs"
+        radius="lg"
+        overlayProps={{ backgroundOpacity: 0.78, blur: 5 }}
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Clock size={15} color="var(--accent-volt)" />
+            <span style={{ fontWeight: 800, fontSize: 14 }}>
+              שעת ארוחה — {timeEditSlot?.name}
+            </span>
+          </div>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+            ניתן לבחור כל שעה מותאמת אישית לתיעוד הארוחה ביומן:
+          </div>
+          <input
+            type="time"
+            value={draftMealTime}
+            onChange={(e) => setDraftMealTime(e.target.value)}
+            dir="ltr"
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              borderRadius: 12,
+              background: 'var(--bg-surface-2)',
+              border: '1px solid rgba(214, 125, 9, 0.45)',
+              color: '#ffffff',
+              fontSize: 18,
+              fontWeight: 800,
+              textAlign: 'center',
+              outline: 'none',
+            }}
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              disabled={savingMealTime}
+              onClick={() => {
+                const now = new Date();
+                const hh = String(now.getHours()).padStart(2, '0');
+                const mm = String(now.getMinutes()).padStart(2, '0');
+                setDraftMealTime(`${hh}:${mm}`);
+              }}
+              className="btn-surface"
+              style={{ flex: 1, padding: '8px', fontSize: 11.5, cursor: 'pointer' }}
+            >
+              עכשיו
+            </button>
+            {timeEditSlot?.timeHint && (
+              <button
+                type="button"
+                disabled={savingMealTime}
+                onClick={() => setDraftMealTime(timeEditSlot.timeHint!)}
+                className="btn-surface"
+                style={{ flex: 1, padding: '8px', fontSize: 11.5, cursor: 'pointer' }}
+              >
+                תבנית ({timeEditSlot.timeHint})
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            disabled={savingMealTime || !onUpdateMealTime}
+            onClick={async () => {
+              if (!timeEditSlot || !onUpdateMealTime) return;
+              setSavingMealTime(true);
+              try {
+                await onUpdateMealTime(
+                  trainee.id,
+                  selectedDate,
+                  timeEditSlot.id,
+                  draftMealTime
+                );
+                setTimeEditSlot(null);
+              } finally {
+                setSavingMealTime(false);
+              }
+            }}
+            className="btn-volt"
+            style={{
+              padding: '10px 14px',
+              fontSize: 13,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              cursor: 'pointer',
+            }}
+          >
+            {savingMealTime ? (
+              <Loader2 size={14} className="spot-spinner" />
+            ) : (
+              <Check size={14} />
+            )}
+            <span>שמור שעה</span>
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

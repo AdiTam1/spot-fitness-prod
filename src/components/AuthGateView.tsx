@@ -196,7 +196,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
             width: 240,
             height: 140,
             background:
-              'radial-gradient(circle, rgba(234, 88, 12, 0.16) 0%, transparent 70%)',
+              'radial-gradient(circle, rgba(214, 125, 9, 0.16) 0%, transparent 70%)',
             pointerEvents: 'none',
           }}
         />
@@ -215,7 +215,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
               alignItems: 'center',
               justifyContent: 'center',
               marginBottom: 6,
-              boxShadow: '0 8px 20px rgba(234, 88, 12, 0.32)',
+              boxShadow: '0 8px 20px rgba(214, 125, 9, 0.32)',
             }}
           >
             S

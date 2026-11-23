@@ -368,7 +368,7 @@ export function CoachOnboardingWizard({
                     background: active
                       ? 'var(--accent-volt)'
                       : done
-                      ? 'rgba(234, 88, 12, 0.45)'
+                      ? 'rgba(214, 125, 9, 0.45)'
                       : 'var(--bg-surface-3)',
                     cursor: 'pointer',
                     padding: 0,
@@ -473,7 +473,7 @@ export function CoachOnboardingWizard({
                           ? '1px solid var(--accent-volt)'
                           : '1px solid var(--border-subtle)',
                         background: selected
-                          ? 'rgba(234, 88, 12, 0.14)'
+                          ? 'rgba(214, 125, 9, 0.14)'
                           : 'var(--bg-surface-1)',
                         color: selected
                           ? 'var(--accent-volt)'
@@ -592,7 +592,7 @@ export function CoachOnboardingWizard({
                           : '1px solid var(--border-subtle)',
                       background:
                         defaultObservationDays === opt.days
-                          ? 'rgba(234, 88, 12, 0.14)'
+                          ? 'rgba(214, 125, 9, 0.14)'
                           : 'var(--bg-surface-1)',
                       color:
                         defaultObservationDays === opt.days
@@ -650,7 +650,7 @@ export function CoachOnboardingWizard({
                       ? '1px solid var(--accent-volt)'
                       : '1px solid var(--border-subtle)',
                     background: !defaultCountObservationInStats
-                      ? 'rgba(234, 88, 12, 0.14)'
+                      ? 'rgba(214, 125, 9, 0.14)'
                       : 'var(--bg-surface-1)',
                     color: !defaultCountObservationInStats
                       ? 'var(--accent-volt)'
@@ -672,7 +672,7 @@ export function CoachOnboardingWizard({
                       ? '1px solid var(--accent-volt)'
                       : '1px solid var(--border-subtle)',
                     background: defaultCountObservationInStats
-                      ? 'rgba(234, 88, 12, 0.14)'
+                      ? 'rgba(214, 125, 9, 0.14)'
                       : 'var(--bg-surface-1)',
                     color: defaultCountObservationInStats
                       ? 'var(--accent-volt)'
@@ -721,7 +721,7 @@ export function CoachOnboardingWizard({
                             : '1px solid var(--border-subtle)',
                         background:
                           defaultTolerancePercent === pct
-                            ? 'rgba(234, 88, 12, 0.14)'
+                            ? 'rgba(214, 125, 9, 0.14)'
                             : 'var(--bg-surface-1)',
                         color:
                           defaultTolerancePercent === pct
@@ -961,7 +961,7 @@ export function CoachOnboardingWizard({
                             ? '1px solid var(--accent-volt)'
                             : '1px solid var(--border-subtle)',
                           background: selected
-                            ? 'rgba(234, 88, 12, 0.16)'
+                            ? 'rgba(214, 125, 9, 0.16)'
                             : 'var(--bg-surface-1)',
                           color: selected
                             ? 'var(--accent-orange-bright)'
@@ -1040,7 +1040,7 @@ export function CoachOnboardingWizard({
                         borderRadius: 10,
                         background: 'var(--bg-surface-1)',
                         border: checked
-                          ? '1px solid rgba(234, 88, 12, 0.35)'
+                          ? '1px solid rgba(214, 125, 9, 0.35)'
                           : '1px solid var(--border-subtle)',
                       }}
                     >
@@ -1157,7 +1157,7 @@ export function CoachOnboardingWizard({
                           ? '1px solid var(--accent-volt)'
                           : '1px solid var(--border-subtle)',
                         background: selected
-                          ? 'rgba(234, 88, 12, 0.14)'
+                          ? 'rgba(214, 125, 9, 0.14)'
                           : 'var(--bg-surface-1)',
                         color: selected
                           ? 'var(--accent-volt)'

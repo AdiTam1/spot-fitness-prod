@@ -29,13 +29,13 @@ alter table public.coaches add column if not exists updated_at timestamptz not n
 create table if not exists public.trainee_groups (
   id text primary key,
   name text not null,
-  color text not null default '#d2ff28',
+  color text not null default '#d67d09',
   owner_coach_id text not null default 'coach-admin',
   custom_quick_chips jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now()
 );
 
-alter table public.trainee_groups add column if not exists color text not null default '#d2ff28';
+alter table public.trainee_groups add column if not exists color text not null default '#d67d09';
 alter table public.trainee_groups add column if not exists owner_coach_id text not null default 'coach-admin';
 alter table public.trainee_groups add column if not exists custom_quick_chips jsonb not null default '[]'::jsonb;
 alter table public.trainee_groups add column if not exists updated_at timestamptz not null default now();

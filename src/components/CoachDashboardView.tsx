@@ -206,10 +206,10 @@ interface CoachDashboardViewProps {
 }
 
 const GROUP_COLOR_SWATCHES = [
-  { label: 'וולט אתלטי', value: '#ea580c' },
-  { label: 'כחול שמיים', value: '#38bdf8' },
-  { label: 'קורל חלבון', value: '#ff5e7e' },
-  { label: 'אמבר אנרגיה', value: '#ffb800' },
+  { label: 'ספוט כתום', value: '#d67d09' },
+  { label: 'כחול חלבון', value: '#38bdf8' },
+  { label: 'ורוד פחמימה', value: '#ff5e7e' },
+  { label: 'כתום שומן', value: '#ff8c1a' },
   { label: 'ירוק אמרלד', value: '#22c55e' },
   { label: 'סגול פרימיום', value: '#a855f7' },
 ];
@@ -408,7 +408,7 @@ export function CoachDashboardView({
   // מודאל יצירת קבוצה חדשה
   const [newGroupModal, setNewGroupModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
-  const [newGroupColor, setNewGroupColor] = useState('#ea580c');
+  const [newGroupColor, setNewGroupColor] = useState('#d67d09');
 
   // פעולות קבוצתיות (Bulk Actions)
   const [bulkTplId, setBulkTplId] = useState<string>(
@@ -1113,10 +1113,10 @@ export function CoachDashboardView({
                     padding: '9px 15px',
                     borderRadius: 12,
                     border: active
-                      ? '1px solid rgba(234, 88, 12, 0.4)'
+                      ? '1px solid rgba(214, 125, 9, 0.4)'
                       : '1px solid transparent',
                     background: active
-                      ? 'rgba(234, 88, 12, 0.1)'
+                      ? 'rgba(214, 125, 9, 0.1)'
                       : 'transparent',
                     color: active
                       ? 'var(--accent-volt)'
@@ -1147,7 +1147,7 @@ export function CoachDashboardView({
               fontSize: 12,
               cursor: 'pointer',
               borderColor: coachAlertsDeviceReady
-                ? 'rgba(234, 88, 12, 0.45)'
+                ? 'rgba(214, 125, 9, 0.45)'
                 : undefined,
             }}
           >
@@ -1235,7 +1235,7 @@ export function CoachDashboardView({
               : 'rgba(22, 28, 8, 0.96)',
             border: toastIsError
               ? '1px solid rgba(239, 68, 68, 0.55)'
-              : '1px solid rgba(234, 88, 12, 0.45)',
+              : '1px solid rgba(214, 125, 9, 0.45)',
             color: toastIsError ? '#f87171' : 'var(--accent-volt)',
             fontSize: 13,
             fontWeight: 700,
@@ -1297,7 +1297,7 @@ export function CoachDashboardView({
                       : '1px solid var(--border-subtle)',
                   background:
                     selectedGroupFilter === 'all'
-                      ? 'rgba(234, 88, 12, 0.12)'
+                      ? 'rgba(214, 125, 9, 0.12)'
                       : 'var(--bg-surface-2)',
                   color:
                     selectedGroupFilter === 'all'
@@ -1364,7 +1364,7 @@ export function CoachDashboardView({
                       : '1px solid var(--border-subtle)',
                   background:
                     selectedGroupFilter === 'unassigned'
-                      ? 'rgba(234, 88, 12, 0.12)'
+                      ? 'rgba(214, 125, 9, 0.12)'
                       : 'var(--bg-surface-2)',
                   color:
                     selectedGroupFilter === 'unassigned'
@@ -1734,8 +1734,8 @@ export function CoachDashboardView({
                               width: 38,
                               height: 38,
                               borderRadius: '50%',
-                              background: 'rgba(234, 88, 12, 0.16)',
-                              border: '1px solid rgba(234, 88, 12, 0.42)',
+                              background: 'rgba(214, 125, 9, 0.16)',
+                              border: '1px solid rgba(214, 125, 9, 0.42)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
@@ -2288,7 +2288,7 @@ export function CoachDashboardView({
                                         ? '1px solid var(--accent-volt)'
                                         : '1px solid var(--border-subtle)',
                                       background: t.countObservationInStats
-                                        ? 'rgba(234, 88, 12, 0.14)'
+                                        ? 'rgba(214, 125, 9, 0.14)'
                                         : 'var(--bg-surface-2)',
                                       color: t.countObservationInStats
                                         ? 'var(--accent-volt)'
@@ -2558,7 +2558,7 @@ export function CoachDashboardView({
                     alignItems: 'center',
                     gap: 6,
                     color: 'var(--accent-volt)',
-                    borderColor: 'rgba(234, 88, 12, 0.35)',
+                    borderColor: 'rgba(214, 125, 9, 0.35)',
                     alignSelf: 'center',
                   }}
                 >
@@ -2597,7 +2597,7 @@ export function CoachDashboardView({
                     background: 'var(--bg-surface-2)',
                     padding: 14,
                     borderRadius: 14,
-                    border: '1px solid rgba(234, 88, 12, 0.25)',
+                    border: '1px solid rgba(214, 125, 9, 0.25)',
                     marginBottom: 14,
                   }}
                 >
@@ -2635,7 +2635,7 @@ export function CoachDashboardView({
                         style={{
                           padding: '3px 9px',
                           borderRadius: 999,
-                          background: 'rgba(234, 88, 12, 0.12)',
+                          background: 'rgba(214, 125, 9, 0.12)',
                           color: 'var(--accent-volt)',
                           fontWeight: 800,
                         }}
@@ -2815,7 +2815,7 @@ export function CoachDashboardView({
                                 ? '1px solid var(--accent-volt)'
                                 : '1px solid var(--border-subtle)',
                               background: active
-                                ? 'rgba(234, 88, 12, 0.14)'
+                                ? 'rgba(214, 125, 9, 0.14)'
                                 : 'var(--bg-surface-1)',
                               color: active
                                 ? 'var(--accent-volt)'
@@ -3355,7 +3355,7 @@ export function CoachDashboardView({
                   background: 'var(--bg-surface-2)',
                   padding: 14,
                   borderRadius: 14,
-                  border: '1px solid rgba(234, 88, 12, 0.28)',
+                  border: '1px solid rgba(214, 125, 9, 0.28)',
                 }}
               >
                 <div
@@ -3427,8 +3427,8 @@ export function CoachDashboardView({
                               gap: 6,
                               padding: '4px 10px',
                               borderRadius: 999,
-                              background: 'rgba(234, 88, 12, 0.1)',
-                              border: '1px solid rgba(234, 88, 12, 0.3)',
+                              background: 'rgba(214, 125, 9, 0.1)',
+                              border: '1px solid rgba(214, 125, 9, 0.3)',
                               fontSize: 11,
                               color: 'var(--accent-volt)',
                               fontWeight: 700,
@@ -3978,8 +3978,17 @@ export function CoachDashboardView({
                         marginBottom: 8,
                       }}
                     >
-                      <div style={{ fontWeight: 800, fontSize: 14 }}>
-                        {slot.name}
+                      <div style={{ fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>{slot.name}</span>
+                        {(entry?.mealTime || slot.timeHint) && (
+                          <span
+                            dir="ltr"
+                            className="num-mono"
+                            style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}
+                          >
+                            {entry?.mealTime || slot.timeHint}
+                          </span>
+                        )}
                       </div>
                       <div
                         className="num-mono"
@@ -3992,7 +4001,7 @@ export function CoachDashboardView({
                               : 'var(--text-muted)',
                         }}
                       >
-                        {mealTotals.calories} / {slot.targets.calories} קק״ל · ח׳{' '}
+                        <span dir="ltr">{mealTotals.calories} / {slot.targets.calories}</span> קק״ל · ח׳{' '}
                         {mealTotals.protein}g
                       </div>
                     </div>
@@ -5013,7 +5022,7 @@ export function CoachDashboardView({
                               style={{
                                 padding: '3px 10px',
                                 borderRadius: 8,
-                                background: 'rgba(234, 88, 12, 0.12)',
+                                background: 'rgba(214, 125, 9, 0.12)',
                                 color: 'var(--accent-volt)',
                                 fontSize: 12,
                                 fontWeight: 800,
