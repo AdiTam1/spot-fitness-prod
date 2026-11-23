@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -38,6 +38,9 @@ import {
   Bell,
   BellRing,
   Globe,
+  LayoutGrid,
+  Table2,
+  CalendarRange,
 } from 'lucide-react';
 import {
   AccountStatus,
@@ -50,12 +53,14 @@ import {
   NutritionTemplate,
   QuickContextChip,
   ScraperSuiteReport,
+  TraineeActiveDateRange,
   TraineeActivityTargets,
   TraineeCustomUnit,
   TraineeGroup,
   TraineeProfile,
   TraineeServingTool,
 } from '@/types/nutrition';
+import { computeAgeFromBirthDate } from '@/lib/dateUtils';
 import { QuickChipsAdminPanel } from './QuickChipsAdminPanel';
 import { CoachSavedMealsPanel } from './CoachSavedMealsPanel';
 import { CoachPushModal } from './CoachPushModal';
@@ -136,6 +141,7 @@ interface CoachDashboardViewProps {
       addFutureDays?: number;
       clearAll?: boolean;
       countObservationInStats?: boolean;
+      activeDateRange?: TraineeActiveDateRange;
     }
   ) => Promise<{ error?: string }> | void;
   onUpdateActivityTargets: (
@@ -200,7 +206,7 @@ interface CoachDashboardViewProps {
 }
 
 const GROUP_COLOR_SWATCHES = [
-  { label: 'וולט אתלטי', value: '#d2ff28' },
+  { label: 'וולט אתלטי', value: '#ea580c' },
   { label: 'כחול שמיים', value: '#38bdf8' },
   { label: 'קורל חלבון', value: '#ff5e7e' },
   { label: 'אמבר אנרגיה', value: '#ffb800' },
@@ -402,7 +408,7 @@ export function CoachDashboardView({
   // מודאל יצירת קבוצה חדשה
   const [newGroupModal, setNewGroupModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
-  const [newGroupColor, setNewGroupColor] = useState('#d2ff28');
+  const [newGroupColor, setNewGroupColor] = useState('#ea580c');
 
   // פעולות קבוצתיות (Bulk Actions)
   const [bulkTplId, setBulkTplId] = useState<string>(
@@ -433,6 +439,36 @@ export function CoachDashboardView({
   const [editCoachPassword, setEditCoachPassword] = useState('');
   const [editCoachInvite, setEditCoachInvite] = useState('');
   const [customObsDays, setCustomObsDays] = useState<number>(5);
+  const [rosterViewMode, setRosterViewMode] = useState<'cards' | 'table'>(() =>
+    typeof window !== 'undefined' && window.innerWidth < 768 ? 'cards' : 'table'
+  );
+  const [rosterViewPinned, setRosterViewPinned] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || rosterViewPinned) return;
+    const syncViewport = () => {
+      setRosterViewMode(window.innerWidth < 768 ? 'cards' : 'table');
+    };
+    syncViewport();
+    window.addEventListener('resize', syncViewport);
+    return () => window.removeEventListener('resize', syncViewport);
+  }, [rosterViewPinned]);
+
+  const [activePastDraft, setActivePastDraft] = useState<number>(
+    selectedTrainee?.activeDateRange?.pastDays ?? 1
+  );
+  const [activeFutureDraft, setActiveFutureDraft] = useState<number>(
+    selectedTrainee?.activeDateRange?.futureDays ?? 0
+  );
+
+  useEffect(() => {
+    setActivePastDraft(selectedTrainee?.activeDateRange?.pastDays ?? 1);
+    setActiveFutureDraft(selectedTrainee?.activeDateRange?.futureDays ?? 0);
+  }, [
+    selectedTrainee?.id,
+    selectedTrainee?.activeDateRange?.pastDays,
+    selectedTrainee?.activeDateRange?.futureDays,
+  ]);
 
   // אישור מתאמן Pending עם בחירת מאמן משויך
   const [pendingAssignCoachMap, setPendingAssignCoachMap] = useState<
@@ -1077,10 +1113,10 @@ export function CoachDashboardView({
                     padding: '9px 15px',
                     borderRadius: 12,
                     border: active
-                      ? '1px solid rgba(210, 255, 40, 0.4)'
+                      ? '1px solid rgba(234, 88, 12, 0.4)'
                       : '1px solid transparent',
                     background: active
-                      ? 'rgba(210, 255, 40, 0.1)'
+                      ? 'rgba(234, 88, 12, 0.1)'
                       : 'transparent',
                     color: active
                       ? 'var(--accent-volt)'
@@ -1111,7 +1147,7 @@ export function CoachDashboardView({
               fontSize: 12,
               cursor: 'pointer',
               borderColor: coachAlertsDeviceReady
-                ? 'rgba(210, 255, 40, 0.45)'
+                ? 'rgba(234, 88, 12, 0.45)'
                 : undefined,
             }}
           >
@@ -1199,7 +1235,7 @@ export function CoachDashboardView({
               : 'rgba(22, 28, 8, 0.96)',
             border: toastIsError
               ? '1px solid rgba(239, 68, 68, 0.55)'
-              : '1px solid rgba(210, 255, 40, 0.45)',
+              : '1px solid rgba(234, 88, 12, 0.45)',
             color: toastIsError ? '#f87171' : 'var(--accent-volt)',
             fontSize: 13,
             fontWeight: 700,
@@ -1261,7 +1297,7 @@ export function CoachDashboardView({
                       : '1px solid var(--border-subtle)',
                   background:
                     selectedGroupFilter === 'all'
-                      ? 'rgba(210, 255, 40, 0.12)'
+                      ? 'rgba(234, 88, 12, 0.12)'
                       : 'var(--bg-surface-2)',
                   color:
                     selectedGroupFilter === 'all'
@@ -1328,7 +1364,7 @@ export function CoachDashboardView({
                       : '1px solid var(--border-subtle)',
                   background:
                     selectedGroupFilter === 'unassigned'
-                      ? 'rgba(210, 255, 40, 0.12)'
+                      ? 'rgba(234, 88, 12, 0.12)'
                       : 'var(--bg-surface-2)',
                   color:
                     selectedGroupFilter === 'unassigned'
@@ -1561,8 +1597,391 @@ export function CoachDashboardView({
             </div>
           )}
 
-          {/* טבלת המתאמנים */}
-          <div className="pro-card" style={{ overflow: 'hidden' }}>
+          {/* סרגל החלפת תצוגה כרטיסיות / טבלה (ברירת מחדל כרטיסיות במובייל) */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 10,
+              gap: 8,
+            }}
+          >
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>
+              {filteredTrainees.length} מתאמנים מוצגים
+            </span>
+            <div
+              style={{
+                display: 'inline-flex',
+                background: 'var(--bg-surface-2)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 10,
+                padding: 3,
+                gap: 2,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setRosterViewMode('cards');
+                  setRosterViewPinned(true);
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '5px 9px',
+                  borderRadius: 7,
+                  border: 'none',
+                  background:
+                    rosterViewMode === 'cards' ? 'var(--accent-volt)' : 'transparent',
+                  color:
+                    rosterViewMode === 'cards' ? '#ffffff' : 'var(--text-secondary)',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                <LayoutGrid size={12} />
+                <span>כרטיסיות</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRosterViewMode('table');
+                  setRosterViewPinned(true);
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '5px 9px',
+                  borderRadius: 7,
+                  border: 'none',
+                  background:
+                    rosterViewMode === 'table' ? 'var(--accent-volt)' : 'transparent',
+                  color:
+                    rosterViewMode === 'table' ? '#ffffff' : 'var(--text-secondary)',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                <Table2 size={12} />
+                <span>טבלה</span>
+              </button>
+            </div>
+          </div>
+
+          {rosterViewMode === 'cards' ? (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
+                gap: 12,
+              }}
+            >
+              {filteredTrainees.length === 0 ? (
+                <div
+                  className="pro-card"
+                  style={{
+                    padding: 28,
+                    textAlign: 'center',
+                    color: 'var(--text-muted)',
+                    fontSize: 13,
+                  }}
+                >
+                  אין מתאמנים בקטגוריה זו כרגע. לחץ על &ldquo;+ מתאמן חדש&rdquo; למעלה כדי להוסיף.
+                </div>
+              ) : (
+                filteredTrainees.map((t) => {
+                  const st = getTraineeStatus(t);
+                  const calPct = Math.min(
+                    100,
+                    Math.round(
+                      (st.consumed.calories / Math.max(1, st.target.calories)) * 100
+                    )
+                  );
+                  const isOwner = isOwnerOfTrainee(t);
+                  const groupObj = groups.find((g) => g.id === t.groupId);
+                  const pendingQ = (t.savedMeals || []).filter(
+                    (m) => m.coachQuestion?.status === 'pending'
+                  ).length;
+
+                  return (
+                    <div
+                      key={t.id}
+                      className="pro-card"
+                      style={{
+                        padding: 14,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 11,
+                      }}
+                    >
+                      {/* כותרת כרטיסיית מתאמן */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                          <div
+                            style={{
+                              width: 38,
+                              height: 38,
+                              borderRadius: '50%',
+                              background: 'rgba(234, 88, 12, 0.16)',
+                              border: '1px solid rgba(234, 88, 12, 0.42)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontWeight: 900,
+                              fontSize: 15,
+                              color: 'var(--accent-orange-bright)',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {t.avatar}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div
+                              style={{
+                                fontSize: 14.5,
+                                fontWeight: 800,
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {t.name}
+                            </div>
+                            <div
+                              className="num-mono"
+                              style={{
+                                fontSize: 11,
+                                color: 'var(--text-secondary)',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {t.email}
+                            </div>
+                          </div>
+                        </div>
+
+                        <span
+                          style={{
+                            padding: '3px 9px',
+                            borderRadius: 999,
+                            background: st.statusBg,
+                            color: st.statusColor,
+                            fontSize: 10.5,
+                            fontWeight: 800,
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {st.label} ({st.loggedMealsCount}/{st.totalMeals})
+                        </span>
+                      </div>
+
+                      {/* קבוצה + מאמן + שאלות ממתינות */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: 6,
+                        }}
+                      >
+                        <Select
+                          size="xs"
+                          w={140}
+                          placeholder="ללא קבוצה"
+                          value={t.groupId || ''}
+                          onChange={(val) =>
+                            onUpdateTraineeGroup(t.id, val ? val : undefined)
+                          }
+                          data={[
+                            { value: '', label: 'ללא קבוצה' },
+                            ...groups.map((g) => ({
+                              value: g.id,
+                              label: g.name,
+                            })),
+                          ]}
+                        />
+                        {groupObj && (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 700,
+                              padding: '2px 7px',
+                              borderRadius: 999,
+                              background: 'rgba(255,255,255,0.05)',
+                              color: 'var(--text-secondary)',
+                            }}
+                          >
+                            ראשי: {getCoachNameById(t.primaryCoachId)}
+                          </span>
+                        )}
+                        {pendingQ > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTraineeId(t.id);
+                              setActiveSection('inspector');
+                            }}
+                            style={{
+                              padding: '3px 8px',
+                              borderRadius: 999,
+                              background: 'rgba(56, 189, 248, 0.16)',
+                              border: '1px solid rgba(56, 189, 248, 0.35)',
+                              color: '#7dd3fc',
+                              fontSize: 10,
+                              fontWeight: 800,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <MessageCircle size={10} />
+                            <span>{pendingQ} שאלות</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* פס ביצוע קלוריות ומאקרו */}
+                      <div
+                        style={{
+                          background: 'var(--bg-surface-2)',
+                          padding: '9px 11px',
+                          borderRadius: 12,
+                          border: '1px solid var(--border-subtle)',
+                        }}
+                      >
+                        <div
+                          className="num-mono"
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            fontSize: 12,
+                            marginBottom: 5,
+                          }}
+                        >
+                          <span style={{ fontWeight: 800 }}>
+                            {st.consumed.calories} / {st.target.calories} קק״ל
+                          </span>
+                          <span style={{ color: 'var(--macro-protein)', fontWeight: 700 }}>
+                            ח׳ {st.consumed.protein}/{st.target.protein}g
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            height: 5,
+                            background: 'rgba(255,255,255,0.07)',
+                            borderRadius: 999,
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <div
+                            style={{
+                              height: '100%',
+                              width: `${calPct}%`,
+                              background: st.statusColor,
+                              borderRadius: 999,
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* כפתורי פעולה נוחים למגע במובייל */}
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => {
+                            setSelectedTraineeId(t.id);
+                            setActiveSection('inspector');
+                          }}
+                          className="btn-volt"
+                          style={{
+                            flex: '1 1 110px',
+                            padding: '8px 10px',
+                            fontSize: 12,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          תפריט ויומן
+                        </button>
+                        <button
+                          onClick={() => onPreviewTraineeMobile(t.id)}
+                          className="btn-surface"
+                          style={{
+                            padding: '8px 10px',
+                            fontSize: 12,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                        >
+                          <span>מובייל</span>
+                          <ArrowUpLeft size={13} />
+                        </button>
+                        <button
+                          title="שלח פוש אישי למתאמן"
+                          onClick={() => openPushModalForTrainee(t.id)}
+                          className="btn-surface"
+                          style={{
+                            padding: '8px 10px',
+                            fontSize: 12,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            color:
+                              (t.fcmTokens?.length || 0) +
+                                (t.webPushSubscriptions?.length || 0) >
+                              0
+                                ? 'var(--accent-volt)'
+                                : 'var(--text-secondary)',
+                          }}
+                        >
+                          <Bell size={13} />
+                        </button>
+                        {isOwner && (
+                          <button
+                            title="שתף מתאמן עם מאמנים נוספים"
+                            onClick={() => {
+                              setSharingModalTrainee(t);
+                              setSharingPrimaryId(t.primaryCoachId || 'coach-admin');
+                              setSharingCollaboratorIds(t.sharedCoachIds || []);
+                            }}
+                            className="btn-surface"
+                            style={{
+                              padding: '8px 10px',
+                              fontSize: 12,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <Share2 size={13} color="var(--accent-volt)" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          ) : (
+            <div className="pro-card" style={{ overflow: 'hidden' }}>
             <div style={{ overflowX: 'auto' }}>
               <table
                 style={{
@@ -1869,7 +2288,7 @@ export function CoachDashboardView({
                                         ? '1px solid var(--accent-volt)'
                                         : '1px solid var(--border-subtle)',
                                       background: t.countObservationInStats
-                                        ? 'rgba(210, 255, 40, 0.14)'
+                                        ? 'rgba(234, 88, 12, 0.14)'
                                         : 'var(--bg-surface-2)',
                                       color: t.countObservationInStats
                                         ? 'var(--accent-volt)'
@@ -2021,7 +2440,8 @@ export function CoachDashboardView({
                 </tbody>
               </table>
             </div>
-          </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -2053,7 +2473,10 @@ export function CoachDashboardView({
                   {selectedTrainee.onboarding?.completed
                     ? `הושלם בתאריך ${
                         selectedTrainee.onboarding.completedAt || ''
-                      } · גיל: ${selectedTrainee.onboarding.age || '—'} · גובה: ${
+                      } · גיל: ${computeAgeFromBirthDate(
+                        selectedTrainee.onboarding.birthDate,
+                        selectedTrainee.onboarding.age
+                      )} · גובה: ${
                         selectedTrainee.onboarding.heightCm || '—'
                       } ס״מ · משקל: ${selectedTrainee.currentWeight} ק״ג`
                     : 'המתאמן טרם השלים את שאלון ה-Onboarding בכניסה הראשונה'}
@@ -2135,7 +2558,7 @@ export function CoachDashboardView({
                     alignItems: 'center',
                     gap: 6,
                     color: 'var(--accent-volt)',
-                    borderColor: 'rgba(210, 255, 40, 0.35)',
+                    borderColor: 'rgba(234, 88, 12, 0.35)',
                     alignSelf: 'center',
                   }}
                 >
@@ -2174,7 +2597,7 @@ export function CoachDashboardView({
                     background: 'var(--bg-surface-2)',
                     padding: 14,
                     borderRadius: 14,
-                    border: '1px solid rgba(210, 255, 40, 0.25)',
+                    border: '1px solid rgba(234, 88, 12, 0.25)',
                     marginBottom: 14,
                   }}
                 >
@@ -2212,7 +2635,7 @@ export function CoachDashboardView({
                         style={{
                           padding: '3px 9px',
                           borderRadius: 999,
-                          background: 'rgba(210, 255, 40, 0.12)',
+                          background: 'rgba(234, 88, 12, 0.12)',
                           color: 'var(--accent-volt)',
                           fontWeight: 800,
                         }}
@@ -2392,7 +2815,7 @@ export function CoachDashboardView({
                                 ? '1px solid var(--accent-volt)'
                                 : '1px solid var(--border-subtle)',
                               background: active
-                                ? 'rgba(210, 255, 40, 0.14)'
+                                ? 'rgba(234, 88, 12, 0.14)'
                                 : 'var(--bg-surface-1)',
                               color: active
                                 ? 'var(--accent-volt)'
@@ -2673,6 +3096,95 @@ export function CoachDashboardView({
                   </button>
                 )}
               </div>
+
+              {/* ניהול טווח תאריכים פעילים לניווט המתאמן (שבועי וחודשי) */}
+              <div
+                style={{
+                  marginTop: 12,
+                  paddingTop: 12,
+                  borderTop: '1px solid rgba(255,255,255,0.06)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 10,
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 12.5,
+                      fontWeight: 800,
+                      color: 'var(--accent-orange-bright)',
+                    }}
+                  >
+                    <CalendarRange size={14} />
+                    <span>חלון תאריכים פעילים לניווט המתאמן</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                    קובע לאילו תאריכים המתאמן יכול לנווט בסרגל השבועי ובלוח השנה החודשי (ימי תשקיף וימים מתועדים זמינים תמיד).
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+                  <NumberInput
+                    size="xs"
+                    label="ימים אחורה"
+                    value={activePastDraft}
+                    min={0}
+                    max={365}
+                    allowDecimal={false}
+                    onChange={(val) =>
+                      setActivePastDraft(
+                        val === '' ? 0 : Math.max(0, Math.min(365, Math.round(Number(val) || 0)))
+                      )
+                    }
+                    style={{ width: 92 }}
+                  />
+                  <NumberInput
+                    size="xs"
+                    label="ימים קדימה"
+                    value={activeFutureDraft}
+                    min={0}
+                    max={180}
+                    allowDecimal={false}
+                    onChange={(val) =>
+                      setActiveFutureDraft(
+                        val === '' ? 0 : Math.max(0, Math.min(180, Math.round(Number(val) || 0)))
+                      )
+                    }
+                    style={{ width: 92 }}
+                  />
+                  <button
+                    type="button"
+                    disabled={isBusy('active-range-save')}
+                    onClick={() =>
+                      runBusy(
+                        'active-range-save',
+                        () =>
+                          onManageObservationDays(selectedTrainee.id, {
+                            activeDateRange: {
+                              pastDays: activePastDraft,
+                              futureDays: activeFutureDraft,
+                            },
+                          }),
+                        'טווח התאריכים הפעילים למתאמן עודכן'
+                      )
+                    }
+                    className="btn-volt"
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: 11.5,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {isBusy('active-range-save') ? 'שומר...' : 'עדכן טווח תאריכים'}
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* פירוט תשובות ה-Onboarding וההיקפים של המתאמן */}
@@ -2843,7 +3355,7 @@ export function CoachDashboardView({
                   background: 'var(--bg-surface-2)',
                   padding: 14,
                   borderRadius: 14,
-                  border: '1px solid rgba(210, 255, 40, 0.28)',
+                  border: '1px solid rgba(234, 88, 12, 0.28)',
                 }}
               >
                 <div
@@ -2915,8 +3427,8 @@ export function CoachDashboardView({
                               gap: 6,
                               padding: '4px 10px',
                               borderRadius: 999,
-                              background: 'rgba(210, 255, 40, 0.1)',
-                              border: '1px solid rgba(210, 255, 40, 0.3)',
+                              background: 'rgba(234, 88, 12, 0.1)',
+                              border: '1px solid rgba(234, 88, 12, 0.3)',
                               fontSize: 11,
                               color: 'var(--accent-volt)',
                               fontWeight: 700,
@@ -4501,7 +5013,7 @@ export function CoachDashboardView({
                               style={{
                                 padding: '3px 10px',
                                 borderRadius: 8,
-                                background: 'rgba(210, 255, 40, 0.12)',
+                                background: 'rgba(234, 88, 12, 0.12)',
                                 color: 'var(--accent-volt)',
                                 fontSize: 12,
                                 fontWeight: 800,

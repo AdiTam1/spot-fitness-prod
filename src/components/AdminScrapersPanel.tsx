@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import {
@@ -259,7 +259,7 @@ export function AdminScrapersPanel({
                 fontSize: 13,
                 fontWeight: 700,
                 cursor: 'pointer',
-                borderColor: 'rgba(210, 255, 40, 0.35)',
+                borderColor: 'rgba(234, 88, 12, 0.35)',
               }}
             >
               {busyAction === 'sync_catalog' ? (
@@ -425,7 +425,7 @@ export function AdminScrapersPanel({
           flexWrap: 'wrap',
           gap: 12,
           borderColor: report?.sqlCatalogStats?.available
-            ? 'rgba(210, 255, 40, 0.25)'
+            ? 'rgba(234, 88, 12, 0.25)'
             : 'rgba(250, 204, 21, 0.35)',
         }}
       >
@@ -495,7 +495,7 @@ export function AdminScrapersPanel({
             fontSize: 12,
             fontWeight: 700,
             cursor: 'pointer',
-            borderColor: 'rgba(210, 255, 40, 0.35)',
+            borderColor: 'rgba(234, 88, 12, 0.35)',
           }}
         >
           {busyAction === 'sync_off' ? (
@@ -638,8 +638,8 @@ export function AdminScrapersPanel({
                   style={{
                     padding: '8px 10px',
                     borderRadius: 10,
-                    background: 'rgba(210, 255, 40, 0.05)',
-                    border: '1px solid rgba(210, 255, 40, 0.2)',
+                    background: 'rgba(234, 88, 12, 0.05)',
+                    border: '1px solid rgba(234, 88, 12, 0.2)',
                     fontSize: 11.5,
                   }}
                 >

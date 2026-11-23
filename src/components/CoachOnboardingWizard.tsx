@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -8,13 +8,21 @@ import {
   Textarea,
   Checkbox,
 } from '@mantine/core';
-import { Check, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Heart,
+  Loader2,
+  Search,
+  CalendarRange,
+} from 'lucide-react';
 import {
   CoachOnboardingData,
   MealTemplateSlot,
   NutritionTemplate,
 } from '@/types/nutrition';
-import { getTodayIso } from '@/data/israeliFoodCatalog';
+import { getTodayIso, ISRAELI_FOOD_CATALOG } from '@/data/israeliFoodCatalog';
 
 interface CoachOnboardingWizardProps {
   coachName: string;
@@ -207,6 +215,15 @@ export function CoachOnboardingWizard({
   const [defaultWaterGoal, setDefaultWaterGoal] = useState<number>(
     existingOnboarding?.defaultWaterGoal ?? 12
   );
+  const [defaultActivePastDays, setDefaultActivePastDays] = useState<number>(
+    existingOnboarding?.defaultActivePastDays ?? 1
+  );
+  const [defaultActiveFutureDays, setDefaultActiveFutureDays] =
+    useState<number>(existingOnboarding?.defaultActiveFutureDays ?? 0);
+  const [defaultFavoriteFoodIds, setDefaultFavoriteFoodIds] = useState<string[]>(
+    existingOnboarding?.defaultFavoriteFoodIds ?? []
+  );
+  const [favSearchQuery, setFavSearchQuery] = useState('');
 
   // שלב 3: טמפלייטים וקבוצות התחלתיות
   const [selectedTemplateKeys, setSelectedTemplateKeys] = useState<string[]>([
@@ -234,6 +251,9 @@ export function CoachOnboardingWizard({
       defaultCountObservationInStats,
       defaultTolerancePercent,
       defaultWaterGoal,
+      defaultActivePastDays,
+      defaultActiveFutureDays,
+      defaultFavoriteFoodIds,
       completedAt: getTodayIso(),
     };
 
@@ -272,10 +292,9 @@ export function CoachOnboardingWizard({
       style={{
         maxWidth: 500,
         margin: '0 auto',
-        minHeight: 'calc(100dvh - 80px)',
         display: 'flex',
-        alignItems: 'center',
-        padding: '6px 0 14px',
+        alignItems: 'flex-start',
+        padding: '6px 0 calc(28px + env(safe-area-inset-bottom, 0px))',
       }}
     >
       <div
@@ -349,7 +368,7 @@ export function CoachOnboardingWizard({
                     background: active
                       ? 'var(--accent-volt)'
                       : done
-                      ? 'rgba(210, 255, 40, 0.45)'
+                      ? 'rgba(234, 88, 12, 0.45)'
                       : 'var(--bg-surface-3)',
                     cursor: 'pointer',
                     padding: 0,
@@ -454,7 +473,7 @@ export function CoachOnboardingWizard({
                           ? '1px solid var(--accent-volt)'
                           : '1px solid var(--border-subtle)',
                         background: selected
-                          ? 'rgba(210, 255, 40, 0.14)'
+                          ? 'rgba(234, 88, 12, 0.14)'
                           : 'var(--bg-surface-1)',
                         color: selected
                           ? 'var(--accent-volt)'
@@ -573,7 +592,7 @@ export function CoachOnboardingWizard({
                           : '1px solid var(--border-subtle)',
                       background:
                         defaultObservationDays === opt.days
-                          ? 'rgba(210, 255, 40, 0.14)'
+                          ? 'rgba(234, 88, 12, 0.14)'
                           : 'var(--bg-surface-1)',
                       color:
                         defaultObservationDays === opt.days
@@ -631,7 +650,7 @@ export function CoachOnboardingWizard({
                       ? '1px solid var(--accent-volt)'
                       : '1px solid var(--border-subtle)',
                     background: !defaultCountObservationInStats
-                      ? 'rgba(210, 255, 40, 0.14)'
+                      ? 'rgba(234, 88, 12, 0.14)'
                       : 'var(--bg-surface-1)',
                     color: !defaultCountObservationInStats
                       ? 'var(--accent-volt)'
@@ -653,7 +672,7 @@ export function CoachOnboardingWizard({
                       ? '1px solid var(--accent-volt)'
                       : '1px solid var(--border-subtle)',
                     background: defaultCountObservationInStats
-                      ? 'rgba(210, 255, 40, 0.14)'
+                      ? 'rgba(234, 88, 12, 0.14)'
                       : 'var(--bg-surface-1)',
                     color: defaultCountObservationInStats
                       ? 'var(--accent-volt)'
@@ -702,7 +721,7 @@ export function CoachOnboardingWizard({
                             : '1px solid var(--border-subtle)',
                         background:
                           defaultTolerancePercent === pct
-                            ? 'rgba(210, 255, 40, 0.14)'
+                            ? 'rgba(234, 88, 12, 0.14)'
                             : 'var(--bg-surface-1)',
                         color:
                           defaultTolerancePercent === pct
@@ -761,6 +780,199 @@ export function CoachOnboardingWizard({
                     </button>
                   ))}
                 </div>
+              </div>
+            </div>
+
+            {/* ברירת מחדל: טווח תאריכים פעילים לניווט מתאמן */}
+            <div
+              style={{
+                background: 'var(--bg-surface-2)',
+                padding: 11,
+                borderRadius: 12,
+                border: '1px solid var(--border-subtle)',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  marginBottom: 4,
+                }}
+              >
+                <CalendarRange size={14} color="var(--accent-volt)" />
+                <span>טווח תאריכים פעילים לניווט (ברירת מחדל למתאמן חדש):</span>
+              </div>
+              <div
+                style={{
+                  fontSize: 10.5,
+                  color: 'var(--text-secondary)',
+                  marginBottom: 8,
+                }}
+              >
+                קובע לכמה ימים אחורה/קדימה מהיום המתאמן יכול לנווט בסרגל השבועי ובלוח השנה החודשי.
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: 8,
+                }}
+              >
+                <NumberInput
+                  size="xs"
+                  label="ימים אחורה מהיום"
+                  value={defaultActivePastDays}
+                  min={0}
+                  max={365}
+                  allowDecimal={false}
+                  onChange={(val) =>
+                    setDefaultActivePastDays(
+                      val === ''
+                        ? 0
+                        : Math.max(0, Math.min(365, Math.round(Number(val) || 0)))
+                    )
+                  }
+                />
+                <NumberInput
+                  size="xs"
+                  label="ימים קדימה מהיום"
+                  value={defaultActiveFutureDays}
+                  min={0}
+                  max={180}
+                  allowDecimal={false}
+                  onChange={(val) =>
+                    setDefaultActiveFutureDays(
+                      val === ''
+                        ? 0
+                        : Math.max(0, Math.min(180, Math.round(Number(val) || 0)))
+                    )
+                  }
+                />
+              </div>
+            </div>
+
+            {/* ברירת מחדל: מאכלים אהובים (רק אם המאמן מסמן במפורש) */}
+            <div
+              style={{
+                background: 'var(--bg-surface-2)',
+                padding: 11,
+                borderRadius: 12,
+                border: '1px solid var(--border-subtle)',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 6,
+                  marginBottom: 6,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontSize: 12,
+                    fontWeight: 800,
+                  }}
+                >
+                  <Heart size={14} color="var(--accent-volt)" />
+                  <span>
+                    אוכל אהוב כברירת מחדל ({defaultFavoriteFoodIds.length})
+                  </span>
+                </div>
+                {defaultFavoriteFoodIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setDefaultFavoriteFoodIds([])}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    נקה הכל
+                  </button>
+                )}
+              </div>
+              <div
+                style={{
+                  fontSize: 10.5,
+                  color: 'var(--text-secondary)',
+                  marginBottom: 8,
+                }}
+              >
+                ברירת המחדל ריקה — יתווספו מועדפים התחלתיים למתאמן חדש רק אם תסמן כאן:
+              </div>
+              <TextInput
+                size="xs"
+                leftSection={<Search size={12} />}
+                placeholder="חפש מאכל לסמן כמועדף ברירת מחדל..."
+                value={favSearchQuery}
+                onChange={(e) => setFavSearchQuery(e.currentTarget.value)}
+                mb={8}
+              />
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 5,
+                  maxHeight: 130,
+                  overflowY: 'auto',
+                }}
+              >
+                {ISRAELI_FOOD_CATALOG.filter((f) => {
+                  const q = favSearchQuery.trim().toLowerCase();
+                  if (!q) return defaultFavoriteFoodIds.includes(f.id) || ISRAELI_FOOD_CATALOG.indexOf(f) < 16;
+                  return (
+                    f.name.toLowerCase().includes(q) ||
+                    (f.brand || '').toLowerCase().includes(q)
+                  );
+                })
+                  .slice(0, 24)
+                  .map((food) => {
+                    const selected = defaultFavoriteFoodIds.includes(food.id);
+                    return (
+                      <button
+                        key={food.id}
+                        type="button"
+                        onClick={() =>
+                          setDefaultFavoriteFoodIds((prev) =>
+                            prev.includes(food.id)
+                              ? prev.filter((id) => id !== food.id)
+                              : [...prev, food.id]
+                          )
+                        }
+                        style={{
+                          padding: '4px 9px',
+                          borderRadius: 999,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          border: selected
+                            ? '1px solid var(--accent-volt)'
+                            : '1px solid var(--border-subtle)',
+                          background: selected
+                            ? 'rgba(234, 88, 12, 0.16)'
+                            : 'var(--bg-surface-1)',
+                          color: selected
+                            ? 'var(--accent-orange-bright)'
+                            : 'var(--text-secondary)',
+                        }}
+                      >
+                        {selected ? '✓ ' : '+ '}
+                        {food.name}
+                      </button>
+                    );
+                  })}
               </div>
             </div>
 
@@ -828,7 +1040,7 @@ export function CoachOnboardingWizard({
                         borderRadius: 10,
                         background: 'var(--bg-surface-1)',
                         border: checked
-                          ? '1px solid rgba(210, 255, 40, 0.35)'
+                          ? '1px solid rgba(234, 88, 12, 0.35)'
                           : '1px solid var(--border-subtle)',
                       }}
                     >
@@ -945,7 +1157,7 @@ export function CoachOnboardingWizard({
                           ? '1px solid var(--accent-volt)'
                           : '1px solid var(--border-subtle)',
                         background: selected
-                          ? 'rgba(210, 255, 40, 0.14)'
+                          ? 'rgba(234, 88, 12, 0.14)'
                           : 'var(--bg-surface-1)',
                         color: selected
                           ? 'var(--accent-volt)'

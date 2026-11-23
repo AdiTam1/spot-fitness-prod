@@ -57,7 +57,7 @@ const DEFAULT_GROUPS: TraineeGroup[] = [
   {
     id: 'grp-cut',
     name: 'חיטוב ומיצוק',
-    color: '#d2ff28',
+    color: '#ea580c',
     ownerCoachId: 'coach-admin',
   },
   {

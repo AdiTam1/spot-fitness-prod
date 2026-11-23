@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from 'react';
 import { NumberInput } from '@mantine/core';
@@ -166,7 +166,7 @@ export function BodyMeasurementGuide({
                   borderRadius: 9,
                   border: 'none',
                   background: active ? 'var(--accent-volt)' : 'transparent',
-                  color: active ? '#08090c' : 'var(--text-secondary)',
+                  color: active ? '#ffffff' : 'var(--text-secondary)',
                   fontSize: compact ? 11 : 12,
                   fontWeight: 800,
                   cursor: 'pointer',
@@ -177,7 +177,7 @@ export function BodyMeasurementGuide({
                 {hasVal && (
                   <CheckCircle2
                     size={12}
-                    color={active ? '#08090c' : 'var(--accent-volt)'}
+                    color={active ? '#ffffff' : 'var(--accent-volt)'}
                   />
                 )}
               </button>
@@ -208,7 +208,7 @@ export function BodyMeasurementGuide({
             margin: '0 auto',
             borderRadius: 14,
             background: '#0b0d13',
-            border: '1px solid rgba(210, 255, 40, 0.25)',
+            border: '1px solid rgba(234, 88, 12, 0.25)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -247,7 +247,7 @@ export function BodyMeasurementGuide({
                 rx="26"
                 ry="7"
                 fill="none"
-                stroke="#d2ff28"
+                stroke="#ea580c"
                 strokeWidth="3.5"
                 strokeDasharray="6 4"
                 animate={{
@@ -265,7 +265,7 @@ export function BodyMeasurementGuide({
                 cx="39"
                 cy="75"
                 r="4"
-                fill="#d2ff28"
+                fill="#ea580c"
                 animate={{ opacity: [0.4, 1, 0.4] }}
                 transition={{ duration: 1.2, repeat: Infinity }}
               />
@@ -273,7 +273,7 @@ export function BodyMeasurementGuide({
                 cx="91"
                 cy="75"
                 r="4"
-                fill="#d2ff28"
+                fill="#ea580c"
                 animate={{ opacity: [0.4, 1, 0.4] }}
                 transition={{ duration: 1.2, repeat: Infinity }}
               />
@@ -281,7 +281,7 @@ export function BodyMeasurementGuide({
                 x="65"
                 y="178"
                 textAnchor="middle"
-                fill="#d2ff28"
+                fill="#ea580c"
                 fontSize="11"
                 fontWeight="bold"
               >
@@ -307,7 +307,7 @@ export function BodyMeasurementGuide({
                 strokeWidth="2"
               />
               {/* סימון הטבור (פופיק) */}
-              <circle cx="65" cy="112" r="2.8" fill="#d2ff28" />
+              <circle cx="65" cy="112" r="2.8" fill="#ea580c" />
               {/* סרט מדידה מונפש על הפופיק */}
               <motion.ellipse
                 cx="65"
@@ -315,7 +315,7 @@ export function BodyMeasurementGuide({
                 rx="24"
                 ry="6"
                 fill="none"
-                stroke="#d2ff28"
+                stroke="#ea580c"
                 strokeWidth="3.5"
                 strokeDasharray="6 4"
                 animate={{
@@ -333,7 +333,7 @@ export function BodyMeasurementGuide({
                 cy="112"
                 r="8"
                 fill="none"
-                stroke="#d2ff28"
+                stroke="#ea580c"
                 strokeWidth="1.5"
                 animate={{ scale: [0.8, 1.4], opacity: [0.9, 0] }}
                 transition={{ duration: 1.4, repeat: Infinity }}
@@ -342,7 +342,7 @@ export function BodyMeasurementGuide({
                 x="65"
                 y="178"
                 textAnchor="middle"
-                fill="#d2ff28"
+                fill="#ea580c"
                 fontSize="11"
                 fontWeight="bold"
               >
@@ -367,7 +367,7 @@ export function BodyMeasurementGuide({
                 rx="7"
                 ry="19"
                 fill="none"
-                stroke="#d2ff28"
+                stroke="#ea580c"
                 strokeWidth="3.5"
                 strokeDasharray="5 3"
                 animate={{
@@ -393,7 +393,7 @@ export function BodyMeasurementGuide({
                 x="65"
                 y="180"
                 textAnchor="middle"
-                fill="#d2ff28"
+                fill="#ea580c"
                 fontSize="11"
                 fontWeight="bold"
               >
@@ -418,7 +418,7 @@ export function BodyMeasurementGuide({
                 rx="15"
                 ry="5"
                 fill="none"
-                stroke="#d2ff28"
+                stroke="#ea580c"
                 strokeWidth="3.5"
                 strokeDasharray="5 3"
                 animate={{
@@ -435,7 +435,7 @@ export function BodyMeasurementGuide({
                 x="65"
                 y="178"
                 textAnchor="middle"
-                fill="#d2ff28"
+                fill="#ea580c"
                 fontSize="11"
                 fontWeight="bold"
               >
@@ -490,8 +490,8 @@ export function BodyMeasurementGuide({
                 marginTop: 4,
                 padding: '7px 10px',
                 borderRadius: 10,
-                background: 'rgba(210, 255, 40, 0.08)',
-                border: '1px solid rgba(210, 255, 40, 0.25)',
+                background: 'rgba(234, 88, 12, 0.08)',
+                border: '1px solid rgba(234, 88, 12, 0.25)',
                 fontSize: 11,
                 color: 'var(--text-secondary)',
                 display: 'flex',

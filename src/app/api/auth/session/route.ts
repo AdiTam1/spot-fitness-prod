@@ -134,11 +134,30 @@ export async function POST(request: NextRequest) {
       let defaultObsDays = 0;
       let defaultCountObs = false;
       let defaultTolerance = 10;
+      let defaultActivePastDays = 1;
+      let defaultActiveFutureDays = 0;
+      let defaultFavoriteFoodIds: string[] = [];
 
       if (inviteCode) {
         if (inviteCode === dbState.coachInviteCode.toUpperCase()) {
           assignedPrimaryCoachId = 'coach-admin';
           initialStatus = 'active';
+          const adminCoach = dbState.coaches.find((c) => c.id === 'coach-admin');
+          if (adminCoach?.onboarding) {
+            defaultObsDays = adminCoach.onboarding.defaultObservationDays ?? 0;
+            defaultCountObs =
+              adminCoach.onboarding.defaultCountObservationInStats ?? false;
+            defaultTolerance = adminCoach.onboarding.defaultTolerancePercent ?? 10;
+            defaultActivePastDays =
+              adminCoach.onboarding.defaultActivePastDays ?? 1;
+            defaultActiveFutureDays =
+              adminCoach.onboarding.defaultActiveFutureDays ?? 0;
+            defaultFavoriteFoodIds = Array.isArray(
+              adminCoach.onboarding.defaultFavoriteFoodIds
+            )
+              ? adminCoach.onboarding.defaultFavoriteFoodIds.slice(0, 50)
+              : [];
+          }
         } else {
           const matchedCoach = dbState.coaches.find(
             (c) =>
@@ -154,6 +173,15 @@ export async function POST(request: NextRequest) {
               matchedCoach.onboarding?.defaultCountObservationInStats ?? false;
             defaultTolerance =
               matchedCoach.onboarding?.defaultTolerancePercent ?? 10;
+            defaultActivePastDays =
+              matchedCoach.onboarding?.defaultActivePastDays ?? 1;
+            defaultActiveFutureDays =
+              matchedCoach.onboarding?.defaultActiveFutureDays ?? 0;
+            defaultFavoriteFoodIds = Array.isArray(
+              matchedCoach.onboarding?.defaultFavoriteFoodIds
+            )
+              ? matchedCoach.onboarding.defaultFavoriteFoodIds.slice(0, 50)
+              : [];
           }
         }
       }
@@ -188,13 +216,13 @@ export async function POST(request: NextRequest) {
         sharedCoachIds: [],
         observationDates: initialObservationDates,
         countObservationInStats: defaultCountObs,
+        activeDateRange: {
+          pastDays: Math.max(0, Math.min(365, Math.round(Number(defaultActivePastDays) || 0))),
+          futureDays: Math.max(0, Math.min(180, Math.round(Number(defaultActiveFutureDays) || 0))),
+        },
         workoutTemplate: JSON.parse(JSON.stringify(defaultTpl)),
         restTemplate: JSON.parse(JSON.stringify(defaultTpl)),
-        favoriteFoodIds: [
-          'cottage-tnuva-5',
-          'chicken-breast-grilled',
-          'krembo-strauss',
-        ],
+        favoriteFoodIds: defaultFavoriteFoodIds,
         weightHistory: hasExplicitWeight
           ? [{ date: 'התחלה', weight: currentWeight }]
           : [],

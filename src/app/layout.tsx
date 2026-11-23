@@ -39,7 +39,7 @@ export const viewport: Viewport = {
 };
 
 const theme = createTheme({
-  primaryColor: 'lime',
+  primaryColor: 'orange',
   defaultRadius: 'md',
   fontFamily:
     '"Heebo", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',

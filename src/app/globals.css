@@ -9,15 +9,17 @@
 
   --border-subtle: rgba(255, 255, 255, 0.06);
   --border-strong: rgba(255, 255, 255, 0.12);
-  --border-accent: rgba(210, 255, 40, 0.35);
+  --border-accent: rgba(234, 88, 12, 0.42);
 
   --text-primary: #f4f6fb;
   --text-secondary: #949bb0;
   --text-muted: #5e6578;
 
-  /* פלטת צבעים מקצועית בסגנון MacroFactor / Whoop / Apple Fitness */
-  --accent-volt: #d2ff28;
-  --accent-volt-soft: rgba(210, 255, 40, 0.12);
+  /* פלטת צבעים מקצועית — Deep Sport Orange */
+  --accent-volt: #ea580c;
+  --accent-orange: #ea580c;
+  --accent-orange-bright: #f97316;
+  --accent-volt-soft: rgba(234, 88, 12, 0.14);
   --macro-protein: #ff5e7e;
   --macro-protein-soft: rgba(255, 94, 126, 0.14);
   --macro-carbs: #ffb800;
@@ -96,10 +98,10 @@ a:focus-visible {
   box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 20px 40px -15px rgba(0, 0, 0, 0.7);
 }
 
-/* כפתור וולט ראשי (Volt Athletic) */
+/* כפתור ראשי (Spot Deep Orange) */
 .btn-volt {
   background: var(--accent-volt) !important;
-  color: #08090c !important;
+  color: #ffffff !important;
   font-weight: 700 !important;
   border: none !important;
   border-radius: 12px !important;
@@ -107,9 +109,9 @@ a:focus-visible {
 }
 
 .btn-volt:hover {
-  background: #defd56 !important;
+  background: #f97316 !important;
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px -4px rgba(210, 255, 40, 0.35);
+  box-shadow: 0 6px 20px -4px rgba(234, 88, 12, 0.45);
 }
 
 .btn-volt:disabled {
@@ -149,7 +151,13 @@ a:focus-visible {
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   border-bottom: 1px solid var(--border-subtle);
-  padding: calc(10px + env(safe-area-inset-top, 0px)) 18px 10px;
+  padding: calc(7px + env(safe-area-inset-top, 0px)) 14px 7px;
+}
+
+@media (max-width: 640px) {
+  .spot-sticky-header {
+    padding: calc(5px + env(safe-area-inset-top, 0px)) 10px 5px;
+  }
 }
 
 /* סרגל תחתון צף למובייל (Floating Glass Dock) */

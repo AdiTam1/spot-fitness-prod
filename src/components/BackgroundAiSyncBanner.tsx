@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useEffect, useState } from 'react';
 import { Check, Loader2, Sparkles, X, AlertTriangle, ExternalLink } from 'lucide-react';
@@ -86,7 +86,7 @@ export function BackgroundAiSyncBanner({
             pointerEvents: 'auto',
             background: 'rgba(13, 16, 22, 0.96)',
             backdropFilter: 'blur(14px)',
-            border: '1px solid rgba(210, 255, 40, 0.48)',
+            border: '1px solid rgba(234, 88, 12, 0.48)',
             boxShadow: '0 10px 30px rgba(0, 0, 0, 0.55)',
             borderRadius: 16,
             padding: '11px 14px',
@@ -119,7 +119,7 @@ export function BackgroundAiSyncBanner({
                   fontSize: 10,
                   padding: '2px 7px',
                   borderRadius: 999,
-                  background: 'rgba(210, 255, 40, 0.14)',
+                  background: 'rgba(234, 88, 12, 0.14)',
                   color: 'var(--accent-volt)',
                   fontWeight: 800,
                 }}
@@ -142,14 +142,29 @@ export function BackgroundAiSyncBanner({
         return (
           <div
             key={job.id}
+            role={isOk && onOpenJobMeal ? 'button' : undefined}
+            tabIndex={isOk && onOpenJobMeal ? 0 : undefined}
+            onClick={() => {
+              if (isOk && onOpenJobMeal) {
+                onOpenJobMeal(job);
+                onAcknowledgeJob(job.id);
+              }
+            }}
+            onKeyDown={(e) => {
+              if ((e.key === 'Enter' || e.key === ' ') && isOk && onOpenJobMeal) {
+                e.preventDefault();
+                onOpenJobMeal(job);
+                onAcknowledgeJob(job.id);
+              }
+            }}
             style={{
               pointerEvents: 'auto',
               background: isOk
-                ? 'rgba(18, 28, 12, 0.97)'
+                ? 'rgba(28, 16, 10, 0.97)'
                 : 'rgba(48, 14, 14, 0.97)',
               backdropFilter: 'blur(14px)',
               border: isOk
-                ? '1px solid rgba(210, 255, 40, 0.5)'
+                ? '1px solid rgba(234, 88, 12, 0.55)'
                 : '1px solid rgba(239, 68, 68, 0.5)',
               boxShadow: '0 10px 30px rgba(0, 0, 0, 0.55)',
               borderRadius: 16,
@@ -158,10 +173,24 @@ export function BackgroundAiSyncBanner({
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: 10,
+              cursor: isOk && onOpenJobMeal ? 'pointer' : 'default',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0, flex: 1 }}>
-              {isOk ? (
+              {isOk && job.photoDataUrls?.[0] ? (
+                <img
+                  src={job.photoDataUrls[0]}
+                  alt={job.mealSlotName}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 9,
+                    objectFit: 'cover',
+                    border: '1px solid rgba(234, 88, 12, 0.45)',
+                    flexShrink: 0,
+                  }}
+                />
+              ) : isOk ? (
                 <Sparkles size={16} color="var(--accent-volt)" style={{ flexShrink: 0 }} />
               ) : (
                 <AlertTriangle size={16} color="#f87171" style={{ flexShrink: 0 }} />
@@ -171,7 +200,7 @@ export function BackgroundAiSyncBanner({
                   style={{
                     fontSize: 12,
                     fontWeight: 800,
-                    color: isOk ? 'var(--accent-volt)' : '#fca5a5',
+                    color: isOk ? 'var(--accent-orange-bright)' : '#fca5a5',
                   }}
                 >
                   {isOk
@@ -180,15 +209,18 @@ export function BackgroundAiSyncBanner({
                 </div>
                 <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
                   {isOk
-                    ? job.isAiFallback
-                      ? `לא AI · Fallback (${job.engine || 'builtin'})`
-                      : `✨ AI · ${job.engine || 'gemini'}`
+                    ? job.mode === 'photo'
+                      ? 'לחץ לפתיחת הפענוח והתמונה'
+                      : 'לחץ לפתיחת הפענוח ביומן'
                     : job.errorMsg || 'נסה שוב או הוסף ידנית מהמאגר'}
                 </div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <div
+              style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
+              onClick={(e) => e.stopPropagation()}
+            >
               {isOk && onOpenJobMeal && (
                 <button
                   type="button"

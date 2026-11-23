@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from 'react';
 import { TextInput, NumberInput, Textarea } from '@mantine/core';
@@ -17,6 +17,7 @@ import {
   TraineeProfile,
 } from '@/types/nutrition';
 import { getTodayIso } from '@/data/israeliFoodCatalog';
+import { computeAgeFromBirthDate } from '@/lib/dateUtils';
 import { BodyMeasurementGuide } from './BodyMeasurementGuide';
 
 interface TraineeOnboardingWizardProps {
@@ -151,7 +152,13 @@ export function TraineeOnboardingWizard({
   const [gender, setGender] = useState<'male' | 'female'>(
     existing?.gender || 'male'
   );
-  const [age, setAge] = useState<number>(existing?.age || 28);
+  const [birthDate, setBirthDate] = useState<string>(() => {
+    if (existing?.birthDate) return existing.birthDate;
+    const approxAge = existing?.age || 28;
+    const y = Math.max(1930, new Date().getFullYear() - approxAge);
+    return `${y}-01-01`;
+  });
+  const computedAge = computeAgeFromBirthDate(birthDate, existing?.age || 28);
   const [heightCm, setHeightCm] = useState<number>(existing?.heightCm || 174);
   const [currentWeight, setCurrentWeight] = useState<number>(
     trainee.currentWeight || 75
@@ -250,7 +257,7 @@ export function TraineeOnboardingWizard({
     try {
       const { bmr, tdee } = calculateEstimatedBmrAndTdee({
         gender,
-        age,
+        age: computedAge,
         heightCm,
         weightKg: currentWeight,
         activityLevel,
@@ -270,7 +277,8 @@ export function TraineeOnboardingWizard({
       const onboardingData: TraineeOnboardingData = {
         completed: true,
         measurementsCompleted: hasAnyMeasurement,
-        age,
+        age: computedAge,
+        birthDate,
         gender,
         heightCm,
         activityLevel,
@@ -320,10 +328,9 @@ export function TraineeOnboardingWizard({
       style={{
         maxWidth: 490,
         margin: '0 auto',
-        minHeight: 'calc(100dvh - 80px)',
         display: 'flex',
-        alignItems: 'center',
-        padding: '6px 0 14px',
+        alignItems: 'flex-start',
+        padding: '6px 0 calc(28px + env(safe-area-inset-bottom, 0px))',
       }}
     >
       <div
@@ -384,7 +391,7 @@ export function TraineeOnboardingWizard({
                     background: active
                       ? 'var(--accent-volt)'
                       : done
-                      ? 'rgba(210, 255, 40, 0.45)'
+                      ? 'rgba(234, 88, 12, 0.45)'
                       : 'var(--bg-surface-3)',
                     cursor: 'pointer',
                     padding: 0,
@@ -437,7 +444,7 @@ export function TraineeOnboardingWizard({
                       background:
                         gender === g.id ? 'var(--accent-volt)' : 'transparent',
                       color:
-                        gender === g.id ? '#08090c' : 'var(--text-secondary)',
+                        gender === g.id ? '#ffffff' : 'var(--text-secondary)',
                       fontSize: 13,
                       fontWeight: 800,
                       cursor: 'pointer',
@@ -456,13 +463,49 @@ export function TraineeOnboardingWizard({
                 gap: 8,
               }}
             >
-              <NumberInput
-                label="גיל"
-                value={age}
-                min={14}
-                max={95}
-                onChange={(v) => setAge(Number(v) || 28)}
-              />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  <span>תאריך לידה</span>
+                  <span
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 800,
+                      color: 'var(--accent-orange-bright)',
+                    }}
+                  >
+                    גיל {computedAge}
+                  </span>
+                </div>
+                <input
+                  type="date"
+                  value={birthDate}
+                  max={getTodayIso()}
+                  min="1930-01-01"
+                  onChange={(e) => {
+                    if (e.target.value) setBirthDate(e.target.value);
+                  }}
+                  style={{
+                    width: '100%',
+                    height: 36,
+                    padding: '0 10px',
+                    borderRadius: 12,
+                    border: '1px solid var(--border-subtle)',
+                    background: 'var(--bg-surface-2)',
+                    color: 'var(--text-primary)',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    colorScheme: 'dark',
+                  }}
+                />
+              </div>
               <NumberInput
                 label="גובה (ס״מ)"
                 value={heightCm}
@@ -549,7 +592,7 @@ export function TraineeOnboardingWizard({
                           ? '1px solid var(--accent-volt)'
                           : '1px solid var(--border-subtle)',
                         background: selected
-                          ? 'rgba(210, 255, 40, 0.14)'
+                          ? 'rgba(234, 88, 12, 0.14)'
                           : 'var(--bg-surface-1)',
                         color: selected
                           ? 'var(--accent-volt)'
@@ -605,7 +648,7 @@ export function TraineeOnboardingWizard({
                           ? '1px solid var(--accent-volt)'
                           : '1px solid var(--border-subtle)',
                         background: selected
-                          ? 'rgba(210, 255, 40, 0.14)'
+                          ? 'rgba(234, 88, 12, 0.14)'
                           : 'var(--bg-surface-1)',
                         color: selected
                           ? 'var(--accent-volt)'
@@ -715,7 +758,7 @@ export function TraineeOnboardingWizard({
                           ? '1px solid var(--accent-volt)'
                           : '1px solid var(--border-subtle)',
                         background: selected
-                          ? 'rgba(210, 255, 40, 0.14)'
+                          ? 'rgba(234, 88, 12, 0.14)'
                           : 'var(--bg-surface-1)',
                         color: selected
                           ? 'var(--accent-volt)'
@@ -977,7 +1020,7 @@ export function TraineeOnboardingWizard({
                           ? '1px solid var(--accent-volt)'
                           : '1px solid var(--border-subtle)',
                         background: selected
-                          ? 'rgba(210, 255, 40, 0.14)'
+                          ? 'rgba(234, 88, 12, 0.14)'
                           : 'var(--bg-surface-1)',
                         color: selected
                           ? 'var(--accent-volt)'
@@ -1041,7 +1084,7 @@ export function TraineeOnboardingWizard({
                           ? '1px solid var(--accent-volt)'
                           : '1px solid var(--border-subtle)',
                         background: selected
-                          ? 'rgba(210, 255, 40, 0.14)'
+                          ? 'rgba(234, 88, 12, 0.14)'
                           : 'var(--bg-surface-1)',
                         color: selected
                           ? 'var(--accent-volt)'

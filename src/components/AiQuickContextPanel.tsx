@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useMemo, useState } from 'react';
 import { Collapse, Select, TextInput } from '@mantine/core';
@@ -241,7 +241,7 @@ export function AiQuickContextPanel({
               alignItems: 'center',
               gap: 4,
               cursor: 'pointer',
-              borderColor: 'rgba(210, 255, 40, 0.3)',
+              borderColor: 'rgba(234, 88, 12, 0.3)',
             }}
           >
             <Ruler size={11} color="var(--accent-volt)" />
@@ -292,7 +292,7 @@ export function AiQuickContextPanel({
                     ? '1px solid var(--accent-volt)'
                     : '1px solid rgba(56, 189, 248, 0.3)',
                   background: active
-                    ? 'rgba(210, 255, 40, 0.18)'
+                    ? 'rgba(234, 88, 12, 0.18)'
                     : 'rgba(56, 189, 248, 0.08)',
                   color: active ? 'var(--accent-volt)' : '#7dd3fc',
                 }}
@@ -324,7 +324,7 @@ export function AiQuickContextPanel({
                   ? '1px solid var(--accent-volt)'
                   : '1px solid var(--border-subtle)',
                 background: active
-                  ? 'rgba(210, 255, 40, 0.16)'
+                  ? 'rgba(234, 88, 12, 0.16)'
                   : 'var(--bg-surface-1)',
                 color: active ? 'var(--accent-volt)' : 'var(--text-secondary)',
               }}
@@ -350,7 +350,7 @@ export function AiQuickContextPanel({
               fontSize: 10,
               fontWeight: 700,
               cursor: 'pointer',
-              border: '1px dashed rgba(210, 255, 40, 0.4)',
+              border: '1px dashed rgba(234, 88, 12, 0.4)',
               background: 'transparent',
               color: 'var(--accent-volt)',
               display: 'flex',

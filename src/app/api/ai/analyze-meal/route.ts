@@ -568,6 +568,21 @@ export async function POST(request: NextRequest) {
         hour: '2-digit',
         minute: '2-digit',
       });
+      const sanitizedPhotos: string[] = hasRealImage
+        ? [
+            ...(Array.isArray(imageDataUrls) ? imageDataUrls : []),
+            ...(imageDataUrl ? [imageDataUrl] : []),
+          ]
+            .filter(
+              (u): u is string =>
+                typeof u === 'string' &&
+                u.startsWith('data:image/') &&
+                u.length < 400000
+            )
+            .filter((u, idx, arr) => arr.indexOf(u) === idx)
+            .slice(0, 3)
+        : [];
+
       const succeeded = Array.isArray(params.items) && params.items.length > 0;
       const finishedJob: PendingAiMealJob = {
         ...authorizedBgJob,
@@ -578,16 +593,10 @@ export async function POST(request: NextRequest) {
         fallbackReason: params.fallbackReason,
         itemsCount: succeeded ? params.items!.length : 0,
         errorMsg: params.errorMsg,
+        photoDataUrls: sanitizedPhotos.length > 0 ? sanitizedPhotos : undefined,
         autoSyncedToLog: succeeded,
         acknowledged: false,
       };
-
-      const primaryPhoto =
-        hasRealImage && imageDataUrl && imageDataUrl.length < 400000
-          ? imageDataUrl
-          : hasRealImage && Array.isArray(imageDataUrls) && imageDataUrls[0]?.length < 400000
-          ? imageDataUrls[0]
-          : undefined;
 
       const updatedState = await updateServerDbState((prev) => ({
         ...prev,
@@ -616,6 +625,16 @@ export async function POST(request: NextRequest) {
             updatedAt: nowTime,
           };
 
+          const existingPhotos =
+            Array.isArray(existingMeal.photoDataUrls) && existingMeal.photoDataUrls.length > 0
+              ? existingMeal.photoDataUrls
+              : existingMeal.photoDataUrl
+              ? [existingMeal.photoDataUrl]
+              : [];
+          const mergedPhotos = [...sanitizedPhotos, ...existingPhotos]
+            .filter((u, i, arr) => arr.indexOf(u) === i)
+            .slice(0, 3);
+
           return {
             ...t,
             pendingAiJobs: nextJobs,
@@ -628,7 +647,8 @@ export async function POST(request: NextRequest) {
                   [finishedJob.mealSlotId]: {
                     ...existingMeal,
                     items: [...existingMeal.items, ...params.items!],
-                    photoDataUrl: existingMeal.photoDataUrl || primaryPhoto,
+                    photoDataUrl: sanitizedPhotos[0] || existingMeal.photoDataUrl,
+                    photoDataUrls: mergedPhotos.length > 0 ? mergedPhotos : undefined,
                     photoNote:
                       existingMeal.photoNote ||
                       (textPrompt ? sanitizeText(textPrompt, 240) : undefined),

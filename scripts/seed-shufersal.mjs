@@ -175,6 +175,10 @@ async function mapConcurrent(arr, limit, fn) {
   return out;
 }
 
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 async function fetchText(url, headers = {}, timeoutMs = 10000) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -193,6 +197,21 @@ async function fetchText(url, headers = {}, timeoutMs = 10000) {
   } finally {
     clearTimeout(t);
   }
+}
+
+async function fetchWithRetry(url, headers = {}, timeoutMs = 10000, maxRetries = 3) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetchText(url, headers, timeoutMs);
+    if (res.status !== 429 && res.status !== 503 && res.status !== 0) {
+      return res;
+    }
+    if (attempt < maxRetries) {
+      await sleep(1600 * (attempt + 1));
+    } else {
+      return res;
+    }
+  }
+  return { ok: false, status: 0, text: '' };
 }
 
 // =====================================================================
@@ -451,12 +470,12 @@ async function seedShufersalDeep(uploader, maxPagesPerTerm = 2) {
   }
 }
 
-// 3. Fuder — מותגי סופרים ישראלים (~5,398 מוצרים)
+// 3. Fuder — מותגי סופרים ישראלים (~5,398 מוצרים) עם ריטריי וקצב עדין נגד 429
 async function seedFuder(uploader, maxPages = 12) {
   console.log(`\n🏪 [3/6] סורק Fuder מוצרי סופרים (${maxPages} עמודים x 100)...`);
   const pages = Array.from({ length: maxPages }, (_, i) => i + 1);
-  const indexBatches = await mapConcurrent(pages, 4, async (page) => {
-    const res = await fetchText(
+  const indexBatches = await mapConcurrent(pages, 3, async (page) => {
+    const res = await fetchWithRetry(
       `https://www.fuder.co.il/wp-json/wp/v2/foods?per_page=100&page=${page}&_fields=link,title`,
       { Accept: 'application/json' }
     );
@@ -465,13 +484,14 @@ async function seedFuder(uploader, maxPages = 12) {
   });
 
   const allPosts = indexBatches.flat().filter((p) => p?.link);
-  console.log(`   נמצאו ${allPosts.length} דפי מוצר ב-Fuder — מחלץ ערכים...`);
+  console.log(`   נמצאו ${allPosts.length} דפי מוצר ב-Fuder — מחלץ ערכים (עם הגנת קצב נגד 429)...`);
   let count = 0;
 
-  for (let i = 0; i < allPosts.length; i += 80) {
-    const slice = allPosts.slice(i, i + 80);
-    const items = await mapConcurrent(slice, 10, async (p) => {
-      const res = await fetchText(p.link);
+  for (let i = 0; i < allPosts.length; i += 60) {
+    const slice = allPosts.slice(i, i + 60);
+    const items = await mapConcurrent(slice, 3, async (p) => {
+      await sleep(120);
+      const res = await fetchWithRetry(p.link);
       if (!res.ok) return null;
       const ogTitle = decodeHtml(res.text.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1] || '');
       const ogDesc = decodeHtml(res.text.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)?.[1] || '');
@@ -512,18 +532,19 @@ async function seedFuder(uploader, maxPages = 12) {
     const valid = items.filter(Boolean);
     count += valid.length;
     await uploader.push(valid);
-    if ((i + 80) % 320 === 0 || i + 80 >= allPosts.length) {
-      console.log(`   Fuder: ${Math.min(i + 80, allPosts.length)}/${allPosts.length} (${count} תקינים)`);
+    if ((i + 60) % 300 === 0 || i + 60 >= allPosts.length) {
+      console.log(`   Fuder: ${Math.min(i + 60, allPosts.length)}/${allPosts.length} (${count} תקינים)`);
     }
   }
 }
 
-// 4. Open Food Facts ישראל (מוצרי ברקוד)
+// 4. Open Food Facts ישראל (מוצרי ברקוד) עם ריטריי על 503/429
 async function seedOpenFoodFacts(uploader, maxPages = 15) {
   console.log(`\n🌍 [4/6] מושך מוצרי סופרים וברקוד מ-Open Food Facts ישראל (${maxPages} עמודים x 100)...`);
   let total = 0;
   for (let page = 1; page <= maxPages; page++) {
-    const res = await fetchText(
+    if (page > 1) await sleep(1500);
+    const res = await fetchWithRetry(
       `https://world.openfoodfacts.org/api/v2/search?countries_tags_en=israel&sort_by=unique_scans_n&page_size=100&page=${page}&fields=code,product_name_he,product_name,brands,stores,serving_quantity,nutriments`,
       {
         'User-Agent': 'SpotFitnessIsrael/1.0 (https://spot-fitness.vercel.app)',
@@ -684,49 +705,77 @@ async function seedSugatAndFoodGroups(uploader) {
   console.log(`   ✅ סוגת: ${cleanSugat.length} | FoodGroups: ${cleanFg.length}`);
 }
 
-// 6. Foodik קטלוג ישראלי רחב (עשרות מילות חיפוש -> אלפי מותגי מדף!)
-async function seedFoodikWide(uploader) {
+// 6. Foodik קטלוג ישראלי רחב (עמודים x 50 מוצרים לכל מילת חיפוש -> אלפי מוצרים!)
+async function seedFoodikWide(uploader, maxPagesPerTerm = 3) {
   const queries = [
     'קוטג', 'גבינה', 'יוגורט', 'חלב', 'טונה', 'עוף', 'הודו', 'בקר', 'דג',
     'לחם', 'פיתה', 'לחמניה', 'פסטה', 'אורז', 'קוסקוס', 'שיבולת שועל', 'קמח',
     'טחינה', 'חומוס', 'עדשים', 'חמאת בוטנים', 'שקדים', 'שוקולד', 'גלידה',
     'מעדן', 'ביצה', 'חטיף', 'שניצל', 'תירס', 'עגבניה', 'תפוח', 'בננה', 'אבוקדו',
+    'תנובה', 'שטראוס', 'טרה', 'אוסם', 'עלית', 'שוקו', 'עוגה', 'סלט', 'שמן',
   ];
-  console.log(`\n📚 [6/6] שואב מוצרי מדף ישראליים מ-Foodik (${queries.length} קטגוריות)...`);
+  console.log(`\n📚 [6/6] שואב מוצרי מדף ישראליים מ-Foodik (${queries.length} קטגוריות x עד ${maxPagesPerTerm} עמודים)...`);
   let count = 0;
+
   const batches = await mapConcurrent(queries, 4, async (q) => {
-    const res = await fetchText(`https://www.foodik.co.il/api/foods/search?q=${encodeURIComponent(q)}`, {
-      Accept: 'application/json',
-    });
-    if (!res.ok) return [];
-    const arr = JSON.parse(res.text);
-    const items = [];
-    for (const row of Array.isArray(arr) ? arr : []) {
-      const name = String(row.Name || row.name || '').trim();
-      const id = String(row.Id || row.id || '').trim();
-      if (!name || !id) continue;
-      const per100g = roundMacros({
-        calories: Number(row.Calories ?? row.calories) || 0,
-        protein: Number(row.Protein ?? row.protein) || 0,
-        carbs: Number(row.Carbs ?? row.carbohydrates ?? row.carbs) || 0,
-        fat: Number(row.Fat ?? row.fat) || 0,
-      });
-      if (!isValidMacros(per100g)) continue;
-      items.push({
-        id: `foodik-${id}`,
-        name,
-        brand: 'Foodik ישראל',
-        category: 'מאגר מותגים ישראלי',
-        per100g,
-        units: inferUnits(name, false),
-        source: 'scraper',
-        sourceSiteId: 'foodik',
-        sourceSiteName: 'Foodik',
-        sourceUrl: 'https://www.foodik.co.il',
-        updatedAt: new Date().toISOString(),
-      });
+    const queryItems = [];
+    for (let page = 1; page <= maxPagesPerTerm; page++) {
+      const res = await fetchWithRetry(
+        `https://www.foodik.co.il/api/foods/search?q=${encodeURIComponent(q)}&limit=50&page=${page}`,
+        { Accept: 'application/json' }
+      );
+      if (!res.ok) break;
+      try {
+        const json = JSON.parse(res.text);
+        const list = Array.isArray(json?.results) ? json.results : [];
+        if (list.length === 0) break;
+        for (const entry of list) {
+          const name = String(entry.name || '').trim();
+          const id = String(entry.id || entry.slug || '').trim();
+          const nut = entry.nutrients || {};
+          if (!name || !id) continue;
+          const per100g = roundMacros({
+            calories: Number(nut.energy) || 0,
+            protein: Number(nut.protein) || 0,
+            carbs: Number(nut.carbs) || 0,
+            fat: Number(nut.fat) || 0,
+          });
+          if (!isValidMacros(per100g)) continue;
+
+          const units = Array.isArray(entry.units)
+            ? entry.units
+                .filter((u) => u?.name && Number(u.grams) > 0)
+                .map((u) => ({
+                  label: `${u.name} (${Math.round(Number(u.grams))} גרם)`,
+                  grams: Math.round(Number(u.grams)),
+                }))
+            : [];
+          if (units.length === 0) units.push(...inferUnits(name, false));
+          else units.push({ label: '100 גרם', grams: 100 });
+
+          queryItems.push({
+            id: `foodik-${id}`,
+            name,
+            brand: 'Foodik',
+            category: entry.categorySlug || 'מאגר מותגים ישראלי',
+            per100g,
+            units,
+            source: 'scraper',
+            sourceSiteId: 'foodik',
+            sourceSiteName: 'Foodik',
+            sourceUrl: entry.slug
+              ? `https://www.foodik.co.il/foods/${entry.slug}/`
+              : 'https://www.foodik.co.il',
+            updatedAt: new Date().toISOString(),
+          });
+        }
+        const totalPages = Number(json?.pages) || 1;
+        if (page >= totalPages) break;
+      } catch {
+        break;
+      }
     }
-    return items;
+    return queryItems;
   });
 
   for (const b of batches) {
@@ -744,23 +793,33 @@ async function main() {
   const fullMode = args.includes('--full');
   const offOnly = args.includes('--off-only');
   const shufersalOnly = args.includes('--shufersal-only');
+  const extrasOnly = args.includes('--extras-only');
   const apiUrlArg = args.find((a) => a.startsWith('--api-url='))?.split('=')[1] || process.env.SPOT_API_URL || '';
   const secretArg = args.find((a) => a.startsWith('--secret='))?.split('=')[1] || process.env.CRON_SECRET || '';
 
-  console.log(`🚀 מתחיל הזנת קטלוג מזון ל-Supabase (מצב: ${fullMode ? 'FULL 12K–16K+' : 'BALANCED 7K–9K+'})...`);
+  const modeLabel = extrasOnly
+    ? 'EXTRAS (Foodik + Fuder + OFF משלים)'
+    : fullMode
+      ? 'FULL 14K–18K+'
+      : 'BALANCED 8K–11K+';
+  console.log(`🚀 מתחיל הזנת קטלוג מזון ל-Supabase (מצב: ${modeLabel})...`);
   const uploader = createUploader(apiUrlArg, secretArg);
 
   if (offOnly) {
     await seedOpenFoodFacts(uploader, fullMode ? 35 : 15);
   } else if (shufersalOnly) {
-    await seedShufersalDeep(uploader, fullMode ? 3 : 2);
+    await seedShufersalDeep(uploader, fullMode ? 4 : 2);
+  } else if (extrasOnly) {
+    await seedFoodikWide(uploader, fullMode ? 4 : 3);
+    await seedOpenFoodFacts(uploader, fullMode ? 35 : 20);
+    await seedFuder(uploader, fullMode ? 54 : 30);
   } else {
     await seedMohFull(uploader);
     await seedShufersalDeep(uploader, fullMode ? 3 : 2);
-    await seedFoodikWide(uploader);
+    await seedFoodikWide(uploader, fullMode ? 4 : 3);
     await seedOpenFoodFacts(uploader, fullMode ? 35 : 12);
     await seedSugatAndFoodGroups(uploader);
-    await seedFuder(uploader, fullMode ? 54 : 12);
+    await seedFuder(uploader, fullMode ? 54 : 15);
   }
 
   const totalUploaded = await uploader.flush();

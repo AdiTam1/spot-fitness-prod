@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Checkbox, Modal, Switch, TextInput } from '@mantine/core';
@@ -465,7 +465,7 @@ export function CoachAlertSettingsModal({
           </div>
           <Switch
             checked={enabled}
-            color="lime"
+            color="orange"
             onChange={(e) => setEnabled(e.currentTarget.checked)}
           />
         </div>
@@ -503,10 +503,10 @@ export function CoachAlertSettingsModal({
                   style={{
                     textAlign: 'right',
                     background: active
-                      ? 'rgba(210, 255, 40, 0.08)'
+                      ? 'rgba(234, 88, 12, 0.08)'
                       : 'var(--bg-surface-2)',
                     border: active
-                      ? '1px solid rgba(210, 255, 40, 0.45)'
+                      ? '1px solid rgba(234, 88, 12, 0.45)'
                       : '1px solid var(--border-subtle)',
                     borderRadius: 12,
                     padding: '9px 11px',
@@ -556,7 +556,7 @@ export function CoachAlertSettingsModal({
                       marginTop: 2,
                     }}
                   >
-                    {active && <Check size={12} color="#08090c" strokeWidth={3} />}
+                    {active && <Check size={12} color="#ffffff" strokeWidth={3} />}
                   </div>
                 </button>
               );
@@ -635,7 +635,7 @@ export function CoachAlertSettingsModal({
                         ? `1px solid ${grp.color || 'var(--accent-volt)'}`
                         : '1px solid var(--border-subtle)',
                       background: isSelected
-                        ? 'rgba(210, 255, 40, 0.14)'
+                        ? 'rgba(234, 88, 12, 0.14)'
                         : 'var(--bg-surface-2)',
                       color: isSelected
                         ? 'var(--text-primary)'
@@ -647,7 +647,7 @@ export function CoachAlertSettingsModal({
                         width: 8,
                         height: 8,
                         borderRadius: '50%',
-                        background: grp.color || '#d2ff28',
+                        background: grp.color || '#ea580c',
                       }}
                     />
                     <span>
@@ -768,10 +768,10 @@ export function CoachAlertSettingsModal({
                       cursor: 'pointer',
                       background:
                         direct || viaGroup
-                          ? 'rgba(210, 255, 40, 0.06)'
+                          ? 'rgba(234, 88, 12, 0.06)'
                           : 'var(--bg-surface-2)',
                       border: direct
-                        ? '1px solid rgba(210, 255, 40, 0.35)'
+                        ? '1px solid rgba(234, 88, 12, 0.35)'
                         : '1px solid var(--border-subtle)',
                     }}
                   >
@@ -779,7 +779,7 @@ export function CoachAlertSettingsModal({
                       <Checkbox
                         checked={direct}
                         onChange={() => {}}
-                        color="lime"
+                        color="orange"
                         size="xs"
                       />
                       <div>

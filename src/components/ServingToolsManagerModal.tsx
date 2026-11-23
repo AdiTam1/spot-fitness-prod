@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import { Modal, NumberInput, Select, TextInput, Textarea } from '@mantine/core';
@@ -310,7 +310,7 @@ export function ServingToolsManagerModal({
               borderRadius: 8,
               border: 'none',
               background: section === 'tools' ? 'var(--accent-volt)' : 'transparent',
-              color: section === 'tools' ? '#08090c' : 'var(--text-secondary)',
+              color: section === 'tools' ? '#ffffff' : 'var(--text-secondary)',
               fontSize: 12,
               fontWeight: 800,
               cursor: 'pointer',
@@ -331,7 +331,7 @@ export function ServingToolsManagerModal({
               borderRadius: 8,
               border: 'none',
               background: section === 'units' ? 'var(--accent-volt)' : 'transparent',
-              color: section === 'units' ? '#08090c' : 'var(--text-secondary)',
+              color: section === 'units' ? '#ffffff' : 'var(--text-secondary)',
               fontSize: 12,
               fontWeight: 800,
               cursor: 'pointer',
@@ -405,7 +405,7 @@ export function ServingToolsManagerModal({
               <div
                 style={{
                   background: 'var(--bg-surface-2)',
-                  border: '1px solid rgba(210, 255, 40, 0.28)',
+                  border: '1px solid rgba(234, 88, 12, 0.28)',
                   borderRadius: 14,
                   padding: 12,
                   display: 'flex',
@@ -597,10 +597,10 @@ export function ServingToolsManagerModal({
                       fontWeight: 600,
                       background: aiResultNote.isError
                         ? 'rgba(239, 68, 68, 0.14)'
-                        : 'rgba(210, 255, 40, 0.1)',
+                        : 'rgba(234, 88, 12, 0.1)',
                       border: aiResultNote.isError
                         ? '1px solid rgba(239, 68, 68, 0.35)'
-                        : '1px solid rgba(210, 255, 40, 0.3)',
+                        : '1px solid rgba(234, 88, 12, 0.3)',
                       color: aiResultNote.isError ? '#fca5a5' : 'var(--accent-volt)',
                     }}
                   >
@@ -735,7 +735,7 @@ export function ServingToolsManagerModal({
                             fontSize: 9,
                             padding: '1px 6px',
                             borderRadius: 999,
-                            background: 'rgba(210, 255, 40, 0.14)',
+                            background: 'rgba(234, 88, 12, 0.14)',
                             color: 'var(--accent-volt)',
                           }}
                         >

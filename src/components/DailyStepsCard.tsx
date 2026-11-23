@@ -1,12 +1,10 @@
-'use client';
+﻿'use client';
 
 import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
 import {
   Footprints,
   RefreshCw,
   Settings,
-  Smartphone,
   Watch,
   Check,
   Edit3,
@@ -67,8 +65,8 @@ function getSourceBadge(source?: StepsSyncSource): {
     case 'device-sensor':
       return {
         label: 'חיישן מכשיר',
-        color: '#d2ff28',
-        bg: 'rgba(210, 255, 40, 0.14)',
+        color: '#ea580c',
+        bg: 'rgba(234, 88, 12, 0.14)',
       };
     case 'manual':
       return {
@@ -250,7 +248,7 @@ export function DailyStepsCard({
             width: `${pct}%`,
             background:
               steps >= dailyStepsTarget
-                ? 'linear-gradient(90deg, #22c55e, #d2ff28)'
+                ? 'linear-gradient(90deg, #22c55e, #ea580c)'
                 : 'linear-gradient(90deg, #38bdf8, #22c55e)',
             borderRadius: 999,
             transition: 'width 0.35s ease',
@@ -445,24 +443,6 @@ export function DailyStepsCard({
               <Edit3 size={12} />
               <span>{steps > 0 ? 'עדכן צעדים ידנית' : 'הזן צעדים ידנית'}</span>
             </button>
-
-            {!isCoachPreview && (
-              <Link
-                href="/download"
-                style={{
-                  fontSize: 10.5,
-                  color: 'var(--accent-volt)',
-                  textDecoration: 'none',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  fontWeight: 700,
-                }}
-              >
-                <Smartphone size={12} />
-                <span>רוצה סנכרון אוטומטי באנדרואיד?</span>
-              </Link>
-            )}
           </div>
         </div>
       )}

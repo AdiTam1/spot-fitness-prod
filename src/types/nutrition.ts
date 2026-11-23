@@ -148,6 +148,7 @@ export interface LoggedMealEntry {
   mealSlotId: string;
   items: LoggedFoodItem[];
   photoDataUrl?: string;
+  photoDataUrls?: string[];
   photoNote?: string;
   coachFeedback?: string;
   coachFeedbackAuthor?: string;
@@ -238,6 +239,7 @@ export interface TraineeOnboardingData {
   completed: boolean;
   measurementsCompleted: boolean;
   age?: number;
+  birthDate?: string; // YYYY-MM-DD — משמש לחישוב גיל אוטומטי בכל שנה
   gender?: 'male' | 'female';
   heightCm?: number;
   activityLevel?: string;
@@ -271,6 +273,9 @@ export interface CoachOnboardingData {
   defaultCountObservationInStats: boolean;
   defaultTolerancePercent: number;
   defaultWaterGoal: number;
+  defaultActivePastDays?: number;
+  defaultActiveFutureDays?: number;
+  defaultFavoriteFoodIds?: string[];
   completedAt?: string;
 }
 
@@ -398,6 +403,21 @@ export interface SavedMealPreset {
   coachQuestion?: SavedMealCoachQuestion;
 }
 
+export type MealCardShortcutId =
+  | 'ai-recommend'
+  | 'saved-meals'
+  | 'ai-photo'
+  | 'ai-text'
+  | 'barcode'
+  | 'favorites';
+
+export interface TraineeActiveDateRange {
+  pastDays?: number; // כמה ימים אחורה מהיום (ברירת מחדל: 1)
+  futureDays?: number; // כמה ימים קדימה מהיום (ברירת מחדל: 0)
+  startDate?: string; // אופציונלי YYYY-MM-DD
+  endDate?: string; // אופציונלי YYYY-MM-DD
+}
+
 export interface PendingAiMealJob {
   id: string;
   targetTraineeId: string;
@@ -406,6 +426,7 @@ export interface PendingAiMealJob {
   mealSlotName: string;
   mode: 'photo' | 'text';
   summaryHint?: string;
+  photoDataUrls?: string[];
   status: 'processing' | 'completed' | 'failed';
   startedAt: string;
   completedAt?: string;
@@ -508,6 +529,8 @@ export interface TraineeProfile {
   weeklyCheckIns?: WeeklyCheckInEntry[];
   observationDates?: string[]; // תאריכי ימי תשקיף (YYYY-MM-DD)
   countObservationInStats?: boolean; // בחירת מאמן בקליק אם ימי תשקיף נספרים בחישוב היעדים או לא
+  activeDateRange?: TraineeActiveDateRange; // חלון התאריכים הפעילים לניווט המתאמן (מוגדר כברירת מחדל ע"י המאמן או אישית)
+  mealCardShortcuts?: MealCardShortcutId[]; // עד 2 קיצורי דרך מותאמים בכרטיסיית הארוחה
   savedMeals?: SavedMealPreset[]; // ספריית ארוחות שמורות (מועדפים, נעיצה, פופולריות, התאמת AI, שאלות למאמן)
   customServingTools?: TraineeServingTool[]; // צלחות / קערות / קופסאות / כוסות מוגדרות אישית
   customFoodUnits?: TraineeCustomUnit[]; // יחידות מידה מוגדרות אישית בגרמים

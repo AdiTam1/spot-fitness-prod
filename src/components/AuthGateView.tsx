@@ -196,7 +196,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
             width: 240,
             height: 140,
             background:
-              'radial-gradient(circle, rgba(210, 255, 40, 0.14) 0%, transparent 70%)',
+              'radial-gradient(circle, rgba(234, 88, 12, 0.16) 0%, transparent 70%)',
             pointerEvents: 'none',
           }}
         />
@@ -208,14 +208,14 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
               height: 38,
               borderRadius: 11,
               background: 'var(--accent-volt)',
-              color: '#08090c',
+              color: '#ffffff',
               fontWeight: 900,
               fontSize: 19,
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
               marginBottom: 6,
-              boxShadow: '0 8px 20px rgba(210, 255, 40, 0.25)',
+              boxShadow: '0 8px 20px rgba(234, 88, 12, 0.32)',
             }}
           >
             S
@@ -258,7 +258,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
               border: 'none',
               background:
                 mode === 'login' ? 'var(--accent-volt)' : 'transparent',
-              color: mode === 'login' ? '#08090c' : 'var(--text-secondary)',
+              color: mode === 'login' ? '#ffffff' : 'var(--text-secondary)',
               fontSize: 13,
               fontWeight: 700,
               cursor: loading ? 'not-allowed' : 'pointer',
@@ -288,7 +288,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
               border: 'none',
               background:
                 mode === 'register' ? 'var(--accent-volt)' : 'transparent',
-              color: mode === 'register' ? '#08090c' : 'var(--text-secondary)',
+              color: mode === 'register' ? '#ffffff' : 'var(--text-secondary)',
               fontSize: 13,
               fontWeight: 700,
               cursor: loading ? 'not-allowed' : 'pointer',

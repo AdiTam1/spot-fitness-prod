@@ -1,11 +1,10 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Modal, TextInput } from '@mantine/core';
+import { Modal } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
   Crown,
-  KeyRound,
   LogOut,
   ShieldCheck,
   User,
@@ -31,11 +30,13 @@ import {
   DailyWorkoutLog,
   DayType,
   LoggedFoodItem,
+  MealCardShortcutId,
   NutritionTemplate,
   PendingAiMealJob,
   QuickContextChip,
   SavedMealPreset,
   StepsSyncSource,
+  TraineeActiveDateRange,
   TraineeActivityTargets,
   TraineeCustomUnit,
   TraineeGroup,
@@ -105,8 +106,6 @@ export default function HomePage() {
   const [coachInviteCode, setCoachInviteCode] = useState<string>('SPOT2026');
   const [hydrated, setHydrated] = useState(false);
 
-  const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
-  const [geminiApiKey, setGeminiApiKey] = useState('');
   const [syncingCount, setSyncingCount] = useState(0);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
@@ -121,6 +120,7 @@ export default function HomePage() {
     traineeId: string;
     date: string;
     mealSlotId: string;
+    initialTab?: string;
     nonce: number;
   } | null>(null);
   const [coachPushSettings, setCoachPushSettings] =
@@ -412,6 +412,7 @@ export default function HomePage() {
           traineeId,
           date: targetDate,
           mealSlotId: target.mealSlotId,
+          initialTab: target.kind === 'ai-meal' ? 'ai-photo' : undefined,
           nonce: Date.now(),
         });
       } else {
@@ -472,7 +473,7 @@ export default function HomePage() {
         notifications.show({
           title: notif.title || 'הודעה אישית מהמאמן',
           message: notif.body || 'המאמן שלך שלח לך עדכון חדש',
-          color: 'lime',
+          color: 'orange',
           autoClose: 6000,
         });
       },
@@ -964,6 +965,7 @@ export default function HomePage() {
       addFutureDays?: number;
       clearAll?: boolean;
       countObservationInStats?: boolean;
+      activeDateRange?: TraineeActiveDateRange;
     }
   ): Promise<{ error?: string }> => {
     const res = await postDataAction({
@@ -984,11 +986,25 @@ export default function HomePage() {
                 json.observationDates ?? t.observationDates,
               countObservationInStats:
                 json.countObservationInStats ?? t.countObservationInStats,
+              activeDateRange:
+                json.activeDateRange !== undefined
+                  ? json.activeDateRange
+                  : t.activeDateRange,
             }
           : t
       )
     );
     return {};
+  };
+
+  const handleUpdateMealShortcuts = async (
+    traineeId: string,
+    shortcuts: MealCardShortcutId[]
+  ): Promise<void> => {
+    await commitTraineeMutation(traineeId, (t) => ({
+      ...t,
+      mealCardShortcuts: shortcuts.slice(0, 2),
+    }));
   };
 
   const handleSavedMealAction = async (
@@ -1233,7 +1249,6 @@ export default function HomePage() {
             imageDataUrls: payload.imageDataUrls,
             textPrompt: payload.textPrompt,
             contextParams: payload.contextParams,
-            customApiKey: geminiApiKey,
             backgroundJob: {
               jobId,
               traineeId: payload.traineeId,
@@ -1328,7 +1343,8 @@ export default function HomePage() {
     mealSlotId: string,
     items: LoggedFoodItem[],
     photoDataUrl?: string,
-    photoNote?: string
+    photoNote?: string,
+    photoDataUrls?: string[]
   ) => {
     if (currentUser?.role === 'trainee' && currentUser.id !== traineeId) {
       return;
@@ -1349,6 +1365,12 @@ export default function HomePage() {
         meals: {},
       };
       const existingMeal = currentLog.meals[mealSlotId];
+      const nextPhotos =
+        photoDataUrls && photoDataUrls.length > 0
+          ? photoDataUrls.slice(0, 3)
+          : photoDataUrl
+          ? [photoDataUrl]
+          : undefined;
       return {
         ...t,
         logs: {
@@ -1360,7 +1382,8 @@ export default function HomePage() {
               [mealSlotId]: {
                 mealSlotId,
                 items,
-                photoDataUrl,
+                photoDataUrl: nextPhotos?.[0] ?? photoDataUrl,
+                photoDataUrls: nextPhotos,
                 photoNote,
                 coachFeedback: existingMeal?.coachFeedback,
                 coachFeedbackAuthor: existingMeal?.coachFeedbackAuthor,
@@ -1907,39 +1930,28 @@ export default function HomePage() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 14,
+          gap: 16,
           padding: 20,
         }}
       >
         <div
           style={{
-            width: 44,
-            height: 44,
-            borderRadius: 12,
+            width: 52,
+            height: 52,
+            borderRadius: 15,
             background: 'var(--accent-volt)',
-            color: '#08090c',
+            color: '#ffffff',
             fontWeight: 900,
-            fontSize: 22,
+            fontSize: 26,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            boxShadow: '0 10px 28px rgba(234, 88, 12, 0.35)',
           }}
         >
           S
         </div>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            color: 'var(--text-secondary)',
-            fontSize: 13,
-            fontWeight: 600,
-          }}
-        >
-          <Loader2 size={16} className="spot-spinner" color="var(--accent-volt)" />
-          <span>טוען נתוני SPOT מהשרת...</span>
-        </div>
+        <Loader2 size={22} className="spot-spinner" color="var(--accent-volt)" />
       </div>
     );
   }
@@ -2080,71 +2092,67 @@ export default function HomePage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: 12,
+            gap: 8,
+            flexWrap: 'nowrap',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             <div
               style={{
-                width: 28,
-                height: 28,
+                width: 26,
+                height: 26,
                 borderRadius: 8,
                 background: 'var(--accent-volt)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#08090c',
+                color: '#ffffff',
                 fontWeight: 900,
-                fontSize: 15,
+                fontSize: 14,
+                flexShrink: 0,
               }}
             >
               S
             </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <span
-                className="num-mono"
-                style={{
-                  fontWeight: 800,
-                  fontSize: 16,
-                  letterSpacing: '-0.04em',
-                }}
-              >
-                SPOT
-              </span>
-              <span
-                style={{
-                  fontSize: 11,
-                  color: 'var(--text-muted)',
-                  fontWeight: 600,
-                }}
-              >
-                {currentUser.role === 'admin'
-                  ? 'SUPER ADMIN OS'
-                  : currentUser.role === 'coach'
-                  ? 'COACH WORKSPACE'
-                  : 'PERSONAL NUTRITION'}
-              </span>
-            </div>
+            <span
+              className="num-mono"
+              style={{
+                fontWeight: 800,
+                fontSize: 15,
+                letterSpacing: '-0.04em',
+              }}
+            >
+              SPOT
+            </span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              flexWrap: 'nowrap',
+              minWidth: 0,
+            }}
+          >
             {syncingCount > 0 && (
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 6,
-                  padding: '4px 10px',
+                  gap: 4,
+                  padding: '4px 8px',
                   borderRadius: 999,
-                  background: 'rgba(210, 255, 40, 0.12)',
-                  border: '1px solid rgba(210, 255, 40, 0.35)',
-                  color: 'var(--accent-volt)',
+                  background: 'rgba(234, 88, 12, 0.14)',
+                  border: '1px solid rgba(234, 88, 12, 0.38)',
+                  color: 'var(--accent-orange-bright)',
                   fontSize: 11,
                   fontWeight: 700,
+                  flexShrink: 0,
                 }}
               >
-                <Loader2 size={12} className="spot-spinner" />
-                <span>שומר...</span>
+                <Loader2 size={11} className="spot-spinner" />
+                <span>שומר</span>
               </div>
             )}
 
@@ -2152,26 +2160,34 @@ export default function HomePage() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 6,
-                padding: '5px 12px',
+                gap: 5,
+                padding: '4px 10px',
                 borderRadius: 999,
                 background: 'var(--bg-surface-1)',
                 border: '1px solid var(--border-subtle)',
-                fontSize: 12,
+                fontSize: 11.5,
                 fontWeight: 700,
+                maxWidth: 165,
+                minWidth: 0,
               }}
             >
               {currentUser.role === 'admin' ? (
-                <Crown size={14} color="var(--accent-volt)" />
+                <Crown size={13} color="var(--accent-volt)" style={{ flexShrink: 0 }} />
               ) : currentUser.role === 'coach' ? (
-                <ShieldCheck size={14} color="#38bdf8" />
+                <ShieldCheck size={13} color="#38bdf8" style={{ flexShrink: 0 }} />
               ) : (
-                <User size={14} color="var(--accent-volt)" />
+                <User size={13} color="var(--accent-volt)" style={{ flexShrink: 0 }} />
               )}
-              <span>
+              <span
+                style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
                 {currentUser.name}
                 {currentUser.role === 'admin'
-                  ? ' (מנהל ראשי)'
+                  ? ' (מנהל)'
                   : currentUser.role === 'coach'
                   ? ' (מאמן)'
                   : ''}
@@ -2191,49 +2207,23 @@ export default function HomePage() {
               }}
               className="btn-surface"
               style={{
-                width: 34,
-                height: 34,
+                width: 30,
+                height: 30,
                 borderRadius: '50%',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: manualSyncing ? 'wait' : 'pointer',
                 padding: 0,
+                flexShrink: 0,
               }}
             >
               <RefreshCw
-                size={14}
+                size={13}
                 className={manualSyncing ? 'spot-spinner' : undefined}
                 color={manualSyncing ? 'var(--accent-volt)' : 'var(--text-secondary)'}
               />
             </button>
-
-            {currentUser.role === 'admin' && (
-              <button
-                title="הגדרות מפתח Gemini API"
-                onClick={() => setAiSettingsOpen(true)}
-                className="btn-surface"
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
-              >
-                <KeyRound
-                  size={14}
-                  color={
-                    geminiApiKey
-                      ? 'var(--accent-volt)'
-                      : 'var(--text-secondary)'
-                  }
-                />
-              </button>
-            )}
 
             <button
               title="התנתק מהחשבון"
@@ -2243,17 +2233,19 @@ export default function HomePage() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 5,
-                padding: '6px 12px',
+                gap: 4,
+                padding: '5px 9px',
                 borderRadius: 999,
-                fontSize: 12,
+                fontSize: 11.5,
                 cursor: 'pointer',
+                flexShrink: 0,
+                whiteSpace: 'nowrap',
               }}
             >
               {loggingOut ? (
-                <Loader2 size={13} className="spot-spinner" />
+                <Loader2 size={12} className="spot-spinner" />
               ) : (
-                <LogOut size={13} color="var(--text-secondary)" />
+                <LogOut size={12} color="var(--text-secondary)" />
               )}
               <span>{loggingOut ? 'מתנתק...' : 'התנתק'}</span>
             </button>
@@ -2264,8 +2256,8 @@ export default function HomePage() {
       {androidUpdateInfo?.updateAvailable && !dismissedUpdateBanner && (
         <div
           style={{
-            background: 'rgba(210, 255, 40, 0.14)',
-            borderBottom: '1px solid rgba(210, 255, 40, 0.35)',
+            background: 'rgba(234, 88, 12, 0.14)',
+            borderBottom: '1px solid rgba(234, 88, 12, 0.35)',
             color: 'var(--accent-volt)',
             padding: '8px 16px',
             fontSize: 12,
@@ -2288,7 +2280,7 @@ export default function HomePage() {
             rel="noopener noreferrer"
             style={{
               background: 'var(--accent-volt)',
-              color: '#08090c',
+              color: '#ffffff',
               padding: '3px 10px',
               borderRadius: 999,
               textDecoration: 'none',
@@ -2357,7 +2349,7 @@ export default function HomePage() {
             }}
             style={{
               background: 'var(--accent-volt)',
-              color: '#08090c',
+              color: '#ffffff',
               border: 'none',
               padding: '3px 10px',
               borderRadius: 999,
@@ -2430,7 +2422,7 @@ export default function HomePage() {
             externalSectionRequest={externalSectionRequest}
             onRenameProfile={handleRenameTraineeProfile}
             onPushPreferencesUpdated={handlePushPreferencesUpdated}
-            geminiApiKey={geminiApiKey}
+            onUpdateMealShortcuts={handleUpdateMealShortcuts}
             onSyncNativeStepsNow={syncNativeAndroidSteps}
           />
         ) : (currentUser.role === 'admin' || currentUser.role === 'coach') &&
@@ -2462,7 +2454,7 @@ export default function HomePage() {
             onStartBackgroundAiAnalysis={handleStartBackgroundAiAnalysis}
             externalOpenMealRequest={externalOpenMealRequest}
             externalSectionRequest={externalSectionRequest}
-            geminiApiKey={geminiApiKey}
+            onUpdateMealShortcuts={handleUpdateMealShortcuts}
             onSyncNativeStepsNow={syncNativeAndroidSteps}
           />
         ) : (
@@ -2535,62 +2527,11 @@ export default function HomePage() {
               traineeId: job.targetTraineeId,
               date: job.date,
               mealSlotId: job.mealSlotId,
+              initialTab: job.mode === 'photo' ? 'ai-photo' : 'ai-text',
               nonce: Date.now(),
             });
           }}
         />
-      )}
-
-      {currentUser.role === 'admin' && (
-        <Modal
-          opened={aiSettingsOpen}
-          onClose={() => setAiSettingsOpen(false)}
-          title={
-            <span style={{ fontWeight: 800, fontSize: 15 }}>
-              הגדרות מנוע AI (Gemini 3.8 Flash / 3.5 Flash-Lite)
-            </span>
-          }
-          centered
-          radius="lg"
-        >
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setAiSettingsOpen(false);
-            }}
-            style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
-          >
-            <div
-              style={{
-                fontSize: 12,
-                color: 'var(--text-secondary)',
-                lineHeight: 1.5,
-                background: 'var(--bg-surface-2)',
-                padding: 12,
-                borderRadius: 12,
-                border: '1px solid var(--border-subtle)',
-              }}
-            >
-              המערכת כוללת מנוע זיהוי עברי מובנה שעובד מיד ללא מפתח. לפענוח
-              תמונות חופשי עם Gemini 3.8 Flash (ומודל הגיבוי החינמי 3.5 Flash-Lite) ניתן להדביק מפתח חינמי מ-Google
-              AI Studio:
-            </div>
-            <TextInput
-              dir="ltr"
-              label="מפתח Gemini API"
-              placeholder="AIzaSy..."
-              value={geminiApiKey}
-              onChange={(e) => setGeminiApiKey(e.currentTarget.value)}
-            />
-            <button
-              type="submit"
-              className="btn-volt"
-              style={{ padding: '10px', fontSize: 13, cursor: 'pointer' }}
-            >
-              שמור הגדרות
-            </button>
-          </form>
-        </Modal>
       )}
 
       {isNativeAndroidApp() && currentUser.role === 'trainee' && (
@@ -2654,7 +2595,7 @@ export default function HomePage() {
                         title: 'התראות הופעלו בהצלחה',
                         message:
                           'תקבל/י התראה בסיום זיהוי AI ברקע והודעות מהמאמן',
-                        color: 'lime',
+                        color: 'orange',
                       });
                     } else if (res.reason === 'denied') {
                       notifications.show({
@@ -2776,7 +2717,7 @@ export default function HomePage() {
                         title: 'התראות הופעלו בהצלחה',
                         message:
                           'תקבל/י התראות ממאמן האישי ובסיום פענוח AI ברקע',
-                        color: 'lime',
+                        color: 'orange',
                       });
                     } else if (res.reason === 'denied') {
                       notifications.show({

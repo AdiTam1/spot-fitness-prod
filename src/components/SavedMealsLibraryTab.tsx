@@ -1,15 +1,17 @@
-'use client';
+﻿'use client';
 
 import React, { useMemo, useState } from 'react';
 import { NumberInput, TextInput, Textarea } from '@mantine/core';
 import {
   Bookmark,
   Check,
+  ChevronRight,
   Edit3,
   Heart,
   History,
   Loader2,
   MessageCircle,
+  Mic,
   Pin,
   Plus,
   Ruler,
@@ -17,6 +19,7 @@ import {
   Share2,
   Sparkles,
   Trash2,
+  Utensils,
 } from 'lucide-react';
 import {
   AiContextParams,
@@ -26,10 +29,20 @@ import {
 } from '@/types/nutrition';
 import { sumMacros } from '@/data/israeliFoodCatalog';
 
+const SHORTCUT_GRADIENTS = [
+  'linear-gradient(145deg, #ea580c 0%, #9a3412 100%)',
+  'linear-gradient(145deg, #e11d48 0%, #881337 100%)',
+  'linear-gradient(145deg, #0284c7 0%, #1e3a8a 100%)',
+  'linear-gradient(145deg, #7c3aed 0%, #4c1d95 100%)',
+  'linear-gradient(145deg, #059669 0%, #064e3b 100%)',
+  'linear-gradient(145deg, #d97706 0%, #78350f 100%)',
+];
+
 interface SavedMealsLibraryTabProps {
   savedMeals: SavedMealPreset[];
   traineeLogs?: Record<string, DailyLog>;
   geminiApiKey?: string;
+  initialSearchQuery?: string;
   contextParams?: AiContextParams;
   onAddItemsToMeal: (items: LoggedFoodItem[], photoDataUrl?: string) => void;
   onOpenToolsModal: () => void;
@@ -51,15 +64,18 @@ export function SavedMealsLibraryTab({
   savedMeals,
   traineeLogs = {},
   geminiApiKey,
+  initialSearchQuery = '',
   contextParams,
   onAddItemsToMeal,
   onOpenToolsModal,
   onSavedMealAction,
 }: SavedMealsLibraryTabProps) {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [filterMode, setFilterMode] = useState<
     'all' | 'pinned' | 'popular' | 'history' | 'questions'
   >('all');
+  const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
+  const [recordingSearchVoice, setRecordingSearchVoice] = useState(false);
 
   // מצבי פעולה פר-מנה
   const [adjustingPresetId, setAdjustingPresetId] = useState<string | null>(null);
@@ -288,43 +304,134 @@ export function SavedMealsLibraryTab({
     }
   };
 
+  const handleStartVoiceSearch = () => {
+    if (typeof window === 'undefined' || recordingSearchVoice) return;
+    const SpeechRec =
+      (
+        window as unknown as {
+          SpeechRecognition?: new () => {
+            lang: string;
+            interimResults: boolean;
+            onresult: (e: { results: { [k: number]: { [k: number]: { transcript: string } } } }) => void;
+            onend: () => void;
+            onerror: () => void;
+            start: () => void;
+          };
+        }
+      ).SpeechRecognition ||
+      (
+        window as unknown as {
+          webkitSpeechRecognition?: new () => {
+            lang: string;
+            interimResults: boolean;
+            onresult: (e: { results: { [k: number]: { [k: number]: { transcript: string } } } }) => void;
+            onend: () => void;
+            onerror: () => void;
+            start: () => void;
+          };
+        }
+      ).webkitSpeechRecognition;
+    if (!SpeechRec) return;
+    try {
+      const rec = new SpeechRec();
+      rec.lang = 'he-IL';
+      rec.interimResults = false;
+      setRecordingSearchVoice(true);
+      rec.onresult = (e) => {
+        const transcript = e.results?.[0]?.[0]?.transcript || '';
+        if (transcript) setSearchQuery(transcript);
+      };
+      rec.onend = () => setRecordingSearchVoice(false);
+      rec.onerror = () => setRecordingSearchVoice(false);
+      rec.start();
+    } catch {
+      setRecordingSearchVoice(false);
+    }
+  };
+
+  const detailPreset = selectedDetailId
+    ? savedMeals.find((m) => m.id === selectedDetailId) || null
+    : null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* שורת כותרת + כפתור כלים מהיר */}
+      {/* שורת חיפוש מעוגלת בסגנון גלריית קיצורים + כפתור כלים מהיר */}
       <div
         style={{
           display: 'flex',
-          justifyContent: 'space-between',
           alignItems: 'center',
           gap: 8,
-          flexWrap: 'wrap',
         }}
       >
-        <TextInput
-          placeholder="חפש לפי שם מנה או מרכיב (למשל: פסטה, חזה עוף)..."
-          leftSection={<Search size={14} />}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.currentTarget.value)}
-          style={{ flex: '1 1 220px' }}
-          size="xs"
-        />
+        <div
+          style={{
+            flex: 1,
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            background: 'var(--bg-surface-2)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 999,
+            padding: '0 12px',
+            height: 38,
+          }}
+        >
+          <Search size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.currentTarget.value)}
+            placeholder="חיפוש בארוחות שמורות..."
+            style={{
+              flex: 1,
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: 'var(--text-primary)',
+              fontSize: 12.5,
+              padding: '0 8px',
+            }}
+          />
+          <button
+            type="button"
+            title="חיפוש קולי"
+            onClick={handleStartVoiceSearch}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              padding: 4,
+              cursor: 'pointer',
+              display: 'flex',
+              color: recordingSearchVoice
+                ? 'var(--accent-orange-bright)'
+                : 'var(--text-secondary)',
+            }}
+          >
+            <Mic size={14} />
+          </button>
+        </div>
+
         <button
           type="button"
           onClick={onOpenToolsModal}
           className="btn-surface"
+          title="ניהול כלים ויחידות מדידה"
           style={{
-            padding: '7px 11px',
+            padding: '8px 11px',
+            borderRadius: 999,
             fontSize: 11,
             fontWeight: 700,
             display: 'flex',
             alignItems: 'center',
-            gap: 5,
+            gap: 4,
             cursor: 'pointer',
-            borderColor: 'rgba(210, 255, 40, 0.35)',
+            borderColor: 'rgba(234, 88, 12, 0.35)',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
           }}
         >
           <Ruler size={13} color="var(--accent-volt)" />
-          <span>ניהול כלים ויחידות</span>
+          <span>כלים ויחידות</span>
         </button>
       </div>
 
@@ -340,7 +447,10 @@ export function SavedMealsLibraryTab({
           <button
             key={f.id}
             type="button"
-            onClick={() => setFilterMode(f.id as typeof filterMode)}
+            onClick={() => {
+              setSelectedDetailId(null);
+              setFilterMode(f.id as typeof filterMode);
+            }}
             style={{
               padding: '5px 10px',
               borderRadius: 999,
@@ -353,10 +463,12 @@ export function SavedMealsLibraryTab({
                   : '1px solid var(--border-subtle)',
               background:
                 filterMode === f.id
-                  ? 'rgba(210, 255, 40, 0.16)'
+                  ? 'rgba(234, 88, 12, 0.16)'
                   : 'var(--bg-surface-2)',
               color:
-                filterMode === f.id ? 'var(--accent-volt)' : 'var(--text-secondary)',
+                filterMode === f.id
+                  ? 'var(--accent-orange-bright)'
+                  : 'var(--text-secondary)',
             }}
           >
             {f.label}
@@ -373,10 +485,10 @@ export function SavedMealsLibraryTab({
             fontWeight: 600,
             background: feedbackBanner.isError
               ? 'rgba(239, 68, 68, 0.14)'
-              : 'rgba(210, 255, 40, 0.1)',
+              : 'rgba(234, 88, 12, 0.1)',
             border: feedbackBanner.isError
               ? '1px solid rgba(239, 68, 68, 0.35)'
-              : '1px solid rgba(210, 255, 40, 0.3)',
+              : '1px solid rgba(234, 88, 12, 0.3)',
             color: feedbackBanner.isError ? '#fca5a5' : 'var(--accent-volt)',
           }}
         >
@@ -453,42 +565,199 @@ export function SavedMealsLibraryTab({
           )}
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div>
           {sortedSavedMeals.length === 0 ? (
             <div
               style={{
                 padding: 20,
                 textAlign: 'center',
-                borderRadius: 12,
+                borderRadius: 14,
                 background: 'var(--bg-surface-2)',
                 border: '1px dashed var(--border-subtle)',
                 fontSize: 12,
                 color: 'var(--text-muted)',
               }}
             >
-              עדיין אין ארוחות שמורות בספרייה. בסיום הוספת ארוחה סמן למטה <b>״שמור גם ב&apos;ארוחות שלי&apos;״</b> או שמור מתוך לשונית ההיסטוריה.
+              עדיין אין ארוחות שמורות בגלריה. בסיום הוספת ארוחה סמן <b>״שמור גם ב&apos;ארוחות שלי&apos;״</b> או שמור מתוך ההיסטוריה.
+            </div>
+          ) : !detailPreset ? (
+            /* גלריית כרטיסים צבעונית (2 עמודות בהשראת Apple Shortcuts Gallery) */
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                gap: 10,
+              }}
+            >
+              {sortedSavedMeals.map((preset, idx) => {
+                const bg = SHORTCUT_GRADIENTS[idx % SHORTCUT_GRADIENTS.length];
+                const thumb = preset.photoDataUrl || preset.photoDataUrls?.[0];
+                return (
+                  <div
+                    key={preset.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedDetailId(preset.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedDetailId(preset.id);
+                      }
+                    }}
+                    style={{
+                      background: bg,
+                      borderRadius: 18,
+                      padding: 12,
+                      minHeight: 118,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                      position: 'relative',
+                      boxShadow: '0 8px 20px -8px rgba(0, 0, 0, 0.55)',
+                      border: preset.isPinned
+                        ? '1px solid rgba(255, 255, 255, 0.45)'
+                        : '1px solid rgba(255, 255, 255, 0.14)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                        gap: 6,
+                      }}
+                    >
+                      {thumb ? (
+                        <img
+                          src={thumb}
+                          alt={preset.title}
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 10,
+                            objectFit: 'cover',
+                            border: '1px solid rgba(255,255,255,0.35)',
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 10,
+                            background: 'rgba(255, 255, 255, 0.2)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#ffffff',
+                          }}
+                        >
+                          <Utensils size={16} />
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        title="הוסף לארוחה בקליק"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleUsePresetExact(preset);
+                        }}
+                        style={{
+                          width: 30,
+                          height: 30,
+                          borderRadius: '50%',
+                          border: 'none',
+                          background: 'rgba(255, 255, 255, 0.28)',
+                          backdropFilter: 'blur(6px)',
+                          color: '#ffffff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Plus size={16} strokeWidth={2.8} />
+                      </button>
+                    </div>
+
+                    <div style={{ marginTop: 10 }}>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 900,
+                          color: '#ffffff',
+                          lineHeight: 1.25,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                        }}
+                      >
+                        {preset.isPinned ? '📌 ' : ''}
+                        {preset.title}
+                      </div>
+                      <div
+                        className="num-mono"
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          color: 'rgba(255, 255, 255, 0.86)',
+                          marginTop: 4,
+                        }}
+                      >
+                        {Math.round(preset.totalCalories)} קק״ל · {preset.items.length} מרכיבים
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ) : (
-            sortedSavedMeals.map((preset) => {
+            (() => {
+              const preset = detailPreset;
               const isAdjusting = adjustingPresetId === preset.id;
               const isEditing = editingPresetId === preset.id;
               const isAsking = askingPresetId === preset.id;
 
               return (
-                <div
-                  key={preset.id}
-                  style={{
-                    background: 'var(--bg-surface-2)',
-                    border: preset.isPinned
-                      ? '1px solid rgba(210, 255, 40, 0.45)'
-                      : '1px solid var(--border-subtle)',
-                    borderRadius: 14,
-                    padding: 12,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 8,
-                  }}
-                >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDetailId(null)}
+                    className="btn-surface"
+                    style={{
+                      alignSelf: 'flex-start',
+                      padding: '5px 11px',
+                      borderRadius: 999,
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <ChevronRight size={14} />
+                    <span>חזור לגלריית השמורות</span>
+                  </button>
+
+                  <div
+                    key={preset.id}
+                    style={{
+                      background: 'var(--bg-surface-2)',
+                      border: preset.isPinned
+                        ? '1px solid rgba(234, 88, 12, 0.45)'
+                        : '1px solid var(--border-subtle)',
+                      borderRadius: 16,
+                      padding: 12,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 9,
+                    }}
+                  >
                   {/* כותרת ופעולות מהירות */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
@@ -531,7 +800,7 @@ export function SavedMealsLibraryTab({
                                 fontWeight: 800,
                                 background: preset.isAiFallback
                                   ? 'rgba(245, 158, 11, 0.16)'
-                                  : 'rgba(210, 255, 40, 0.12)',
+                                  : 'rgba(234, 88, 12, 0.12)',
                                 color: preset.isAiFallback ? '#fbbf24' : 'var(--accent-volt)',
                               }}
                             >
@@ -645,11 +914,11 @@ export function SavedMealsLibraryTab({
                         borderRadius: 10,
                         background:
                           preset.coachQuestion.status === 'answered'
-                            ? 'rgba(210, 255, 40, 0.08)'
+                            ? 'rgba(234, 88, 12, 0.08)'
                             : 'rgba(56, 189, 248, 0.08)',
                         border:
                           preset.coachQuestion.status === 'answered'
-                            ? '1px solid rgba(210, 255, 40, 0.25)'
+                            ? '1px solid rgba(234, 88, 12, 0.25)'
                             : '1px solid rgba(56, 189, 248, 0.25)',
                         fontSize: 11,
                       }}
@@ -705,7 +974,7 @@ export function SavedMealsLibraryTab({
                         alignItems: 'center',
                         gap: 4,
                         cursor: 'pointer',
-                        borderColor: 'rgba(210, 255, 40, 0.35)',
+                        borderColor: 'rgba(234, 88, 12, 0.35)',
                         color: 'var(--accent-volt)',
                       }}
                     >
@@ -760,8 +1029,8 @@ export function SavedMealsLibraryTab({
                       style={{
                         padding: 10,
                         borderRadius: 10,
-                        background: 'rgba(210, 255, 40, 0.06)',
-                        border: '1px solid rgba(210, 255, 40, 0.25)',
+                        background: 'rgba(234, 88, 12, 0.06)',
+                        border: '1px solid rgba(234, 88, 12, 0.25)',
                         display: 'flex',
                         flexDirection: 'column',
                         gap: 8,
@@ -927,9 +1196,10 @@ export function SavedMealsLibraryTab({
                       </button>
                     </div>
                   )}
+                  </div>
                 </div>
               );
-            })
+            })()
           )}
         </div>
       )}

@@ -1,7 +1,6 @@
-'use client';
+﻿'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import {
   User,
   Bell,
@@ -17,15 +16,23 @@ import {
   Settings,
   Send,
   Loader2,
-  ExternalLink,
   AlertTriangle,
   Share,
   PlusSquare,
   Globe,
+  Sliders,
 } from 'lucide-react';
 import { Switch } from '@mantine/core';
-import { TraineeProfile, TraineePushPreferences } from '@/types/nutrition';
+import {
+  MealCardShortcutId,
+  TraineeProfile,
+  TraineePushPreferences,
+} from '@/types/nutrition';
 import { sumMacros } from '@/data/israeliFoodCatalog';
+import {
+  ALL_MEAL_SHORTCUT_OPTIONS,
+  DEFAULT_MEAL_CARD_SHORTCUTS,
+} from '@/lib/dateUtils';
 import {
   AndroidPushStatus,
   getAndroidPushStatus,
@@ -46,6 +53,10 @@ interface TraineeProfileViewProps {
   onRenameProfile: (name: string) => Promise<{ error?: string }>;
   onOpenMealFromHistory: (date: string, mealSlotId: string) => void;
   onPushPreferencesUpdated?: (prefs: TraineePushPreferences) => void;
+  onUpdateMealShortcuts?: (
+    traineeId: string,
+    shortcuts: MealCardShortcutId[]
+  ) => void | Promise<void>;
 }
 
 export function TraineeProfileView({
@@ -55,6 +66,7 @@ export function TraineeProfileView({
   onRenameProfile,
   onOpenMealFromHistory,
   onPushPreferencesUpdated,
+  onUpdateMealShortcuts,
 }: TraineeProfileViewProps) {
   const [nameInput, setNameInput] = useState(trainee.name);
   const [savingName, setSavingName] = useState(false);
@@ -401,7 +413,7 @@ export function TraineeProfileView({
               height: 48,
               borderRadius: '50%',
               background: 'var(--accent-volt)',
-              color: '#08090c',
+              color: '#ffffff',
               display: 'grid',
               placeItems: 'center',
               fontSize: 20,
@@ -548,34 +560,38 @@ export function TraineeProfileView({
             </div>
           </div>
 
-          <div
-            style={{
-              background: 'var(--bg-surface-2)',
-              padding: '10px 12px',
-              borderRadius: 12,
-            }}
-          >
+          {Object.values(trainee.logs || {}).some(
+            (l) => l?.stepsSource && l.stepsSource !== 'manual' && (l.steps ?? 0) > 0
+          ) && (
             <div
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                fontSize: 11,
-                color: 'var(--text-secondary)',
-                marginBottom: 4,
+                background: 'var(--bg-surface-2)',
+                padding: '10px 12px',
+                borderRadius: 12,
               }}
             >
-              <Footprints size={13} color="#4ade80" />
-              <span>ממוצע צעדים יומי</span>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  fontSize: 11,
+                  color: 'var(--text-secondary)',
+                  marginBottom: 4,
+                }}
+              >
+                <Footprints size={13} color="#4ade80" />
+                <span>ממוצע צעדים יומי</span>
+              </div>
+              <div className="num-mono" style={{ fontSize: 16, fontWeight: 900 }}>
+                {stats.avgSteps.toLocaleString()}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                יעד:{' '}
+                {(trainee.activityTargets?.dailyStepsTarget ?? 8000).toLocaleString()}
+              </div>
             </div>
-            <div className="num-mono" style={{ fontSize: 16, fontWeight: 900 }}>
-              {stats.avgSteps.toLocaleString()}
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              יעד:{' '}
-              {(trainee.activityTargets?.dailyStepsTarget ?? 8000).toLocaleString()}
-            </div>
-          </div>
+          )}
 
           <div
             style={{
@@ -794,7 +810,7 @@ export function TraineeProfileView({
           <div
             style={{
               background: 'var(--bg-surface-2)',
-              border: '1px solid rgba(210, 255, 40, 0.25)',
+              border: '1px solid rgba(234, 88, 12, 0.25)',
               borderRadius: 12,
               padding: 12,
               marginBottom: 14,
@@ -1004,27 +1020,10 @@ export function TraineeProfileView({
               <Smartphone size={14} color="var(--accent-volt)" />
               <span>
                 {isCoachPreview
-                  ? 'תצוגת מתאמן: הגדרת התראות זמינה במכשיר האישי של המתאמן (אנדרואיד APK, אייפון במסך הבית או דפדפן).'
-                  : 'הדפדפן הנוכחי אינו תומך בהתראות Web Push (ניתן להשתמש בספארי אייפון ממסך הבית, דפדפן עדכני או באפליקציית האנדרואיד).'}
+                  ? 'תצוגת מתאמן: הגדרת התראות זמינה במכשיר האישי של המתאמן.'
+                  : 'הדפדפן הנוכחי אינו תומך בהתראות Web Push (ניתן להשתמש בספארי אייפון ממסך הבית או בדפדפן עדכני).'}
               </span>
             </span>
-            {!isCoachPreview && (
-              <Link
-                href="/download"
-                style={{
-                  color: 'var(--accent-volt)',
-                  fontSize: 11.5,
-                  fontWeight: 800,
-                  textDecoration: 'none',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                }}
-              >
-                <span>להורדת APK אנדרואיד</span>
-                <ExternalLink size={11} />
-              </Link>
-            )}
           </div>
         )}
 
@@ -1051,7 +1050,7 @@ export function TraineeProfileView({
             <Switch
               checked={prefs.aiMealReady}
               disabled={isCoachPreview}
-              color="lime"
+              color="orange"
               onChange={(e) =>
                 void handleUpdatePushPrefs({
                   ...prefs,
@@ -1083,7 +1082,7 @@ export function TraineeProfileView({
             <Switch
               checked={prefs.coachMessages}
               disabled={isCoachPreview}
-              color="lime"
+              color="orange"
               onChange={(e) =>
                 void handleUpdatePushPrefs({
                   ...prefs,
@@ -1094,6 +1093,113 @@ export function TraineeProfileView({
           </div>
         </div>
       </div>
+
+      {/* 3.5 התאמת קיצורי דרך בכרטיסי הארוחה (עד 2 לבחירה) */}
+      {onUpdateMealShortcuts && (
+        <div className="pro-card" style={{ padding: 16 }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 8,
+              marginBottom: 6,
+            }}
+          >
+            <span
+              style={{
+                fontSize: 14,
+                fontWeight: 800,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <Sliders size={15} color="var(--accent-volt)" />
+              <span>קיצורי דרך בכרטיס הארוחה</span>
+            </span>
+            <span
+              className="num-mono"
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                color: 'var(--accent-orange-bright)',
+              }}
+            >
+              {(trainee.mealCardShortcuts ?? DEFAULT_MEAL_CARD_SHORTCUTS).length}/2 פעילים
+            </span>
+          </div>
+          <div
+            style={{
+              fontSize: 11.5,
+              color: 'var(--text-secondary)',
+              marginBottom: 10,
+            }}
+          >
+            הכפתור <strong>&quot;+ הוסף / ערוך&quot;</strong> מופיע תמיד בשורה הראשונה. בחר עד 2 קיצורי דרך נוספים שיופיעו לצדו:
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))',
+              gap: 7,
+            }}
+          >
+            {ALL_MEAL_SHORTCUT_OPTIONS.map((opt) => {
+              const current = trainee.mealCardShortcuts ?? DEFAULT_MEAL_CARD_SHORTCUTS;
+              const active = current.includes(opt.id);
+              const atLimit = current.length >= 2 && !active;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  disabled={atLimit}
+                  onClick={() => {
+                    const next = active
+                      ? current.filter((x) => x !== opt.id)
+                      : [...current, opt.id].slice(0, 2);
+                    void onUpdateMealShortcuts(trainee.id, next);
+                  }}
+                  style={{
+                    textAlign: 'right',
+                    padding: '9px 11px',
+                    borderRadius: 12,
+                    border: active
+                      ? '1px solid var(--accent-volt)'
+                      : '1px solid var(--border-subtle)',
+                    background: active
+                      ? 'rgba(234, 88, 12, 0.14)'
+                      : 'var(--bg-surface-2)',
+                    color: active ? '#ffffff' : 'var(--text-secondary)',
+                    opacity: atLimit ? 0.45 : 1,
+                    cursor: atLimit ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 3,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: active ? 'var(--accent-orange-bright)' : 'var(--text-primary)',
+                    }}
+                  >
+                    <span>{opt.label}</span>
+                    {active && <Check size={13} color="var(--accent-volt)" />}
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.35 }}>
+                    {opt.description}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 4. הארוחות שלי — היסטוריה מלאה וחיפוש */}
       <div className="pro-card" style={{ padding: 16 }}>

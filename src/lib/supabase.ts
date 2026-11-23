@@ -111,7 +111,7 @@ function mapRowToGroup(row: Record<string, unknown>): TraineeGroup {
   return {
     id: String(row.id),
     name: String(row.name || 'קבוצה'),
-    color: String(row.color || '#d2ff28'),
+    color: String(row.color || '#ea580c'),
     ownerCoachId: String(row.owner_coach_id || 'coach-admin'),
     customQuickChips: Array.isArray(row.custom_quick_chips)
       ? (row.custom_quick_chips as QuickContextChip[])
@@ -129,6 +129,8 @@ interface EmbeddedTraineeMeta {
   measurementsHistory?: BodyMeasurementEntry[];
   observationDates?: string[];
   countObservationInStats?: boolean;
+  activeDateRange?: TraineeProfile['activeDateRange'];
+  mealCardShortcuts?: TraineeProfile['mealCardShortcuts'];
   savedMeals?: SavedMealPreset[];
   customServingTools?: TraineeServingTool[];
   customFoodUnits?: TraineeCustomUnit[];
@@ -261,6 +263,10 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
       : [],
     observationDates,
     countObservationInStats,
+    activeDateRange: embeddedMeta.activeDateRange,
+    mealCardShortcuts: Array.isArray(embeddedMeta.mealCardShortcuts)
+      ? embeddedMeta.mealCardShortcuts
+      : undefined,
     savedMeals: Array.isArray(embeddedMeta.savedMeals)
       ? embeddedMeta.savedMeals
       : Array.isArray(row.saved_meals)
@@ -918,6 +924,8 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
       measurementsHistory: t.measurementsHistory || [],
       observationDates: t.observationDates || [],
       countObservationInStats: Boolean(t.countObservationInStats),
+      activeDateRange: t.activeDateRange,
+      mealCardShortcuts: t.mealCardShortcuts,
       savedMeals: t.savedMeals || [],
       customServingTools: t.customServingTools || [],
       customFoodUnits: t.customFoodUnits || [],

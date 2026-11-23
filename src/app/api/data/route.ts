@@ -42,16 +42,19 @@ import { DEFAULT_TEMPLATES, getTodayIso } from '@/data/israeliFoodCatalog';
 import { diagnoseSupabaseError } from '@/lib/supabase';
 import {
   AccountStatus,
+  CoachOnboardingData,
   CoachProfile,
   DailyLog,
   DayType,
   LoggedFoodItem,
+  MealCardShortcutId,
   NutritionTemplate,
   QuickChipCategory,
   QuickContextChip,
   ReferenceObjectKind,
   SavedMealPreset,
   ServingToolKind,
+  TraineeActiveDateRange,
   TraineeCustomUnit,
   TraineeGroup,
   TraineeProfile,
@@ -117,6 +120,10 @@ function mergeLogsPreservingPendingAi(
             ...(clientMeal || serverMeal),
             items: [...(clientMeal?.items || []), ...missingFromClient],
             photoDataUrl: clientMeal?.photoDataUrl || serverMeal.photoDataUrl,
+            photoDataUrls:
+              clientMeal?.photoDataUrls && clientMeal.photoDataUrls.length > 0
+                ? clientMeal.photoDataUrls
+                : serverMeal.photoDataUrls,
           },
         },
       };
@@ -220,6 +227,50 @@ function sanitizeCustomUnits(raw: unknown): TraineeCustomUnit[] {
       } as TraineeCustomUnit;
     })
     .filter((x): x is TraineeCustomUnit => Boolean(x));
+}
+
+const ALLOWED_MEAL_SHORTCUTS = new Set<MealCardShortcutId>([
+  'ai-recommend',
+  'saved-meals',
+  'ai-photo',
+  'ai-text',
+  'barcode',
+  'favorites',
+]);
+
+function sanitizeMealShortcuts(raw: unknown): MealCardShortcutId[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const cleaned: MealCardShortcutId[] = [];
+  for (const item of raw) {
+    if (ALLOWED_MEAL_SHORTCUTS.has(item as MealCardShortcutId)) {
+      const id = item as MealCardShortcutId;
+      if (!cleaned.includes(id)) cleaned.push(id);
+    }
+    if (cleaned.length >= 2) break;
+  }
+  return cleaned;
+}
+
+function sanitizeActiveDateRange(raw: unknown): TraineeActiveDateRange | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const obj = raw as TraineeActiveDateRange;
+  const pastDays =
+    obj.pastDays !== undefined
+      ? Math.max(0, Math.min(365, Math.round(Number(obj.pastDays) || 0)))
+      : 1;
+  const futureDays =
+    obj.futureDays !== undefined
+      ? Math.max(0, Math.min(180, Math.round(Number(obj.futureDays) || 0)))
+      : 0;
+  const startDate =
+    typeof obj.startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(obj.startDate.trim())
+      ? obj.startDate.trim()
+      : undefined;
+  const endDate =
+    typeof obj.endDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(obj.endDate.trim())
+      ? obj.endDate.trim()
+      : undefined;
+  return { pastDays, futureDays, startDate, endDate };
 }
 
 function sanitizeQuickChips(
@@ -453,12 +504,18 @@ export async function GET(request: NextRequest) {
       ? diagnoseSupabaseError(state.readErrors.join(' | '))
       : undefined;
 
+  const adminSelfProfile = state.coaches.find((c) => c.id === 'coach-admin');
   return NextResponse.json(
     {
       trainees: state.trainees.map((t) => sanitizeTraineeForClient(t)),
       templates: state.templates,
       groups: state.groups,
-      coaches: state.coaches.map((c) => sanitizeCoachForClient(c)),
+      coaches: state.coaches
+        .filter((c) => c.id !== 'coach-admin')
+        .map((c) => sanitizeCoachForClient(c)),
+      myCoachProfile: adminSelfProfile
+        ? sanitizeCoachForClient(adminSelfProfile)
+        : undefined,
       coachDirectory: buildCoachDirectory(state),
       coachInviteCode: state.coachInviteCode,
       globalQuickChips: state.globalQuickChips || [],
@@ -941,6 +998,10 @@ export async function POST(request: NextRequest) {
             favoriteFoodIds: Array.isArray(traineeInput.favoriteFoodIds)
               ? traineeInput.favoriteFoodIds.slice(0, 50)
               : existing.favoriteFoodIds,
+            mealCardShortcuts:
+              traineeInput.mealCardShortcuts !== undefined
+                ? sanitizeMealShortcuts(traineeInput.mealCardShortcuts)
+                : existing.mealCardShortcuts,
             savedMeals: Array.isArray(traineeInput.savedMeals)
               ? traineeInput.savedMeals.slice(0, 120)
               : existing.savedMeals,
@@ -1011,7 +1072,7 @@ export async function POST(request: NextRequest) {
         })
       );
 
-      const palette = ['#d2ff28', '#38bdf8', '#ff5e7e', '#ffb800', '#22c55e'];
+      const palette = ['#ea580c', '#38bdf8', '#ff5e7e', '#ffb800', '#22c55e'];
       const newGroups: TraineeGroup[] = starterGroupNames
         .map((gName) => sanitizeText(gName, 50))
         .filter(Boolean)
@@ -1031,21 +1092,84 @@ export async function POST(request: NextRequest) {
           ownerCoachId: session.id,
         }));
 
-      await updateServerDbState((prev) => ({
-        ...prev,
-        coaches: prev.coaches.map((c) => {
-          if (c.id !== session.id) return c;
-          return {
-            ...c,
-            name: name || c.name,
-            phone: phone || c.phone,
-            password: newPassword ? hashPassword(newPassword) : c.password,
-            onboarding: onboarding || c.onboarding,
-          };
-        }),
-        templates: [...prev.templates, ...stampedTemplates],
-        groups: [...prev.groups, ...newGroups],
-      }));
+      const rawOnboarding = onboarding as CoachOnboardingData | undefined;
+      const sanitizedOnboarding: CoachOnboardingData | undefined = rawOnboarding
+        ? {
+            ...rawOnboarding,
+            defaultObservationDays: Math.max(
+              0,
+              Math.min(90, Math.round(Number(rawOnboarding.defaultObservationDays) || 0))
+            ),
+            defaultCountObservationInStats: Boolean(
+              rawOnboarding.defaultCountObservationInStats
+            ),
+            defaultTolerancePercent: Math.max(
+              1,
+              Math.min(30, Math.round(Number(rawOnboarding.defaultTolerancePercent) || 10))
+            ),
+            defaultWaterGoal: Math.max(
+              4,
+              Math.min(30, Math.round(Number(rawOnboarding.defaultWaterGoal) || 12))
+            ),
+            defaultActivePastDays: Math.max(
+              0,
+              Math.min(
+                365,
+                Math.round(Number(rawOnboarding.defaultActivePastDays ?? 1) || 0)
+              )
+            ),
+            defaultActiveFutureDays: Math.max(
+              0,
+              Math.min(
+                180,
+                Math.round(Number(rawOnboarding.defaultActiveFutureDays ?? 0) || 0)
+              )
+            ),
+            defaultFavoriteFoodIds: Array.isArray(rawOnboarding.defaultFavoriteFoodIds)
+              ? rawOnboarding.defaultFavoriteFoodIds
+                  .map((id) => sanitizeText(id, 80))
+                  .filter(Boolean)
+                  .slice(0, 50)
+              : [],
+          }
+        : undefined;
+
+      await updateServerDbState((prev) => {
+        const hasCoachEntry = prev.coaches.some((c) => c.id === session.id);
+        const updatedCoaches = hasCoachEntry
+          ? prev.coaches.map((c) => {
+              if (c.id !== session.id) return c;
+              return {
+                ...c,
+                name: name || c.name,
+                phone: phone || c.phone,
+                password: newPassword ? hashPassword(newPassword) : c.password,
+                onboarding: sanitizedOnboarding || c.onboarding,
+              };
+            })
+          : session.id === 'coach-admin'
+          ? [
+              ...prev.coaches,
+              {
+                id: 'coach-admin',
+                email: prev.coachEmail,
+                name: name || session.name || 'מנהל ראשי',
+                avatar: (name || 'מ').charAt(0),
+                phone: phone || '',
+                inviteCode: prev.coachInviteCode,
+                status: 'active' as const,
+                onboarding: sanitizedOnboarding,
+              },
+            ]
+          : prev.coaches;
+
+        return {
+          ...prev,
+          coaches: updatedCoaches,
+          templates: [...prev.templates, ...stampedTemplates],
+          groups: [...prev.groups, ...newGroups],
+        };
+      });
 
       return NextResponse.json({ ok: true });
     }
@@ -1181,6 +1305,10 @@ export async function POST(request: NextRequest) {
         typeof body.countObservationInStats === 'boolean'
           ? body.countObservationInStats
           : undefined;
+      const incomingActiveRange =
+        body.activeDateRange !== undefined
+          ? sanitizeActiveDateRange(body.activeDateRange)
+          : undefined;
 
       let nextDates = [...(target.observationDates || [])];
 
@@ -1214,6 +1342,10 @@ export async function POST(request: NextRequest) {
                   toggleCountInStats !== undefined
                     ? toggleCountInStats
                     : t.countObservationInStats,
+                activeDateRange:
+                  incomingActiveRange !== undefined
+                    ? incomingActiveRange
+                    : t.activeDateRange,
               }
             : t
         ),
@@ -1226,6 +1358,10 @@ export async function POST(request: NextRequest) {
           toggleCountInStats !== undefined
             ? toggleCountInStats
             : target.countObservationInStats,
+        activeDateRange:
+          incomingActiveRange !== undefined
+            ? incomingActiveRange
+            : target.activeDateRange,
       });
     }
 
@@ -1291,6 +1427,10 @@ export async function POST(request: NextRequest) {
                   t.measurementsHistory,
                 onboarding: traineeInput.onboarding || t.onboarding,
                 favoriteFoodIds: traineeInput.favoriteFoodIds,
+                mealCardShortcuts:
+                  traineeInput.mealCardShortcuts !== undefined
+                    ? sanitizeMealShortcuts(traineeInput.mealCardShortcuts)
+                    : t.mealCardShortcuts,
                 savedMeals: Array.isArray(traineeInput.savedMeals)
                   ? traineeInput.savedMeals.slice(0, 120)
                   : t.savedMeals,
@@ -1498,6 +1638,17 @@ export async function POST(request: NextRequest) {
         isSuperAdmin(session) && body.primaryCoachId
           ? String(body.primaryCoachId)
           : session.id;
+      const coachObj = state.coaches.find((c) => c.id === primaryCoachId);
+      const coachDefaults = coachObj?.onboarding;
+
+      const defaultObsCount = Math.max(
+        0,
+        Math.min(90, Math.round(Number(coachDefaults?.defaultObservationDays ?? 0) || 0))
+      );
+      const initialObservationDates: string[] = [];
+      for (let i = 0; i < defaultObsCount; i++) {
+        initialObservationDates.push(getTodayIso(i));
+      }
 
       const tpl =
         state.templates.find((t) => t.id === templateId) ||
@@ -1515,17 +1666,22 @@ export async function POST(request: NextRequest) {
         goal,
         currentWeight: 75,
         targetWeight: 70,
-        tolerancePercent: 10,
+        tolerancePercent: coachDefaults?.defaultTolerancePercent ?? 10,
         primaryCoachId,
         sharedCoachIds: [],
         groupId,
+        observationDates: initialObservationDates,
+        countObservationInStats:
+          coachDefaults?.defaultCountObservationInStats ?? false,
+        activeDateRange: {
+          pastDays: coachDefaults?.defaultActivePastDays ?? 1,
+          futureDays: coachDefaults?.defaultActiveFutureDays ?? 0,
+        },
         workoutTemplate: JSON.parse(JSON.stringify(tpl)),
         restTemplate: JSON.parse(JSON.stringify(tpl)),
-        favoriteFoodIds: [
-          'cottage-tnuva-5',
-          'chicken-breast-grilled',
-          'krembo-strauss',
-        ],
+        favoriteFoodIds: Array.isArray(coachDefaults?.defaultFavoriteFoodIds)
+          ? coachDefaults.defaultFavoriteFoodIds.slice(0, 50)
+          : [],
         weightHistory: [{ date: 'התחלה', weight: 75 }],
         logs: {},
       };
@@ -1627,7 +1783,7 @@ export async function POST(request: NextRequest) {
     // ז. יצירת קבוצת מתאמנים חדשה
     if (action === 'create-group') {
       const name = sanitizeText(body.name, 60);
-      const color = sanitizeText(body.color, 25) || '#d2ff28';
+      const color = sanitizeText(body.color, 25) || '#ea580c';
       if (!name) {
         return NextResponse.json({ error: 'חסר שם קבוצה' }, { status: 400 });
       }

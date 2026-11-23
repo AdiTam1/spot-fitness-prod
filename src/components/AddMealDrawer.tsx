@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -6,8 +6,6 @@ import {
   TextInput,
   Textarea,
   NumberInput,
-  Select,
-  ScrollArea,
   Collapse,
   Switch,
 } from '@mantine/core';
@@ -21,7 +19,6 @@ import {
   Check,
   Edit3,
   Heart,
-  Upload,
   Wand2,
   Lightbulb,
   Mic,
@@ -32,6 +29,10 @@ import {
   Bookmark,
   Image as ImageIcon,
   X,
+  ChevronRight,
+  ChevronLeft,
+  Utensils,
+  FolderOpen,
 } from 'lucide-react';
 import {
   AiContextParams,
@@ -53,6 +54,7 @@ import {
   sumMacros,
 } from '@/data/israeliFoodCatalog';
 import { compressMealImage } from '@/utils/imageCompression';
+import { compressDataUrlToThumbnail } from '@/lib/dateUtils';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { ServingToolsManagerModal } from './ServingToolsManagerModal';
 import { SavedMealsLibraryTab } from './SavedMealsLibraryTab';
@@ -70,7 +72,8 @@ interface AddMealDrawerProps {
     mealSlotId: string,
     items: LoggedFoodItem[],
     photoDataUrl?: string,
-    photoNote?: string
+    photoNote?: string,
+    photoDataUrls?: string[]
   ) => void | Promise<void>;
   geminiApiKey?: string;
   initialTab?: string;
@@ -210,16 +213,11 @@ export function AddMealDrawer({
   const [scraperCount, setScraperCount] = useState(0);
   const [totalAvailable, setTotalAvailable] = useState(ISRAELI_FOOD_CATALOG.length);
 
-  const [selectedFood, setSelectedFood] = useState<FoodCatalogItem | null>(
-    ISRAELI_FOOD_CATALOG[0]
-  );
-  const [selectedUnitLabel, setSelectedUnitLabel] = useState<string>(
-    ISRAELI_FOOD_CATALOG[0].units[0].label
-  );
+  const [selectedFood, setSelectedFood] = useState<FoodCatalogItem | null>(null);
+  const [selectedUnitLabel, setSelectedUnitLabel] = useState<string>('custom-grams');
   const [quantity, setQuantity] = useState<number>(1);
-  const [customGrams, setCustomGrams] = useState<number>(
-    ISRAELI_FOOD_CATALOG[0].units[0].grams
-  );
+  const [customGrams, setCustomGrams] = useState<number>(100);
+  const [cameraChooserOpen, setCameraChooserOpen] = useState(false);
 
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [barcodeModalOpen, setBarcodeModalOpen] = useState(false);
@@ -271,21 +269,27 @@ export function AddMealDrawer({
   useEffect(() => {
     if (opened && mealSlot) {
       const openKey = `${mealSlot.id}::${selectedDate || ''}::${initialTab}`;
+      const entryPhotos =
+        existingEntry?.photoDataUrls && existingEntry.photoDataUrls.length > 0
+          ? existingEntry.photoDataUrls.filter(
+              (u) => Boolean(u) && !u.endsWith(',DEMO')
+            )
+          : existingEntry?.photoDataUrl &&
+            !existingEntry.photoDataUrl.endsWith(',DEMO')
+          ? [existingEntry.photoDataUrl]
+          : [];
+
       if (lastOpenedKeyRef.current !== openKey) {
         lastOpenedKeyRef.current = openKey;
         setItems(existingEntry?.items ? [...existingEntry.items] : []);
-        setPhotoDataUrl(existingEntry?.photoDataUrl);
+        setPhotoDataUrl(entryPhotos[0] || existingEntry?.photoDataUrl);
         setPhotoItems(
-          existingEntry?.photoDataUrl && !existingEntry.photoDataUrl.endsWith(',DEMO')
-            ? [
-                {
-                  dataUrl: existingEntry.photoDataUrl,
-                  sizeKB: Math.round((existingEntry.photoDataUrl.length * 3) / 4 / 1024),
-                  formatLabel: 'WebP',
-                  angle: 'top-down',
-                },
-              ]
-            : []
+          entryPhotos.map((url, idx) => ({
+            dataUrl: url,
+            sizeKB: Math.round((url.length * 3) / 4 / 1024),
+            formatLabel: 'WebP' as const,
+            angle: idx === 0 ? ('top-down' as const) : ('side-45' as const),
+          }))
         );
         setPhotoSizeKB(null);
         setPhotoFormatLabel('WebP');
@@ -295,21 +299,48 @@ export function AddMealDrawer({
         setSaveAsPreset(false);
         setPresetTitleInput('');
         setSearchQuery('');
+        setSelectedFood(null);
+        setCameraChooserOpen(false);
         setAiRecommendations([]);
         setAiRecDebug(null);
         setLearnedFeedbackBanner(null);
         setPreferenceFeedbackText('');
         setEditingItemId(null);
         setAiSummary(null);
-        setActiveTab(initialTab);
+        if (initialTab === 'barcode') {
+          setActiveTab('hub');
+          setBarcodeModalOpen(true);
+        } else {
+          setActiveTab(initialTab || 'hub');
+        }
         stopVoiceRecording();
-      } else if (existingEntry?.items && existingEntry.items.length > 0) {
-        // מיזוג אוטומטי כשמשימת AI ברקע מסתיימת בזמן שהחלונית נשארה פתוחה
-        setItems((prev) => {
-          const existingIds = new Set(prev.map((p) => p.id));
-          const incomingNew = existingEntry.items.filter((i) => !existingIds.has(i.id));
-          return incomingNew.length > 0 ? [...prev, ...incomingNew] : prev;
-        });
+      } else {
+        if (existingEntry?.items && existingEntry.items.length > 0) {
+          // מיזוג אוטומטי כשמשימת AI ברקע מסתיימת בזמן שהחלונית נשארה פתוחה
+          setItems((prev) => {
+            const existingIds = new Set(prev.map((p) => p.id));
+            const incomingNew = existingEntry.items.filter((i) => !existingIds.has(i.id));
+            return incomingNew.length > 0 ? [...prev, ...incomingNew] : prev;
+          });
+        }
+        if (entryPhotos.length > 0) {
+          setPhotoItems((prev) => {
+            const prevUrls = new Set(prev.map((p) => p.dataUrl));
+            const incomingPhotos = entryPhotos.filter((u) => !prevUrls.has(u));
+            if (incomingPhotos.length === 0) return prev;
+            const merged = [
+              ...incomingPhotos.map((url, idx) => ({
+                dataUrl: url,
+                sizeKB: Math.round((url.length * 3) / 4 / 1024),
+                formatLabel: 'WebP' as const,
+                angle: idx === 0 ? ('top-down' as const) : ('side-45' as const),
+              })),
+              ...prev,
+            ].slice(0, 3);
+            setPhotoDataUrl(merged[0]?.dataUrl);
+            return merged;
+          });
+        }
       }
     } else if (!opened) {
       lastOpenedKeyRef.current = '';
@@ -357,12 +388,15 @@ export function AddMealDrawer({
     };
   }, [searchQuery, sourceFilter, opened]);
 
-  const handleSelectCatalogFood = (food: FoodCatalogItem) => {
+  const handleSelectCatalogFood = (food: FoodCatalogItem, openPortion = true) => {
     setSelectedFood(food);
     const firstUnit = food.units[0] || { label: '100 גרם', grams: 100 };
     setSelectedUnitLabel(firstUnit.label);
     setQuantity(1);
     setCustomGrams(firstUnit.grams);
+    if (openPortion) {
+      setActiveTab('portion-focus');
+    }
   };
 
   const getCombinedUnitsForFood = (food: FoodCatalogItem) => {
@@ -465,13 +499,19 @@ export function AddMealDrawer({
       }[] = [];
       for (let i = 0; i < files.length; i++) {
         const compressed = await compressMealImage(files[i], 800, 0.72);
+        const thumbUrl = await compressDataUrlToThumbnail(
+          compressed.dataUrl,
+          640,
+          155000
+        );
+        const approxKB = Math.max(1, Math.round((thumbUrl.length * 3) / 4 / 1024));
         const angle =
           photoMode === 'nutrition-label'
             ? 'label'
             : preferredAngle || (photoItems.length + i === 0 ? 'top-down' : 'side-45');
         newEntries.push({
-          dataUrl: compressed.dataUrl,
-          sizeKB: compressed.sizeKB,
+          dataUrl: thumbUrl,
+          sizeKB: approxKB,
           formatLabel: compressed.formatLabel,
           angle,
         });
@@ -483,6 +523,8 @@ export function AddMealDrawer({
         setPhotoFormatLabel(merged[0]?.formatLabel ?? 'WebP');
         return merged;
       });
+      setCameraChooserOpen(false);
+      setActiveTab('ai-photo');
     } catch {
       setAiSummary({ msg: 'לא ניתן לקרוא את התמונה – נסה לצלם שוב', isError: true });
     } finally {
@@ -625,7 +667,7 @@ export function AddMealDrawer({
     }
   };
 
-  const toggleVoiceRecording = () => {
+  const toggleVoiceRecording = (targetField: 'search' | 'ai-text' = 'ai-text') => {
     if (typeof window === 'undefined') return;
     if (isRecordingVoice) {
       stopVoiceRecording();
@@ -653,7 +695,11 @@ export function AddMealDrawer({
       recognition.onresult = (event) => {
         const transcript = event.results?.[0]?.[0]?.transcript || '';
         if (transcript) {
-          setFreeTextPrompt((prev) => (prev ? `${prev} ${transcript}` : transcript));
+          if (targetField === 'search') {
+            setSearchQuery((prev) => (prev ? `${prev} ${transcript}` : transcript));
+          } else {
+            setFreeTextPrompt((prev) => (prev ? `${prev} ${transcript}` : transcript));
+          }
         }
       };
       recognition.onend = () => {
@@ -811,6 +857,12 @@ export function AddMealDrawer({
     );
   };
 
+  const updateLoggedItemName = (id: string, name: string) => {
+    setItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, name } : item))
+    );
+  };
+
   const removeItem = (id: string) => {
     setItems((prev) => prev.filter((i) => i.id !== id));
   };
@@ -822,6 +874,73 @@ export function AddMealDrawer({
     ? calculateMacrosForGrams(selectedFood.per100g, customGrams)
     : { calories: 0, protein: 0, carbs: 0, fat: 0 };
 
+  const allMealPhotos =
+    photoItems.length > 0
+      ? photoItems.map((im) => im.dataUrl)
+      : photoDataUrl && !photoDataUrl.endsWith(',DEMO')
+      ? [photoDataUrl]
+      : [];
+  const mealThumbnailUrl = allMealPhotos[0];
+
+  const handleSaveMealAndClose = async () => {
+    if (saveLockRef.current) return;
+    saveLockRef.current = true;
+    setSavingMeal(true);
+    try {
+      const primaryPhoto = allMealPhotos[0] || photoDataUrl;
+      await onSaveMeal(
+        mealSlot.id,
+        items,
+        primaryPhoto,
+        photoNote,
+        allMealPhotos.length > 0 ? allMealPhotos : undefined
+      );
+      if (saveAsPreset && items.length > 0 && onSavedMealAction) {
+        const autoTitle =
+          presetTitleInput.trim() ||
+          items
+            .slice(0, 2)
+            .map((i) => i.name)
+            .join(' + ');
+        const aiItem = items.find(
+          (it) => it.aiEngine || it.isAiFallback !== undefined
+        );
+        await onSavedMealAction({
+          op: 'upsert',
+          preset: {
+            title: autoTitle,
+            mealSlotId: mealSlot.id,
+            items,
+            photoDataUrls: allMealPhotos.length > 0 ? allMealPhotos : undefined,
+            photoDataUrl: primaryPhoto,
+            contextParams,
+            aiEngine: aiItem?.aiEngine,
+            isAiFallback: aiItem?.isAiFallback,
+            fallbackReason: aiItem?.fallbackReason,
+            useCount: 1,
+          },
+        });
+      }
+      onClose();
+    } finally {
+      saveLockRef.current = false;
+      setSavingMeal(false);
+    }
+  };
+
+  const trimmedQuery = searchQuery.trim();
+  const matchedSavedPresets = trimmedQuery
+    ? savedMeals
+        .filter((m) => {
+          const ql = trimmedQuery.toLowerCase();
+          return (
+            m.title.toLowerCase().includes(ql) ||
+            m.items.some((it) => it.name.toLowerCase().includes(ql))
+          );
+        })
+        .slice(0, 5)
+    : [];
+
   return (
     <>
       <Drawer
@@ -830,125 +949,774 @@ export function AddMealDrawer({
           if (!savingMeal) onClose();
         }}
         position="bottom"
-        size="92%"
-        title={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontWeight: 800, fontSize: 17 }}>
-              {mealSlot.name}
-            </span>
-            <span
-              className="num-mono"
-              style={{
-                fontSize: 12,
-                padding: '3px 10px',
-                borderRadius: 999,
-                background: 'var(--bg-surface-2)',
-                color: 'var(--text-secondary)',
-                border: '1px solid var(--border-subtle)',
-              }}
-            >
-              יעד: {mealSlot.targets.calories} קק״ל · ח׳{' '}
-              {mealSlot.targets.protein}g · פ׳ {mealSlot.targets.carbs}g · ש׳{' '}
-              {mealSlot.targets.fat}g
-            </span>
-          </div>
-        }
+        size="93%"
+        withCloseButton={false}
         styles={{
           content: {
             maxWidth: 560,
             margin: '0 auto',
             borderTopLeftRadius: 26,
             borderTopRightRadius: 26,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            maxHeight: '94dvh',
+          },
+          body: {
+            padding: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            flex: 1,
+            minHeight: 0,
+            overflow: 'hidden',
           },
         }}
       >
-        <ScrollArea h="calc(90dvh - 125px)" offsetScrollbars>
+        {/* אזור עליון קבוע (אינו נגלל): כותרת נקייה + חיפוש אוניברסלי + בחירת מצלמה */}
+        <div
+          style={{
+            padding: '12px 16px 10px',
+            borderBottom: '1px solid var(--border-subtle)',
+            background: '#101218',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+            flexShrink: 0,
+          }}
+        >
           <div
             style={{
               display: 'flex',
-              flexDirection: 'column',
-              gap: 16,
-              paddingBottom: 24,
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
             }}
           >
-            {/* סרגל לשוניות מותאם אישית */}
-            <div
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <button
+                type="button"
+                aria-label="סגור"
+                onClick={() => {
+                  if (!savingMeal) onClose();
+                }}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  border: '1px solid var(--border-subtle)',
+                  background: 'var(--bg-surface-2)',
+                  color: 'var(--text-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                <X size={16} />
+              </button>
+
+              {(activeTab !== 'hub' || trimmedQuery.length > 0) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeTab === 'portion-focus') {
+                      setSelectedFood(null);
+                      setActiveTab(trimmedQuery ? 'hub' : 'catalog');
+                    } else if (trimmedQuery) {
+                      setSearchQuery('');
+                      setActiveTab('hub');
+                    } else {
+                      setActiveTab('hub');
+                    }
+                  }}
+                  style={{
+                    padding: '5px 10px',
+                    borderRadius: 999,
+                    border: '1px solid var(--border-subtle)',
+                    background: 'var(--bg-surface-2)',
+                    color: 'var(--text-secondary)',
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 3,
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                >
+                  <ChevronRight size={13} />
+                  <span>חזרה</span>
+                </button>
+              )}
+
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontWeight: 900,
+                    fontSize: 15,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {mealSlot.name}
+                </div>
+              </div>
+            </div>
+
+            <span
+              className="num-mono"
               style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))',
-                gap: 4,
+                fontSize: 11,
+                padding: '3px 9px',
+                borderRadius: 999,
                 background: 'var(--bg-surface-2)',
-                padding: 4,
-                borderRadius: 14,
+                color: 'var(--text-secondary)',
                 border: '1px solid var(--border-subtle)',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
               }}
             >
-              {[
-                { id: 'catalog', label: 'מאגר מזון', icon: Search },
-                { id: 'ai-recommend', label: '💡 מה לאכול?', icon: Lightbulb },
-                { id: 'ai-photo', label: 'צילום AI', icon: Camera },
-                { id: 'ai-text', label: 'טקסט / קול', icon: Sparkles },
-                { id: 'saved-meals', label: 'הארוחות שלי', icon: Bookmark },
-                { id: 'favorites', label: 'מועדפים', icon: Heart },
-              ].map((t) => {
-                const Icon = t.icon;
-                const active = activeTab === t.id;
-                return (
+              {selectedDate ? `${selectedDate} · ` : ''}יעד {mealSlot.targets.calories}
+            </span>
+          </div>
+
+          {/* סרגל חיפוש כולל (כשהמשתמש במצב בחירה או קטלוג) + מצלמה ישירה מהחיפוש */}
+          {(activeTab === 'hub' || activeTab === 'catalog') && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  background: 'var(--bg-surface-2)',
+                  border: trimmedQuery
+                    ? '1px solid rgba(234, 88, 12, 0.5)'
+                    : '1px solid var(--border-strong)',
+                  borderRadius: 999,
+                  padding: '0 10px 0 6px',
+                  height: 42,
+                  gap: 6,
+                }}
+              >
+                <Search size={15} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && trimmedQuery) {
+                      e.preventDefault();
+                      setFreeTextPrompt(trimmedQuery);
+                      void runAiAnalysis('text', trimmedQuery);
+                    }
+                  }}
+                  placeholder="חפש מוצר, ארוחה שמורה או תאר ל-AI..."
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    color: 'var(--text-primary)',
+                    fontSize: 13,
+                  }}
+                />
+                {trimmedQuery && (
                   <button
-                    key={t.id}
-                    onClick={() => setActiveTab(t.id)}
+                    type="button"
+                    aria-label="נקה חיפוש"
+                    onClick={() => setSearchQuery('')}
                     style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      border: 'none',
+                      background: 'rgba(255,255,255,0.08)',
+                      color: 'var(--text-secondary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  title="הכתבה קולית לחיפוש או ל-AI"
+                  onClick={() => toggleVoiceRecording('search')}
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: '50%',
+                    border: 'none',
+                    background: isRecordingVoice
+                      ? 'rgba(234, 88, 12, 0.22)'
+                      : 'transparent',
+                    color: isRecordingVoice
+                      ? 'var(--accent-orange-bright)'
+                      : 'var(--text-secondary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                >
+                  {isRecordingVoice ? <MicOff size={15} /> : <Mic size={15} />}
+                </button>
+                <button
+                  type="button"
+                  title="צילום במצלמה / בחירת תמונות מהגלריה או קבצים"
+                  onClick={() => setCameraChooserOpen((v) => !v)}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: '50%',
+                    border: 'none',
+                    background: 'var(--accent-volt)',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Camera size={15} />
+                </button>
+              </div>
+
+              {cameraChooserOpen && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gap: 6,
+                    padding: 6,
+                    borderRadius: 14,
+                    background: 'var(--bg-surface-2)',
+                    border: '1px solid rgba(234, 88, 12, 0.35)',
+                  }}
+                >
+                  <label
+                    className="btn-surface"
+                    style={{
+                      padding: '8px 6px',
+                      fontSize: 11,
+                      fontWeight: 700,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       gap: 4,
-                      padding: '9px 4px',
-                      borderRadius: 10,
-                      border: 'none',
-                      background: active ? 'var(--accent-volt)' : 'transparent',
-                      color: active ? '#08090c' : 'var(--text-secondary)',
-                      fontSize: 11,
-                      fontWeight: 700,
                       cursor: 'pointer',
-                      transition: 'all 0.15s ease',
+                      borderColor: 'rgba(234, 88, 12, 0.4)',
                     }}
                   >
-                    <Icon size={13} />
-                    <span>{t.label}</span>
-                  </button>
-                );
-              })}
+                    <Camera size={13} color="var(--accent-volt)" />
+                    <span>מצלמה בלייב</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      hidden
+                      disabled={photoUploading}
+                      onChange={(e) => void handlePhotoUpload(e, 'top-down')}
+                    />
+                  </label>
+                  <label
+                    className="btn-surface"
+                    style={{
+                      padding: '8px 6px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <ImageIcon size={13} color="#38bdf8" />
+                    <span>גלריה (מרובה)</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      hidden
+                      disabled={photoUploading}
+                      onChange={(e) => void handlePhotoUpload(e)}
+                    />
+                  </label>
+                  <label
+                    className="btn-surface"
+                    style={{
+                      padding: '8px 6px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <FolderOpen size={13} color="#a78bfa" />
+                    <span>בחירת קבצים</span>
+                    <input
+                      type="file"
+                      accept="image/*,.heic,.heif,.webp,.png,.jpg,.jpeg"
+                      multiple
+                      hidden
+                      disabled={photoUploading}
+                      onChange={(e) => void handlePhotoUpload(e)}
+                    />
+                  </label>
+                </div>
+              )}
             </div>
+          )}
+        </div>
 
-            {activeTab === 'saved-meals' && (
-              <SavedMealsLibraryTab
-                savedMeals={savedMeals}
-                traineeLogs={traineeLogs}
-                geminiApiKey={geminiApiKey}
-                contextParams={{
-                  ...contextParams,
-                  customUnits: customFoodUnits,
+        {/* גוף הבוטום-שיט המרכזי: גלילה יחידה נקייה ללא גלילה מקוננת */}
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            padding: '14px 16px 20px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 14,
+          }}
+        >
+          {/* פאנל א׳: מסך פתיחה / בחירת דרך הוספה (2 עמודות בהשראת תמונות 4 ו-14) */}
+          {activeTab === 'hub' && trimmedQuery.length === 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                בחר דרך להוספת ארוחה או הקלד למעלה לחיפוש / AI:
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gap: 10,
                 }}
-                onAddItemsToMeal={(newItems, img) => {
-                  setItems((prev) => [...prev, ...newItems]);
-                  if (img && !photoDataUrl) {
-                    setPhotoDataUrl(img);
-                  }
-                }}
-                onOpenToolsModal={() => setToolsModalOpen(true)}
-                onSavedMealAction={onSavedMealAction}
-              />
-            )}
+              >
+                {[
+                  {
+                    id: 'ai-photo',
+                    title: 'צילום AI',
+                    subtitle: 'צלחת או תווית ערכים',
+                    bg: 'linear-gradient(145deg, #ea580c 0%, #9a3412 100%)',
+                    icon: <Camera size={22} color="#ffffff" />,
+                  },
+                  {
+                    id: 'ai-text',
+                    title: 'טקסט / קול ל-AI',
+                    subtitle: 'תיאור חופשי + תיבול',
+                    bg: 'linear-gradient(145deg, #7c3aed 0%, #4c1d95 100%)',
+                    icon: <Sparkles size={22} color="#ffffff" />,
+                  },
+                  {
+                    id: 'saved-meals',
+                    title: 'ארוחות שמורות',
+                    subtitle: `${savedMeals.length} מנות בגלריה`,
+                    bg: 'linear-gradient(145deg, #0284c7 0%, #1e3a8a 100%)',
+                    icon: <Bookmark size={22} color="#ffffff" />,
+                  },
+                  {
+                    id: 'ai-recommend',
+                    title: 'מה לאכול?',
+                    subtitle: 'המלצות AI + המאמן',
+                    bg: 'linear-gradient(145deg, #059669 0%, #064e3b 100%)',
+                    icon: <Lightbulb size={22} color="#ffffff" />,
+                  },
+                  {
+                    id: 'barcode-action',
+                    title: 'סריקת ברקוד',
+                    subtitle: 'מוצרים ארוזים בסופר',
+                    bg: 'linear-gradient(145deg, #d97706 0%, #78350f 100%)',
+                    icon: <Barcode size={22} color="#ffffff" />,
+                  },
+                  {
+                    id: 'favorites',
+                    title: 'מועדפים ומאגר',
+                    subtitle: `${favoriteIds.length} מועדפים · אלפי מוצרים`,
+                    bg: 'linear-gradient(145deg, #e11d48 0%, #881337 100%)',
+                    icon: <Heart size={22} color="#ffffff" />,
+                  },
+                ].map((card) => (
+                  <button
+                    key={card.id}
+                    type="button"
+                    onClick={() => {
+                      if (card.id === 'barcode-action') {
+                        setBarcodeModalOpen(true);
+                      } else {
+                        setActiveTab(card.id);
+                      }
+                    }}
+                    style={{
+                      background: card.bg,
+                      border: '1px solid rgba(255,255,255,0.16)',
+                      borderRadius: 18,
+                      padding: '14px 13px',
+                      minHeight: 102,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start',
+                      textAlign: 'right',
+                      cursor: 'pointer',
+                      boxShadow: '0 8px 22px -10px rgba(0,0,0,0.65)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 11,
+                        background: 'rgba(255,255,255,0.2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      {card.icon}
+                    </div>
+                    <div style={{ marginTop: 10 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 900, color: '#ffffff' }}>
+                        {card.title}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: 600,
+                          color: 'rgba(255,255,255,0.85)',
+                          marginTop: 2,
+                        }}
+                      >
+                        {card.subtitle}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
-            {/* לשונית מיוחדת: 💡 מה לאכול? (המלצות המאמן + Smart Macro Finisher + למידת העדפות ללא צ'אט) */}
-            {activeTab === 'ai-recommend' && (
+          {/* פאנל ב׳: תוצאות חיפוש מאוחדות (AI כאופציה #1 + שמורות + מאגר) */}
+          {(activeTab === 'hub' || activeTab === 'catalog') && trimmedQuery.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* אופציה #1 קבועה בראש הרשימה: שלח ל-AI */}
+              <button
+                type="button"
+                disabled={isSlotBgProcessing || aiLoading}
+                onClick={() => {
+                  setFreeTextPrompt(trimmedQuery);
+                  void runAiAnalysis('text', trimmedQuery);
+                }}
+                style={{
+                  width: '100%',
+                  textAlign: 'right',
+                  padding: '12px 14px',
+                  borderRadius: 16,
+                  border: '1px solid rgba(234, 88, 12, 0.55)',
+                  background:
+                    'linear-gradient(135deg, rgba(234, 88, 12, 0.22) 0%, rgba(194, 65, 12, 0.14) 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  <div
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 11,
+                      background: 'var(--accent-volt)',
+                      color: '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Sparkles size={16} />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 900, color: '#ffffff' }}>
+                      שלח ל-AI את הטקסט שנרשם
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: 'var(--accent-orange-bright)',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      &ldquo;{trimmedQuery}&rdquo; · פיענוח והוספה אוטומטית
+                    </div>
+                  </div>
+                </div>
+                <ChevronLeft size={16} color="var(--accent-orange-bright)" style={{ flexShrink: 0 }} />
+              </button>
+
+              {/* ארוחות שמורות תואמות */}
+              {matchedSavedPresets.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: '#38bdf8' }}>
+                    ארוחות שמורות תואמות ({matchedSavedPresets.length})
+                  </div>
+                  {matchedSavedPresets.map((preset) => (
+                    <div
+                      key={preset.id}
+                      style={{
+                        background: 'var(--bg-surface-2)',
+                        border: '1px solid rgba(56, 189, 248, 0.28)',
+                        borderRadius: 12,
+                        padding: '9px 12px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: 8,
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 800 }}>{preset.title}</div>
+                        <div className="num-mono" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                          {Math.round(preset.totalCalories)} קק״ל · {preset.items.length} מרכיבים
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cloned = preset.items.map((it, i) => ({
+                            ...it,
+                            id: `srch-pre-${Date.now()}-${i}`,
+                          }));
+                          setItems((prev) => [...prev, ...cloned]);
+                          if (preset.photoDataUrl && !photoDataUrl) {
+                            setPhotoDataUrl(preset.photoDataUrl);
+                          }
+                          setAiSummary({ msg: `נוספה המנה "${preset.title}"` });
+                        }}
+                        className="btn-volt"
+                        style={{ padding: '6px 11px', fontSize: 11.5, cursor: 'pointer', flexShrink: 0 }}
+                      >
+                        + הוסף
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* פאנל ג׳: בחירת כמות ממוקדת למאכל שנבחר (ללא תפריטים מיותרים — השראת תמונה 15) */}
+          {activeTab === 'portion-focus' && selectedFood && (
+            <div
+              style={{
+                background: 'var(--bg-surface-2)',
+                border: '1px solid rgba(234, 88, 12, 0.3)',
+                borderRadius: 18,
+                padding: 16,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 14,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 900 }}>
+                    {selectedFood.name}
+                    {selectedFood.brand ? ` (${selectedFood.brand})` : ''}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    ל-100 גרם: {selectedFood.per100g.calories} קק״ל · ח׳ {selectedFood.per100g.protein}g
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onToggleFavorite(selectedFood.id)}
+                  className="btn-surface"
+                  style={{ width: 34, height: 34, padding: 0, display: 'grid', placeItems: 'center', cursor: 'pointer' }}
+                >
+                  <Heart
+                    size={16}
+                    color={favoriteIds.includes(selectedFood.id) ? '#ff5e7e' : 'var(--text-secondary)'}
+                    fill={favoriteIds.includes(selectedFood.id) ? '#ff5e7e' : 'none'}
+                  />
+                </button>
+              </div>
+
+              {/* תצוגת ערכים גדולה וברורה */}
+              <div
+                style={{
+                  background: 'var(--bg-surface-1)',
+                  borderRadius: 16,
+                  padding: '16px 14px',
+                  textAlign: 'center',
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                <div
+                  className="num-mono"
+                  style={{ fontSize: 30, fontWeight: 900, color: 'var(--accent-orange-bright)' }}
+                >
+                  {previewMacros.calories} קק״ל
+                </div>
+                <div
+                  className="num-mono"
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    gap: 14,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    marginTop: 6,
+                  }}
+                >
+                  <span style={{ color: 'var(--macro-protein)' }}>חלבון: {previewMacros.protein}g</span>
+                  <span style={{ color: 'var(--macro-carbs)' }}>פחמימה: {previewMacros.carbs}g</span>
+                  <span style={{ color: 'var(--macro-fat)' }}>שומן: {previewMacros.fat}g</span>
+                </div>
+              </div>
+
+              {/* בחירת יחידה בקפסולות */}
+              <div>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                  יחידת מידה:
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {[
+                    ...getCombinedUnitsForFood(selectedFood).map((u) => ({
+                      value: u.label,
+                      label: u.label,
+                    })),
+                    { value: 'custom-grams', label: 'משקל חופשי (גרם)' },
+                  ].map((uOpt) => {
+                    const active = selectedUnitLabel === uOpt.value;
+                    return (
+                      <button
+                        key={uOpt.value}
+                        type="button"
+                        onClick={() => handleUnitChange(uOpt.value)}
+                        style={{
+                          padding: '6px 11px',
+                          borderRadius: 999,
+                          border: active
+                            ? '1px solid var(--accent-volt)'
+                            : '1px solid var(--border-subtle)',
+                          background: active
+                            ? 'rgba(234, 88, 12, 0.16)'
+                            : 'var(--bg-surface-1)',
+                          color: active ? '#ffffff' : 'var(--text-secondary)',
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {uOpt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: 10,
+                }}
+              >
+                <NumberInput
+                  size="sm"
+                  label="כמות"
+                  value={quantity}
+                  onChange={handleQuantityChange}
+                  min={0.25}
+                  max={20}
+                  step={0.5}
+                  disabled={selectedUnitLabel === 'custom-grams'}
+                />
+                <NumberInput
+                  size="sm"
+                  label="סה״כ גרמים"
+                  value={customGrams}
+                  onChange={(val) => setCustomGrams(Math.max(1, Number(val) || 100))}
+                  min={1}
+                  max={2000}
+                  step={5}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  addSelectedFoodToMeal('catalog');
+                  setAiSummary({ msg: `נוסף לארוחה: ${selectedFood.name}` });
+                  setSelectedFood(null);
+                  setActiveTab('hub');
+                }}
+                className="btn-volt"
+                style={{
+                  padding: '12px 16px',
+                  fontSize: 14,
+                  fontWeight: 900,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  cursor: 'pointer',
+                }}
+              >
+                <Plus size={16} />
+                <span>הוסף לארוחה</span>
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'saved-meals' && (
+            <SavedMealsLibraryTab
+              savedMeals={savedMeals}
+              traineeLogs={traineeLogs}
+              geminiApiKey={geminiApiKey}
+              initialSearchQuery={searchQuery}
+              contextParams={{
+                ...contextParams,
+                customUnits: customFoodUnits,
+              }}
+              onAddItemsToMeal={(newItems, img) => {
+                setItems((prev) => [...prev, ...newItems]);
+                if (img && !photoDataUrl) {
+                  setPhotoDataUrl(img);
+                }
+              }}
+              onOpenToolsModal={() => setToolsModalOpen(true)}
+              onSavedMealAction={onSavedMealAction}
+            />
+          )}
+
+          {/* לשונית מיוחדת: 💡 מה לאכול? (המלצות המאמן + Smart Macro Finisher + למידת העדפות ללא צ'אט) */}
+          {activeTab === 'ai-recommend' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {/* אופציות מומלצות של המאמן לארוחה זו */}
                 {mealSlot.recommendedOptions && mealSlot.recommendedOptions.length > 0 && (
                   <div
                     style={{
                       background: 'var(--bg-surface-2)',
-                      border: '1px solid rgba(210, 255, 40, 0.25)',
+                      border: '1px solid rgba(234, 88, 12, 0.25)',
                       borderRadius: 14,
                       padding: 12,
                     }}
@@ -1094,10 +1862,10 @@ export function AddMealDrawer({
                             borderRadius: 8,
                             background: aiRecDebug.isFallback
                               ? 'rgba(245, 158, 11, 0.14)'
-                              : 'rgba(210, 255, 40, 0.08)',
+                              : 'rgba(234, 88, 12, 0.08)',
                             border: aiRecDebug.isFallback
                               ? '1px solid rgba(245, 158, 11, 0.35)'
-                              : '1px solid rgba(210, 255, 40, 0.25)',
+                              : '1px solid rgba(234, 88, 12, 0.25)',
                             color: aiRecDebug.isFallback ? '#fbbf24' : 'var(--accent-volt)',
                           }}
                         >
@@ -1116,8 +1884,8 @@ export function AddMealDrawer({
                           style={{
                             padding: 12,
                             borderRadius: 12,
-                            background: 'rgba(210, 255, 40, 0.05)',
-                            border: '1px solid rgba(210, 255, 40, 0.25)',
+                            background: 'rgba(234, 88, 12, 0.05)',
+                            border: '1px solid rgba(234, 88, 12, 0.25)',
                             display: 'flex',
                             flexDirection: 'column',
                             gap: 6,
@@ -1289,30 +2057,36 @@ export function AddMealDrawer({
               </div>
             )}
 
-            {/* לשונית 1: מאגר מוצרים + משרד הבריאות + ברקוד */}
-            {activeTab === 'catalog' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <TextInput
-                    style={{ flex: 1 }}
-                    placeholder="חפש מוצר (קרמבו, קוטג׳, חזה עוף, במבה, אורז...)"
-                    leftSection={<Search size={15} />}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.currentTarget.value)}
-                  />
+            {/* תוצאות מאגר המזון (מוצג בחיפוש או בלשונית מאגר ללא גלילה מקוננת) */}
+            {(activeTab === 'catalog' ||
+              (activeTab === 'hub' && trimmedQuery.length > 0)) && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 6,
+                  }}
+                >
+                  <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--text-secondary)' }}>
+                    תוצאות מהמאגר הישראלי והסופרים:
+                  </span>
                   <button
+                    type="button"
                     onClick={() => setBarcodeModalOpen(true)}
                     className="btn-surface"
                     style={{
-                      display: 'flex',
+                      display: 'inline-flex',
                       alignItems: 'center',
-                      gap: 6,
-                      padding: '0 14px',
-                      fontSize: 12,
+                      gap: 5,
+                      padding: '4px 10px',
+                      borderRadius: 999,
+                      fontSize: 11,
                       cursor: 'pointer',
                     }}
                   >
-                    <Barcode size={16} color="var(--accent-volt)" />
+                    <Barcode size={13} color="var(--accent-volt)" />
                     <span>ברקוד</span>
                   </button>
                 </div>
@@ -1360,10 +2134,10 @@ export function AddMealDrawer({
                             ? '1px solid var(--accent-volt)'
                             : '1px solid var(--border-subtle)',
                           background: active
-                            ? 'rgba(210, 255, 40, 0.14)'
+                            ? 'rgba(234, 88, 12, 0.16)'
                             : 'var(--bg-surface-2)',
                           color: active
-                            ? 'var(--accent-volt)'
+                            ? 'var(--accent-orange-bright)'
                             : 'var(--text-secondary)',
                         }}
                       >
@@ -1377,38 +2151,33 @@ export function AddMealDrawer({
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
-                    fontSize: 11,
+                    fontSize: 10.5,
                     color: 'var(--text-muted)',
                   }}
                 >
                   <span>
                     {searchLoading
                       ? 'מחפש במאגר המשולב (סופרים ישראליים, חנויות טבע + משרד הבריאות)...'
-                      : `${searchResults.length} תוצאות מתוך ${totalAvailable.toLocaleString('he-IL')}+ פריטים במאגר ${
-                          mohCount > 0 || scraperCount > 0
-                            ? `(משרד הבריאות: ${mohCount}, אתרים ישראלים: ${scraperCount})`
-                            : ''
-                        }`}
+                      : `${searchResults.length} תוצאות מתוך ${totalAvailable.toLocaleString('he-IL')}+ פריטים`}
                   </span>
-                  <span>ערכים ל-100 גרם / יחידת מידה</span>
+                  <span>לחץ לבחירת כמות</span>
                 </div>
 
-                <ScrollArea.Autosize mah={210} type="always">
-                  {searchResults.length === 0 && !searchLoading ? (
-                    <div
-                      style={{
-                        padding: 18,
-                        textAlign: 'center',
-                        borderRadius: 12,
-                        background: 'var(--bg-surface-2)',
-                        border: '1px solid var(--border-subtle)',
-                        color: 'var(--text-secondary)',
-                        fontSize: 12,
-                      }}
-                    >
-                      לא נמצאו מוצרים המתאימים ל־&ldquo;{searchQuery}&rdquo;. נסה מילה אחרת, סריקת ברקוד או ניתוח AI.
-                    </div>
-                  ) : (
+                {searchResults.length === 0 && !searchLoading ? (
+                  <div
+                    style={{
+                      padding: 18,
+                      textAlign: 'center',
+                      borderRadius: 12,
+                      background: 'var(--bg-surface-2)',
+                      border: '1px solid var(--border-subtle)',
+                      color: 'var(--text-secondary)',
+                      fontSize: 12,
+                    }}
+                  >
+                    לא נמצאו מוצרים המתאימים ל־&ldquo;{searchQuery}&rdquo;. אפשר ללחוץ למעלה על <b>&quot;שלח ל-AI את הטקסט שנרשם&quot;</b> לפיענוח מיידי!
+                  </div>
+                ) : (
                   <div
                     style={{
                       display: 'grid',
@@ -1431,7 +2200,7 @@ export function AddMealDrawer({
                               ? '1px solid var(--accent-volt)'
                               : '1px solid var(--border-subtle)',
                             background: isSelected
-                              ? 'rgba(210, 255, 40, 0.08)'
+                              ? 'rgba(234, 88, 12, 0.1)'
                               : 'var(--bg-surface-2)',
                             display: 'flex',
                             justifyContent: 'space-between',
@@ -1465,8 +2234,9 @@ export function AddMealDrawer({
                                 style={{
                                   marginTop: 2,
                                   fontSize: 10,
-                                  color: food.sourceSiteId ? 'var(--accent-volt)' : 'var(--text-muted)',
-                                  opacity: food.sourceSiteId ? 0.9 : 0.8,
+                                  color: food.sourceSiteId
+                                    ? 'var(--accent-orange-bright)'
+                                    : 'var(--text-muted)',
                                 }}
                               >
                                 {food.brand && food.brand !== food.sourceSiteName
@@ -1476,6 +2246,7 @@ export function AddMealDrawer({
                             )}
                           </div>
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               onToggleFavorite(food.id);
@@ -1499,130 +2270,6 @@ export function AddMealDrawer({
                       );
                     })}
                   </div>
-                  )}
-                </ScrollArea.Autosize>
-
-                {selectedFood && (
-                  <div
-                    style={{
-                      background: 'var(--bg-surface-2)',
-                      border: '1px solid rgba(210, 255, 40, 0.25)',
-                      borderRadius: 16,
-                      padding: 14,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: 10,
-                      }}
-                    >
-                      <div style={{ fontWeight: 800, fontSize: 14 }}>
-                        {selectedFood.name}{' '}
-                        {selectedFood.brand ? `(${selectedFood.brand})` : ''}
-                      </div>
-                      <div
-                        className="num-mono"
-                        style={{
-                          fontSize: 15,
-                          fontWeight: 800,
-                          color: 'var(--accent-volt)',
-                        }}
-                      >
-                        {previewMacros.calories} קק״ל
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1.4fr 0.8fr 0.8fr',
-                        gap: 8,
-                        marginBottom: 12,
-                      }}
-                    >
-                      <Select
-                        size="xs"
-                        label="יחידת מידה"
-                        value={selectedUnitLabel}
-                        onChange={handleUnitChange}
-                        data={[
-                          ...getCombinedUnitsForFood(selectedFood).map((u) => ({
-                            value: u.label,
-                            label: u.label,
-                          })),
-                          { value: 'custom-grams', label: 'משקל חופשי (גרם)' },
-                        ]}
-                      />
-                      <NumberInput
-                        size="xs"
-                        label="כמות"
-                        value={quantity}
-                        onChange={handleQuantityChange}
-                        min={0.25}
-                        max={20}
-                        step={0.5}
-                        disabled={selectedUnitLabel === 'custom-grams'}
-                      />
-                      <NumberInput
-                        size="xs"
-                        label="סה״כ גרמים"
-                        value={customGrams}
-                        onChange={(val) =>
-                          setCustomGrams(Math.max(1, Number(val) || 100))
-                        }
-                        min={1}
-                        max={2000}
-                        step={5}
-                      />
-                    </div>
-
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <div
-                        className="num-mono"
-                        style={{
-                          display: 'flex',
-                          gap: 12,
-                          fontSize: 12,
-                          fontWeight: 700,
-                        }}
-                      >
-                        <span style={{ color: 'var(--macro-protein)' }}>
-                          חלבון: {previewMacros.protein}g
-                        </span>
-                        <span style={{ color: 'var(--macro-carbs)' }}>
-                          פחמימה: {previewMacros.carbs}g
-                        </span>
-                        <span style={{ color: 'var(--macro-fat)' }}>
-                          שומן: {previewMacros.fat}g
-                        </span>
-                      </div>
-
-                      <button
-                        onClick={() => addSelectedFoodToMeal('catalog')}
-                        className="btn-volt"
-                        style={{
-                          padding: '8px 16px',
-                          fontSize: 12,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 5,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <Plus size={14} />
-                        <span>הוסף לארוחה</span>
-                      </button>
-                    </div>
-                  </div>
                 )}
               </div>
             )}
@@ -1630,6 +2277,33 @@ export function AddMealDrawer({
             {/* לשונית 2: צילום ארוחה / טבלת ערכים תזונתיים + פענוח AI */}
             {activeTab === 'ai-photo' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {items.length > 0 && photoItems.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('meal-items')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '9px 12px',
+                      borderRadius: 12,
+                      background: 'rgba(234, 88, 12, 0.14)',
+                      border: '1px solid rgba(234, 88, 12, 0.42)',
+                      color: '#ffffff',
+                      fontSize: 12,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <span>
+                      ✨ זוהו {items.length} מרכיבים מצילום זה ({currentTotals.calories} קק״ל)
+                    </span>
+                    <span style={{ color: 'var(--accent-orange-bright)' }}>
+                      צפה וערוך מרכיבים ←
+                    </span>
+                  </button>
+                )}
+
                 <div
                   style={{
                     display: 'grid',
@@ -1654,7 +2328,7 @@ export function AddMealDrawer({
                       background:
                         photoMode === 'plate' ? 'var(--accent-volt)' : 'transparent',
                       color:
-                        photoMode === 'plate' ? '#08090c' : 'var(--text-secondary)',
+                        photoMode === 'plate' ? '#ffffff' : 'var(--text-secondary)',
                       fontSize: 12,
                       fontWeight: 700,
                       cursor: 'pointer',
@@ -1679,7 +2353,7 @@ export function AddMealDrawer({
                           : 'transparent',
                       color:
                         photoMode === 'nutrition-label'
-                          ? '#08090c'
+                          ? '#ffffff'
                           : 'var(--text-secondary)',
                       fontSize: 12,
                       fontWeight: 700,
@@ -1694,7 +2368,7 @@ export function AddMealDrawer({
                 <div
                   style={{
                     background: 'var(--bg-surface-2)',
-                    border: '1px dashed rgba(210, 255, 40, 0.35)',
+                    border: '1px dashed rgba(234, 88, 12, 0.35)',
                     borderRadius: 16,
                     padding: 16,
                     textAlign: 'center',
@@ -1719,7 +2393,7 @@ export function AddMealDrawer({
                               height: photoItems.length === 1 ? 140 : 102,
                               borderRadius: 12,
                               overflow: 'hidden',
-                              border: '1px solid rgba(210, 255, 40, 0.35)',
+                              border: '1px solid rgba(234, 88, 12, 0.35)',
                             }}
                           >
                             <img
@@ -1893,7 +2567,7 @@ export function AddMealDrawer({
                           fontSize: 12,
                           cursor: photoUploading ? 'wait' : 'pointer',
                           opacity: photoUploading ? 0.65 : 1,
-                          borderColor: 'rgba(210, 255, 40, 0.35)',
+                          borderColor: 'rgba(234, 88, 12, 0.35)',
                         }}
                       >
                         <Camera size={14} color="var(--accent-volt)" />
@@ -1998,9 +2672,9 @@ export function AddMealDrawer({
                   <span style={{ fontSize: 12, fontWeight: 700 }}>
                     תאר בטקסט או בהקלטה קולית מה אכלת:
                   </span>
-                  <button
+                    <button
                     type="button"
-                    onClick={toggleVoiceRecording}
+                    onClick={() => toggleVoiceRecording('ai-text')}
                     className={isRecordingVoice ? 'btn-volt' : 'btn-surface'}
                     style={{
                       display: 'flex',
@@ -2112,7 +2786,17 @@ export function AddMealDrawer({
                       fontSize: 12,
                     }}
                   >
-                    טרם סימנת מאכלים מועדפים. לחץ על אייקון הלב ❤️ ליד כל מוצר בלשונית &ldquo;מאגר מזון&rdquo; כדי לשמור אותו כאן לגישה מהירה.
+                    טרם סימנת מאכלים מועדפים.
+                    <div style={{ marginTop: 10 }}>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('catalog')}
+                        className="btn-volt"
+                        style={{ padding: '7px 14px', fontSize: 12, cursor: 'pointer' }}
+                      >
+                        עיון במאגר המזון המלא
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div
@@ -2196,8 +2880,8 @@ export function AddMealDrawer({
                 style={{
                   padding: '12px 14px',
                   borderRadius: 14,
-                  background: 'rgba(210, 255, 40, 0.08)',
-                  border: '1px solid rgba(210, 255, 40, 0.35)',
+                  background: 'rgba(234, 88, 12, 0.08)',
+                  border: '1px solid rgba(234, 88, 12, 0.35)',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 8,
@@ -2217,7 +2901,7 @@ export function AddMealDrawer({
                       fontWeight: 800,
                       padding: '2px 8px',
                       borderRadius: 999,
-                      background: 'rgba(210, 255, 40, 0.14)',
+                      background: 'rgba(234, 88, 12, 0.14)',
                       color: 'var(--accent-volt)',
                     }}
                   >
@@ -2237,7 +2921,7 @@ export function AddMealDrawer({
                     fontSize: 11,
                     fontWeight: 700,
                     cursor: 'pointer',
-                    borderColor: 'rgba(210, 255, 40, 0.35)',
+                    borderColor: 'rgba(234, 88, 12, 0.35)',
                     color: 'var(--accent-volt)',
                   }}
                 >
@@ -2271,12 +2955,12 @@ export function AddMealDrawer({
                     ? 'rgba(239, 68, 68, 0.14)'
                     : aiSummary.isFallback
                     ? 'rgba(245, 158, 11, 0.14)'
-                    : 'rgba(210, 255, 40, 0.1)',
+                    : 'rgba(234, 88, 12, 0.1)',
                   border: aiSummary.isError
                     ? '1px solid rgba(239, 68, 68, 0.35)'
                     : aiSummary.isFallback
                     ? '1px solid rgba(245, 158, 11, 0.35)'
-                    : '1px solid rgba(210, 255, 40, 0.3)',
+                    : '1px solid rgba(234, 88, 12, 0.3)',
                   color: aiSummary.isError
                     ? '#f87171'
                     : aiSummary.isFallback
@@ -2301,301 +2985,328 @@ export function AddMealDrawer({
               </div>
             )}
 
-            {/* רשימת הפריטים בארוחה + עריכה ידנית */}
-            <div
-              style={{
-                borderTop: '1px solid var(--border-subtle)',
-                paddingTop: 14,
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 10,
-                }}
-              >
-                <span style={{ fontSize: 13, fontWeight: 800 }}>
-                  פריטים בארוחה ({items.length})
-                </span>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                  לחץ על אייקון העריכה לשינוי משקל או ערכי מאקרו
-                </span>
-              </div>
-
-              {items.length === 0 ? (
-                <div
-                  style={{
-                    padding: 20,
-                    textAlign: 'center',
-                    borderRadius: 14,
-                    background: 'var(--bg-surface-2)',
-                    color: 'var(--text-muted)',
-                    fontSize: 12,
-                  }}
-                >
-                  טרם נוספו פריטים לארוחה זו.
-                </div>
-              ) : (
+            {/* פאנל נפרד לניהול ועריכת המרכיבים שכבר בארוחה (נפתח מלחיצה על הכרטיסייה התחתונה) */}
+            {activeTab === 'meal-items' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div
                   style={{
                     display: 'flex',
-                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
                     gap: 8,
                   }}
                 >
-                  {items.map((item) => {
-                    const isEditing = editingItemId === item.id;
-                    return (
-                      <div
-                        key={item.id}
+                  <span style={{ fontSize: 14, fontWeight: 900 }}>
+                    מרכיבי הארוחה הנוכחית ({items.length})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('hub')}
+                    className="btn-surface"
+                    style={{
+                      padding: '5px 11px',
+                      borderRadius: 999,
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    + הוסף עוד פריטים
+                  </button>
+                </div>
+
+                {allMealPhotos.length > 0 && (
+                  <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
+                    {allMealPhotos.map((src, i) => (
+                      <img
+                        key={i}
+                        src={src}
+                        alt={`תמונת ארוחה ${i + 1}`}
+                        onClick={() => setActiveTab('ai-photo')}
                         style={{
-                          background: 'var(--bg-surface-2)',
-                          border: '1px solid var(--border-subtle)',
-                          borderRadius: 14,
-                          padding: '10px 12px',
+                          width: 64,
+                          height: 64,
+                          borderRadius: 12,
+                          objectFit: 'cover',
+                          border: '1px solid rgba(234, 88, 12, 0.45)',
+                          cursor: 'pointer',
+                          flexShrink: 0,
                         }}
-                      >
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {items.length === 0 ? (
+                  <div
+                    style={{
+                      padding: 24,
+                      textAlign: 'center',
+                      borderRadius: 14,
+                      background: 'var(--bg-surface-2)',
+                      color: 'var(--text-muted)',
+                      fontSize: 12,
+                    }}
+                  >
+                    טרם נוספו פריטים לארוחה זו.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {items.map((item) => {
+                      const isEditing = editingItemId === item.id;
+                      return (
                         <div
+                          key={item.id}
                           style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
+                            background: 'var(--bg-surface-2)',
+                            border: isEditing
+                              ? '1px solid rgba(234, 88, 12, 0.45)'
+                              : '1px solid var(--border-subtle)',
+                            borderRadius: 14,
+                            padding: '10px 12px',
                           }}
                         >
-                          <div>
-                            <div
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 6,
-                                flexWrap: 'wrap',
-                              }}
-                            >
-                              <span style={{ fontSize: 13, fontWeight: 700 }}>
-                                {item.name}
-                              </span>
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  padding: '1px 7px',
-                                  borderRadius: 999,
-                                  background: 'rgba(255,255,255,0.06)',
-                                  color: 'var(--text-secondary)',
-                                }}
-                              >
-                                {item.unitLabel}
-                              </span>
-                              {(item.isAiFallback || item.aiEngine) && (
-                                <span
-                                  title={
-                                    item.fallbackReason
-                                      ? `סיבת גיבוי: ${item.fallbackReason}`
-                                      : item.aiEngine
-                                  }
-                                  style={{
-                                    fontSize: 9,
-                                    padding: '1px 6px',
-                                    borderRadius: 999,
-                                    fontWeight: 800,
-                                    background: item.isAiFallback
-                                      ? 'rgba(245, 158, 11, 0.16)'
-                                      : 'rgba(210, 255, 40, 0.1)',
-                                    border: item.isAiFallback
-                                      ? '1px solid rgba(245, 158, 11, 0.38)'
-                                      : '1px solid rgba(210, 255, 40, 0.28)',
-                                    color: item.isAiFallback
-                                      ? '#fbbf24'
-                                      : 'var(--accent-volt)',
-                                  }}
-                                >
-                                  {item.isAiFallback
-                                    ? `לא AI · ${item.aiEngine || 'Fallback'}`
-                                    : `AI · ${item.aiEngine}`}
-                                </span>
-                              )}
-                            </div>
-                            <div
-                              className="num-mono"
-                              style={{
-                                fontSize: 11,
-                                color: 'var(--text-secondary)',
-                                marginTop: 2,
-                              }}
-                            >
-                              <b style={{ color: 'var(--text-primary)' }}>
-                                {item.macros.calories} קק״ל
-                              </b>{' '}
-                              · ח׳ {item.macros.protein}g · פ׳ {item.macros.carbs}
-                              g · ש׳ {item.macros.fat}g
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button
-                              onClick={() =>
-                                setEditingItemId(isEditing ? null : item.id)
-                              }
-                              className="btn-surface"
-                              style={{
-                                width: 30,
-                                height: 30,
-                                padding: 0,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              <Edit3
-                                size={13}
-                                color={
-                                  isEditing
-                                    ? 'var(--accent-volt)'
-                                    : 'var(--text-secondary)'
-                                }
-                              />
-                            </button>
-                            <button
-                              onClick={() => removeItem(item.id)}
-                              className="btn-surface"
-                              style={{
-                                width: 30,
-                                height: 30,
-                                padding: 0,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              <Trash2 size={13} color="#ef4444" />
-                            </button>
-                          </div>
-                        </div>
-
-                        <Collapse in={isEditing}>
                           <div
                             style={{
-                              display: 'grid',
-                              gridTemplateColumns: 'repeat(auto-fit, minmax(75px, 1fr))',
-                              gap: 6,
-                              marginTop: 10,
-                              paddingTop: 10,
-                              borderTop: '1px solid var(--border-subtle)',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              gap: 8,
                             }}
                           >
-                            <NumberInput
-                              size="xs"
-                              label="גרם"
-                              value={item.grams}
-                              min={1}
-                              step={5}
-                              onChange={(val) =>
-                                updateLoggedItemGrams(
-                                  item.id,
-                                  Number(val) || 100
-                                )
-                              }
-                            />
-                            <NumberInput
-                              size="xs"
-                              label="קק״ל"
-                              value={item.macros.calories}
-                              min={0}
-                              onChange={(val) =>
-                                updateLoggedItemMacroField(
-                                  item.id,
-                                  'calories',
-                                  Number(val)
-                                )
-                              }
-                            />
-                            <NumberInput
-                              size="xs"
-                              label="חלבון"
-                              value={item.macros.protein}
-                              min={0}
-                              decimalScale={1}
-                              onChange={(val) =>
-                                updateLoggedItemMacroField(
-                                  item.id,
-                                  'protein',
-                                  Number(val)
-                                )
-                              }
-                            />
-                            <NumberInput
-                              size="xs"
-                              label="פחמימה"
-                              value={item.macros.carbs}
-                              min={0}
-                              decimalScale={1}
-                              onChange={(val) =>
-                                updateLoggedItemMacroField(
-                                  item.id,
-                                  'carbs',
-                                  Number(val)
-                                )
-                              }
-                            />
-                            <NumberInput
-                              size="xs"
-                              label="שומן"
-                              value={item.macros.fat}
-                              min={0}
-                              decimalScale={1}
-                              onChange={(val) =>
-                                updateLoggedItemMacroField(
-                                  item.id,
-                                  'fat',
-                                  Number(val)
-                                )
-                              }
-                            />
-                          </div>
-                        </Collapse>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 6,
+                                  flexWrap: 'wrap',
+                                }}
+                              >
+                                <span style={{ fontSize: 13, fontWeight: 700 }}>
+                                  {item.name}
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: 10,
+                                    padding: '1px 7px',
+                                    borderRadius: 999,
+                                    background: 'rgba(255,255,255,0.06)',
+                                    color: 'var(--text-secondary)',
+                                  }}
+                                >
+                                  {item.unitLabel}
+                                </span>
+                                {(item.isAiFallback || item.aiEngine) && (
+                                  <span
+                                    title={
+                                      item.fallbackReason
+                                        ? `סיבת גיבוי: ${item.fallbackReason}`
+                                        : item.aiEngine
+                                    }
+                                    style={{
+                                      fontSize: 9,
+                                      padding: '1px 6px',
+                                      borderRadius: 999,
+                                      fontWeight: 800,
+                                      background: item.isAiFallback
+                                        ? 'rgba(245, 158, 11, 0.16)'
+                                        : 'rgba(234, 88, 12, 0.14)',
+                                      border: item.isAiFallback
+                                        ? '1px solid rgba(245, 158, 11, 0.38)'
+                                        : '1px solid rgba(234, 88, 12, 0.32)',
+                                      color: item.isAiFallback
+                                        ? '#fbbf24'
+                                        : 'var(--accent-orange-bright)',
+                                    }}
+                                  >
+                                    {item.isAiFallback
+                                      ? `לא AI · ${item.aiEngine || 'Fallback'}`
+                                      : `AI · ${item.aiEngine}`}
+                                  </span>
+                                )}
+                              </div>
+                              <div
+                                className="num-mono"
+                                style={{
+                                  fontSize: 11,
+                                  color: 'var(--text-secondary)',
+                                  marginTop: 2,
+                                }}
+                              >
+                                <b style={{ color: 'var(--text-primary)' }}>
+                                  {item.macros.calories} קק״ל
+                                </b>{' '}
+                                · ח׳ {item.macros.protein}g · פ׳ {item.macros.carbs}
+                                g · ש׳ {item.macros.fat}g
+                              </div>
+                            </div>
 
-            {/* פס סיכום ושמירה */}
-            <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                border: '1px solid rgba(210, 255, 40, 0.35)',
-                borderRadius: 16,
-                padding: '14px 16px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: 12,
-              }}
-            >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+                            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                              <button
+                                onClick={() =>
+                                  setEditingItemId(isEditing ? null : item.id)
+                                }
+                                className="btn-surface"
+                                style={{
+                                  width: 30,
+                                  height: 30,
+                                  padding: 0,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <Edit3
+                                  size={13}
+                                  color={
+                                    isEditing
+                                      ? 'var(--accent-volt)'
+                                      : 'var(--text-secondary)'
+                                  }
+                                />
+                              </button>
+                              <button
+                                onClick={() => removeItem(item.id)}
+                                className="btn-surface"
+                                style={{
+                                  width: 30,
+                                  height: 30,
+                                  padding: 0,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <Trash2 size={13} color="#ef4444" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <Collapse in={isEditing}>
+                            <div
+                              style={{
+                                marginTop: 10,
+                                paddingTop: 10,
+                                borderTop: '1px solid var(--border-subtle)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: 8,
+                              }}
+                            >
+                              <TextInput
+                                size="xs"
+                                label="שם המרכיב"
+                                value={item.name}
+                                onChange={(e) =>
+                                  updateLoggedItemName(item.id, e.currentTarget.value)
+                                }
+                              />
+                              <div
+                                style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: 'repeat(auto-fit, minmax(75px, 1fr))',
+                                  gap: 6,
+                                }}
+                              >
+                                <NumberInput
+                                  size="xs"
+                                  label="גרם"
+                                  value={item.grams}
+                                  min={1}
+                                  step={5}
+                                  onChange={(val) =>
+                                    updateLoggedItemGrams(
+                                      item.id,
+                                      Number(val) || 100
+                                    )
+                                  }
+                                />
+                                <NumberInput
+                                  size="xs"
+                                  label="קק״ל"
+                                  value={item.macros.calories}
+                                  min={0}
+                                  onChange={(val) =>
+                                    updateLoggedItemMacroField(
+                                      item.id,
+                                      'calories',
+                                      Number(val)
+                                    )
+                                  }
+                                />
+                                <NumberInput
+                                  size="xs"
+                                  label="חלבון"
+                                  value={item.macros.protein}
+                                  min={0}
+                                  decimalScale={1}
+                                  onChange={(val) =>
+                                    updateLoggedItemMacroField(
+                                      item.id,
+                                      'protein',
+                                      Number(val)
+                                    )
+                                  }
+                                />
+                                <NumberInput
+                                  size="xs"
+                                  label="פחמימה"
+                                  value={item.macros.carbs}
+                                  min={0}
+                                  decimalScale={1}
+                                  onChange={(val) =>
+                                    updateLoggedItemMacroField(
+                                      item.id,
+                                      'carbs',
+                                      Number(val)
+                                    )
+                                  }
+                                />
+                                <NumberInput
+                                  size="xs"
+                                  label="שומן"
+                                  value={item.macros.fat}
+                                  min={0}
+                                  decimalScale={1}
+                                  onChange={(val) =>
+                                    updateLoggedItemMacroField(
+                                      item.id,
+                                      'fat',
+                                      Number(val)
+                                    )
+                                  }
+                                />
+                              </div>
+                            </div>
+                          </Collapse>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {items.length > 0 && onSavedMealAction && (
                   <div
                     style={{
+                      background: 'var(--bg-surface-2)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 14,
+                      padding: 12,
                       display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 10,
-                      flexWrap: 'wrap',
-                      paddingBottom: 6,
-                      borderBottom: '1px solid rgba(255,255,255,0.06)',
+                      flexDirection: 'column',
+                      gap: 8,
                     }}
                   >
                     <Switch
                       size="xs"
+                      color="orange"
                       checked={saveAsPreset}
                       onChange={(e) => setSaveAsPreset(e.currentTarget.checked)}
                       label={
-                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                        <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)' }}>
                           📌 שמור מנה זו גם ב&quot;הארוחות שלי&quot; לשימוש חוזר
                         </span>
                       }
@@ -2611,115 +3322,185 @@ export function AddMealDrawer({
                         }
                         value={presetTitleInput}
                         onChange={(e) => setPresetTitleInput(e.currentTarget.value)}
-                        style={{ flex: '1 1 180px' }}
                       />
                     )}
                   </div>
                 )}
 
+                <button
+                  disabled={savingMeal}
+                  onClick={() => void handleSaveMealAndClose()}
+                  className="btn-volt"
+                  style={{
+                    padding: '12px 18px',
+                    fontSize: 13.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {savingMeal ? (
+                    <Loader2 size={16} className="spot-spinner" />
+                  ) : (
+                    <Check size={16} />
+                  )}
+                  <span>
+                    {savingMeal
+                      ? 'שומר ארוחה...'
+                      : `שמור ארוחה (${currentTotals.calories} קק״ל)`}
+                  </span>
+                </button>
+              </div>
+            )}
+        </div>
+
+        {/* אזור תחתון קבוע תמיד (Persistent Current Meal Summary Card + שמירה מהירה) */}
+        {activeTab !== 'meal-items' && (
+          <div
+            style={{
+              flexShrink: 0,
+              background: '#0d0f15',
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+              padding: '10px 14px calc(10px + env(safe-area-inset-bottom, 0px))',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => setActiveTab('meal-items')}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setActiveTab('meal-items');
+                }
+              }}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '7px 10px',
+                borderRadius: 14,
+                background: 'var(--bg-surface-2)',
+                border:
+                  items.length > 0
+                    ? '1px solid rgba(234, 88, 12, 0.42)'
+                    : '1px solid var(--border-subtle)',
+                cursor: 'pointer',
+              }}
+            >
+              {mealThumbnailUrl ? (
+                <img
+                  src={mealThumbnailUrl}
+                  alt={mealSlot.name}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    objectFit: 'cover',
+                    flexShrink: 0,
+                    border: '1px solid rgba(255,255,255,0.16)',
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    background: 'rgba(234, 88, 12, 0.14)',
+                    border: '1px solid rgba(234, 88, 12, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Utensils size={16} color="var(--accent-orange-bright)" />
+                </div>
+              )}
+
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <div
                   style={{
                     display: 'flex',
-                    justifyContent: 'space-between',
                     alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: 12,
+                    justifyContent: 'space-between',
+                    gap: 6,
                   }}
                 >
-                  <div>
-                    <div
-                      className="num-mono"
-                      style={{ fontSize: 16, fontWeight: 800 }}
-                    >
-                      {currentTotals.calories} / {mealSlot.targets.calories} קק״ל
-                    </div>
-                    <div
-                      className="num-mono"
-                      style={{
-                        fontSize: 12,
-                        color: 'var(--text-secondary)',
-                        display: 'flex',
-                        gap: 10,
-                      }}
-                    >
-                      <span style={{ color: 'var(--macro-protein)' }}>
-                        ח׳ {currentTotals.protein}/{mealSlot.targets.protein}g
-                      </span>
-                      <span style={{ color: 'var(--macro-carbs)' }}>
-                        פ׳ {currentTotals.carbs}/{mealSlot.targets.carbs}g
-                      </span>
-                      <span style={{ color: 'var(--macro-fat)' }}>
-                        ש׳ {currentTotals.fat}/{mealSlot.targets.fat}g
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    disabled={savingMeal}
-                    onClick={async () => {
-                      if (saveLockRef.current) return;
-                      saveLockRef.current = true;
-                      setSavingMeal(true);
-                      try {
-                        const primaryPhoto = photoItems[0]?.dataUrl || photoDataUrl;
-                        await onSaveMeal(mealSlot.id, items, primaryPhoto, photoNote);
-                        if (saveAsPreset && items.length > 0 && onSavedMealAction) {
-                          const autoTitle =
-                            presetTitleInput.trim() ||
-                            items
-                              .slice(0, 2)
-                              .map((i) => i.name)
-                              .join(' + ');
-                          const aiItem = items.find((it) => it.aiEngine || it.isAiFallback !== undefined);
-                          await onSavedMealAction({
-                            op: 'upsert',
-                            preset: {
-                              title: autoTitle,
-                              mealSlotId: mealSlot.id,
-                              items,
-                              photoDataUrls:
-                                photoItems.length > 0
-                                  ? photoItems.map((im) => im.dataUrl)
-                                  : primaryPhoto
-                                  ? [primaryPhoto]
-                                  : undefined,
-                              photoDataUrl: primaryPhoto,
-                              contextParams,
-                              aiEngine: aiItem?.aiEngine,
-                              isAiFallback: aiItem?.isAiFallback,
-                              fallbackReason: aiItem?.fallbackReason,
-                              useCount: 1,
-                            },
-                          });
-                        }
-                        onClose();
-                      } finally {
-                        saveLockRef.current = false;
-                        setSavingMeal(false);
-                      }
-                    }}
-                    className="btn-volt"
+                  <span
                     style={{
-                      padding: '10px 22px',
-                      fontSize: 13,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      cursor: 'pointer',
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: '#ffffff',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
                     }}
                   >
-                    {savingMeal ? (
-                      <Loader2 size={16} className="spot-spinner" />
-                    ) : (
-                      <Check size={16} />
-                    )}
-                    <span>{savingMeal ? 'שומר ארוחה...' : 'שמור ארוחה'}</span>
-                  </button>
+                    בארוחה: {items.length} מרכיבים
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: 'var(--accent-orange-bright)',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
+                    }}
+                  >
+                    לעריכה ופירוט ⌄
+                  </span>
+                </div>
+                <div
+                  className="num-mono"
+                  style={{
+                    fontSize: 11,
+                    color: 'var(--text-secondary)',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    marginTop: 2,
+                  }}
+                >
+                  <b style={{ color: '#ffffff' }}>{currentTotals.calories}</b>/{mealSlot.targets.calories} קק״ל · ח׳{' '}
+                  {currentTotals.protein} · פ׳ {currentTotals.carbs} · ש׳ {currentTotals.fat}
                 </div>
               </div>
             </div>
+
+            <button
+              type="button"
+              disabled={savingMeal}
+              onClick={() => void handleSaveMealAndClose()}
+              className="btn-volt"
+              style={{
+                padding: '11px 16px',
+                fontSize: 12.5,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                cursor: 'pointer',
+                flexShrink: 0,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {savingMeal ? (
+                <Loader2 size={14} className="spot-spinner" />
+              ) : (
+                <Check size={14} />
+              )}
+              <span>שמור</span>
+            </button>
           </div>
-        </ScrollArea>
+        )}
       </Drawer>
 
       <ServingToolsManagerModal
@@ -2738,7 +3519,7 @@ export function AddMealDrawer({
         opened={barcodeModalOpen}
         onClose={() => setBarcodeModalOpen(false)}
         onProductFound={(product) => {
-          handleSelectCatalogFood(product);
+          handleSelectCatalogFood(product, false);
           const defaultUnit = product.units[0] || {
             label: '100 גרם',
             grams: 100,
@@ -2761,6 +3542,7 @@ export function AddMealDrawer({
               source: 'barcode',
             },
           ]);
+          setAiSummary({ msg: `נוסף מסורק ברקוד: ${product.name}` });
         }}
       />
     </>

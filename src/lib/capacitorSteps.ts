@@ -198,7 +198,10 @@ export async function checkNativeAppUpdate(): Promise<AppUpdateInfo | null> {
       updateAvailable: latestCode > localCode,
       latestVersionCode: latestCode,
       latestVersionName: String(remote.latestVersionName || '1.0.0'),
-      apkDownloadUrl: String(remote.apkDownloadUrl || '/download'),
+      apkDownloadUrl: String(
+        remote.apkDownloadUrl ||
+          'https://github.com/AdiTam1/spot-fitness-prod/releases/latest/download/spot-fitness-release.apk'
+      ),
       releaseNotes: remote.releaseNotes,
     };
   } catch {
