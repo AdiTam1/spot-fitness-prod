@@ -46,14 +46,17 @@ export function CoachPushModal({
     mealSlots[1]?.id ||
     firstSlotId;
 
+  const activeTraineeId = trainee?.id || '';
+  const activeTraineeName = trainee?.name || '';
+
   useEffect(() => {
-    if (!trainee || !opened) return;
-    setTitle(`תזכורת עבור ${trainee.name}`);
-    setBody(`${trainee.name}, עדיין לא הזנת ארוחת בוקר — היכנסי עכשיו`);
+    if (!activeTraineeId || !opened) return;
+    setTitle(`תזכורת עבור ${activeTraineeName}`);
+    setBody(`${activeTraineeName}, עדיין לא הזנת ארוחת בוקר — היכנסי עכשיו`);
     setTargetScreen('meal');
     setTargetMealSlotId(firstSlotId);
     setFeedback(null);
-  }, [trainee, opened, firstSlotId]);
+  }, [activeTraineeId, activeTraineeName, opened, firstSlotId]);
 
   if (!trainee) return null;
 

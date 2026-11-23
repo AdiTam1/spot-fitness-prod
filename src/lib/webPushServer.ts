@@ -1,4 +1,4 @@
-import webpush from 'web-push';
+import { sendNotification } from 'web-push';
 import { TraineeWebPushSubscriptionEntry } from '@/types/nutrition';
 
 interface VapidConfig {
@@ -147,7 +147,7 @@ export async function sendWebPushToSubscriptions(
   await Promise.all(
     Array.from(uniqueSubs.values()).map(async (sub) => {
       try {
-        await webpush.sendNotification(
+        await sendNotification(
           {
             endpoint: sub.endpoint,
             keys: {

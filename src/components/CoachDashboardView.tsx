@@ -311,9 +311,17 @@ export function CoachDashboardView({
   // מודאל שיתוף מתאמן עם מאמנים נוספים
   const [sharingModalTrainee, setSharingModalTrainee] =
     useState<TraineeProfile | null>(null);
-  // מודאל שליחת התראת פוש אישית למתאמן
-  const [pushModalTrainee, setPushModalTrainee] =
-    useState<TraineeProfile | null>(null);
+  // מודאל שליחת התראת פוש אישית למתאמן (נשמר לפי ID כדי להסתנכרן עם רענון הנתונים)
+  const [pushModalTraineeId, setPushModalTraineeId] = useState<string | null>(
+    null
+  );
+  const pushModalTrainee = pushModalTraineeId
+    ? trainees.find((tr) => tr.id === pushModalTraineeId) || null
+    : null;
+  const openPushModalForTrainee = (traineeId: string) => {
+    setPushModalTraineeId(traineeId);
+    void onRefreshData?.();
+  };
   const [sharingPrimaryId, setSharingPrimaryId] =
     useState<string>('coach-admin');
   const [sharingCollaboratorIds, setSharingCollaboratorIds] = useState<
@@ -1824,7 +1832,7 @@ export function CoachDashboardView({
 
                               <button
                                 title="שלח פוש אישי למתאמן"
-                                onClick={() => setPushModalTrainee(t)}
+                                onClick={() => openPushModalForTrainee(t.id)}
                                 className="btn-surface"
                                 style={{
                                   padding: '6px 10px',
@@ -1834,7 +1842,9 @@ export function CoachDashboardView({
                                   alignItems: 'center',
                                   gap: 4,
                                   color:
-                                    (t.fcmTokens?.length || 0) > 0
+                                    (t.fcmTokens?.length || 0) +
+                                      (t.webPushSubscriptions?.length || 0) >
+                                    0
                                       ? 'var(--accent-volt)'
                                       : 'var(--text-secondary)',
                                 }}
@@ -1999,7 +2009,7 @@ export function CoachDashboardView({
 
                 <button
                   type="button"
-                  onClick={() => setPushModalTrainee(selectedTrainee)}
+                  onClick={() => openPushModalForTrainee(selectedTrainee.id)}
                   className="btn-surface"
                   style={{
                     padding: '8px 14px',
@@ -5190,7 +5200,7 @@ export function CoachDashboardView({
 
       <CoachPushModal
         opened={Boolean(pushModalTrainee)}
-        onClose={() => setPushModalTrainee(null)}
+        onClose={() => setPushModalTraineeId(null)}
         trainee={pushModalTrainee}
         todayIso={today}
         onPushSent={onRefreshData}
