@@ -638,7 +638,7 @@ export function TraineeProfileView({
                 marginBottom: 4,
               }}
             >
-              <TrendingUp size={13} color="#c084fc" />
+              <TrendingUp size={13} color="var(--accent-orange-bright)" />
               <span>שינוי משקל כולל</span>
             </div>
             <div className="num-mono" style={{ fontSize: 16, fontWeight: 900 }}>

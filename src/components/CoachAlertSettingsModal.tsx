@@ -279,13 +279,13 @@ export function CoachAlertSettingsModal({
       key: 'weight',
       label: 'משקלים',
       desc: 'עדכון משקל גוף חדש',
-      icon: <Scale size={14} color="#a855f7" />,
+      icon: <Scale size={14} color="var(--accent-orange-bright)" />,
     },
     {
       key: 'workouts',
       label: 'אימונים ואירובי',
       desc: 'סימון ביצוע אימון או אירובי',
-      icon: <Dumbbell size={14} color="#22c55e" />,
+      icon: <Dumbbell size={14} color="var(--accent-volt)" />,
     },
     {
       key: 'water',

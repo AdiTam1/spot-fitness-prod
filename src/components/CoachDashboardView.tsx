@@ -2729,8 +2729,8 @@ export function CoachDashboardView({
                         style={{
                           padding: '3px 9px',
                           borderRadius: 999,
-                          background: 'rgba(168, 85, 247, 0.15)',
-                          color: '#c084fc',
+                          background: 'rgba(214, 125, 9, 0.14)',
+                          color: 'var(--accent-orange-bright)',
                           fontWeight: 800,
                         }}
                       >

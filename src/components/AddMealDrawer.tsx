@@ -1464,19 +1464,19 @@ export function AddMealDrawer({
                     height: 32,
                     borderRadius: '50%',
                     border: trimmedQuery
-                      ? '1px solid rgba(168, 85, 247, 0.65)'
+                      ? '1px solid rgba(235, 147, 28, 0.7)'
                       : '1px solid var(--border-subtle)',
                     background: trimmedQuery
-                      ? 'linear-gradient(135deg, #9333ea 0%, #6d28d9 100%)'
+                      ? 'linear-gradient(135deg, #eb931c 0%, #b36206 100%)'
                       : 'var(--bg-surface-3)',
-                    color: trimmedQuery ? '#ffffff' : '#c084fc',
+                    color: trimmedQuery ? '#ffffff' : 'var(--accent-orange-bright)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: 'pointer',
                     flexShrink: 0,
                     boxShadow: trimmedQuery
-                      ? '0 2px 10px rgba(147, 51, 234, 0.45)'
+                      ? '0 2px 10px rgba(214, 125, 9, 0.4)'
                       : 'none',
                   }}
                 >
@@ -1761,43 +1761,43 @@ export function AddMealDrawer({
                     id: 'ai-photo',
                     title: 'צילום AI',
                     subtitle: 'צלחת או תווית ערכים',
-                    bg: 'linear-gradient(145deg, #d67d09 0%, #8a4f04 100%)',
-                    icon: <Camera size={22} color="#ffffff" />,
+                    bg: 'linear-gradient(142deg, #e08411 0%, #994f04 60%, #572b03 100%)',
+                    Icon: Camera,
                   },
                   {
                     id: 'ai-text',
                     title: 'טקסט / קול ל-AI',
                     subtitle: 'תיאור חופשי + תיבול',
-                    bg: 'linear-gradient(145deg, #7c3aed 0%, #4c1d95 100%)',
-                    icon: <Sparkles size={22} color="#ffffff" />,
+                    bg: 'linear-gradient(142deg, #c1690a 0%, #733905 62%, #3f1d03 100%)',
+                    Icon: Sparkles,
                   },
                   {
                     id: 'saved-meals',
                     title: 'ארוחות שמורות',
                     subtitle: `${savedMeals.length} מנות בגלריה`,
-                    bg: 'linear-gradient(145deg, #0284c7 0%, #1e3a8a 100%)',
-                    icon: <Bookmark size={22} color="#ffffff" />,
+                    bg: 'linear-gradient(142deg, #8b4c0d 0%, #4b2505 64%, #261304 100%)',
+                    Icon: Bookmark,
                   },
                   {
                     id: 'ai-recommend',
                     title: 'מה לאכול?',
                     subtitle: 'המלצות AI + המאמן',
-                    bg: 'linear-gradient(145deg, #059669 0%, #064e3b 100%)',
-                    icon: <Lightbulb size={22} color="#ffffff" />,
+                    bg: 'linear-gradient(142deg, #d07814 0%, #834406 60%, #482203 100%)',
+                    Icon: Lightbulb,
                   },
                   {
                     id: 'barcode-action',
                     title: 'סריקת ברקוד',
                     subtitle: 'מוצרים ארוזים בסופר',
-                    bg: 'linear-gradient(145deg, #d97706 0%, #78350f 100%)',
-                    icon: <Barcode size={22} color="#ffffff" />,
+                    bg: 'linear-gradient(142deg, #743f0c 0%, #3d1e05 64%, #1e0f03 100%)',
+                    Icon: Barcode,
                   },
                   {
                     id: 'favorites',
                     title: 'מועדפים ומאגר',
                     subtitle: `${favoriteIds.length} מועדפים · אלפי מוצרים`,
-                    bg: 'linear-gradient(145deg, #e11d48 0%, #881337 100%)',
-                    icon: <Heart size={22} color="#ffffff" />,
+                    bg: 'linear-gradient(142deg, #ad5909 0%, #653104 62%, #351803 100%)',
+                    Icon: Heart,
                   },
                 ].map((card) => (
                   <button
@@ -1811,42 +1811,88 @@ export function AddMealDrawer({
                       }
                     }}
                     style={{
+                      position: 'relative',
+                      overflow: 'hidden',
                       background: card.bg,
-                      border: '1px solid rgba(255,255,255,0.16)',
+                      border: '1px solid rgba(255, 200, 128, 0.16)',
                       borderRadius: 18,
-                      padding: '14px 13px',
-                      minHeight: 102,
+                      padding: '15px 14px 13px',
+                      minHeight: 108,
                       display: 'flex',
                       flexDirection: 'column',
-                      justifyContent: 'space-between',
+                      justifyContent: 'flex-end',
                       alignItems: 'flex-start',
                       textAlign: 'right',
                       cursor: 'pointer',
-                      boxShadow: '0 8px 22px -10px rgba(0,0,0,0.65)',
+                      boxShadow: '0 8px 22px -10px rgba(0,0,0,0.68)',
                     }}
                   >
-                    <div
+                    {/* אפקט רקע עדין בסגנון עומק ותאורה + האייקון באזור הריק ללא טקסט */}
+                    <span
+                      aria-hidden="true"
                       style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 11,
-                        background: 'rgba(255,255,255,0.2)',
+                        position: 'absolute',
+                        top: -18,
+                        left: -14,
+                        width: 78,
+                        height: 78,
+                        borderRadius: '50%',
+                        background:
+                          'radial-gradient(circle at 35% 32%, rgba(255, 224, 180, 0.22) 0%, rgba(255, 178, 92, 0.07) 58%, transparent 74%)',
+                        border: '1px solid rgba(255, 224, 180, 0.12)',
+                        pointerEvents: 'none',
+                      }}
+                    />
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        position: 'absolute',
+                        top: 10,
+                        left: 66,
+                        width: 15,
+                        height: 15,
+                        borderRadius: '50%',
+                        background:
+                          'radial-gradient(circle at 35% 35%, rgba(255, 232, 198, 0.24) 0%, transparent 74%)',
+                        pointerEvents: 'none',
+                      }}
+                    />
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        position: 'absolute',
+                        top: 10,
+                        left: 12,
+                        pointerEvents: 'none',
+                        transform: 'rotate(-8deg)',
+                        color: 'rgba(255, 240, 218, 0.28)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
                     >
-                      {card.icon}
-                    </div>
-                    <div style={{ marginTop: 10 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 900, color: '#ffffff' }}>
+                      <card.Icon size={46} strokeWidth={1.55} />
+                    </span>
+                    <div
+                      aria-hidden="true"
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background:
+                          'linear-gradient(to top, rgba(0,0,0,0.22) 0%, transparent 58%)',
+                        pointerEvents: 'none',
+                      }}
+                    />
+
+                    <div style={{ position: 'relative', zIndex: 1, maxWidth: '84%' }}>
+                      <div style={{ fontSize: 14, fontWeight: 900, color: '#ffffff' }}>
                         {card.title}
                       </div>
                       <div
                         style={{
                           fontSize: 10.5,
                           fontWeight: 600,
-                          color: 'rgba(255,255,255,0.85)',
+                          color: 'rgba(255, 244, 228, 0.84)',
                           marginTop: 2,
                         }}
                       >
@@ -1862,7 +1908,7 @@ export function AddMealDrawer({
           {/* פאנל ב׳: תוצאות חיפוש מאוחדות (ארוחות שמורות תואמות + מאגר מוצרים + כפתור ✨ ל-AI למעלה) */}
           {(activeTab === 'hub' || activeTab === 'catalog') && trimmedQuery.length > 0 && matchedSavedPresets.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 800, color: '#38bdf8' }}>
+              <div style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--accent-orange-bright)' }}>
                 ארוחות שמורות תואמות ({matchedSavedPresets.length})
               </div>
               {matchedSavedPresets.map((preset) => (
@@ -1870,7 +1916,7 @@ export function AddMealDrawer({
                   key={preset.id}
                   style={{
                     background: 'var(--bg-surface-2)',
-                    border: '1px solid rgba(56, 189, 248, 0.28)',
+                    border: '1px solid rgba(214, 125, 9, 0.28)',
                     borderRadius: 12,
                     padding: '9px 12px',
                     display: 'flex',

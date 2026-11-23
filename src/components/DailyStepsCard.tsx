@@ -250,8 +250,8 @@ export function DailyStepsCard({
             width: `${pct}%`,
             background:
               steps >= dailyStepsTarget
-                ? 'linear-gradient(90deg, #22c55e, #d67d09)'
-                : 'linear-gradient(90deg, #38bdf8, #22c55e)',
+                ? 'linear-gradient(90deg, #d67d09, #eb931c)'
+                : 'linear-gradient(90deg, #8a4f04, #d67d09)',
             borderRadius: 999,
             transition: 'width 0.35s ease',
           }}

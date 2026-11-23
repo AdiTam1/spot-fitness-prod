@@ -133,7 +133,7 @@ export function BarcodeScannerModal({
       overlayProps={{ backgroundOpacity: 0.82, blur: 6 }}
       title={
         <Group gap="xs">
-          <Barcode size={20} color="#10b981" />
+          <Barcode size={20} color="var(--accent-volt)" />
           <Text fw={700}>סריקת ברקוד מוצר (OpenFoodFacts + מאגר ישראלי)</Text>
         </Group>
       }
@@ -146,20 +146,20 @@ export function BarcodeScannerModal({
           p="md"
           radius="md"
           style={{
-            background: 'rgba(16, 185, 129, 0.07)',
-            border: '1px dashed rgba(16, 185, 129, 0.35)',
+            background: 'rgba(214, 125, 9, 0.08)',
+            border: '1px dashed rgba(214, 125, 9, 0.38)',
             textAlign: 'center',
           }}
         >
           {!cameraActive ? (
             <Stack align="center" gap="xs">
-              <Camera size={34} color="#10b981" />
+              <Camera size={34} color="var(--accent-volt)" />
               <Text size="sm" c="dimmed">
                 כוון את מצלמת הטלפון לברקוד שעל אריזת המוצר לטעינה אוטומטית של הקלוריות והמאקרו
               </Text>
               <Button
                 variant="light"
-                color="teal"
+                color="orange"
                 radius="md"
                 leftSection={<Camera size={16} />}
                 onClick={startCamera}
@@ -198,7 +198,7 @@ export function BarcodeScannerModal({
             }}
           />
           <Button
-            color="teal"
+            color="orange"
             disabled={loading || !manualCode.trim()}
             onClick={() => lookupBarcode(manualCode)}
             loading={loading}
@@ -216,7 +216,7 @@ export function BarcodeScannerModal({
 
         <Stack gap={6}>
           <Group gap={6}>
-            <Sparkles size={14} color="#10b981" />
+            <Sparkles size={14} color="var(--accent-orange-bright)" />
             <Text size="xs" fw={600} c="dimmed">
               בדיקה מהירה – לחץ על ברקוד של מוצר ישראלי מוכר:
             </Text>
@@ -231,7 +231,7 @@ export function BarcodeScannerModal({
                 justify="space-between"
                 disabled={loading}
                 rightSection={
-                  loading ? <Loader size={12} /> : <Check size={12} color="#10b981" />
+                  loading ? <Loader size={12} /> : <Check size={12} color="var(--accent-volt)" />
                 }
                 onClick={() => lookupBarcode(b.code)}
                 styles={{
@@ -242,7 +242,7 @@ export function BarcodeScannerModal({
                 <Text size="xs" fw={600}>
                   {b.label}
                 </Text>
-                <Badge size="xs" variant="dot" color="teal">
+                <Badge size="xs" variant="dot" color="orange">
                   {b.code}
                 </Badge>
               </Button>

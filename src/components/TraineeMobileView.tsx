@@ -1466,7 +1466,7 @@ export function TraineeMobileView({
                         padding: '10px 8px',
                         border:
                           remainingCardio === 0
-                            ? '1px solid rgba(56, 189, 248, 0.42)'
+                            ? '1px solid rgba(214, 125, 9, 0.42)'
                             : '1px solid var(--border-subtle)',
                         display: 'flex',
                         flexDirection: 'column',
@@ -1479,11 +1479,11 @@ export function TraineeMobileView({
                         <CompactMiniRing
                           current={cardioThisWeek}
                           target={actTargets.weeklyCardioTarget}
-                          color="#38bdf8"
+                          color="#eb931c"
                         />
                         <Activity
                           size={14}
-                          color="#38bdf8"
+                          color="var(--accent-orange-bright)"
                           style={{ position: 'absolute' }}
                         />
                       </div>
@@ -1505,7 +1505,7 @@ export function TraineeMobileView({
                           padding: '10px 8px',
                           border:
                             remainingSteps === 0
-                              ? '1px solid rgba(34, 197, 94, 0.42)'
+                              ? '1px solid rgba(214, 125, 9, 0.42)'
                               : '1px solid var(--border-subtle)',
                           display: 'flex',
                           flexDirection: 'column',
@@ -1518,11 +1518,11 @@ export function TraineeMobileView({
                           <CompactMiniRing
                             current={currentSteps}
                             target={dailyStepsTarget}
-                            color="#22c55e"
+                            color="#b36206"
                           />
                           <Footprints
                             size={14}
-                            color="#4ade80"
+                            color="var(--accent-orange-bright)"
                             style={{ position: 'absolute' }}
                           />
                         </div>
@@ -1675,7 +1675,7 @@ export function TraineeMobileView({
                       padding: '10px 12px',
                       borderRadius: 12,
                       border: todayCardio?.completed
-                        ? '1px solid rgba(56, 189, 248, 0.4)'
+                        ? '1px solid rgba(214, 125, 9, 0.4)'
                         : '1px solid var(--border-subtle)',
                     }}
                   >
@@ -1696,7 +1696,7 @@ export function TraineeMobileView({
                           fontWeight: 800,
                         }}
                       >
-                        <Activity size={14} color="#38bdf8" />
+                        <Activity size={14} color="var(--accent-orange-bright)" />
                         <span>
                           הליכה / ריצה היום (יעד: {actTargets.cardioTargetMinutes}{' '}
                           דק׳):
@@ -1709,7 +1709,7 @@ export function TraineeMobileView({
                           fontWeight: 800,
                           color:
                             cardioThisWeek >= actTargets.weeklyCardioTarget
-                              ? '#38bdf8'
+                              ? 'var(--accent-orange-bright)'
                               : 'var(--text-secondary)',
                         }}
                       >
@@ -1766,13 +1766,13 @@ export function TraineeMobileView({
                               padding: '5px 10px',
                               borderRadius: 999,
                               border: isSelected
-                                ? '1px solid #38bdf8'
+                                ? '1px solid var(--accent-volt)'
                                 : '1px solid var(--border-subtle)',
                               background: isSelected
-                                ? 'rgba(56, 189, 248, 0.16)'
+                                ? 'rgba(214, 125, 9, 0.16)'
                                 : 'var(--bg-surface-1)',
                               color: isSelected
-                                ? '#38bdf8'
+                                ? 'var(--accent-orange-bright)'
                                 : 'var(--text-secondary)',
                               fontSize: 11,
                               fontWeight: 700,
@@ -1794,7 +1794,7 @@ export function TraineeMobileView({
                       padding: '10px 12px',
                       borderRadius: 12,
                       border: todaySleep
-                        ? '1px solid rgba(168, 85, 247, 0.4)'
+                        ? '1px solid rgba(214, 125, 9, 0.4)'
                         : '1px solid var(--border-subtle)',
                     }}
                   >
@@ -1815,7 +1815,7 @@ export function TraineeMobileView({
                           fontWeight: 800,
                         }}
                       >
-                        <Moon size={14} color="#a855f7" />
+                        <Moon size={14} color="var(--accent-orange-bright)" />
                         <span>כמה שעות ישנת הלילה?</span>
                       </div>
                       <span
@@ -1826,7 +1826,7 @@ export function TraineeMobileView({
                           color:
                             (todaySleep || 0) >=
                             actTargets.dailySleepTargetHours
-                              ? '#a855f7'
+                              ? 'var(--accent-orange-bright)'
                               : 'var(--text-secondary)',
                         }}
                       >
@@ -1861,13 +1861,13 @@ export function TraineeMobileView({
                               padding: '6px 2px',
                               borderRadius: 8,
                               border: isSelected
-                                ? '1px solid #a855f7'
+                                ? '1px solid var(--accent-volt)'
                                 : '1px solid var(--border-subtle)',
                               background: isSelected
-                                ? 'rgba(168, 85, 247, 0.18)'
+                                ? 'rgba(214, 125, 9, 0.16)'
                                 : 'var(--bg-surface-1)',
                               color: isSelected
-                                ? '#c084fc'
+                                ? 'var(--accent-orange-bright)'
                                 : 'var(--text-secondary)',
                               fontSize: 11,
                               fontWeight: 800,
@@ -1899,13 +1899,13 @@ export function TraineeMobileView({
                               padding: '6px 2px',
                               borderRadius: 8,
                               border: isSelected
-                                ? '1px solid #a855f7'
+                                ? '1px solid var(--accent-volt)'
                                 : '1px solid var(--border-subtle)',
                               background: isSelected
-                                ? 'rgba(168, 85, 247, 0.18)'
+                                ? 'rgba(214, 125, 9, 0.16)'
                                 : 'var(--bg-surface-1)',
                               color: isSelected
-                                ? '#c084fc'
+                                ? 'var(--accent-orange-bright)'
                                 : 'var(--text-secondary)',
                               fontSize: 11,
                               fontWeight: 800,
@@ -1953,7 +1953,7 @@ export function TraineeMobileView({
                             flex: 1,
                             minWidth: 0,
                             background: 'var(--bg-surface-1)',
-                            border: '1px solid rgba(168, 85, 247, 0.45)',
+                            border: '1px solid rgba(214, 125, 9, 0.45)',
                             borderRadius: 8,
                             padding: '6px 10px',
                             color: 'var(--text-primary)',
@@ -2481,7 +2481,12 @@ export function TraineeMobileView({
                                   />
                                 );
                               case 'saved-meals':
-                                return <Bookmark size={13} color="#38bdf8" />;
+                                return (
+                                  <Bookmark
+                                    size={13}
+                                    color="var(--text-secondary)"
+                                  />
+                                );
                               case 'ai-photo':
                                 return (
                                   <Camera
@@ -2490,11 +2495,26 @@ export function TraineeMobileView({
                                   />
                                 );
                               case 'ai-text':
-                                return <Sparkles size={13} color="#38bdf8" />;
+                                return (
+                                  <Sparkles
+                                    size={13}
+                                    color="var(--accent-orange-bright)"
+                                  />
+                                );
                               case 'barcode':
-                                return <Barcode size={13} color="var(--accent-orange-bright)" />;
+                                return (
+                                  <Barcode
+                                    size={13}
+                                    color="var(--text-secondary)"
+                                  />
+                                );
                               case 'favorites':
-                                return <Heart size={13} color="#ff5e7e" />;
+                                return (
+                                  <Heart
+                                    size={13}
+                                    color="var(--text-secondary)"
+                                  />
+                                );
                             }
                           };
                           return (
@@ -2516,10 +2536,6 @@ export function TraineeMobileView({
                                 flexShrink: 0,
                                 opacity: isBlockedDay ? 0.45 : 1,
                                 cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                                borderColor:
-                                  scId === 'ai-recommend' || scId === 'ai-photo'
-                                    ? 'rgba(214, 125, 9, 0.35)'
-                                    : undefined,
                               }}
                             >
                               {renderIcon()}

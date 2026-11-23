@@ -1191,12 +1191,12 @@ export function TraineeOnboardingWizard({
                         padding: '5px 10px',
                         borderRadius: 999,
                         border: selected
-                          ? '1px solid #ff5e7e'
+                          ? '1px solid var(--accent-volt)'
                           : '1px solid var(--border-subtle)',
                         background: selected
-                          ? 'rgba(255, 94, 126, 0.14)'
+                          ? 'rgba(214, 125, 9, 0.14)'
                           : 'var(--bg-surface-1)',
-                        color: selected ? '#ff5e7e' : 'var(--text-secondary)',
+                        color: selected ? 'var(--accent-orange-bright)' : 'var(--text-secondary)',
                         fontSize: 11,
                         fontWeight: 700,
                         cursor: 'pointer',

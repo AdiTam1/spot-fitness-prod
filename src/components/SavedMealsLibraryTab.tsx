@@ -37,12 +37,12 @@ import {
 } from '@/lib/voiceRecorder';
 
 const SHORTCUT_GRADIENTS = [
-  'linear-gradient(145deg, #d67d09 0%, #8a4f04 100%)',
-  'linear-gradient(145deg, #e11d48 0%, #881337 100%)',
-  'linear-gradient(145deg, #0284c7 0%, #1e3a8a 100%)',
-  'linear-gradient(145deg, #7c3aed 0%, #4c1d95 100%)',
-  'linear-gradient(145deg, #059669 0%, #064e3b 100%)',
-  'linear-gradient(145deg, #d97706 0%, #78350f 100%)',
+  'linear-gradient(142deg, #d67d09 0%, #8a4f04 100%)',
+  'linear-gradient(142deg, #b85d09 0%, #663004 100%)',
+  'linear-gradient(142deg, #8b4c0d 0%, #452205 100%)',
+  'linear-gradient(142deg, #cf7814 0%, #7d4206 100%)',
+  'linear-gradient(142deg, #743f0c 0%, #371b04 100%)',
+  'linear-gradient(142deg, #a6540a 0%, #592a04 100%)',
 ];
 
 interface SavedMealsLibraryTabProps {
