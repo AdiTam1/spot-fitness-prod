@@ -28,6 +28,7 @@ interface DailyStepsCardProps {
   stepsSyncedAt?: string;
   dailyStepsTarget: number;
   isCoachPreview?: boolean;
+  isBlockedDay?: boolean;
   onSaveManualSteps: (steps: number) => Promise<void> | void;
   onSyncNativeStepsNow?: () => Promise<void>;
 }
@@ -91,6 +92,7 @@ export function DailyStepsCard({
   stepsSyncedAt,
   dailyStepsTarget,
   isCoachPreview = false,
+  isBlockedDay = false,
   onSaveManualSteps,
   onSyncNativeStepsNow,
 }: DailyStepsCardProps) {
@@ -275,7 +277,7 @@ export function DailyStepsCard({
             {canAutoSyncDate && (
               <button
                 type="button"
-                disabled={syncing}
+                disabled={syncing || isBlockedDay}
                 onClick={handleConnectOrSync}
                 className={needsPermissions ? 'btn-volt' : 'btn-surface'}
                 style={{
@@ -288,7 +290,8 @@ export function DailyStepsCard({
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: 6,
-                  cursor: syncing ? 'wait' : 'pointer',
+                  cursor: isBlockedDay ? 'not-allowed' : syncing ? 'wait' : 'pointer',
+                  opacity: isBlockedDay ? 0.45 : 1,
                 }}
               >
                 <RefreshCw
@@ -307,7 +310,8 @@ export function DailyStepsCard({
 
             <button
               type="button"
-              onClick={() => setManualOpen((v) => !v)}
+              disabled={isBlockedDay}
+              onClick={() => !isBlockedDay && setManualOpen((v) => !v)}
               className="btn-surface"
               style={{
                 padding: '8px 10px',
@@ -315,7 +319,8 @@ export function DailyStepsCard({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 5,
-                cursor: 'pointer',
+                cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                opacity: isBlockedDay ? 0.45 : 1,
               }}
             >
               <Edit3 size={12} />
@@ -429,7 +434,8 @@ export function DailyStepsCard({
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <button
               type="button"
-              onClick={() => setManualOpen((v) => !v)}
+              disabled={isBlockedDay}
+              onClick={() => !isBlockedDay && setManualOpen((v) => !v)}
               className="btn-surface"
               style={{
                 padding: '6px 10px',
@@ -437,7 +443,8 @@ export function DailyStepsCard({
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 5,
-                cursor: 'pointer',
+                cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                opacity: isBlockedDay ? 0.45 : 1,
               }}
             >
               <Edit3 size={12} />
@@ -447,7 +454,7 @@ export function DailyStepsCard({
         </div>
       )}
 
-      {manualOpen && (
+      {manualOpen && !isBlockedDay && (
         <div
           style={{
             display: 'flex',

@@ -117,6 +117,7 @@ export async function POST(request: NextRequest) {
       let defaultTolerance = 10;
       let defaultActivePastDays = 1;
       let defaultActiveFutureDays = 0;
+      let defaultRestrictNonObsOnObsDays = false;
       let defaultFavoriteFoodIds: string[] = [];
 
       if (inviteCode) {
@@ -133,6 +134,8 @@ export async function POST(request: NextRequest) {
               adminCoach.onboarding.defaultActivePastDays ?? 1;
             defaultActiveFutureDays =
               adminCoach.onboarding.defaultActiveFutureDays ?? 0;
+            defaultRestrictNonObsOnObsDays =
+              adminCoach.onboarding.defaultRestrictNonObsOnObsDays ?? false;
             defaultFavoriteFoodIds = Array.isArray(
               adminCoach.onboarding.defaultFavoriteFoodIds
             )
@@ -158,6 +161,8 @@ export async function POST(request: NextRequest) {
               matchedCoach.onboarding?.defaultActivePastDays ?? 1;
             defaultActiveFutureDays =
               matchedCoach.onboarding?.defaultActiveFutureDays ?? 0;
+            defaultRestrictNonObsOnObsDays =
+              matchedCoach.onboarding?.defaultRestrictNonObsOnObsDays ?? false;
             defaultFavoriteFoodIds = Array.isArray(
               matchedCoach.onboarding?.defaultFavoriteFoodIds
             )
@@ -196,6 +201,9 @@ export async function POST(request: NextRequest) {
         primaryCoachId: assignedPrimaryCoachId,
         sharedCoachIds: [],
         observationDates: initialObservationDates,
+        blockedDates: [],
+        restrictToObservationDaysWhenTodayIsObservation:
+          defaultRestrictNonObsOnObsDays,
         countObservationInStats: defaultCountObs,
         activeDateRange: {
           pastDays: Math.max(0, Math.min(365, Math.round(Number(defaultActivePastDays) || 0))),

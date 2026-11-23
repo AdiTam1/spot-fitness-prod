@@ -86,6 +86,8 @@ create table if not exists public.trainees (
   measurements_history jsonb not null default '[]'::jsonb,
   onboarding jsonb not null default '{}'::jsonb,
   observation_dates jsonb not null default '[]'::jsonb,
+  blocked_dates jsonb not null default '[]'::jsonb,
+  restrict_to_obs_on_obs_days boolean not null default false,
   count_observation_in_stats boolean not null default false,
   activity_targets jsonb not null default '{}'::jsonb,
   enable_workout_rest_split boolean not null default false,
@@ -120,6 +122,8 @@ alter table public.trainees add column if not exists weight_history jsonb not nu
 alter table public.trainees add column if not exists measurements_history jsonb not null default '[]'::jsonb;
 alter table public.trainees add column if not exists onboarding jsonb not null default '{}'::jsonb;
 alter table public.trainees add column if not exists observation_dates jsonb not null default '[]'::jsonb;
+alter table public.trainees add column if not exists blocked_dates jsonb not null default '[]'::jsonb;
+alter table public.trainees add column if not exists restrict_to_obs_on_obs_days boolean not null default false;
 alter table public.trainees add column if not exists count_observation_in_stats boolean not null default false;
 alter table public.trainees add column if not exists activity_targets jsonb not null default '{}'::jsonb;
 alter table public.trainees add column if not exists enable_workout_rest_split boolean not null default false;

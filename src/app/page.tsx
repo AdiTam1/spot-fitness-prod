@@ -12,6 +12,7 @@ import {
   WifiOff,
   AlertTriangle,
   RefreshCw,
+  ArrowRight,
   Download,
   Bell,
   Share,
@@ -1249,6 +1250,10 @@ export default function HomePage() {
       toggleDate?: string;
       addFutureDays?: number;
       clearAll?: boolean;
+      toggleBlockedDate?: string;
+      addBlockedFutureDays?: number;
+      clearBlockedAll?: boolean;
+      restrictToObservationDaysWhenTodayIsObservation?: boolean;
       countObservationInStats?: boolean;
       activeDateRange?: TraineeActiveDateRange;
     }
@@ -1259,7 +1264,7 @@ export default function HomePage() {
       ...payload,
     });
     if (!res || !res.ok) {
-      return { error: await extractApiError(res, 'שגיאה בעדכון ימי תשקיף') };
+      return { error: await extractApiError(res, 'שגיאה בעדכון הגדרות ימים') };
     }
     const json = await res.json();
     setTrainees((prev) =>
@@ -1269,6 +1274,10 @@ export default function HomePage() {
               ...t,
               observationDates:
                 json.observationDates ?? t.observationDates,
+              blockedDates: json.blockedDates ?? t.blockedDates,
+              restrictToObservationDaysWhenTodayIsObservation:
+                json.restrictToObservationDaysWhenTodayIsObservation ??
+                t.restrictToObservationDaysWhenTodayIsObservation,
               countObservationInStats:
                 json.countObservationInStats ?? t.countObservationInStats,
               activeDateRange:
@@ -2639,7 +2648,7 @@ export default function HomePage() {
                 border: '1px solid var(--border-subtle)',
                 fontSize: 11.5,
                 fontWeight: 700,
-                maxWidth: 165,
+                maxWidth: coachPreviewTraineeId ? 115 : 165,
                 minWidth: 0,
               }}
             >
@@ -2665,6 +2674,34 @@ export default function HomePage() {
                   : ''}
               </span>
             </div>
+
+            {(currentUser.role === 'coach' || currentUser.role === 'admin') &&
+              coachPreviewTraineeId && (
+                <button
+                  type="button"
+                  onClick={() => setCoachPreviewTraineeId(null)}
+                  title="חזרה לדאשבורד מאמן"
+                  style={{
+                    height: 30,
+                    padding: '0 9px',
+                    borderRadius: 999,
+                    border: '1px solid rgba(214, 125, 9, 0.5)',
+                    background: 'rgba(214, 125, 9, 0.16)',
+                    color: '#ffb84d',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    fontSize: 11,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                  }}
+                >
+                  <ArrowRight size={12} />
+                  <span>חזרה למאמן</span>
+                </button>
+              )}
 
             <button
               title="סנכרן נתונים עדכניים מהשרת"

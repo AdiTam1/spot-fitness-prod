@@ -7,6 +7,7 @@ import {
   NumberInput,
   Textarea,
   Checkbox,
+  Switch,
 } from '@mantine/core';
 import {
   Check,
@@ -221,6 +222,10 @@ export function CoachOnboardingWizard({
   );
   const [defaultActiveFutureDays, setDefaultActiveFutureDays] =
     useState<number>(existingOnboarding?.defaultActiveFutureDays ?? 0);
+  const [defaultRestrictNonObsOnObsDays, setDefaultRestrictNonObsOnObsDays] =
+    useState<boolean>(
+      existingOnboarding?.defaultRestrictNonObsOnObsDays ?? false
+    );
   const [defaultFavoriteFoodIds, setDefaultFavoriteFoodIds] = useState<string[]>(
     existingOnboarding?.defaultFavoriteFoodIds ?? []
   );
@@ -255,6 +260,7 @@ export function CoachOnboardingWizard({
       defaultWaterGoal,
       defaultActivePastDays,
       defaultActiveFutureDays,
+      defaultRestrictNonObsOnObsDays,
       defaultFavoriteFoodIds,
       completedAt: getTodayIso(),
     };
@@ -852,6 +858,17 @@ export function CoachOnboardingWizard({
                         : Math.max(0, Math.min(180, Math.round(Number(val) || 0)))
                     )
                   }
+                />
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <Switch
+                  size="xs"
+                  color="orange"
+                  checked={defaultRestrictNonObsOnObsDays}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setDefaultRestrictNonObsOnObsDays(e.currentTarget.checked)
+                  }
+                  label="נעילת מעבר לימים שאינם יום תשקיף כאשר היום בארץ הוא יום תשקיף"
                 />
               </div>
             </div>

@@ -169,12 +169,51 @@ export function getResolvedTraineeDateRange(
 /**
  * בודק האם תאריך פעיל לניווט עבור המתאמן: בתוך הטווח שהמאמן הגדיר, היום עצמו, יום תשקיף מוגדר או תאריך עם רישום קיים.
  */
+export function isDayBlockedForTrainee(
+  iso: string,
+  trainee: Pick<TraineeProfile, 'blockedDates'>
+): boolean {
+  if (!iso) return false;
+  return (trainee.blockedDates || []).includes(iso);
+}
+
+export function isObservationDateForTrainee(
+  iso: string,
+  trainee: Pick<TraineeProfile, 'observationDates' | 'logs'>
+): boolean {
+  if (!iso) return false;
+  if ((trainee.observationDates || []).includes(iso)) return true;
+  return Boolean(trainee.logs?.[iso]?.isObservationDay);
+}
+
+export function isTodayObservationRestricted(
+  trainee: Pick<
+    TraineeProfile,
+    'restrictToObservationDaysWhenTodayIsObservation' | 'observationDates' | 'logs'
+  >,
+  todayIso: string
+): boolean {
+  return Boolean(
+    trainee.restrictToObservationDaysWhenTodayIsObservation &&
+      isObservationDateForTrainee(todayIso, trainee)
+  );
+}
+
 export function isDateActiveForTrainee(
   iso: string,
-  trainee: Pick<TraineeProfile, 'activeDateRange' | 'observationDates' | 'logs'>,
+  trainee: Pick<
+    TraineeProfile,
+    | 'activeDateRange'
+    | 'observationDates'
+    | 'logs'
+    | 'restrictToObservationDaysWhenTodayIsObservation'
+  >,
   todayIso: string
 ): boolean {
   if (!iso) return false;
+  if (isTodayObservationRestricted(trainee, todayIso)) {
+    return isObservationDateForTrainee(iso, trainee);
+  }
   if (iso === todayIso) return true;
   if ((trainee.observationDates || []).includes(iso)) return true;
   const dayLog = trainee.logs?.[iso];

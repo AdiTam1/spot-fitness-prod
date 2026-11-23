@@ -41,6 +41,8 @@ import {
   LayoutGrid,
   Table2,
   CalendarRange,
+  Ban,
+  Lock,
   LogOut,
   Smartphone,
 } from 'lucide-react';
@@ -144,6 +146,10 @@ interface CoachDashboardViewProps {
       toggleDate?: string;
       addFutureDays?: number;
       clearAll?: boolean;
+      toggleBlockedDate?: string;
+      addBlockedFutureDays?: number;
+      clearBlockedAll?: boolean;
+      restrictToObservationDaysWhenTodayIsObservation?: boolean;
       countObservationInStats?: boolean;
       activeDateRange?: TraineeActiveDateRange;
     }
@@ -498,6 +504,9 @@ export function CoachDashboardView({
   const [editCoachPassword, setEditCoachPassword] = useState('');
   const [editCoachInvite, setEditCoachInvite] = useState('');
   const [customObsDays, setCustomObsDays] = useState<number>(5);
+  const [customBlockDateInput, setCustomBlockDateInput] = useState<string>(() =>
+    getTodayIso()
+  );
   const [rosterViewMode, setRosterViewMode] = useState<'cards' | 'table'>(() =>
     typeof window !== 'undefined' && window.innerWidth < 768 ? 'cards' : 'table'
   );
@@ -3123,6 +3132,44 @@ export function CoachDashboardView({
                     : 'ימי תשקיף לא נחשבים ביעד (לחץ להכללה)'}
                 </button>
 
+                <button
+                  disabled={isBusy('obs-ins-restrict')}
+                  onClick={() => {
+                    const nextVal =
+                      !selectedTrainee.restrictToObservationDaysWhenTodayIsObservation;
+                    runBusy(
+                      'obs-ins-restrict',
+                      () =>
+                        onManageObservationDays(selectedTrainee.id, {
+                          restrictToObservationDaysWhenTodayIsObservation: nextVal,
+                        }),
+                      nextVal
+                        ? 'כאשר היום בארץ הוא יום תשקיף, המתאמן יוכל לעבור רק בין ימי תשקיף'
+                        : 'בוטלה נעילת הניווט בימי תשקיף'
+                    );
+                  }}
+                  className={
+                    selectedTrainee.restrictToObservationDaysWhenTodayIsObservation
+                      ? 'btn-volt'
+                      : 'btn-surface'
+                  }
+                  style={{
+                    padding: '7px 14px',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <Lock size={13} />
+                  {isBusy('obs-ins-restrict')
+                    ? 'מעדכן...'
+                    : selectedTrainee.restrictToObservationDaysWhenTodayIsObservation
+                    ? '✓ נעול לימי תשקיף בלבד ביום תשקיף (בארץ)'
+                    : 'הגבלת מעבר בימי תשקיף: כבוי (לחץ להפעלה)'}
+                </button>
+
                 {(selectedTrainee.observationDates || []).length > 0 && (
                   <button
                     disabled={isBusy('obs-ins-clear')}
@@ -3243,6 +3290,214 @@ export function CoachDashboardView({
                     {isBusy('active-range-save') ? 'שומר...' : 'עדכן טווח תאריכים'}
                   </button>
                 </div>
+              </div>
+
+              {/* ניהול ימים חסומים להזנה (כשיום חסום, לא ניתן להזין בו כלום) */}
+              <div
+                style={{
+                  marginTop: 12,
+                  paddingTop: 12,
+                  borderTop: '1px solid rgba(255,255,255,0.06)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: 10,
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontSize: 12.5,
+                        fontWeight: 800,
+                        color: '#f87171',
+                      }}
+                    >
+                      <Ban size={14} />
+                      <span>
+                        ניהול ימים חסומים ({selectedTrainee.blockedDates?.length || 0} ימים חסומים)
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                      ביום חסום המתאמן לא יוכל להזין ארוחות, מדדים, מים, משקל או פעילות.
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      disabled={isBusy('block-today')}
+                      onClick={() =>
+                        runBusy(
+                          'block-today',
+                          () =>
+                            onManageObservationDays(selectedTrainee.id, {
+                              toggleBlockedDate: today,
+                            }),
+                          (selectedTrainee.blockedDates || []).includes(today)
+                            ? 'בוטלה חסימת היום להזנה'
+                            : 'היום נחסם להזנה'
+                        )
+                      }
+                      className="btn-surface"
+                      style={{
+                        padding: '6px 11px',
+                        fontSize: 11.5,
+                        cursor: 'pointer',
+                        borderColor: (selectedTrainee.blockedDates || []).includes(today)
+                          ? '#ef4444'
+                          : undefined,
+                        color: (selectedTrainee.blockedDates || []).includes(today)
+                          ? '#f87171'
+                          : undefined,
+                      }}
+                    >
+                      {isBusy('block-today')
+                        ? 'מעדכן...'
+                        : (selectedTrainee.blockedDates || []).includes(today)
+                        ? '✓ היום חסום (לחץ לביטול)'
+                        : 'חסום את היום להזנה'}
+                    </button>
+
+                    <div
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        background: 'var(--bg-surface-1)',
+                        padding: '3px 6px',
+                        borderRadius: 10,
+                        border: '1px solid var(--border-subtle)',
+                      }}
+                    >
+                      <input
+                        type="date"
+                        value={customBlockDateInput}
+                        onChange={(e) => setCustomBlockDateInput(e.target.value)}
+                        style={{
+                          background: 'transparent',
+                          color: 'var(--text-primary)',
+                          border: 'none',
+                          fontSize: 11.5,
+                          outline: 'none',
+                          colorScheme: 'dark',
+                        }}
+                      />
+                      <button
+                        type="button"
+                        disabled={!customBlockDateInput || isBusy('block-date-pick')}
+                        onClick={() =>
+                          runBusy(
+                            'block-date-pick',
+                            () =>
+                              onManageObservationDays(selectedTrainee.id, {
+                                toggleBlockedDate: customBlockDateInput,
+                              }),
+                            (selectedTrainee.blockedDates || []).includes(
+                              customBlockDateInput
+                            )
+                              ? `בוטלה חסימת ${customBlockDateInput}`
+                              : `התאריך ${customBlockDateInput} נחסם להזנה`
+                          )
+                        }
+                        className="btn-surface"
+                        style={{
+                          padding: '4px 9px',
+                          fontSize: 11,
+                          cursor: customBlockDateInput ? 'pointer' : 'not-allowed',
+                        }}
+                      >
+                        {(selectedTrainee.blockedDates || []).includes(
+                          customBlockDateInput
+                        )
+                          ? 'בטל חסימה'
+                          : 'חסום תאריך'}
+                      </button>
+                    </div>
+
+                    {(selectedTrainee.blockedDates || []).length > 0 && (
+                      <button
+                        type="button"
+                        disabled={isBusy('block-clear')}
+                        onClick={() => {
+                          if (
+                            !confirmDanger(
+                              `לבטל את כל הימים החסומים של ${selectedTrainee.name}?`
+                            )
+                          ) {
+                            return;
+                          }
+                          runBusy(
+                            'block-clear',
+                            () =>
+                              onManageObservationDays(selectedTrainee.id, {
+                                clearBlockedAll: true,
+                              }),
+                            'כל הימים החסומים נוקו'
+                          );
+                        }}
+                        className="btn-surface"
+                        style={{
+                          padding: '6px 10px',
+                          fontSize: 11,
+                          color: '#ef4444',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {isBusy('block-clear') ? 'מנקה...' : 'נקה חסומים'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {(selectedTrainee.blockedDates || []).length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {(selectedTrainee.blockedDates || []).map((iso) => (
+                      <button
+                        key={iso}
+                        type="button"
+                        disabled={isBusy(`block-chip-${iso}`)}
+                        onClick={() =>
+                          runBusy(
+                            `block-chip-${iso}`,
+                            () =>
+                              onManageObservationDays(selectedTrainee.id, {
+                                toggleBlockedDate: iso,
+                              }),
+                            `בוטלה חסימת ${iso}`
+                          )
+                        }
+                        title="לחץ להסרת חסימה מתאריך זה"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          padding: '3px 9px',
+                          borderRadius: 999,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          background: 'rgba(239, 68, 68, 0.14)',
+                          border: '1px solid rgba(239, 68, 68, 0.38)',
+                          color: '#fca5a5',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <span>{iso}</span>
+                        <span style={{ opacity: 0.85 }}>✕</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

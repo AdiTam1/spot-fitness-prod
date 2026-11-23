@@ -290,6 +290,7 @@ export interface CoachOnboardingData {
   defaultWaterGoal: number;
   defaultActivePastDays?: number;
   defaultActiveFutureDays?: number;
+  defaultRestrictNonObsOnObsDays?: boolean;
   defaultFavoriteFoodIds?: string[];
   completedAt?: string;
 }
@@ -545,6 +546,8 @@ export interface TraineeProfile {
   aiLearnedPreferences?: string[]; // זיכרון העדפות נלמד מתגובות המתאמן להצעות AI
   weeklyCheckIns?: WeeklyCheckInEntry[];
   observationDates?: string[]; // תאריכי ימי תשקיף (YYYY-MM-DD)
+  blockedDates?: string[]; // תאריכי ימים חסומים להזנה לחלוטין (YYYY-MM-DD)
+  restrictToObservationDaysWhenTodayIsObservation?: boolean; // אם היום יום תשקיף בארץ, ננעל את הניווט אצל המתאמן לימי תשקיף בלבד
   countObservationInStats?: boolean; // בחירת מאמן בקליק אם ימי תשקיף נספרים בחישוב היעדים או לא
   activeDateRange?: TraineeActiveDateRange; // חלון התאריכים הפעילים לניווט המתאמן (מוגדר כברירת מחדל ע"י המאמן או אישית)
   mealCardShortcuts?: MealCardShortcutId[]; // עד 2 קיצורי דרך מותאמים בכרטיסיית הארוחה

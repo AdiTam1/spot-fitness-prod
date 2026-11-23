@@ -64,10 +64,23 @@ import {
 
 function mergeLogsPreservingPendingAi(
   existing: TraineeProfile,
-  incomingLogs?: Record<string, DailyLog>
+  incomingLogs?: Record<string, DailyLog>,
+  protectBlockedDates = false
 ): Record<string, DailyLog> {
   if (!incomingLogs) return existing.logs;
   const merged = { ...incomingLogs };
+
+  // 0. הגנה מפני עדכון ימים חסומים ע"י מתאמן
+  if (protectBlockedDates && Array.isArray(existing.blockedDates) && existing.blockedDates.length > 0) {
+    for (const blockedIso of existing.blockedDates) {
+      if (!blockedIso) continue;
+      if (existing.logs?.[blockedIso]) {
+        merged[blockedIso] = existing.logs[blockedIso];
+      } else {
+        delete merged[blockedIso];
+      }
+    }
+  }
 
   // 1. הגנה מפני דריסת סנכרון צעדים אוטומטי מ-APK/WorkManager ברקע כאשר הדפדפן שומר ארוחה עם מצב ישן יותר
   for (const [dateKey, serverDay] of Object.entries(existing.logs || {})) {
@@ -967,22 +980,25 @@ export async function POST(request: NextRequest) {
         trainees: prev.trainees.map((existing) => {
           if (existing.id !== session.id) return existing;
           prevTraineeSnapshot = existing;
+          const todayBlocked = (existing.blockedDates || []).includes(getTodayIso());
           const updated: TraineeProfile = {
             ...existing,
             name: sanitizeText(traineeInput.name, 80) || existing.name,
-            currentWeight: safeWeight,
+            currentWeight: todayBlocked ? existing.currentWeight : safeWeight,
             targetWeight: sanitizeNumber(
               traineeInput.targetWeight,
               30,
               300,
               existing.targetWeight
             ),
-            weightHistory: Array.isArray(traineeInput.weightHistory)
-              ? traineeInput.weightHistory.slice(-60)
-              : existing.weightHistory,
-            measurementsHistory: Array.isArray(traineeInput.measurementsHistory)
-              ? traineeInput.measurementsHistory.slice(-60)
-              : existing.measurementsHistory,
+            weightHistory:
+              !todayBlocked && Array.isArray(traineeInput.weightHistory)
+                ? traineeInput.weightHistory.slice(-60)
+                : existing.weightHistory,
+            measurementsHistory:
+              !todayBlocked && Array.isArray(traineeInput.measurementsHistory)
+                ? traineeInput.measurementsHistory.slice(-60)
+                : existing.measurementsHistory,
             weeklyCheckIns: Array.isArray(traineeInput.weeklyCheckIns)
               ? traineeInput.weeklyCheckIns.slice(-52)
               : existing.weeklyCheckIns,
@@ -1006,7 +1022,7 @@ export async function POST(request: NextRequest) {
             recentContextChips: Array.isArray(traineeInput.recentContextChips)
               ? sanitizeQuickChips(traineeInput.recentContextChips, 'user', 60)
               : existing.recentContextChips,
-            logs: mergeLogsPreservingPendingAi(existing, traineeInput.logs),
+            logs: mergeLogsPreservingPendingAi(existing, traineeInput.logs, true),
           };
           nextTraineeSnapshot = updated;
           return updated;
@@ -1116,6 +1132,9 @@ export async function POST(request: NextRequest) {
                 180,
                 Math.round(Number(rawOnboarding.defaultActiveFutureDays ?? 0) || 0)
               )
+            ),
+            defaultRestrictNonObsOnObsDays: Boolean(
+              rawOnboarding.defaultRestrictNonObsOnObsDays
             ),
             defaultFavoriteFoodIds: Array.isArray(rawOnboarding.defaultFavoriteFoodIds)
               ? rawOnboarding.defaultFavoriteFoodIds
@@ -1293,9 +1312,18 @@ export async function POST(request: NextRequest) {
         : undefined;
       const addFutureDays = Number(body.addFutureDays) || 0;
       const clearAll = Boolean(body.clearAll);
+      const toggleBlockedDate = body.toggleBlockedDate
+        ? sanitizeText(body.toggleBlockedDate, 20)
+        : undefined;
+      const addBlockedFutureDays = Number(body.addBlockedFutureDays) || 0;
+      const clearBlockedAll = Boolean(body.clearBlockedAll);
       const toggleCountInStats =
         typeof body.countObservationInStats === 'boolean'
           ? body.countObservationInStats
+          : undefined;
+      const toggleRestrictToObs =
+        typeof body.restrictToObservationDaysWhenTodayIsObservation === 'boolean'
+          ? body.restrictToObservationDaysWhenTodayIsObservation
           : undefined;
       const incomingActiveRange =
         body.activeDateRange !== undefined
@@ -1323,6 +1351,26 @@ export async function POST(request: NextRequest) {
 
       nextDates.sort();
 
+      let nextBlockedDates = [...(target.blockedDates || [])];
+      if (clearBlockedAll) {
+        nextBlockedDates = [];
+      } else if (toggleBlockedDate && /^\d{4}-\d{2}-\d{2}$/.test(toggleBlockedDate)) {
+        if (nextBlockedDates.includes(toggleBlockedDate)) {
+          nextBlockedDates = nextBlockedDates.filter((d) => d !== toggleBlockedDate);
+        } else {
+          nextBlockedDates.push(toggleBlockedDate);
+        }
+      } else if (addBlockedFutureDays > 0 && addBlockedFutureDays <= 90) {
+        for (let i = 0; i < addBlockedFutureDays; i++) {
+          const iso = getTodayIso(i);
+          if (!nextBlockedDates.includes(iso)) {
+            nextBlockedDates.push(iso);
+          }
+        }
+      }
+
+      nextBlockedDates.sort();
+
       await updateServerDbState((prev) => ({
         ...prev,
         trainees: prev.trainees.map((t) =>
@@ -1330,6 +1378,11 @@ export async function POST(request: NextRequest) {
             ? {
                 ...t,
                 observationDates: nextDates,
+                blockedDates: nextBlockedDates,
+                restrictToObservationDaysWhenTodayIsObservation:
+                  toggleRestrictToObs !== undefined
+                    ? toggleRestrictToObs
+                    : t.restrictToObservationDaysWhenTodayIsObservation,
                 countObservationInStats:
                   toggleCountInStats !== undefined
                     ? toggleCountInStats
@@ -1346,6 +1399,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         ok: true,
         observationDates: nextDates,
+        blockedDates: nextBlockedDates,
+        restrictToObservationDaysWhenTodayIsObservation:
+          toggleRestrictToObs !== undefined
+            ? toggleRestrictToObs
+            : target.restrictToObservationDaysWhenTodayIsObservation,
         countObservationInStats:
           toggleCountInStats !== undefined
             ? toggleCountInStats
@@ -1663,6 +1721,10 @@ export async function POST(request: NextRequest) {
         sharedCoachIds: [],
         groupId,
         observationDates: initialObservationDates,
+        blockedDates: [],
+        restrictToObservationDaysWhenTodayIsObservation: Boolean(
+          coachDefaults?.defaultRestrictNonObsOnObsDays
+        ),
         countObservationInStats:
           coachDefaults?.defaultCountObservationInStats ?? false,
         activeDateRange: {

@@ -134,6 +134,8 @@ interface EmbeddedTraineeMeta {
   weeklyCheckIns?: WeeklyCheckInEntry[];
   measurementsHistory?: BodyMeasurementEntry[];
   observationDates?: string[];
+  blockedDates?: string[];
+  restrictToObservationDaysWhenTodayIsObservation?: boolean;
   countObservationInStats?: boolean;
   activeDateRange?: TraineeProfile['activeDateRange'];
   mealCardShortcuts?: TraineeProfile['mealCardShortcuts'];
@@ -182,6 +184,17 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
     : Array.isArray(row.observation_dates)
     ? (row.observation_dates as string[])
     : [];
+
+  const blockedDates = Array.isArray(embeddedMeta.blockedDates)
+    ? embeddedMeta.blockedDates
+    : Array.isArray(row.blocked_dates)
+    ? (row.blocked_dates as string[])
+    : [];
+
+  const restrictToObservationDaysWhenTodayIsObservation =
+    'restrictToObservationDaysWhenTodayIsObservation' in embeddedMeta
+      ? Boolean(embeddedMeta.restrictToObservationDaysWhenTodayIsObservation)
+      : Boolean(row.restrict_to_obs_on_obs_days);
 
   const countObservationInStats =
     'countObservationInStats' in embeddedMeta
@@ -270,6 +283,8 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
       ? (row.weekly_check_ins as WeeklyCheckInEntry[])
       : [],
     observationDates,
+    blockedDates,
+    restrictToObservationDaysWhenTodayIsObservation,
     countObservationInStats,
     activeDateRange: embeddedMeta.activeDateRange,
     mealCardShortcuts: Array.isArray(embeddedMeta.mealCardShortcuts)
@@ -1133,6 +1148,10 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
       weeklyCheckIns: t.weeklyCheckIns || [],
       measurementsHistory: t.measurementsHistory || [],
       observationDates: t.observationDates || [],
+      blockedDates: t.blockedDates || [],
+      restrictToObservationDaysWhenTodayIsObservation: Boolean(
+        t.restrictToObservationDaysWhenTodayIsObservation
+      ),
       countObservationInStats: Boolean(t.countObservationInStats),
       activeDateRange: t.activeDateRange,
       mealCardShortcuts: t.mealCardShortcuts,

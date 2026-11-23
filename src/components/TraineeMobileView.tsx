@@ -30,6 +30,8 @@ import {
   Heart,
   Footprints,
   Clock,
+  Ban,
+  Lock,
 } from 'lucide-react';
 import {
   AiContextParams,
@@ -61,6 +63,9 @@ import {
   diffDaysIso,
   getWeekDaysAroundDate,
   isDateActiveForTrainee,
+  isDayBlockedForTrainee,
+  isObservationDateForTrainee,
+  isTodayObservationRestricted,
 } from '@/lib/dateUtils';
 import { isNativeAndroidApp } from '@/lib/capacitorSteps';
 import { AddMealDrawer } from './AddMealDrawer';
@@ -288,6 +293,8 @@ export function TraineeMobileView({
   const [timeEditSlot, setTimeEditSlot] = useState<MealTemplateSlot | null>(null);
   const [draftMealTime, setDraftMealTime] = useState<string>('12:00');
   const [savingMealTime, setSavingMealTime] = useState(false);
+  const [customSleepOpen, setCustomSleepOpen] = useState(false);
+  const [customSleepDraft, setCustomSleepDraft] = useState('');
   const [weightInput, setWeightInput] = useState<string>(
     String(trainee.currentWeight)
   );
@@ -356,6 +363,20 @@ export function TraineeMobileView({
     }
   }, [externalSectionRequest, trainee.id]);
 
+  // נעילה אוטומטית לימי תשקיף אם היום יום תשקיף בארץ והגדרה זו פעילה אצל המתאמן
+  useEffect(() => {
+    if (
+      isTodayObservationRestricted(trainee, todayIso) &&
+      !isObservationDateForTrainee(selectedDate, trainee)
+    ) {
+      setSelectedDate(todayIso);
+    }
+  }, [trainee, todayIso, selectedDate]);
+
+  useEffect(() => {
+    setCustomSleepOpen(false);
+  }, [selectedDate, trainee.id]);
+
   // אם המתאמן מתחבר בפעם הראשונה וטרם השלים Onboarding -> מציג את אשף ה-Onboarding
   if (
     (!trainee.onboarding?.completed && !isCoachPreview) ||
@@ -391,10 +412,12 @@ export function TraineeMobileView({
     meals: {},
   };
 
-  // בדיקה האם היום הנבחר מוגדר כ"יום תשקיף" (Observation Day)
+  // בדיקה האם היום הנבחר מוגדר כ"יום תשקיף" (Observation Day) או כיום חסום להזנה
   const isObservationDay =
     (trainee.observationDates || []).includes(selectedDate) ||
     Boolean(dailyLog.isObservationDay);
+  const isBlockedDay = isDayBlockedForTrainee(selectedDate, trainee);
+  const obsLockedToObservation = isTodayObservationRestricted(trainee, todayIso);
 
   const activeTemplate = !trainee.enableWorkoutRestSplit
     ? trainee.workoutTemplate
@@ -427,6 +450,7 @@ export function TraineeMobileView({
     : Math.min(arcLength, arcLength * Math.min(1, calRatio));
 
   const openMealDrawer = (slot: MealTemplateSlot, tab = 'hub') => {
+    if (isBlockedDay) return;
     setActiveMealSlot(slot);
     setDrawerTab(tab);
   };
@@ -587,7 +611,10 @@ export function TraineeMobileView({
             }}
           >
             <button
-              onClick={() => onUpdateDayType(trainee.id, selectedDate, 'workout')}
+              disabled={isBlockedDay}
+              onClick={() =>
+                !isBlockedDay && onUpdateDayType(trainee.id, selectedDate, 'workout')
+              }
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -597,7 +624,8 @@ export function TraineeMobileView({
                 border: 'none',
                 fontSize: 12,
                 fontWeight: 700,
-                cursor: 'pointer',
+                cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                opacity: isBlockedDay ? 0.45 : 1,
                 background:
                   dailyLog.dayType === 'workout'
                     ? 'var(--accent-volt)'
@@ -613,7 +641,10 @@ export function TraineeMobileView({
               <span>אימון</span>
             </button>
             <button
-              onClick={() => onUpdateDayType(trainee.id, selectedDate, 'rest')}
+              disabled={isBlockedDay}
+              onClick={() =>
+                !isBlockedDay && onUpdateDayType(trainee.id, selectedDate, 'rest')
+              }
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -623,7 +654,8 @@ export function TraineeMobileView({
                 border: 'none',
                 fontSize: 12,
                 fontWeight: 700,
-                cursor: 'pointer',
+                cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                opacity: isBlockedDay ? 0.45 : 1,
                 background:
                   dailyLog.dayType === 'rest' ? '#ffffff' : 'transparent',
                 color:
@@ -782,6 +814,7 @@ export function TraineeMobileView({
             const isObs =
               (trainee.observationDates || []).includes(d.iso) ||
               Boolean(trainee.logs[d.iso]?.isObservationDay);
+            const isBlockedCell = isDayBlockedForTrainee(d.iso, trainee);
             const hasLog =
               trainee.logs[d.iso] &&
               Object.keys(trainee.logs[d.iso].meals || {}).length > 0;
@@ -801,17 +834,27 @@ export function TraineeMobileView({
                   padding: '8px 2px',
                   borderRadius: 14,
                   border: isSelected
-                    ? isObs
+                    ? isBlockedCell
+                      ? '1px solid rgba(239, 68, 68, 0.7)'
+                      : isObs
                       ? '1px solid rgba(56, 189, 248, 0.55)'
                       : '1px solid rgba(214, 125, 9, 0.55)'
+                    : isBlockedCell
+                    ? '1px solid rgba(239, 68, 68, 0.25)'
                     : '1px solid transparent',
                   background: isSelected
-                    ? isObs
+                    ? isBlockedCell
+                      ? 'rgba(239, 68, 68, 0.16)'
+                      : isObs
                       ? 'rgba(56, 189, 248, 0.14)'
                       : 'rgba(214, 125, 9, 0.16)'
+                    : isBlockedCell
+                    ? 'rgba(239, 68, 68, 0.06)'
                     : 'transparent',
                   color: isSelected
-                    ? isObs
+                    ? isBlockedCell
+                      ? '#f87171'
+                      : isObs
                       ? '#38bdf8'
                       : 'var(--accent-orange-bright)'
                     : 'var(--text-secondary)',
@@ -829,7 +872,9 @@ export function TraineeMobileView({
                     fontSize: 14,
                     fontWeight: 800,
                     color: isSelected
-                      ? isObs
+                      ? isBlockedCell
+                        ? '#f87171'
+                        : isObs
                         ? '#38bdf8'
                         : '#ffffff'
                       : 'var(--text-primary)',
@@ -837,7 +882,18 @@ export function TraineeMobileView({
                 >
                   {d.dayNumber}
                 </span>
-                {isObs ? (
+                {isBlockedCell ? (
+                  <span
+                    style={{
+                      fontSize: 9,
+                      fontWeight: 800,
+                      color: '#f87171',
+                      lineHeight: 1,
+                    }}
+                  >
+                    חסום
+                  </span>
+                ) : isObs ? (
                   <span
                     style={{
                       fontSize: 9,
@@ -877,6 +933,32 @@ export function TraineeMobileView({
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.2 }}
           >
+            {/* באנר הסבר אם היום הנבחר חסום להזנה */}
+            {isBlockedDay && (
+              <div
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 14,
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  border: '1px solid rgba(239, 68, 68, 0.42)',
+                  marginBottom: 14,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <Ban size={18} color="#f87171" style={{ flexShrink: 0 }} />
+                <div style={{ fontSize: 12 }}>
+                  <div style={{ fontWeight: 800, color: '#f87171' }}>
+                    יום חסום להזנה
+                  </div>
+                  <div style={{ color: 'var(--text-secondary)' }}>
+                    היום הנבחר מוגדר כיום חסום — לא ניתן להזין או לערוך ארוחות, פעילות, מים או מדדים.
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* באנר הסבר אם היום הוא יום תשקיף */}
             {isObservationDay && (
               <div
@@ -899,6 +981,22 @@ export function TraineeMobileView({
                   <div style={{ color: 'var(--text-secondary)' }}>
                     תיעוד חופשי ללא חישוב חריגה מהיעד.
                   </div>
+                  {obsLockedToObservation && (
+                    <div
+                      style={{
+                        marginTop: 3,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: '#7dd3fc',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                      }}
+                    >
+                      <Lock size={11} />
+                      <span>נעילת יום תשקיף פעילה — היום ניתן לעבור רק לימי תשקיף</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1450,6 +1548,7 @@ export function TraineeMobileView({
                       stepsSyncedAt={dailyLog.stepsSyncedAt}
                       dailyStepsTarget={dailyStepsTarget}
                       isCoachPreview={isCoachPreview}
+                      isBlockedDay={isBlockedDay}
                       onSaveManualSteps={async (steps) => {
                         await onUpdateDailyActivity(trainee.id, selectedDate, {
                           steps,
@@ -1520,7 +1619,9 @@ export function TraineeMobileView({
                           <button
                             key={wType}
                             type="button"
+                            disabled={isBlockedDay}
                             onClick={() => {
+                              if (isBlockedDay) return;
                               const nextCompleted = !isSelected;
                               onUpdateDailyActivity(trainee.id, selectedDate, {
                                 workoutLog: isSelected
@@ -1556,7 +1657,8 @@ export function TraineeMobileView({
                                 : 'var(--text-secondary)',
                               fontSize: 11,
                               fontWeight: 700,
-                              cursor: 'pointer',
+                              opacity: isBlockedDay ? 0.45 : 1,
+                              cursor: isBlockedDay ? 'not-allowed' : 'pointer',
                             }}
                           >
                             {isSelected ? `✓ ${wType}` : wType}
@@ -1646,7 +1748,9 @@ export function TraineeMobileView({
                           <button
                             key={cOpt.label}
                             type="button"
-                            onClick={() =>
+                            disabled={isBlockedDay}
+                            onClick={() => {
+                              if (isBlockedDay) return;
                               onUpdateDailyActivity(trainee.id, selectedDate, {
                                 cardioLog: isSelected
                                   ? { completed: false }
@@ -1656,8 +1760,8 @@ export function TraineeMobileView({
                                       label: cOpt.label,
                                       durationMinutes: cOpt.mins,
                                     },
-                              })
-                            }
+                              });
+                            }}
                             style={{
                               padding: '5px 10px',
                               borderRadius: 999,
@@ -1672,7 +1776,8 @@ export function TraineeMobileView({
                                 : 'var(--text-secondary)',
                               fontSize: 11,
                               fontWeight: 700,
-                              cursor: 'pointer',
+                              cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                              opacity: isBlockedDay ? 0.45 : 1,
                             }}
                           >
                             {isSelected ? `✓ ${cOpt.label}` : cOpt.label}
@@ -1733,8 +1838,8 @@ export function TraineeMobileView({
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(7, 1fr)',
-                        gap: 5,
+                        gridTemplateColumns: 'repeat(4, 1fr)',
+                        gap: 6,
                       }}
                     >
                       {[5, 6, 6.5, 7, 7.5, 8, 8.5].map((hrs) => {
@@ -1743,11 +1848,14 @@ export function TraineeMobileView({
                           <button
                             key={hrs}
                             type="button"
-                            onClick={() =>
+                            disabled={isBlockedDay}
+                            onClick={() => {
+                              if (isBlockedDay) return;
+                              setCustomSleepOpen(false);
                               onUpdateDailyActivity(trainee.id, selectedDate, {
                                 sleepHours: hrs,
-                              })
-                            }
+                              });
+                            }}
                             className="num-mono"
                             style={{
                               padding: '6px 2px',
@@ -1763,14 +1871,111 @@ export function TraineeMobileView({
                                 : 'var(--text-secondary)',
                               fontSize: 11,
                               fontWeight: 800,
-                              cursor: 'pointer',
+                              cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                              opacity: isBlockedDay ? 0.45 : 1,
                             }}
                           >
                             {hrs}h
                           </button>
                         );
                       })}
+                      {(() => {
+                        const isCustomValue =
+                          todaySleep !== undefined &&
+                          ![5, 6, 6.5, 7, 7.5, 8, 8.5].includes(todaySleep);
+                        const isSelected = customSleepOpen || isCustomValue;
+                        return (
+                          <button
+                            type="button"
+                            disabled={isBlockedDay}
+                            onClick={() => {
+                              if (isBlockedDay) return;
+                              setCustomSleepDraft(
+                                todaySleep !== undefined ? String(todaySleep) : '9'
+                              );
+                              setCustomSleepOpen((prev) => !prev);
+                            }}
+                            style={{
+                              padding: '6px 2px',
+                              borderRadius: 8,
+                              border: isSelected
+                                ? '1px solid #a855f7'
+                                : '1px solid var(--border-subtle)',
+                              background: isSelected
+                                ? 'rgba(168, 85, 247, 0.18)'
+                                : 'var(--bg-surface-1)',
+                              color: isSelected
+                                ? '#c084fc'
+                                : 'var(--text-secondary)',
+                              fontSize: 11,
+                              fontWeight: 800,
+                              cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                              opacity: isBlockedDay ? 0.45 : 1,
+                            }}
+                          >
+                            {isCustomValue ? `${todaySleep}h` : 'אחר'}
+                          </button>
+                        );
+                      })()}
                     </div>
+
+                    {customSleepOpen && !isBlockedDay && (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const parsed = parseFloat(customSleepDraft);
+                          if (!Number.isFinite(parsed) || parsed < 0 || parsed > 24) {
+                            return;
+                          }
+                          const rounded = Math.round(parsed * 10) / 10;
+                          onUpdateDailyActivity(trainee.id, selectedDate, {
+                            sleepHours: rounded,
+                          });
+                          setCustomSleepOpen(false);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          marginTop: 8,
+                        }}
+                      >
+                        <input
+                          type="number"
+                          step="0.5"
+                          min={0}
+                          max={24}
+                          dir="ltr"
+                          value={customSleepDraft}
+                          onChange={(e) => setCustomSleepDraft(e.target.value)}
+                          placeholder="למשל 9 או 4.5"
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            background: 'var(--bg-surface-1)',
+                            border: '1px solid rgba(168, 85, 247, 0.45)',
+                            borderRadius: 8,
+                            padding: '6px 10px',
+                            color: 'var(--text-primary)',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            textAlign: 'center',
+                            outline: 'none',
+                          }}
+                        />
+                        <button
+                          type="submit"
+                          className="btn-volt"
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: 11.5,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          שמור שעות
+                        </button>
+                      </form>
+                    )}
                   </div>
                 </div>
               );
@@ -1968,11 +2173,25 @@ export function TraineeMobileView({
                             {(entry?.mealTime || slot.timeHint || onUpdateMealTime) && (
                               <button
                                 type="button"
-                                title="שינוי שעת הארוחה"
+                                disabled={isBlockedDay || !onUpdateMealTime}
+                                title={
+                                  isBlockedDay
+                                    ? 'יום חסום להזנה'
+                                    : 'שינוי שעת הארוחה'
+                                }
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  const baseTime = entry?.mealTime || slot.timeHint || '12:00';
-                                  setDraftMealTime(/^\d{1,2}:\d{2}$/.test(baseTime) ? baseTime : '12:00');
+                                  if (isBlockedDay || !onUpdateMealTime) return;
+                                  const baseTime =
+                                    entry?.mealTime || slot.timeHint || '12:00';
+                                  const timeMatch = baseTime.match(
+                                    /^(\d{1,2}):(\d{2})$/
+                                  );
+                                  setDraftMealTime(
+                                    timeMatch
+                                      ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`
+                                      : '12:00'
+                                  );
                                   setTimeEditSlot(slot);
                                 }}
                                 style={{
@@ -1992,7 +2211,11 @@ export function TraineeMobileView({
                                     : 'var(--text-secondary)',
                                   fontSize: 11,
                                   fontWeight: 700,
-                                  cursor: onUpdateMealTime ? 'pointer' : 'default',
+                                  opacity: isBlockedDay ? 0.5 : 1,
+                                  cursor:
+                                    isBlockedDay || !onUpdateMealTime
+                                      ? 'default'
+                                      : 'pointer',
                                 }}
                               >
                                 <Clock size={10} />
@@ -2132,13 +2355,15 @@ export function TraineeMobileView({
                         {loggedItems.map((item, i) => (
                           <div
                             key={item.id}
-                            onClick={() => openMealDrawer(slot, 'catalog')}
+                            onClick={() => {
+                              if (!isBlockedDay) openMealDrawer(slot, 'catalog');
+                            }}
                             style={{
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'space-between',
                               padding: '7px 0',
-                              cursor: 'pointer',
+                              cursor: isBlockedDay ? 'default' : 'pointer',
                               borderBottom:
                                 i < loggedItems.length - 1
                                   ? '1px solid rgba(255, 255, 255, 0.04)'
@@ -2239,26 +2464,6 @@ export function TraineeMobileView({
                         gap: 6,
                       }}
                     >
-                      <button
-                        onClick={() => openMealDrawer(slot, 'hub')}
-                        className={hasItems ? 'btn-surface' : 'btn-volt'}
-                        style={{
-                          flex: '1 1 auto',
-                          minWidth: 0,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 5,
-                          padding: '9px 10px',
-                          fontSize: 12.5,
-                          whiteSpace: 'nowrap',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <Plus size={14} style={{ flexShrink: 0 }} />
-                        <span>{hasItems ? 'הוסף / ערוך' : 'הזן ארוחה'}</span>
-                      </button>
-
                       {(trainee.mealCardShortcuts ?? DEFAULT_MEAL_CARD_SHORTCUTS)
                         .slice(0, 2)
                         .map((scId) => {
@@ -2295,7 +2500,9 @@ export function TraineeMobileView({
                           return (
                             <button
                               key={scId}
-                              title={meta.description}
+                              type="button"
+                              disabled={isBlockedDay}
+                              title={isBlockedDay ? 'יום חסום להזנה' : meta.description}
                               onClick={() => openMealDrawer(slot, scId)}
                               className="btn-surface"
                               style={{
@@ -2307,7 +2514,8 @@ export function TraineeMobileView({
                                 fontWeight: 700,
                                 whiteSpace: 'nowrap',
                                 flexShrink: 0,
-                                cursor: 'pointer',
+                                opacity: isBlockedDay ? 0.45 : 1,
+                                cursor: isBlockedDay ? 'not-allowed' : 'pointer',
                                 borderColor:
                                   scId === 'ai-recommend' || scId === 'ai-photo'
                                     ? 'rgba(214, 125, 9, 0.35)'
@@ -2319,6 +2527,29 @@ export function TraineeMobileView({
                             </button>
                           );
                         })}
+
+                      <button
+                        type="button"
+                        disabled={isBlockedDay}
+                        onClick={() => openMealDrawer(slot, 'hub')}
+                        className={hasItems ? 'btn-surface' : 'btn-volt'}
+                        style={{
+                          flex: '1 1 auto',
+                          minWidth: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 5,
+                          padding: '9px 10px',
+                          fontSize: 12.5,
+                          whiteSpace: 'nowrap',
+                          opacity: isBlockedDay ? 0.45 : 1,
+                          cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        <Plus size={14} style={{ flexShrink: 0 }} />
+                        <span>{hasItems ? 'הוסף / ערוך' : 'הזן ארוחה'}</span>
+                      </button>
                     </div>
                   </div>
                 );
@@ -2370,12 +2601,17 @@ export function TraineeMobileView({
                 </div>
 
                 <button
-                  onClick={() => setMeasurementModalOpen(true)}
+                  type="button"
+                  disabled={isBlockedDay}
+                  onClick={() => {
+                    if (!isBlockedDay) setMeasurementModalOpen(true);
+                  }}
                   className="btn-volt"
                   style={{
                     padding: '7px 14px',
                     fontSize: 12,
-                    cursor: 'pointer',
+                    opacity: isBlockedDay ? 0.45 : 1,
+                    cursor: isBlockedDay ? 'not-allowed' : 'pointer',
                   }}
                 >
                   {latestMeasurement ? 'עדכן היקפים' : 'הזן היקפים'}
@@ -2493,9 +2729,13 @@ export function TraineeMobileView({
                   return (
                     <button
                       key={i}
-                      onClick={() =>
-                        onUpdateWater(trainee.id, selectedDate, i + 1)
-                      }
+                      type="button"
+                      disabled={isBlockedDay}
+                      onClick={() => {
+                        if (!isBlockedDay) {
+                          onUpdateWater(trainee.id, selectedDate, i + 1);
+                        }
+                      }}
                       style={{
                         height: 38,
                         borderRadius: 10,
@@ -2508,7 +2748,8 @@ export function TraineeMobileView({
                         color: filled ? '#38bdf8' : 'var(--text-muted)',
                         fontWeight: 700,
                         fontSize: 12,
-                        cursor: 'pointer',
+                        opacity: isBlockedDay ? 0.45 : 1,
+                        cursor: isBlockedDay ? 'not-allowed' : 'pointer',
                       }}
                     >
                       {i + 1}
@@ -2601,7 +2842,7 @@ export function TraineeMobileView({
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  if (weightLockRef.current) return;
+                  if (isBlockedDay || weightLockRef.current) return;
                   const num = parseFloat(weightInput);
                   if (isNaN(num) || num < 30 || num > 250) {
                     setWeightFeedback({
@@ -2633,7 +2874,7 @@ export function TraineeMobileView({
                   type="number"
                   step="0.1"
                   dir="ltr"
-                  disabled={savingWeight}
+                  disabled={savingWeight || isBlockedDay}
                   value={weightInput}
                   onChange={(e) => setWeightInput(e.target.value)}
                   style={{
@@ -2645,15 +2886,17 @@ export function TraineeMobileView({
                     color: 'var(--text-primary)',
                     fontSize: 14,
                     fontWeight: 700,
+                    opacity: isBlockedDay ? 0.5 : 1,
                   }}
                 />
                 <button
                   type="submit"
-                  disabled={savingWeight}
+                  disabled={savingWeight || isBlockedDay}
                   className="btn-volt"
                   style={{
                     padding: '10px 18px',
-                    cursor: 'pointer',
+                    cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                    opacity: isBlockedDay ? 0.45 : 1,
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 6,
@@ -3046,7 +3289,7 @@ export function TraineeMobileView({
                 justifyContent: 'center',
                 gap: 3,
                 padding: '7px 4px',
-                borderRadius: 14,
+                borderRadius: 999,
                 border: 'none',
                 background:
                   mobileSection === 'journal'
@@ -3074,7 +3317,7 @@ export function TraineeMobileView({
                 justifyContent: 'center',
                 gap: 3,
                 padding: '7px 4px',
-                borderRadius: 14,
+                borderRadius: 999,
                 border: 'none',
                 background:
                   mobileSection === 'metrics'
@@ -3102,7 +3345,7 @@ export function TraineeMobileView({
                 justifyContent: 'center',
                 gap: 3,
                 padding: '7px 4px',
-                borderRadius: 14,
+                borderRadius: 999,
                 border: 'none',
                 background:
                   mobileSection === 'profile'
@@ -3122,12 +3365,14 @@ export function TraineeMobileView({
             </button>
           </div>
 
-          {/* כפתור הוספה מהיר בצד השמאלי ביותר — אייקון מצלמה + פלוס בלבד */}
+          {/* כפתור הוספה מהיר בצד השמאלי ביותר — אייקון מצלמה בלבד עם פינות מעוגלות */}
           <button
             type="button"
+            disabled={isBlockedDay}
             aria-label="הוספת ארוחה וסריקת AI"
-            title="הוספת ארוחה / צילום"
+            title={isBlockedDay ? 'יום חסום להזנה' : 'הוספת ארוחה / צילום'}
             onClick={() => {
+              if (isBlockedDay) return;
               const firstUnlogged =
                 activeTemplate.meals.find(
                   (m) => !(dailyLog.meals[m.id]?.items?.length > 0)
@@ -3136,7 +3381,7 @@ export function TraineeMobileView({
             }}
             className="btn-volt"
             style={{
-              width: 48,
+              width: 44,
               height: 44,
               padding: 0,
               borderRadius: 999,
@@ -3144,25 +3389,12 @@ export function TraineeMobileView({
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0,
-              cursor: 'pointer',
+              opacity: isBlockedDay ? 0.45 : 1,
+              cursor: isBlockedDay ? 'not-allowed' : 'pointer',
               boxShadow: '0 4px 18px rgba(214, 125, 9, 0.45)',
             }}
           >
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.1"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M14.5 4h-5L7.5 6H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3.5z" />
-              <circle cx="11" cy="12.5" r="3" />
-              <path d="M17.5 9.5v4" />
-              <path d="M15.5 11.5h4" />
-            </svg>
+            <Camera size={20} strokeWidth={2.2} />
           </button>
         </div>
       </div>
@@ -3270,6 +3502,7 @@ export function TraineeMobileView({
                   const isObs =
                     (trainee.observationDates || []).includes(cell.iso) ||
                     Boolean(trainee.logs[cell.iso]?.isObservationDay);
+                  const isBlockedCell = isDayBlockedForTrainee(cell.iso, trainee);
                   const hasLog =
                     trainee.logs[cell.iso] &&
                     Object.keys(trainee.logs[cell.iso].meals || {}).length > 0;
@@ -3288,13 +3521,19 @@ export function TraineeMobileView({
                         borderRadius: 11,
                         border: isSelected
                           ? '1px solid var(--accent-volt)'
+                          : isBlockedCell
+                          ? '1px solid rgba(239, 68, 68, 0.55)'
                           : isToday
                           ? '1px solid rgba(214, 125, 9, 0.5)'
                           : isObs
                           ? '1px solid rgba(56, 189, 248, 0.4)'
                           : '1px solid transparent',
                         background: isSelected
-                          ? 'var(--accent-volt)'
+                          ? isBlockedCell
+                            ? '#ef4444'
+                            : 'var(--accent-volt)'
+                          : isBlockedCell
+                          ? 'rgba(239, 68, 68, 0.14)'
                           : isObs
                           ? 'rgba(56, 189, 248, 0.12)'
                           : 'var(--bg-surface-2)',
@@ -3456,9 +3695,13 @@ export function TraineeMobileView({
         opened={Boolean(timeEditSlot)}
         onClose={() => !savingMealTime && setTimeEditSlot(null)}
         centered
-        size="xs"
+        size="sm"
         radius="lg"
         overlayProps={{ backgroundOpacity: 0.78, blur: 5 }}
+        styles={{
+          content: { overflow: 'hidden', maxWidth: 'calc(100vw - 24px)' },
+          body: { overflow: 'hidden' },
+        }}
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Clock size={15} color="var(--accent-volt)" />
@@ -3468,28 +3711,90 @@ export function TraineeMobileView({
           </div>
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+            width: '100%',
+            boxSizing: 'border-box',
+          }}
+        >
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
             ניתן לבחור כל שעה מותאמת אישית לתיעוד הארוחה ביומן:
           </div>
-          <input
-            type="time"
-            value={draftMealTime}
-            onChange={(e) => setDraftMealTime(e.target.value)}
-            dir="ltr"
+
+          <div
             style={{
               width: '100%',
-              padding: '10px 12px',
+              boxSizing: 'border-box',
+              overflow: 'hidden',
               borderRadius: 12,
               background: 'var(--bg-surface-2)',
               border: '1px solid rgba(214, 125, 9, 0.45)',
-              color: '#ffffff',
-              fontSize: 18,
-              fontWeight: 800,
-              textAlign: 'center',
-              outline: 'none',
+              padding: '8px 12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
-          />
+          >
+            <input
+              type="time"
+              value={draftMealTime}
+              onChange={(e) => setDraftMealTime(e.target.value)}
+              dir="ltr"
+              style={{
+                width: '100%',
+                maxWidth: '100%',
+                minWidth: 0,
+                boxSizing: 'border-box',
+                background: 'transparent',
+                border: 'none',
+                color: '#ffffff',
+                fontSize: 20,
+                fontWeight: 800,
+                textAlign: 'center',
+                outline: 'none',
+                colorScheme: 'dark',
+                WebkitAppearance: 'none',
+                appearance: 'none',
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <button
+              type="button"
+              disabled={savingMealTime}
+              onClick={() => {
+                const parts = draftMealTime.split(':').map(Number);
+                const mins = ((Number.isFinite(parts[0]) ? parts[0] : 12) * 60 + (Number.isFinite(parts[1]) ? parts[1] : 0) - 15 + 1440) % 1440;
+                setDraftMealTime(
+                  `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`
+                );
+              }}
+              className="btn-surface"
+              style={{ padding: '7px 8px', fontSize: 11.5, cursor: 'pointer' }}
+            >
+              -15 דק׳
+            </button>
+            <button
+              type="button"
+              disabled={savingMealTime}
+              onClick={() => {
+                const parts = draftMealTime.split(':').map(Number);
+                const mins = ((Number.isFinite(parts[0]) ? parts[0] : 12) * 60 + (Number.isFinite(parts[1]) ? parts[1] : 0) + 15) % 1440;
+                setDraftMealTime(
+                  `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`
+                );
+              }}
+              className="btn-surface"
+              style={{ padding: '7px 8px', fontSize: 11.5, cursor: 'pointer' }}
+            >
+              +15 דק׳
+            </button>
+          </div>
+
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               type="button"
@@ -3509,7 +3814,12 @@ export function TraineeMobileView({
               <button
                 type="button"
                 disabled={savingMealTime}
-                onClick={() => setDraftMealTime(timeEditSlot.timeHint!)}
+                onClick={() => {
+                  const m = timeEditSlot.timeHint!.match(/^(\d{1,2}):(\d{2})$/);
+                  setDraftMealTime(
+                    m ? `${m[1].padStart(2, '0')}:${m[2]}` : timeEditSlot.timeHint!
+                  );
+                }}
                 className="btn-surface"
                 style={{ flex: 1, padding: '8px', fontSize: 11.5, cursor: 'pointer' }}
               >
@@ -3519,9 +3829,9 @@ export function TraineeMobileView({
           </div>
           <button
             type="button"
-            disabled={savingMealTime || !onUpdateMealTime}
+            disabled={savingMealTime || !onUpdateMealTime || isBlockedDay}
             onClick={async () => {
-              if (!timeEditSlot || !onUpdateMealTime) return;
+              if (!timeEditSlot || !onUpdateMealTime || isBlockedDay) return;
               setSavingMealTime(true);
               try {
                 await onUpdateMealTime(
@@ -3543,7 +3853,7 @@ export function TraineeMobileView({
               alignItems: 'center',
               justifyContent: 'center',
               gap: 6,
-              cursor: 'pointer',
+              cursor: isBlockedDay ? 'not-allowed' : 'pointer',
             }}
           >
             {savingMealTime ? (
