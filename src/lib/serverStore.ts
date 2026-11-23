@@ -5,10 +5,13 @@ import {
   AuthSessionUser,
   CoachDirectoryItem,
   CoachProfile,
+  CoachPushSubscriptionSettings,
   NutritionTemplate,
   QuickContextChip,
+  TraineeFcmTokenEntry,
   TraineeGroup,
   TraineeProfile,
+  TraineeWebPushSubscriptionEntry,
 } from '@/types/nutrition';
 import { hashPassword } from '@/lib/serverAuth';
 import {
@@ -21,6 +24,7 @@ import {
   loadSingleCoachFromSupabase,
   loadSingleTraineeFromSupabase,
   loadStateFromSupabase,
+  saveCoachPushSettingsToSupabase,
   saveCoachesToSupabase,
   saveGlobalQuickChipsToSupabase,
   saveGroupsToSupabase,
@@ -37,6 +41,7 @@ export interface ServerDatabaseState {
   templates: NutritionTemplate[];
   trainees: TraineeProfile[];
   globalQuickChips?: QuickContextChip[];
+  coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
   readErrors?: string[];
 }
 
@@ -83,6 +88,7 @@ function createCleanInitialState(): ServerDatabaseState {
     templates: DEFAULT_TEMPLATES,
     trainees: [],
     globalQuickChips: [],
+    coachPushSettings: {},
   };
 }
 
@@ -103,6 +109,10 @@ function loadLocalServerFile(): ServerDatabaseState {
       parsed.globalQuickChips = Array.isArray(parsed.globalQuickChips)
         ? parsed.globalQuickChips
         : [];
+      parsed.coachPushSettings =
+        parsed.coachPushSettings && typeof parsed.coachPushSettings === 'object'
+          ? parsed.coachPushSettings
+          : {};
       global.__spotServerDbCache = parsed;
       return parsed;
     }
@@ -173,6 +183,7 @@ export async function getServerDbState(): Promise<ServerDatabaseState> {
       templates,
       trainees: remote.trainees,
       globalQuickChips: remote.globalQuickChips || [],
+      coachPushSettings: remote.coachPushSettings || {},
       readErrors: remote.readErrors,
     };
   }
@@ -252,6 +263,9 @@ export async function updateServerDbState(
     }
     if (next.globalQuickChips !== current.globalQuickChips) {
       tasks.push(saveGlobalQuickChipsToSupabase(next.globalQuickChips || []));
+    }
+    if (next.coachPushSettings !== current.coachPushSettings) {
+      tasks.push(saveCoachPushSettingsToSupabase(next.coachPushSettings || {}));
     }
     if (tasks.length > 0) {
       await Promise.all(tasks);
@@ -426,24 +440,67 @@ export function canCoachManageGroup(
   return false;
 }
 
+function redactFcmTokens(
+  tokens?: TraineeFcmTokenEntry[]
+): TraineeFcmTokenEntry[] {
+  return (tokens || []).map((entry) => ({
+    ...entry,
+    token: entry.token ? `fcm_${entry.token.slice(-6)}` : '',
+  }));
+}
+
+function redactWebPushSubscriptions(
+  subs?: TraineeWebPushSubscriptionEntry[]
+): TraineeWebPushSubscriptionEntry[] {
+  return (subs || []).map((sub, idx) => ({
+    ...sub,
+    endpoint: `webpush_${idx}_${sub.endpoint ? sub.endpoint.slice(-8) : ''}`,
+    keys: { p256dh: '', auth: '' },
+  }));
+}
+
+export function createDefaultCoachPushSettings(
+  coachId: string
+): CoachPushSubscriptionSettings {
+  return {
+    coachId,
+    enabled: true,
+    traineeIds: [],
+    groupIds: [],
+    events: {
+      meals: true,
+      weight: true,
+      workouts: true,
+      water: false,
+    },
+    webPushSubscriptions: [],
+    fcmTokens: [],
+    updatedAt: '',
+  };
+}
+
+export function sanitizeCoachPushSettingsForClient(
+  raw: CoachPushSubscriptionSettings | undefined,
+  coachId: string
+): CoachPushSubscriptionSettings {
+  const base = raw || createDefaultCoachPushSettings(coachId);
+  return {
+    ...base,
+    coachId,
+    webPushSubscriptions: redactWebPushSubscriptions(base.webPushSubscriptions),
+    fcmTokens: redactFcmTokens(base.fcmTokens),
+  };
+}
+
 export function sanitizeTraineeForClient(
   trainee: TraineeProfile
 ): TraineeProfile {
   return {
     ...trainee,
     password: '',
-    // מסתיר את מפתח ה-FCM הגולמי מפני חשיפה ללקוח, ומשאיר ספירה ומטא-דאטה של המכשיר
-    fcmTokens: (trainee.fcmTokens || []).map((entry) => ({
-      ...entry,
-      token: entry.token ? `fcm_${entry.token.slice(-6)}` : '',
-    })),
-    // מסתיר מפתחות הצפנת Web Push ו-endpoint מלא מפני חשיפה לדפדפן
-    webPushSubscriptions: (trainee.webPushSubscriptions || []).map(
-      (sub, idx) => ({
-        ...sub,
-        endpoint: `webpush_${idx}_${sub.endpoint ? sub.endpoint.slice(-8) : ''}`,
-        keys: { p256dh: '', auth: '' },
-      })
+    fcmTokens: redactFcmTokens(trainee.fcmTokens),
+    webPushSubscriptions: redactWebPushSubscriptions(
+      trainee.webPushSubscriptions
     ),
   };
 }

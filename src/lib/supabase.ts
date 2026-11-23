@@ -4,6 +4,7 @@ import {
   BodyMeasurementEntry,
   CoachOnboardingData,
   CoachProfile,
+  CoachPushSubscriptionSettings,
   NutritionTemplate,
   PendingAiMealJob,
   QuickContextChip,
@@ -352,6 +353,7 @@ export async function loadStateFromSupabase(): Promise<{
   templates: NutritionTemplate[];
   trainees: TraineeProfile[];
   globalQuickChips: QuickContextChip[];
+  coachPushSettings: Record<string, CoachPushSubscriptionSettings>;
   readErrors: string[];
 }> {
   if (!supabase) {
@@ -361,6 +363,7 @@ export async function loadStateFromSupabase(): Promise<{
       templates: [],
       trainees: [],
       globalQuickChips: [],
+      coachPushSettings: {},
       readErrors: [],
     };
   }
@@ -393,6 +396,7 @@ export async function loadStateFromSupabase(): Promise<{
   let fallbackCoaches: CoachProfile[] = [];
   let fallbackGroups: TraineeGroup[] = [];
   let globalQuickChips: QuickContextChip[] = [];
+  let coachPushSettings: Record<string, CoachPushSubscriptionSettings> = {};
 
   if (
     systemMetaRow &&
@@ -403,6 +407,7 @@ export async function loadStateFromSupabase(): Promise<{
       coaches?: CoachProfile[];
       groups?: TraineeGroup[];
       globalQuickChips?: QuickContextChip[];
+      coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
     };
     if (Array.isArray(metaObj.coaches)) {
       fallbackCoaches = metaObj.coaches;
@@ -412,6 +417,12 @@ export async function loadStateFromSupabase(): Promise<{
     }
     if (Array.isArray(metaObj.globalQuickChips)) {
       globalQuickChips = metaObj.globalQuickChips;
+    }
+    if (
+      metaObj.coachPushSettings &&
+      typeof metaObj.coachPushSettings === 'object'
+    ) {
+      coachPushSettings = metaObj.coachPushSettings;
     }
   }
 
@@ -468,7 +479,15 @@ export async function loadStateFromSupabase(): Promise<{
     ? trRes.data.map((row) => mapRowToTrainee(row))
     : [];
 
-  return { coaches, groups, templates, trainees, globalQuickChips, readErrors };
+  return {
+    coaches,
+    groups,
+    templates,
+    trainees,
+    globalQuickChips,
+    coachPushSettings,
+    readErrors,
+  };
 }
 
 export async function loadSingleTraineeFromSupabase(
@@ -559,6 +578,7 @@ export async function saveSystemMetaBackup(partial: {
   coaches?: CoachProfile[];
   groups?: TraineeGroup[];
   globalQuickChips?: QuickContextChip[];
+  coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
 }): Promise<{ ok: boolean; error?: string }> {
   const run = async (): Promise<{ ok: boolean; error?: string }> => {
     if (!supabase) return { ok: false, error: 'Supabase client not configured' };
@@ -575,6 +595,7 @@ export async function saveSystemMetaBackup(partial: {
             coaches?: CoachProfile[];
             groups?: TraineeGroup[];
             globalQuickChips?: QuickContextChip[];
+            coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
           })
         : {};
 
@@ -591,6 +612,10 @@ export async function saveSystemMetaBackup(partial: {
         partial.globalQuickChips !== undefined
           ? partial.globalQuickChips
           : currentMeta.globalQuickChips || [],
+      coachPushSettings:
+        partial.coachPushSettings !== undefined
+          ? partial.coachPushSettings
+          : currentMeta.coachPushSettings || {},
     };
 
     const attempts: Record<string, unknown>[] = [
@@ -653,6 +678,15 @@ export async function saveGlobalQuickChipsToSupabase(
   const res = await saveSystemMetaBackup({ globalQuickChips });
   if (!res.ok) {
     throw new Error(res.error || 'Supabase global quick chips save failed');
+  }
+}
+
+export async function saveCoachPushSettingsToSupabase(
+  coachPushSettings: Record<string, CoachPushSubscriptionSettings>
+) {
+  const res = await saveSystemMetaBackup({ coachPushSettings });
+  if (!res.ok) {
+    throw new Error(res.error || 'Supabase coach push settings save failed');
   }
 }
 

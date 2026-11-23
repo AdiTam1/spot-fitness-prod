@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { waitUntil } from '@vercel/functions';
 
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 import {
@@ -28,9 +30,14 @@ import {
   isPrimaryOwnerOfTrainee,
   isSuperAdmin,
   sanitizeCoachForClient,
+  sanitizeCoachPushSettingsForClient,
   sanitizeTraineeForClient,
   updateServerDbState,
 } from '@/lib/serverStore';
+import {
+  detectTraineeActivityEvents,
+  notifySubscribedCoachesForEvents,
+} from '@/lib/coachAlertEngine';
 import { DEFAULT_TEMPLATES, getTodayIso } from '@/data/israeliFoodCatalog';
 import { diagnoseSupabaseError } from '@/lib/supabase';
 import {
@@ -430,6 +437,10 @@ export async function GET(request: NextRequest) {
         coachDirectory: buildCoachDirectory(state), // שמות בלבד לצורך שיתוף
         coachInviteCode: liveCoach.inviteCode,
         globalQuickChips: state.globalQuickChips || [],
+        coachPushSettings: sanitizeCoachPushSettingsForClient(
+          state.coachPushSettings?.[session.id],
+          session.id
+        ),
         role: 'coach',
       },
       { headers: { 'Cache-Control': 'no-store, max-age=0' } }
@@ -451,6 +462,10 @@ export async function GET(request: NextRequest) {
       coachDirectory: buildCoachDirectory(state),
       coachInviteCode: state.coachInviteCode,
       globalQuickChips: state.globalQuickChips || [],
+      coachPushSettings: sanitizeCoachPushSettingsForClient(
+        state.coachPushSettings?.[session.id],
+        session.id
+      ),
       role: 'admin',
       dbError,
     },
@@ -895,11 +910,15 @@ export async function POST(request: NextRequest) {
         liveTrainee.currentWeight
       );
 
+      let prevTraineeSnapshot = null as TraineeProfile | null;
+      let nextTraineeSnapshot = null as TraineeProfile | null;
+
       await updateServerDbState((prev) => ({
         ...prev,
         trainees: prev.trainees.map((existing) => {
           if (existing.id !== session.id) return existing;
-          return {
+          prevTraineeSnapshot = existing;
+          const updated: TraineeProfile = {
             ...existing,
             name: sanitizeText(traineeInput.name, 80) || existing.name,
             currentWeight: safeWeight,
@@ -936,8 +955,31 @@ export async function POST(request: NextRequest) {
               : existing.recentContextChips,
             logs: mergeLogsPreservingPendingAi(existing, traineeInput.logs),
           };
+          nextTraineeSnapshot = updated;
+          return updated;
         }),
       }));
+
+      if (prevTraineeSnapshot && nextTraineeSnapshot) {
+        const events = detectTraineeActivityEvents(
+          prevTraineeSnapshot,
+          nextTraineeSnapshot
+        );
+        if (events.length > 0) {
+          const notifyTask = notifySubscribedCoachesForEvents({
+            trainee: nextTraineeSnapshot,
+            events,
+            origin: request.nextUrl.origin,
+          }).catch((err) =>
+            console.error('Coach activity notification error:', err)
+          );
+          try {
+            waitUntil(notifyTask);
+          } catch {
+            // בסביבת Dev מקומית waitUntil אינו פעיל
+          }
+        }
+      }
 
       return NextResponse.json({ ok: true });
     }

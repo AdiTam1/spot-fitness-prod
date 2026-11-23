@@ -26,6 +26,7 @@ import {
   CoachDirectoryItem,
   CoachProfile,
   CoachOnboardingData,
+  CoachPushSubscriptionSettings,
   DailyCardioLog,
   DailyWorkoutLog,
   DayType,
@@ -122,6 +123,15 @@ export default function HomePage() {
     mealSlotId: string;
     nonce: number;
   } | null>(null);
+  const [coachPushSettings, setCoachPushSettings] =
+    useState<CoachPushSubscriptionSettings | null>(null);
+  const [externalInspectTraineeRequest, setExternalInspectTraineeRequest] =
+    useState<{
+      traineeId: string;
+      nonce: number;
+    } | null>(null);
+  const [externalOpenCoachAlertsNonce, setExternalOpenCoachAlertsNonce] =
+    useState(0);
   const [externalSectionRequest, setExternalSectionRequest] = useState<{
     traineeId: string;
     section: 'journal' | 'metrics' | 'profile';
@@ -175,6 +185,7 @@ export default function HomePage() {
         setCoaches([]);
         setMyCoachProfile(null);
         setCoachDirectory([]);
+        setCoachPushSettings(null);
         return;
       }
       if (dataRes.ok) {
@@ -212,6 +223,9 @@ export default function HomePage() {
         }
         if (remoteData.coachInviteCode) {
           setCoachInviteCode(remoteData.coachInviteCode);
+        }
+        if (remoteData.coachPushSettings) {
+          setCoachPushSettings(remoteData.coachPushSettings);
         }
         if (remoteData.dbError) {
           setSyncError(remoteData.dbError);
@@ -382,6 +396,11 @@ export default function HomePage() {
     !isNativeAndroidApp() && currentUser?.role === 'trainee'
       ? currentUser.id
       : '';
+  const activeCoachWebId =
+    !isNativeAndroidApp() &&
+    (currentUser?.role === 'coach' || currentUser?.role === 'admin')
+      ? currentUser.id
+      : '';
 
   const applyPushDeepLinkTarget = useCallback(
     (target: PushDeepLinkTarget, traineeId: string) => {
@@ -398,7 +417,10 @@ export default function HomePage() {
       } else {
         setExternalSectionRequest({
           traineeId,
-          section: target.screen === 'meal' ? 'journal' : target.screen,
+          section:
+            target.screen === 'meal' || target.screen === 'inspector'
+              ? 'journal'
+              : target.screen,
           date: target.date,
           nonce: Date.now(),
         });
@@ -511,6 +533,41 @@ export default function HomePage() {
       unsubWebPush();
     };
   }, [activeWebTraineeId, applyPushDeepLinkTarget]);
+
+  useEffect(() => {
+    if (!activeCoachWebId) return;
+    let cancelled = false;
+
+    void ensurePushServiceWorkerRegistered().then(async () => {
+      if (cancelled) return;
+      await syncExistingWebPushIfGranted({
+        apiPath: '/api/push/coach-alerts',
+      });
+      if (cancelled) return;
+      if (shouldShowIosAddToHomeBanner()) {
+        setShowIosA2hsBanner(true);
+      }
+    });
+
+    const unsubCoachPush = subscribeWebPushLifecycle({
+      onDeepLinkTarget: (target) => {
+        if (cancelled) return;
+        void fetchAuthorizedData({ force: true });
+        if (target.traineeId) {
+          setCoachPreviewTraineeId(null);
+          setExternalInspectTraineeRequest({
+            traineeId: target.traineeId,
+            nonce: Date.now(),
+          });
+        }
+      },
+    });
+
+    return () => {
+      cancelled = true;
+      unsubCoachPush();
+    };
+  }, [activeCoachWebId, fetchAuthorizedData]);
 
   const handleRenameTraineeProfile = useCallback(
     async (newName: string): Promise<{ error?: string }> => {
@@ -660,11 +717,17 @@ export default function HomePage() {
           enabled: false,
         }).catch(() => {}),
         unregisterAndroidPushOnLogout().catch(() => {}),
-        unregisterWebPushOnLogout().catch(() => {}),
+        unregisterWebPushOnLogout({
+          apiPath:
+            currentUser?.role === 'trainee'
+              ? '/api/push/register'
+              : '/api/push/coach-alerts',
+        }).catch(() => {}),
       ]);
       setPushPromptOpen(false);
       setWebPushPromptOpen(false);
       setShowIosA2hsBanner(false);
+      setCoachPushSettings(null);
       await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {});
       setCurrentUser(null);
       setTrainees([]);
@@ -2251,7 +2314,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {showIosA2hsBanner && currentUser.role === 'trainee' && (
+      {showIosA2hsBanner && (
         <div
           style={{
             background: 'rgba(56, 189, 248, 0.12)',
@@ -2281,11 +2344,16 @@ export default function HomePage() {
             onClick={() => {
               dismissIosAddToHomeBanner();
               setShowIosA2hsBanner(false);
-              setExternalSectionRequest({
-                traineeId: currentUser.id,
-                section: 'profile',
-                nonce: Date.now(),
-              });
+              if (currentUser.role === 'trainee') {
+                setExternalSectionRequest({
+                  traineeId: currentUser.id,
+                  section: 'profile',
+                  nonce: Date.now(),
+                });
+              } else {
+                setCoachPreviewTraineeId(null);
+                setExternalOpenCoachAlertsNonce((n) => n + 1);
+              }
             }}
             style={{
               background: 'var(--accent-volt)',
@@ -2298,7 +2366,7 @@ export default function HomePage() {
               cursor: 'pointer',
             }}
           >
-            מדריך מלא בפרופיל
+            {currentUser.role === 'trainee' ? 'מדריך מלא בפרופיל' : 'פתח הגדרות התראות'}
           </button>
           <button
             type="button"
@@ -2411,6 +2479,10 @@ export default function HomePage() {
             onManageQuickChips={handleManageQuickChips}
             onReplySavedMeal={handleReplySavedMeal}
             onRefreshData={() => fetchAuthorizedData({ force: true })}
+            coachPushSettings={coachPushSettings}
+            onCoachPushSettingsUpdated={setCoachPushSettings}
+            externalInspectTraineeRequest={externalInspectTraineeRequest}
+            externalOpenCoachAlertsNonce={externalOpenCoachAlertsNonce}
             onUpdateCoachInviteCode={async (code) => {
               const prev = coachInviteCode;
               setCoachInviteCode(code);

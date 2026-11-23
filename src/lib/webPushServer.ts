@@ -65,9 +65,10 @@ export interface WebPushSendPayload {
   pushId: string;
   title: string;
   body: string;
-  kind: 'ai-meal' | 'coach' | 'test';
-  screen: 'meal' | 'journal' | 'metrics' | 'profile';
+  kind: 'ai-meal' | 'coach' | 'coach-alert' | 'test';
+  screen: 'meal' | 'journal' | 'metrics' | 'profile' | 'inspector';
   mealSlotId?: string;
+  traineeId?: string;
   date?: string;
   origin?: string;
 }
@@ -89,6 +90,7 @@ function buildAbsoluteDeepLinkUrl(payload: WebPushSendPayload): {
   url.searchParams.set('spotKind', payload.kind);
   url.searchParams.set('spotScreen', payload.screen);
   if (payload.mealSlotId) url.searchParams.set('spotMealSlotId', payload.mealSlotId);
+  if (payload.traineeId) url.searchParams.set('spotTraineeId', payload.traineeId);
   if (payload.date) url.searchParams.set('spotDate', payload.date);
   return { baseOrigin, navigateUrl: url.toString() };
 }
@@ -135,6 +137,7 @@ export async function sendWebPushToSubscriptions(
       spotKind: payload.kind,
       spotScreen: payload.screen,
       spotMealSlotId: payload.mealSlotId,
+      spotTraineeId: payload.traineeId,
       spotDate: payload.date,
       url: navigateUrl,
     },

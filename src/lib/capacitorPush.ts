@@ -26,8 +26,9 @@ export interface AndroidPushStatus {
 
 export interface PushDeepLinkTarget {
   pushId: string;
-  screen: 'meal' | 'journal' | 'metrics' | 'profile';
+  screen: 'meal' | 'journal' | 'metrics' | 'profile' | 'inspector';
   mealSlotId?: string;
+  traineeId?: string;
   date?: string;
   kind?: string;
 }

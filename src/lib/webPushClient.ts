@@ -153,12 +153,17 @@ export async function getWebPushEnvironmentStatus(): Promise<WebPushEnvironmentS
   };
 }
 
-async function uploadWebPushSubscription(sub: PushSubscription) {
+export type WebPushApiPath = '/api/push/register' | '/api/push/coach-alerts';
+
+async function uploadWebPushSubscription(
+  sub: PushSubscription,
+  apiPath: WebPushApiPath = '/api/push/register'
+) {
   const json = sub.toJSON();
   if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {
     throw new Error('Invalid PushSubscription');
   }
-  const res = await fetch('/api/push/register', {
+  const res = await fetch(apiPath, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -184,7 +189,9 @@ async function uploadWebPushSubscription(sub: PushSubscription) {
  * חובה לקרוא לפונקציה זו ישירות מתוך onClick של המשתמש (Transient User Activation),
  * ללא שום קריאת fetch לפניה כדי ש-iOS Safari לא ידחה את pushManager.subscribe().
  */
-export async function requestAndSubscribeWebPush(): Promise<{
+export async function requestAndSubscribeWebPush(options?: {
+  apiPath?: WebPushApiPath;
+}): Promise<{
   ok: boolean;
   reason?:
     | 'not-supported'
@@ -234,7 +241,7 @@ export async function requestAndSubscribeWebPush(): Promise<{
       });
     }
 
-    await uploadWebPushSubscription(sub);
+    await uploadWebPushSubscription(sub, options?.apiPath || '/api/push/register');
     clearWebPushAppBadge();
     return { ok: true };
   } catch {
@@ -242,7 +249,9 @@ export async function requestAndSubscribeWebPush(): Promise<{
   }
 }
 
-export async function syncExistingWebPushIfGranted(): Promise<boolean> {
+export async function syncExistingWebPushIfGranted(options?: {
+  apiPath?: WebPushApiPath;
+}): Promise<boolean> {
   if (!isWebPushEnvironmentSupported()) return false;
   const publicKey = getPublicVapidKey();
   if (!publicKey || Notification.permission !== 'granted') return false;
@@ -258,20 +267,22 @@ export async function syncExistingWebPushIfGranted(): Promise<boolean> {
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       });
     }
-    await uploadWebPushSubscription(sub);
+    await uploadWebPushSubscription(sub, options?.apiPath || '/api/push/register');
     return true;
   } catch {
     return false;
   }
 }
 
-export async function unregisterWebPushOnLogout() {
+export async function unregisterWebPushOnLogout(options?: {
+  apiPath?: WebPushApiPath;
+}) {
   if (!isWebPushEnvironmentSupported()) return;
   try {
     const reg = await navigator.serviceWorker.getRegistration('/');
     const sub = await reg?.pushManager.getSubscription();
     const endpoint = sub?.endpoint || '';
-    await fetch('/api/push/register', {
+    await fetch(options?.apiPath || '/api/push/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       keepalive: true,
@@ -339,7 +350,8 @@ function normalizeWebDeepLink(
     rawScreen === 'meal' ||
     rawScreen === 'journal' ||
     rawScreen === 'metrics' ||
-    rawScreen === 'profile'
+    rawScreen === 'profile' ||
+    rawScreen === 'inspector'
       ? rawScreen
       : 'journal';
   const pushId = String(raw.spotPushId || '').trim();
@@ -349,6 +361,7 @@ function normalizeWebDeepLink(
     pushId: pushId || `web-${Date.now()}`,
     screen,
     mealSlotId: raw.spotMealSlotId ? String(raw.spotMealSlotId) : undefined,
+    traineeId: raw.spotTraineeId ? String(raw.spotTraineeId) : undefined,
     date: raw.spotDate ? String(raw.spotDate) : undefined,
     kind: raw.spotKind ? String(raw.spotKind) : undefined,
   };
@@ -374,6 +387,7 @@ export function subscribeWebPushLifecycle(options: {
       spotPushId: params.get('spotPushId') || undefined,
       spotScreen: params.get('spotScreen') || undefined,
       spotMealSlotId: params.get('spotMealSlotId') || undefined,
+      spotTraineeId: params.get('spotTraineeId') || undefined,
       spotDate: params.get('spotDate') || undefined,
       spotKind: params.get('spotKind') || undefined,
     });
@@ -382,6 +396,7 @@ export function subscribeWebPushLifecycle(options: {
       params.delete('spotPushId');
       params.delete('spotScreen');
       params.delete('spotMealSlotId');
+      params.delete('spotTraineeId');
       params.delete('spotDate');
       params.delete('spotKind');
       const remaining = params.toString();

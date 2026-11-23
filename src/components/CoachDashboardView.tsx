@@ -36,12 +36,14 @@ import {
   Search,
   MessageCircle,
   Bell,
+  BellRing,
 } from 'lucide-react';
 import {
   AccountStatus,
   AuthSessionUser,
   CoachDirectoryItem,
   CoachProfile,
+  CoachPushSubscriptionSettings,
   DayType,
   MealTemplateSlot,
   NutritionTemplate,
@@ -55,6 +57,7 @@ import {
 import { QuickChipsAdminPanel } from './QuickChipsAdminPanel';
 import { CoachSavedMealsPanel } from './CoachSavedMealsPanel';
 import { CoachPushModal } from './CoachPushModal';
+import { CoachAlertSettingsModal } from './CoachAlertSettingsModal';
 import {
   DEFAULT_TEMPLATES,
   getTodayIso,
@@ -184,6 +187,13 @@ interface CoachDashboardViewProps {
     payload: { presetId: string; reply: string; promoteToSlotId?: string }
   ) => Promise<{ error?: string }>;
   onRefreshData?: () => Promise<void> | void;
+  coachPushSettings?: CoachPushSubscriptionSettings | null;
+  onCoachPushSettingsUpdated?: (next: CoachPushSubscriptionSettings) => void;
+  externalInspectTraineeRequest?: {
+    traineeId: string;
+    nonce: number;
+  } | null;
+  externalOpenCoachAlertsNonce?: number;
 }
 
 const GROUP_COLOR_SWATCHES = [
@@ -246,6 +256,10 @@ export function CoachDashboardView({
   onManageQuickChips,
   onReplySavedMeal,
   onRefreshData,
+  coachPushSettings = null,
+  onCoachPushSettingsUpdated,
+  externalInspectTraineeRequest,
+  externalOpenCoachAlertsNonce = 0,
 }: CoachDashboardViewProps) {
   const today = getTodayIso();
   const isSuperAdmin = currentUser.role === 'admin';
@@ -267,6 +281,36 @@ export function CoachDashboardView({
 
   const [selectedTraineeId, setSelectedTraineeId] = useState<string>(
     trainees[0]?.id || ''
+  );
+  const [coachAlertsModalOpen, setCoachAlertsModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!externalInspectTraineeRequest?.traineeId) return;
+    setSelectedTraineeId(externalInspectTraineeRequest.traineeId);
+    setActiveSection('inspector');
+  }, [externalInspectTraineeRequest]);
+
+  useEffect(() => {
+    if (externalOpenCoachAlertsNonce > 0) {
+      setCoachAlertsModalOpen(true);
+    }
+  }, [externalOpenCoachAlertsNonce]);
+
+  const followedTraineesCount = coachPushSettings
+    ? trainees.filter(
+        (t) =>
+          (coachPushSettings.traineeIds || []).includes(t.id) ||
+          Boolean(
+            t.groupId && (coachPushSettings.groupIds || []).includes(t.groupId)
+          )
+      ).length
+    : 0;
+  const coachAlertsDeviceReady = Boolean(
+    coachPushSettings?.enabled !== false &&
+      ((coachPushSettings?.webPushSubscriptions?.length || 0) +
+        (coachPushSettings?.fcmTokens?.length || 0) >
+        0) &&
+      followedTraineesCount > 0
   );
 
   // ניהול טמפלייטים
@@ -1014,7 +1058,37 @@ export function CoachDashboardView({
             })}
         </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => setCoachAlertsModalOpen(true)}
+            className="btn-surface"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '9px 14px',
+              fontSize: 12,
+              cursor: 'pointer',
+              borderColor: coachAlertsDeviceReady
+                ? 'rgba(210, 255, 40, 0.45)'
+                : undefined,
+            }}
+          >
+            <BellRing
+              size={14}
+              color={
+                coachAlertsDeviceReady
+                  ? 'var(--accent-volt)'
+                  : 'var(--text-secondary)'
+              }
+            />
+            <span>
+              התראות בזמן אמת
+              {followedTraineesCount > 0 ? ` (${followedTraineesCount})` : ''}
+            </span>
+          </button>
+
           {onOpenCoachOnboarding && (
             <button
               onClick={onOpenCoachOnboarding}
@@ -5204,6 +5278,17 @@ export function CoachDashboardView({
         trainee={pushModalTrainee}
         todayIso={today}
         onPushSent={onRefreshData}
+      />
+
+      <CoachAlertSettingsModal
+        opened={coachAlertsModalOpen}
+        onClose={() => setCoachAlertsModalOpen(false)}
+        coachId={currentUser.id}
+        trainees={trainees}
+        groups={groups}
+        settings={coachPushSettings}
+        onSettingsUpdated={(next) => onCoachPushSettingsUpdated?.(next)}
+        onRefreshData={onRefreshData}
       />
     </div>
   );

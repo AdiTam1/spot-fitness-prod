@@ -378,6 +378,26 @@ export interface TraineePushHistoryEntry {
   targetMealSlotId?: string;
 }
 
+export type CoachAlertEventKey = 'meals' | 'weight' | 'workouts' | 'water';
+
+export interface CoachAlertEventsConfig {
+  meals: boolean;
+  weight: boolean;
+  workouts: boolean;
+  water: boolean;
+}
+
+export interface CoachPushSubscriptionSettings {
+  coachId: string;
+  enabled: boolean;
+  traineeIds: string[];
+  groupIds: string[];
+  events: CoachAlertEventsConfig;
+  webPushSubscriptions: TraineeWebPushSubscriptionEntry[];
+  fcmTokens?: TraineeFcmTokenEntry[];
+  updatedAt: string;
+}
+
 export interface TraineeProfile {
   id: string;
   email: string;

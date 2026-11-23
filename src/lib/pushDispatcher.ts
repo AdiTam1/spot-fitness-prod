@@ -1,4 +1,8 @@
-import { TraineeProfile } from '@/types/nutrition';
+import {
+  TraineeFcmTokenEntry,
+  TraineeProfile,
+  TraineeWebPushSubscriptionEntry,
+} from '@/types/nutrition';
 import {
   getFcmConfigErrorMessage,
   isFcmConfigured,
@@ -14,9 +18,10 @@ export interface UnifiedPushMessage {
   pushId: string;
   title: string;
   body: string;
-  kind: 'ai-meal' | 'coach' | 'test';
-  screen: 'meal' | 'journal' | 'metrics' | 'profile';
+  kind: 'ai-meal' | 'coach' | 'coach-alert' | 'test';
+  screen: 'meal' | 'journal' | 'metrics' | 'profile' | 'inspector';
   mealSlotId?: string;
+  traineeId?: string;
   date?: string;
   origin?: string;
 }
@@ -58,12 +63,16 @@ export function shouldNotifyUnifiedAiCompletion(
   return Date.now() - updatedMs > 40_000;
 }
 
-export async function sendUnifiedPushToTrainee(
-  trainee: TraineeProfile,
-  message: UnifiedPushMessage
-): Promise<UnifiedPushResult> {
-  const fcmTokens = (trainee.fcmTokens || []).map((t) => t.token).filter(Boolean);
-  const webSubs = trainee.webPushSubscriptions || [];
+export async function dispatchPushToTargets(params: {
+  fcmTokens?: TraineeFcmTokenEntry[];
+  webPushSubscriptions?: TraineeWebPushSubscriptionEntry[];
+  message: UnifiedPushMessage;
+}): Promise<UnifiedPushResult> {
+  const { message } = params;
+  const fcmTokens = (params.fcmTokens || [])
+    .map((t) => t.token)
+    .filter(Boolean);
+  const webSubs = params.webPushSubscriptions || [];
 
   const fcmReady = isFcmConfigured();
   const webReady = isWebPushConfigured();
@@ -82,6 +91,7 @@ export async function sendUnifiedPushToTrainee(
             spotKind: message.kind,
             spotScreen: message.screen,
             spotMealSlotId: message.mealSlotId,
+            spotTraineeId: message.traineeId,
             spotDate: message.date,
           },
         })
@@ -94,6 +104,7 @@ export async function sendUnifiedPushToTrainee(
           kind: message.kind,
           screen: message.screen,
           mealSlotId: message.mealSlotId,
+          traineeId: message.traineeId,
           date: message.date,
           origin: message.origin,
         })
@@ -126,6 +137,17 @@ export async function sendUnifiedPushToTrainee(
         ? missingMessages.join(' ')
         : undefined,
   };
+}
+
+export async function sendUnifiedPushToTrainee(
+  trainee: TraineeProfile,
+  message: UnifiedPushMessage
+): Promise<UnifiedPushResult> {
+  return dispatchPushToTargets({
+    fcmTokens: trainee.fcmTokens,
+    webPushSubscriptions: trainee.webPushSubscriptions,
+    message,
+  });
 }
 
 export function stripDeadPushTargetsFromTrainee(

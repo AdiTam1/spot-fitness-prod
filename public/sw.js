@@ -44,6 +44,7 @@ self.addEventListener('push', (event) => {
       navigate: targetUrl,
       spotScreen: spotData.spotScreen,
       spotMealSlotId: spotData.spotMealSlotId,
+      spotTraineeId: spotData.spotTraineeId,
       spotDate: spotData.spotDate,
       spotPushId: spotData.spotPushId,
       spotKind: spotData.spotKind,
@@ -84,6 +85,8 @@ self.addEventListener('notificationclick', (event) => {
         data.spotScreen || u.searchParams.get('spotScreen') || 'journal',
       spotMealSlotId:
         data.spotMealSlotId || u.searchParams.get('spotMealSlotId') || undefined,
+      spotTraineeId:
+        data.spotTraineeId || u.searchParams.get('spotTraineeId') || undefined,
       spotDate: data.spotDate || u.searchParams.get('spotDate') || undefined,
       spotKind: data.spotKind || u.searchParams.get('spotKind') || undefined,
     };
@@ -92,6 +95,7 @@ self.addEventListener('notificationclick', (event) => {
       spotPushId: data.spotPushId || `sw-${Date.now()}`,
       spotScreen: data.spotScreen || 'journal',
       spotMealSlotId: data.spotMealSlotId,
+      spotTraineeId: data.spotTraineeId,
       spotDate: data.spotDate,
       spotKind: data.spotKind,
     };

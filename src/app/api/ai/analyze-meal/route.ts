@@ -34,6 +34,10 @@ import {
   shouldNotifyUnifiedAiCompletion,
   stripDeadPushTargetsFromTrainee,
 } from '@/lib/pushDispatcher';
+import {
+  buildMealAlertEvent,
+  notifySubscribedCoachesForEvents,
+} from '@/lib/coachAlertEngine';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -631,54 +635,88 @@ export async function POST(request: NextRequest) {
         }),
       }));
 
-      // פוש אוטומטי (אנדרואיד FCM + אייפון PWA / דפדפן) אך ורק כשהפענוח הצליח והמתאמן יצא מהאפליקציה בזמן הטעינה
+      // פוש אוטומטי למתאמן (רק ביציאה) + התראה למאמנים עוקבים (ברגע השמירה)
       if (succeeded) {
         const latestTrainee = updatedState.trainees.find(
           (t) => t.id === authorizedBgJob!.targetTraineeId
         );
-        if (latestTrainee && shouldNotifyUnifiedAiCompletion(latestTrainee)) {
+        if (latestTrainee) {
           const itemsList = params.items!;
-          const dishNames = itemsList.map((i) => i.name).filter(Boolean);
-          const dishLabel =
-            dishNames.length === 0
-              ? finishedJob.mealSlotName
-              : dishNames.length === 1
-              ? dishNames[0]
-              : dishNames.length === 2
-              ? `${dishNames[0]} ו${dishNames[1]}`
-              : `${dishNames[0]}, ${dishNames[1]} ועוד ${dishNames.length - 2}`;
-          const totalCalories = Math.round(
-            itemsList.reduce((sum, i) => sum + (Number(i.macros?.calories) || 0), 0)
-          );
+          const tasks: Promise<unknown>[] = [];
 
-          const sendRes = await sendUnifiedPushToTrainee(latestTrainee, {
-            pushId: finishedJob.id,
-            title: `זיהוי ${finishedJob.mealSlotName} הושלם ✨`,
-            body: `זיהוי הארוחה הושלם: "${dishLabel} (${totalCalories} קלוריות)"`,
-            kind: 'ai-meal',
-            screen: 'meal',
-            mealSlotId: finishedJob.mealSlotId,
-            date: finishedJob.date,
-            origin: request.nextUrl.origin,
-          }).catch(() => null);
+          // 1. התראת מאמן בזמן אמת (למאמנים העוקבים אחרי מתאמן זה / קבוצתו על ארוחות)
+          if (sessionUser.role === 'trainee') {
+            const mealEvent = buildMealAlertEvent({
+              slotName: finishedJob.mealSlotName || finishedJob.mealSlotId,
+              items: itemsList,
+              date: finishedJob.date,
+            });
+            tasks.push(
+              notifySubscribedCoachesForEvents({
+                trainee: latestTrainee,
+                events: [mealEvent],
+                origin: request.nextUrl.origin,
+              }).catch((err) =>
+                console.error('AI meal coach alert error:', err)
+              )
+            );
+          }
 
-          if (
-            sendRes &&
-            (sendRes.invalidFcmTokens.length > 0 ||
-              sendRes.expiredWebEndpoints.length > 0)
-          ) {
-            await updateServerDbState((prev) => ({
-              ...prev,
-              trainees: prev.trainees.map((t) =>
-                t.id === latestTrainee.id
-                  ? stripDeadPushTargetsFromTrainee(
-                      t,
-                      sendRes.invalidFcmTokens,
-                      sendRes.expiredWebEndpoints
-                    )
-                  : t
-              ),
-            })).catch(() => {});
+          // 2. פוש למתאמן עצמו (רק אם יצא מהאפליקציה בזמן הטעינה)
+          if (shouldNotifyUnifiedAiCompletion(latestTrainee)) {
+            const dishNames = itemsList.map((i) => i.name).filter(Boolean);
+            const dishLabel =
+              dishNames.length === 0
+                ? finishedJob.mealSlotName
+                : dishNames.length === 1
+                ? dishNames[0]
+                : dishNames.length === 2
+                ? `${dishNames[0]} ו${dishNames[1]}`
+                : `${dishNames[0]}, ${dishNames[1]} ועוד ${dishNames.length - 2}`;
+            const totalCalories = Math.round(
+              itemsList.reduce(
+                (sum, i) => sum + (Number(i.macros?.calories) || 0),
+                0
+              )
+            );
+
+            tasks.push(
+              sendUnifiedPushToTrainee(latestTrainee, {
+                pushId: finishedJob.id,
+                title: `זיהוי ${finishedJob.mealSlotName} הושלם ✨`,
+                body: `זיהוי הארוחה הושלם: "${dishLabel} (${totalCalories} קלוריות)"`,
+                kind: 'ai-meal',
+                screen: 'meal',
+                mealSlotId: finishedJob.mealSlotId,
+                date: finishedJob.date,
+                origin: request.nextUrl.origin,
+              })
+                .then(async (sendRes) => {
+                  if (
+                    sendRes &&
+                    (sendRes.invalidFcmTokens.length > 0 ||
+                      sendRes.expiredWebEndpoints.length > 0)
+                  ) {
+                    await updateServerDbState((prev) => ({
+                      ...prev,
+                      trainees: prev.trainees.map((t) =>
+                        t.id === latestTrainee.id
+                          ? stripDeadPushTargetsFromTrainee(
+                              t,
+                              sendRes.invalidFcmTokens,
+                              sendRes.expiredWebEndpoints
+                            )
+                          : t
+                      ),
+                    })).catch(() => {});
+                  }
+                })
+                .catch(() => {})
+            );
+          }
+
+          if (tasks.length > 0) {
+            await Promise.all(tasks);
           }
         }
       }
