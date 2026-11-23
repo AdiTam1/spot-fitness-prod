@@ -449,6 +449,7 @@ export async function POST(request: NextRequest) {
       mode = 'analyze',
       imageDataUrl,
       imageDataUrls,
+      audioDataUrl,
       textPrompt,
       customApiKey,
       contextParams,
@@ -459,9 +460,10 @@ export async function POST(request: NextRequest) {
       adjustmentPrompt,
       backgroundJob,
     } = body as {
-      mode?: 'analyze' | 'adjust-meal' | 'measure-tool';
+      mode?: 'analyze' | 'adjust-meal' | 'measure-tool' | 'transcribe-audio';
       imageDataUrl?: string;
       imageDataUrls?: string[];
+      audioDataUrl?: string;
       textPrompt?: string;
       customApiKey?: string;
       contextParams?: AiContextParams;
@@ -501,6 +503,57 @@ export async function POST(request: NextRequest) {
         ? cleanGeminiKey(customApiKey)
         : '';
     const apiKey = safeCustomKey || cleanGeminiKey(process.env.GEMINI_API_KEY);
+
+    // 3א. תמלול הקלטה קולית מהמיקרופון (פתרון מלא ל-iOS / PWA שבהם SpeechRecognition אינו זמין)
+    if (mode === 'transcribe-audio') {
+      const rawAudio = typeof audioDataUrl === 'string' ? audioDataUrl.trim() : '';
+      const audioMatch = rawAudio.match(
+        /^data:((?:audio\/[a-z0-9.+-]+)|video\/mp4)(?:;[^,;]+)*;base64,([A-Za-z0-9+/=\s]+)$/i
+      );
+      if (!audioMatch || audioMatch[2].length > 3_200_000) {
+        return NextResponse.json(
+          { error: 'קובץ השמע אינו תקין או ארוך מדי (נסה הקלטה קצרה יותר)' },
+          { status: 400 }
+        );
+      }
+      if (!apiKey) {
+        return NextResponse.json(
+          { error: 'תמלול הקלטה דורש מפתח GEMINI_API_KEY פעיל בשרת' },
+          { status: 422 }
+        );
+      }
+      const rawMime = audioMatch[1].toLowerCase();
+      const mimeType = rawMime === 'video/mp4' ? 'audio/mp4' : rawMime;
+      const cleanB64 = audioMatch[2].replace(/\s+/g, '');
+
+      const transcribeRes = await callGeminiStructured(apiKey, [
+        {
+          text:
+            'תמלל לעברית מדויקת, טבעית ונקייה בלבד את מה שנאמר בהקלטה (תיאור ארוחה או שם מוצר מזון שהמשתמש מחפש). החזר JSON בלבד במבנה {"transcript": "..."}. אם אין דיבור ברור החזר {"transcript": ""}.',
+        },
+        {
+          inlineData: {
+            mimeType,
+            data: cleanB64,
+          },
+        },
+      ]);
+
+      if (!transcribeRes.parsed) {
+        return NextResponse.json(
+          {
+            error: `תמלול ההקלטה נכשל (${transcribeRes.errorMsg || 'נסה לדבר קרוב יותר למיקרופון'})`,
+          },
+          { status: 422 }
+        );
+      }
+
+      return NextResponse.json({
+        mode: 'transcribe-audio',
+        transcript: sanitizeText(transcribeRes.parsed.transcript, 500) || '',
+        engine: transcribeRes.modelName,
+      });
+    }
 
     const validatedImages = extractValidatedImages(
       imageDataUrl,

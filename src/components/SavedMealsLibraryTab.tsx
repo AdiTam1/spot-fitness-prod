@@ -1,7 +1,8 @@
 ﻿'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { NumberInput, TextInput, Textarea } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import {
   Bookmark,
   Check,
@@ -12,6 +13,7 @@ import {
   Loader2,
   MessageCircle,
   Mic,
+  MicOff,
   Pin,
   Plus,
   Ruler,
@@ -28,6 +30,11 @@ import {
   SavedMealPreset,
 } from '@/types/nutrition';
 import { sumMacros } from '@/data/israeliFoodCatalog';
+import {
+  startUnifiedVoiceCapture,
+  VoiceCaptureController,
+  VoiceCaptureState,
+} from '@/lib/voiceRecorder';
 
 const SHORTCUT_GRADIENTS = [
   'linear-gradient(145deg, #d67d09 0%, #8a4f04 100%)',
@@ -75,7 +82,16 @@ export function SavedMealsLibraryTab({
     'all' | 'pinned' | 'popular' | 'history' | 'questions'
   >('all');
   const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
-  const [recordingSearchVoice, setRecordingSearchVoice] = useState(false);
+  const [voiceState, setVoiceState] = useState<VoiceCaptureState>('idle');
+  const voiceControllerRef = useRef<VoiceCaptureController | null>(null);
+  const recordingSearchVoice = voiceState !== 'idle';
+
+  useEffect(() => {
+    return () => {
+      voiceControllerRef.current?.cancel();
+      voiceControllerRef.current = null;
+    };
+  }, []);
 
   // מצבי פעולה פר-מנה
   const [adjustingPresetId, setAdjustingPresetId] = useState<string | null>(null);
@@ -305,48 +321,32 @@ export function SavedMealsLibraryTab({
   };
 
   const handleStartVoiceSearch = () => {
-    if (typeof window === 'undefined' || recordingSearchVoice) return;
-    const SpeechRec =
-      (
-        window as unknown as {
-          SpeechRecognition?: new () => {
-            lang: string;
-            interimResults: boolean;
-            onresult: (e: { results: { [k: number]: { [k: number]: { transcript: string } } } }) => void;
-            onend: () => void;
-            onerror: () => void;
-            start: () => void;
-          };
-        }
-      ).SpeechRecognition ||
-      (
-        window as unknown as {
-          webkitSpeechRecognition?: new () => {
-            lang: string;
-            interimResults: boolean;
-            onresult: (e: { results: { [k: number]: { [k: number]: { transcript: string } } } }) => void;
-            onend: () => void;
-            onerror: () => void;
-            start: () => void;
-          };
-        }
-      ).webkitSpeechRecognition;
-    if (!SpeechRec) return;
-    try {
-      const rec = new SpeechRec();
-      rec.lang = 'he-IL';
-      rec.interimResults = false;
-      setRecordingSearchVoice(true);
-      rec.onresult = (e) => {
-        const transcript = e.results?.[0]?.[0]?.transcript || '';
-        if (transcript) setSearchQuery(transcript);
-      };
-      rec.onend = () => setRecordingSearchVoice(false);
-      rec.onerror = () => setRecordingSearchVoice(false);
-      rec.start();
-    } catch {
-      setRecordingSearchVoice(false);
+    if (typeof window === 'undefined') return;
+    if (voiceState === 'listening') {
+      voiceControllerRef.current?.stop();
+      return;
     }
+    if (voiceState === 'transcribing') return;
+
+    setFeedbackBanner(null);
+    voiceControllerRef.current = startUnifiedVoiceCapture({
+      customApiKey: geminiApiKey,
+      onStateChange: (next) => {
+        setVoiceState(next);
+        if (next === 'idle') voiceControllerRef.current = null;
+      },
+      onTranscript: (text) => {
+        setSearchQuery(text);
+      },
+      onError: (msg) => {
+        setFeedbackBanner({ msg, isError: true });
+        notifications.show({
+          color: 'orange',
+          title: 'הקלטה קולית',
+          message: msg,
+        });
+      },
+    });
   };
 
   const detailPreset = selectedDetailId
@@ -394,20 +394,44 @@ export function SavedMealsLibraryTab({
           />
           <button
             type="button"
-            title="חיפוש קולי"
+            title={
+              voiceState === 'listening'
+                ? 'מקליט... לחץ לעצירה'
+                : voiceState === 'transcribing'
+                ? 'מתמלל הקלטה...'
+                : 'חיפוש קולי'
+            }
             onClick={handleStartVoiceSearch}
             style={{
-              background: 'transparent',
+              background:
+                voiceState === 'listening'
+                  ? 'rgba(239, 68, 68, 0.18)'
+                  : 'transparent',
               border: 'none',
-              padding: 4,
+              borderRadius: '50%',
+              width: 32,
+              height: 32,
               cursor: 'pointer',
               display: 'flex',
-              color: recordingSearchVoice
-                ? 'var(--accent-orange-bright)'
-                : 'var(--text-secondary)',
+              alignItems: 'center',
+              justifyContent: 'center',
+              touchAction: 'manipulation',
+              flexShrink: 0,
+              color:
+                voiceState === 'listening'
+                  ? '#f87171'
+                  : voiceState === 'transcribing'
+                  ? 'var(--accent-orange-bright)'
+                  : 'var(--text-secondary)',
             }}
           >
-            <Mic size={14} />
+            {voiceState === 'transcribing' ? (
+              <Loader2 size={14} className="spot-spinner" />
+            ) : voiceState === 'listening' ? (
+              <MicOff size={14} />
+            ) : (
+              <Mic size={14} />
+            )}
           </button>
         </div>
 

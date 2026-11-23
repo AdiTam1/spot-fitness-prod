@@ -76,7 +76,7 @@ export default function RootLayout({
       <body>
         <DirectionProvider initialDirection="rtl">
           <MantineProvider theme={theme} defaultColorScheme="dark">
-            <Notifications position="top-center" zIndex={220} />
+            <Notifications position="top-center" zIndex={300} />
             {children}
           </MantineProvider>
         </DirectionProvider>

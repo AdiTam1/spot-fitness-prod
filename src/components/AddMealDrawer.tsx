@@ -10,6 +10,7 @@ import {
   Collapse,
   Switch,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import {
   Camera,
   Search,
@@ -67,6 +68,11 @@ import { ServingToolsManagerModal } from './ServingToolsManagerModal';
 import { SavedMealsLibraryTab } from './SavedMealsLibraryTab';
 import { AiQuickContextPanel } from './AiQuickContextPanel';
 import { useAiProgressMessage } from './BackgroundAiSyncBanner';
+import {
+  startUnifiedVoiceCapture,
+  VoiceCaptureController,
+  VoiceCaptureState,
+} from '@/lib/voiceRecorder';
 
 function formatDrawerDateLabel(selectedDate?: string): { dayTag: string; shortDate: string } | null {
   if (!selectedDate || !/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) return null;
@@ -201,7 +207,7 @@ export function AddMealDrawer({
   const [toolsModalOpen, setToolsModalOpen] = useState(false);
   const [saveAsPreset, setSaveAsPreset] = useState(false);
   const [presetTitleInput, setPresetTitleInput] = useState('');
-  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [voiceState, setVoiceState] = useState<VoiceCaptureState>('idle');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSummary, setAiSummary] = useState<{
     msg: string;
@@ -256,20 +262,29 @@ export function AddMealDrawer({
   const [savingMeal, setSavingMeal] = useState(false);
   const [addingOptionIdx, setAddingOptionIdx] = useState<number | null>(null);
 
-  const recognitionRef = useRef<{ stop?: () => void } | null>(null);
+  const voiceControllerRef = useRef<VoiceCaptureController | null>(null);
+  const voiceBaseTextRef = useRef<string>('');
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const aiTextRef = useRef<HTMLTextAreaElement | null>(null);
   const aiLockRef = useRef(false);
   const recLockRef = useRef(false);
   const prefLockRef = useRef(false);
   const saveLockRef = useRef(false);
 
-  const stopVoiceRecording = () => {
-    try {
-      recognitionRef.current?.stop?.();
-    } catch {
-      // ignore
+  const stopVoiceRecording = (commit = false) => {
+    const ctrl = voiceControllerRef.current;
+    voiceControllerRef.current = null;
+    if (ctrl) {
+      try {
+        if (commit) ctrl.stop();
+        else ctrl.cancel();
+      } catch {
+        // ignore
+      }
     }
-    recognitionRef.current = null;
-    setIsRecordingVoice(false);
+    if (!commit) {
+      setVoiceState('idle');
+    }
   };
 
   const lastOpenedKeyRef = useRef<string>('');
@@ -350,7 +365,7 @@ export function AddMealDrawer({
         } else {
           setActiveTab(initialTab || 'hub');
         }
-        stopVoiceRecording();
+        stopVoiceRecording(false);
       } else {
         if (existingEntry?.items && existingEntry.items.length > 0) {
           // מיזוג אוטומטי כשמשימת AI ברקע מסתיימת בזמן שהחלונית נשארה פתוחה
@@ -381,10 +396,10 @@ export function AddMealDrawer({
       }
     } else if (!opened) {
       lastOpenedKeyRef.current = '';
-      stopVoiceRecording();
+      stopVoiceRecording(false);
     }
     return () => {
-      stopVoiceRecording();
+      stopVoiceRecording(false);
     };
   }, [opened, mealSlot, existingEntry, initialTab, customFoodUnits, selectedDate]);
 
@@ -824,52 +839,56 @@ export function AddMealDrawer({
 
   const toggleVoiceRecording = (targetField: 'search' | 'ai-text' = 'ai-text') => {
     if (typeof window === 'undefined') return;
-    if (isRecordingVoice) {
-      stopVoiceRecording();
+    if (voiceState === 'listening') {
+      stopVoiceRecording(true);
+      return;
+    }
+    if (voiceState === 'transcribing') {
       return;
     }
 
-    const SpeechRec =
-      (window as unknown as { SpeechRecognition?: new () => { lang: string; interimResults: boolean; onresult: (e: { results: { [k: number]: { [k: number]: { transcript: string } } } }) => void; onend: () => void; onerror: () => void; start: () => void; stop: () => void } }).SpeechRecognition ||
-      (window as unknown as { webkitSpeechRecognition?: new () => { lang: string; interimResults: boolean; onresult: (e: { results: { [k: number]: { [k: number]: { transcript: string } } } }) => void; onend: () => void; onerror: () => void; start: () => void; stop: () => void } }).webkitSpeechRecognition;
+    const baseText = (targetField === 'search' ? searchQuery : freeTextPrompt).trim();
+    voiceBaseTextRef.current = baseText;
+    setAiSummary(null);
 
-    if (!SpeechRec) {
-      setAiSummary({
-        msg: 'הדפדפן שלך אינו תומך בהקלטה קולית (נסה Chrome או Safari)',
-        isError: true,
-      });
-      return;
-    }
-
-    try {
-      const recognition = new SpeechRec();
-      recognition.lang = 'he-IL';
-      recognition.interimResults = false;
-      recognitionRef.current = recognition;
-      setIsRecordingVoice(true);
-      recognition.onresult = (event) => {
-        const transcript = event.results?.[0]?.[0]?.transcript || '';
-        if (transcript) {
-          if (targetField === 'search') {
-            setSearchQuery((prev) => (prev ? `${prev} ${transcript}` : transcript));
-          } else {
-            setFreeTextPrompt((prev) => (prev ? `${prev} ${transcript}` : transcript));
-          }
+    voiceControllerRef.current = startUnifiedVoiceCapture({
+      customApiKey: geminiApiKey,
+      onStateChange: (next) => {
+        setVoiceState(next);
+        if (next === 'idle') {
+          voiceControllerRef.current = null;
         }
-      };
-      recognition.onend = () => {
-        recognitionRef.current = null;
-        setIsRecordingVoice(false);
-      };
-      recognition.onerror = () => {
-        recognitionRef.current = null;
-        setIsRecordingVoice(false);
-      };
-      recognition.start();
-    } catch {
-      recognitionRef.current = null;
-      setIsRecordingVoice(false);
-    }
+      },
+      onTranscript: (transcript) => {
+        const clean = transcript.trim();
+        if (!clean) return;
+        const combined = voiceBaseTextRef.current
+          ? `${voiceBaseTextRef.current} ${clean}`
+          : clean;
+        if (targetField === 'search') {
+          setSearchQuery(combined);
+        } else {
+          setFreeTextPrompt(combined);
+        }
+      },
+      onError: (msg, info) => {
+        setAiSummary({ msg, isError: true });
+        notifications.show({
+          color: 'orange',
+          title: 'הכתבה קולית',
+          message: msg,
+        });
+        if (info?.micBlocked) {
+          setTimeout(() => {
+            if (targetField === 'search') {
+              searchInputRef.current?.focus();
+            } else {
+              aiTextRef.current?.focus();
+            }
+          }, 80);
+        }
+      },
+    });
   };
 
   const fetchAiRecommendations = async () => {
@@ -1325,6 +1344,7 @@ export function AddMealDrawer({
               >
                 <Search size={15} color="var(--text-muted)" style={{ flexShrink: 0 }} />
                 <input
+                  ref={searchInputRef}
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -1369,27 +1389,51 @@ export function AddMealDrawer({
                 )}
                 <button
                   type="button"
-                  title="הכתבה קולית לחיפוש או ל-AI"
+                  disabled={voiceState === 'transcribing'}
+                  aria-label="הכתבה קולית לחיפוש או ל-AI"
+                  title={
+                    voiceState === 'listening'
+                      ? 'מקליט... לחץ לסיום ותמלול'
+                      : voiceState === 'transcribing'
+                      ? 'מתמלל הקלטה ב-AI...'
+                      : 'הכתבה קולית לחיפוש או ל-AI'
+                  }
                   onClick={() => toggleVoiceRecording('search')}
                   style={{
-                    width: 30,
-                    height: 30,
+                    width: 34,
+                    height: 34,
                     borderRadius: '50%',
                     border: 'none',
-                    background: isRecordingVoice
-                      ? 'rgba(214, 125, 9, 0.22)'
-                      : 'transparent',
-                    color: isRecordingVoice
-                      ? 'var(--accent-orange-bright)'
-                      : 'var(--text-secondary)',
+                    background:
+                      voiceState === 'listening'
+                        ? 'rgba(239, 68, 68, 0.2)'
+                        : voiceState === 'transcribing'
+                        ? 'rgba(214, 125, 9, 0.22)'
+                        : 'transparent',
+                    color:
+                      voiceState === 'listening'
+                        ? '#f87171'
+                        : voiceState === 'transcribing'
+                        ? 'var(--accent-volt)'
+                        : 'var(--text-secondary)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    cursor: 'pointer',
+                    cursor: voiceState === 'transcribing' ? 'wait' : 'pointer',
                     flexShrink: 0,
+                    touchAction: 'manipulation',
+                    position: 'relative',
+                    zIndex: 2,
+                    WebkitTapHighlightColor: 'transparent',
                   }}
                 >
-                  {isRecordingVoice ? <MicOff size={15} /> : <Mic size={15} />}
+                  {voiceState === 'listening' ? (
+                    <MicOff size={16} />
+                  ) : voiceState === 'transcribing' ? (
+                    <Loader2 size={15} className="spot-spinner" />
+                  ) : (
+                    <Mic size={16} />
+                  )}
                 </button>
                 <button
                   type="button"
@@ -1545,6 +1589,77 @@ export function AddMealDrawer({
               )}
             </div>
           )}
+
+          {voiceState !== 'idle' && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+                padding: '8px 12px',
+                borderRadius: 12,
+                background:
+                  voiceState === 'listening'
+                    ? 'rgba(239, 68, 68, 0.14)'
+                    : 'rgba(214, 125, 9, 0.14)',
+                border:
+                  voiceState === 'listening'
+                    ? '1px solid rgba(239, 68, 68, 0.42)'
+                    : '1px solid rgba(214, 125, 9, 0.42)',
+                color: voiceState === 'listening' ? '#fca5a5' : 'var(--accent-volt)',
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+                {voiceState === 'listening' ? (
+                  <Mic size={14} color="#f87171" style={{ flexShrink: 0 }} />
+                ) : (
+                  <Loader2 size={14} className="spot-spinner" style={{ flexShrink: 0 }} />
+                )}
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {voiceState === 'listening'
+                    ? 'מקליט בקול (עברית)... דבר ואז לחץ לסיום'
+                    : 'מתמלל הקלטה ב-AI...'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                {voiceState === 'listening' && (
+                  <button
+                    type="button"
+                    onClick={() => stopVoiceRecording(true)}
+                    className="btn-volt"
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: 11,
+                      fontWeight: 800,
+                      borderRadius: 999,
+                      cursor: 'pointer',
+                      touchAction: 'manipulation',
+                    }}
+                  >
+                    סיים ותמלל
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => stopVoiceRecording(false)}
+                  className="btn-surface"
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    borderRadius: 999,
+                    cursor: 'pointer',
+                    touchAction: 'manipulation',
+                  }}
+                >
+                  ביטול
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* גוף הבוטום-שיט המרכזי: גלילה יחידה נקייה ללא גלילה מקוננת */}
@@ -1559,6 +1674,67 @@ export function AddMealDrawer({
             gap: 14,
           }}
         >
+          {aiSummary && (
+            <div
+              style={{
+                padding: '10px 14px',
+                borderRadius: 12,
+                background: aiSummary.isError
+                  ? 'rgba(239, 68, 68, 0.14)'
+                  : aiSummary.isFallback
+                  ? 'rgba(245, 158, 11, 0.14)'
+                  : 'rgba(214, 125, 9, 0.1)',
+                border: aiSummary.isError
+                  ? '1px solid rgba(239, 68, 68, 0.35)'
+                  : aiSummary.isFallback
+                  ? '1px solid rgba(245, 158, 11, 0.35)'
+                  : '1px solid rgba(214, 125, 9, 0.3)',
+                color: aiSummary.isError
+                  ? '#f87171'
+                  : aiSummary.isFallback
+                  ? '#fbbf24'
+                  : 'var(--accent-volt)',
+                fontSize: 12,
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: 8,
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div>{aiSummary.msg}</div>
+                {aiSummary.engine && (
+                  <div style={{ marginTop: 4, fontSize: 10, opacity: 0.95 }}>
+                    {aiSummary.isFallback
+                      ? `⚠️ תג תחקור: לא AI פיענח (${aiSummary.engine})${
+                          aiSummary.fallbackReason
+                            ? ` · סיבה: ${aiSummary.fallbackReason}`
+                            : ''
+                        }`
+                      : `✨ מנוע AI פעיל: ${aiSummary.engine}`}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                aria-label="סגור הודעה"
+                onClick={() => setAiSummary(null)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'inherit',
+                  opacity: 0.75,
+                  cursor: 'pointer',
+                  padding: 2,
+                  flexShrink: 0,
+                }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
           {/* פאנל א׳: מסך פתיחה / בחירת דרך הוספה (2 עמודות בהשראת תמונות 4 ו-14) */}
           {activeTab === 'hub' && trimmedQuery.length === 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -2742,24 +2918,32 @@ export function AddMealDrawer({
                   <span style={{ fontSize: 12, fontWeight: 700 }}>
                     תאר בטקסט או בהקלטה קולית מה אכלת:
                   </span>
-                    <button
+                  <button
                     type="button"
+                    disabled={voiceState === 'transcribing'}
                     onClick={() => toggleVoiceRecording('ai-text')}
-                    className={isRecordingVoice ? 'btn-volt' : 'btn-surface'}
+                    className={voiceState !== 'idle' ? 'btn-volt' : 'btn-surface'}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: 6,
-                      padding: '6px 12px',
-                      fontSize: 11,
+                      padding: '8px 13px',
+                      fontSize: 11.5,
                       fontWeight: 700,
-                      cursor: 'pointer',
+                      cursor: voiceState === 'transcribing' ? 'wait' : 'pointer',
+                      touchAction: 'manipulation',
+                      WebkitTapHighlightColor: 'transparent',
                     }}
                   >
-                    {isRecordingVoice ? (
+                    {voiceState === 'listening' ? (
                       <>
                         <MicOff size={14} />
-                        <span>מקליט בעברית... לחץ לעצירה</span>
+                        <span>מקליט בעברית... לחץ לסיום ותמלול</span>
+                      </>
+                    ) : voiceState === 'transcribing' ? (
+                      <>
+                        <Loader2 size={14} className="spot-spinner" />
+                        <span>מתמלל הקלטה ב-AI...</span>
                       </>
                     ) : (
                       <>
@@ -2771,6 +2955,7 @@ export function AddMealDrawer({
                 </div>
 
                 <Textarea
+                  ref={aiTextRef}
                   placeholder="למשל: אכלתי 2 ביצים מקושקשות, חצי גביע קוטג' 5%, 2 פרוסות לחם כוסמין וקרמבו אחד"
                   value={freeTextPrompt}
                   onChange={(e) => setFreeTextPrompt(e.currentTarget.value)}
@@ -3016,45 +3201,6 @@ export function AddMealDrawer({
                 }}
               >
                 {slotBgFailedJob.errorMsg || 'פענוח ה-AI נכשל — נסה שוב או הוסף מהמאגר'}
-              </div>
-            )}
-
-            {aiSummary && (
-              <div
-                style={{
-                  padding: '10px 14px',
-                  borderRadius: 12,
-                  background: aiSummary.isError
-                    ? 'rgba(239, 68, 68, 0.14)'
-                    : aiSummary.isFallback
-                    ? 'rgba(245, 158, 11, 0.14)'
-                    : 'rgba(214, 125, 9, 0.1)',
-                  border: aiSummary.isError
-                    ? '1px solid rgba(239, 68, 68, 0.35)'
-                    : aiSummary.isFallback
-                    ? '1px solid rgba(245, 158, 11, 0.35)'
-                    : '1px solid rgba(214, 125, 9, 0.3)',
-                  color: aiSummary.isError
-                    ? '#f87171'
-                    : aiSummary.isFallback
-                    ? '#fbbf24'
-                    : 'var(--accent-volt)',
-                  fontSize: 12,
-                  fontWeight: 700,
-                }}
-              >
-                <div>{aiSummary.msg}</div>
-                {aiSummary.engine && (
-                  <div style={{ marginTop: 4, fontSize: 10, opacity: 0.95 }}>
-                    {aiSummary.isFallback
-                      ? `⚠️ תג תחקור: לא AI פיענח (${aiSummary.engine})${
-                          aiSummary.fallbackReason
-                            ? ` · סיבה: ${aiSummary.fallbackReason}`
-                            : ''
-                        }`
-                      : `✨ מנוע AI פעיל: ${aiSummary.engine}`}
-                  </div>
-                )}
               </div>
             )}
 
