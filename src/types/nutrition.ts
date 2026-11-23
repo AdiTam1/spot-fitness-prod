@@ -31,12 +31,12 @@ export interface FoodUnit {
 }
 
 export type ScraperSourceId =
-  | 'shufersal'
   | 'victory'
   | 'nizat'
   | 'tevabari'
   | 'fuder'
   | 'foodgroups'
+  | 'sugat'
   | 'tara'
   | 'berman'
   | 'foodsdictionary'

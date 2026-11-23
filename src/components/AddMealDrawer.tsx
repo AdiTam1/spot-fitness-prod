@@ -1327,12 +1327,12 @@ export function AddMealDrawer({
                 >
                   {[
                     { id: 'all', label: 'הכל (מאגר משולב)' },
-                    { id: 'shufersal', label: 'שופרסל' },
                     { id: 'victory', label: 'ויקטורי' },
                     { id: 'nizat', label: 'ניצת הדובדבן' },
                     { id: 'tevabari', label: 'טבע בריא' },
                     { id: 'fuder', label: 'Fuder סופרים' },
                     { id: 'foodgroups', label: 'FoodGroups' },
+                    { id: 'sugat', label: 'סוגת' },
                     { id: 'tara', label: 'טרה' },
                     { id: 'berman', label: 'ברמן' },
                     { id: 'foodsdictionary', label: 'FoodsDictionary' },

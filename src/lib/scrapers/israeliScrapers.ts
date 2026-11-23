@@ -306,82 +306,74 @@ const foodsDictionaryScraper: IsraeliFoodScraper = {
 };
 
 // =============================================================================
-// 2. שופרסל אונליין (shufersal.co.il) — רשת השיווק הגדולה בישראל (20,000+ מוצרים)
+// 2. סוגת (sugat.com) — 139+ מוצרי יסוד ומדף ישראליים בכל הסופרים (אורז, קטניות, קמחים, דגנים)
 // =============================================================================
 
-async function scrapeShufersalProduct(
-  code: string,
-  fallbackName: string,
-  brandName?: string
+async function scrapeSugatProduct(
+  url: string,
+  titleHint?: string
 ): Promise<{ item: FoodCatalogItem | null; status: number; latencyMs: number; blocked: boolean }> {
-  const url = `https://www.shufersal.co.il/online/he/p/${encodeURIComponent(code)}`;
   const res = await fetchWithTimeout(url, { timeoutMs: 8500 });
   const blocked = isAntiBotBlocked(res.status, res.text);
   if (blocked || !res.ok) {
     return { item: null, status: res.status, latencyMs: res.latencyMs, blocked };
   }
 
-  const nlStart = res.text.indexOf('nutritionListTitle');
-  if (nlStart < 0) {
-    return { item: null, status: res.status, latencyMs: res.latencyMs, blocked: false };
-  }
-
-  const block = res.text.slice(nlStart, nlStart + 6000);
-  const baseUnitRaw = stripHtmlTags(block.match(/<div class="subInfo">([\s\S]*?)<\/div>/i)?.[1] || '');
   let calories = NaN;
   let protein = NaN;
   let carbs = NaN;
   let fat = NaN;
 
   for (const m of matchAllList(
-    block,
-    /<div class="nutritionItem">[\s\S]*?<div class="number[^>]*title="([^"]*)"[^>]*>([\s\S]*?)<\/div>[\s\S]*?<div class="text">([^<]+)<\/div>/gi
+    res.text,
+    /<div class="b-calories__td"[^>]*>([\s\S]*?)<\/div>\s*<div class="b-calories__td"[^>]*>([\s\S]*?)<\/div>/gi
   )) {
-    const val = parseMacroNumber(m[1] || stripHtmlTags(m[2]));
-    const label = decodeHtmlEntities(m[3]).trim();
+    const label = stripHtmlTags(m[1]).trim();
+    const rawMain = stripHtmlTags(m[2]).split(/מתוכ/i)[0].trim();
+    const val = parseMacroNumber(rawMain);
     if (!Number.isFinite(val)) continue;
-    if (label === 'אנרגיה' || label === 'קלוריות') calories = val;
-    else if (label === 'חלבונים' || label === 'חלבון') protein = val;
-    else if (label === 'פחמימות' || label === 'סך הפחמימות') carbs = val;
-    else if (label === 'שומנים' || label === 'שומן' || label === 'סך השומנים') fat = val;
+    if (label.startsWith('אנרגיה') || label.includes('קלוריות')) calories = val;
+    else if (label.startsWith('חלבון') || label.startsWith('חלבונים')) protein = val;
+    else if (label.startsWith('פחמימ')) carbs = val;
+    else if (label.startsWith('שומנ') || label === 'שומן') fat = val;
   }
 
   if (!Number.isFinite(calories) || !Number.isFinite(protein) || !Number.isFinite(carbs) || !Number.isFinite(fat)) {
     return { item: null, status: res.status, latencyMs: res.latencyMs, blocked: false };
   }
 
-  const h1Match = res.text.match(/<h1[^>]*class="[^"]*title[^"]*"[^>]*>([\s\S]*?)<\/h1>/i) ||
-    res.text.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
-  const rawName = stripHtmlTags(h1Match?.[1] || '') || fallbackName;
-  const fullName = brandName && !rawName.includes(brandName) ? `${rawName} — ${brandName}` : rawName;
-  const units = inferSmartUnits(rawName, 'סופרמרקט שופרסל');
-  if (baseUnitRaw.includes('מ"ל') || baseUnitRaw.includes('מל')) {
-    units.push({ label: '100 מ״ל', grams: 100 });
-  }
+  const h1 = res.text.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  const ogTitle = res.text.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i);
+  const rawName = (stripHtmlTags(h1?.[1] || '') || decodeHtmlEntities(ogTitle?.[1] || '') || stripHtmlTags(titleHint || ''))
+    .replace(/\s*[-|]\s*סוגת.*$/i, '')
+    .trim();
+  const fullName = rawName.includes('סוגת') ? rawName : `${rawName} — סוגת`;
+  const slug = decodeURIComponent(url.split('/products/')[1] || '').replace(/\//g, '');
 
   const item = makeCatalogItem({
-    idSuffix: code.replace(/[^a-zA-Z0-9_-]/g, ''),
+    idSuffix: normalizeFoodKey(slug || rawName).slice(0, 48),
     name: fullName,
-    brand: brandName || 'שופרסל אונליין',
-    category: 'סופרמרקט שופרסל',
+    brand: 'סוגת',
+    category: 'מוצרי יסוד וסופרים — סוגת',
     per100g: { calories, protein, carbs, fat },
-    units,
-    sourceSiteId: 'shufersal',
-    sourceSiteName: 'שופרסל אונליין',
+    sourceSiteId: 'sugat',
+    sourceSiteName: 'סוגת',
     sourceUrl: url,
   });
 
   return { item, status: res.status, latencyMs: res.latencyMs, blocked: false };
 }
 
-async function searchShufersal(query: string, limit = 6): Promise<{
+async function searchSugat(query: string, limit = 6): Promise<{
   items: FoodCatalogItem[];
   status: number;
   latencyMs: number;
   blocked: boolean;
 }> {
-  const url = `https://www.shufersal.co.il/online/he/search/results?q=${encodeURIComponent(query)}&format=json`;
-  const res = await fetchWithTimeout(url, {
+  const apiUrl = `https://www.sugat.com/wp-json/wp/v2/products?search=${encodeURIComponent(
+    query
+  )}&per_page=${Math.min(limit + 2, 10)}`;
+  const res = await fetchWithTimeout(apiUrl, {
     timeoutMs: 8500,
     headers: { Accept: 'application/json' },
   });
@@ -391,18 +383,11 @@ async function searchShufersal(query: string, limit = 6): Promise<{
   }
 
   try {
-    const json = JSON.parse(res.text) as {
-      results?: Array<{ code?: string; name?: string; brandName?: string; ean?: string }>;
-    };
-    const candidates = (json.results || []).filter((r) => Boolean(r.code && r.name)).slice(0, limit + 3);
-    const parsed = await mapConcurrent(candidates, 4, (c) =>
-      scrapeShufersalProduct(c.code!, c.name!, c.brandName || undefined)
-    );
+    const posts = JSON.parse(res.text) as Array<{ link?: string; title?: { rendered?: string } }>;
+    const valid = (Array.isArray(posts) ? posts : []).filter((p) => p.link).slice(0, limit);
+    const parsed = await mapConcurrent(valid, 4, (p) => scrapeSugatProduct(p.link!, p.title?.rendered));
     return {
-      items: parsed
-        .map((p) => p.item)
-        .filter((x): x is FoodCatalogItem => Boolean(x))
-        .slice(0, limit),
+      items: parsed.map((p) => p.item).filter((x): x is FoodCatalogItem => Boolean(x)),
       status: res.status,
       latencyMs: res.latencyMs,
       blocked: false,
@@ -412,25 +397,25 @@ async function searchShufersal(query: string, limit = 6): Promise<{
   }
 }
 
-const shufersalScraper: IsraeliFoodScraper = {
+const sugatScraper: IsraeliFoodScraper = {
   meta: {
-    id: 'shufersal',
-    name: 'שופרסל אונליין (סופרמרקט)',
-    domain: 'shufersal.co.il',
-    category: 'רשת שיווק וסופרמרקט',
+    id: 'sugat',
+    name: 'סוגת (מוצרי מדף בסופרים)',
+    domain: 'sugat.com',
+    category: 'מותגי סופרים ומוצרי יסוד',
     mode: 'hybrid',
-    estimatedCatalogSize: '20,000+ מוצרי סופרמרקט',
-    description: 'רשת הסופרים הגדולה בישראל — סימון תזונתי מלא (אנרגיה, חלבונים, פחמימות, שומנים) של מוצרי מדף.',
-    targetUrl: 'https://www.shufersal.co.il/online/he',
+    estimatedCatalogSize: '139+ מוצרי סופרמרקט רשמיים',
+    description: 'קטלוג מוצרי סוגת הנמכרים בכל רשתות השיווק — אורז, קינואה, עדשים, שיבולת שועל, קמחים, קטניות ופסטה.',
+    targetUrl: 'https://www.sugat.com',
   },
   async checkHealth(prevSyncedCount = 0) {
-    const res = await searchShufersal('גבינה', 4);
+    const res = await searchSugat('אורז', 4);
     if (res.blocked || res.status < 200 || res.status >= 400) {
       return buildBrokenHealth(
         this.meta,
         res.status,
         res.latencyMs,
-        `שגיאת גישה (${res.status}) ב-shufersal.co.il`,
+        `שגיאת גישה (${res.status}) ב-sugat.com`,
         prevSyncedCount,
         res.blocked
       );
@@ -440,7 +425,7 @@ const shufersalScraper: IsraeliFoodScraper = {
         this.meta,
         res.status,
         res.latencyMs,
-        'לא חולצו 4 ערכי מאקרו מהסלקטור .nutritionList בשופרסל אונליין',
+        'לא חולצו 4 ערכי מאקרו מהסלקטור .b-calories__row בסוגת',
         prevSyncedCount
       );
     }
@@ -453,26 +438,23 @@ const shufersalScraper: IsraeliFoodScraper = {
     });
   },
   async searchLive(query, limit = 6) {
-    const res = await searchShufersal(query, limit);
+    const res = await searchSugat(query, limit);
     return res.items;
   },
   async syncCatalog() {
-    const terms = [
-      'קוטג',
-      'יוגורט חלבון',
-      'גבינה לבנה',
-      'טונה',
-      'לחם',
-      'חזה עוף',
-      'שיבולת שועל',
-      'פסטה',
-      'אורז',
-      'חומוס',
-      'חמאת בוטנים',
-      'שוקולד',
-    ];
-    const batches = await mapConcurrent(terms, 3, (q) => searchShufersal(q, 5));
-    return batches.flatMap((b) => b.items);
+    const res = await fetchWithTimeout('https://www.sugat.com/wp-json/wp/v2/products?per_page=55&page=1', {
+      timeoutMs: 9000,
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return [];
+    try {
+      const posts = JSON.parse(res.text) as Array<{ link?: string; title?: { rendered?: string } }>;
+      const valid = (Array.isArray(posts) ? posts : []).filter((p) => p.link).slice(0, 55);
+      const parsed = await mapConcurrent(valid, 8, (p) => scrapeSugatProduct(p.link!, p.title?.rendered));
+      return parsed.map((p) => p.item).filter((x): x is FoodCatalogItem => Boolean(x));
+    } catch {
+      return [];
+    }
   },
 };
 
@@ -1938,12 +1920,12 @@ const bermanScraper: IsraeliFoodScraper = {
 };
 
 export const ISRAELI_SCRAPERS: IsraeliFoodScraper[] = [
-  shufersalScraper,
   victoryScraper,
   nizatScraper,
   tevabariScraper,
   fuderScraper,
   foodgroupsScraper,
+  sugatScraper,
   taraScraper,
   bermanScraper,
   foodsDictionaryScraper,
