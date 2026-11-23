@@ -20,6 +20,8 @@ import {
 import {
   AccountStatus,
   AiContextParams,
+  AppReleasePolicy,
+  AuthRejectionCode,
   AuthSessionUser,
   BodyMeasurementEntry,
   CoachDirectoryItem,
@@ -51,15 +53,28 @@ import { CoachDashboardView } from '@/components/CoachDashboardView';
 import { AuthGateView } from '@/components/AuthGateView';
 import { CoachOnboardingWizard } from '@/components/CoachOnboardingWizard';
 import { BackgroundAiSyncBanner } from '@/components/BackgroundAiSyncBanner';
+import { AndroidForceUpdateGate } from '@/components/AndroidForceUpdateGate';
 import {
   AppUpdateInfo,
+  RemoteAndroidPolicyPayload,
+  buildAppUpdateInfoFromRemote,
   checkNativeAppUpdate,
   configureBackgroundStepsSync,
+  downloadAndInstallAndroidApk,
   getLocalDateOffsetIso,
+  getNativeInstalledAppVersion,
   isNativeAndroidApp,
   readNativeDailySteps,
   subscribeAndroidAppResume,
 } from '@/lib/capacitorSteps';
+import {
+  cleanRefreshQueryParamOnMount,
+  isSpotEditingBusy,
+  isWebVersionMismatch,
+  performHardRefresh,
+  subscribeAuthKicked,
+  subscribeSpotEditingBusy,
+} from '@/lib/webVersionGuard';
 import {
   PushDeepLinkTarget,
   getAndroidPushStatus,
@@ -114,6 +129,17 @@ export default function HomePage() {
   const [androidUpdateInfo, setAndroidUpdateInfo] = useState<AppUpdateInfo | null>(
     null
   );
+  const [appReleasePolicy, setAppReleasePolicy] = useState<AppReleasePolicy>({
+    androidBlockedUpToVersionCode: 0,
+  });
+  const [pendingWebUpdateBuildId, setPendingWebUpdateBuildId] = useState<
+    string | null
+  >(null);
+  const [sessionNotice, setSessionNotice] = useState<{
+    code: AuthRejectionCode;
+    message: string;
+  } | null>(null);
+  const [optionalApkDownloading, setOptionalApkDownloading] = useState(false);
   const [dismissedUpdateBanner, setDismissedUpdateBanner] = useState(false);
   const [localBgJobs, setLocalBgJobs] = useState<PendingAiMealJob[]>([]);
   const [externalOpenMealRequest, setExternalOpenMealRequest] = useState<{
@@ -143,13 +169,103 @@ export default function HomePage() {
   const [showIosA2hsBanner, setShowIosA2hsBanner] = useState(false);
   const [pushPromptBusy, setPushPromptBusy] = useState(false);
 
+  const currentUserRef = useRef<AuthSessionUser | null>(null);
   const traineesRef = useRef<TraineeProfile[]>([]);
   const syncingCountRef = useRef<number>(0);
   const mutationEpochRef = useRef<number>(0);
   const lastFetchAtRef = useRef<number>(0);
+  const lastHeartbeatAtRef = useRef<number>(0);
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
   useEffect(() => {
     traineesRef.current = trainees;
   }, [trainees]);
+
+  const clearAllClientSessionState = useCallback(
+    (notice?: { code: AuthRejectionCode; message: string }) => {
+      const hadUser = Boolean(currentUserRef.current);
+      currentUserRef.current = null;
+      setCurrentUser(null);
+      setTrainees([]);
+      traineesRef.current = [];
+      setTemplates([]);
+      setGroups([]);
+      setGlobalQuickChips([]);
+      setTraineeGroupQuickChips([]);
+      setCoaches([]);
+      setMyCoachProfile(null);
+      setCoachDirectory([]);
+      setCoachPreviewTraineeId(null);
+      setCoachPushSettings(null);
+      setLocalBgJobs([]);
+      setPushPromptOpen(false);
+      setWebPushPromptOpen(false);
+      setShowIosA2hsBanner(false);
+      if (notice) {
+        setSessionNotice(notice);
+        if (hadUser) {
+          notifications.show({
+            color: notice.code === 'ACCOUNT_BLOCKED' ? 'red' : 'orange',
+            title:
+              notice.code === 'ACCOUNT_BLOCKED'
+                ? 'החשבון נחסם / הושהה'
+                : 'נותקת מהמערכת',
+            message: notice.message,
+          });
+        }
+      }
+      if (isNativeAndroidApp()) {
+        void configureBackgroundStepsSync({
+          baseUrl: '',
+          syncToken: '',
+          enabled: false,
+        }).catch(() => {});
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    cleanRefreshQueryParamOnMount();
+    const unsubKick = subscribeAuthKicked((detail) => {
+      clearAllClientSessionState(detail);
+    });
+
+    const handleChunkFailure = (rawReason: unknown) => {
+      const text =
+        rawReason instanceof Error
+          ? `${rawReason.name} ${rawReason.message}`
+          : String(rawReason || '');
+      if (
+        !/ChunkLoadError|Loading chunk .* failed|Failed to fetch dynamically imported module/i.test(
+          text
+        )
+      ) {
+        return;
+      }
+      void fetch(`/api/app-version?t=${Date.now()}`, { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: { webBuildId?: string } | null) => {
+          if (data?.webBuildId) {
+            void performHardRefresh(data.webBuildId);
+          }
+        })
+        .catch(() => {});
+    };
+
+    const onWinErr = (ev: ErrorEvent) => handleChunkFailure(ev.error || ev.message);
+    const onUnhandled = (ev: PromiseRejectionEvent) =>
+      handleChunkFailure(ev.reason);
+
+    window.addEventListener('error', onWinErr);
+    window.addEventListener('unhandledrejection', onUnhandled);
+    return () => {
+      unsubKick();
+      window.removeEventListener('error', onWinErr);
+      window.removeEventListener('unhandledrejection', onUnhandled);
+    };
+  }, [clearAllClientSessionState]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -176,16 +292,15 @@ export default function HomePage() {
         headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
       });
       if (dataRes.status === 401 || dataRes.status === 403) {
-        setCurrentUser(null);
-        setTrainees([]);
-        setTemplates([]);
-        setGroups([]);
-        setGlobalQuickChips([]);
-        setTraineeGroupQuickChips([]);
-        setCoaches([]);
-        setMyCoachProfile(null);
-        setCoachDirectory([]);
-        setCoachPushSettings(null);
+        const errBody = (await dataRes.json().catch(() => null)) as {
+          code?: AuthRejectionCode;
+          error?: string;
+        } | null;
+        clearAllClientSessionState(
+          errBody?.code && errBody.code !== 'UNAUTHENTICATED' && errBody.error
+            ? { code: errBody.code, message: errBody.error }
+            : undefined
+        );
         return;
       }
       if (dataRes.ok) {
@@ -227,6 +342,9 @@ export default function HomePage() {
         if (remoteData.coachPushSettings) {
           setCoachPushSettings(remoteData.coachPushSettings);
         }
+        if (remoteData.appReleasePolicy) {
+          setAppReleasePolicy(remoteData.appReleasePolicy as AppReleasePolicy);
+        }
         if (remoteData.dbError) {
           setSyncError(remoteData.dbError);
         }
@@ -234,19 +352,137 @@ export default function HomePage() {
     } catch {
       // ignore network error
     }
-  }, []);
+  }, [clearAllClientSessionState]);
+
+  const runHeartbeatAndVersionCheck = useCallback(async () => {
+    if (typeof window === 'undefined' || !window.navigator.onLine) return;
+    lastHeartbeatAtRef.current = Date.now();
+    try {
+      const localAndroid = isNativeAndroidApp()
+        ? await getNativeInstalledAppVersion()
+        : null;
+      const hbHeaders: Record<string, string> = {
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+      };
+      if (localAndroid) {
+        hbHeaders['x-spot-android-version-code'] = String(
+          localAndroid.versionCode
+        );
+      }
+
+      const res = await fetch(`/api/auth/heartbeat?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: hbHeaders,
+      });
+
+      const data = (await res.json().catch(() => null)) as {
+        authenticated?: boolean;
+        code?: AuthRejectionCode;
+        error?: string;
+        webBuildId?: string;
+        androidPolicy?: RemoteAndroidPolicyPayload;
+      } | null;
+
+      if (localAndroid && data?.androidPolicy) {
+        const nextUpdateInfo = buildAppUpdateInfoFromRemote(
+          localAndroid,
+          data.androidPolicy
+        );
+        setAndroidUpdateInfo((prev) => ({
+          ...nextUpdateInfo,
+          // שמור releaseNotes / latestVersionName מ-GitHub אם שרת ה-heartbeat לא כלל אותם
+          latestVersionName:
+            nextUpdateInfo.latestVersionName !== '1.0.0' || !prev
+              ? nextUpdateInfo.latestVersionName
+              : prev.latestVersionName,
+          latestVersionCode: Math.max(
+            nextUpdateInfo.latestVersionCode,
+            prev?.latestVersionCode || 1
+          ),
+        }));
+      }
+
+      if (
+        (res.status === 401 || res.status === 403 || data?.authenticated === false) &&
+        currentUserRef.current &&
+        data?.code &&
+        data.code !== 'UNAUTHENTICATED'
+      ) {
+        clearAllClientSessionState({
+          code: data.code,
+          message:
+            data.error ||
+            'החיבור למערכת הופסק מרחוק. אנא התחבר מחדש.',
+        });
+        return;
+      }
+
+      if (res.status === 401 && currentUserRef.current) {
+        clearAllClientSessionState({
+          code: 'SESSION_REVOKED',
+          message: 'פג תוקף החיבור או שנותקת מהמערכת. אנא התחבר מחדש.',
+        });
+        return;
+      }
+
+      if (data?.webBuildId && isWebVersionMismatch(data.webBuildId)) {
+        if (isSpotEditingBusy() || syncingCountRef.current > 0) {
+          setPendingWebUpdateBuildId(data.webBuildId);
+        } else {
+          void performHardRefresh(data.webBuildId);
+        }
+      }
+    } catch {
+      // Fail-open ברשת זמנית: לא חוסמים או מנתקים על שגיאת אינטרנט רגעית
+    }
+  }, [clearAllClientSessionState]);
+
+  useEffect(() => {
+    if (!pendingWebUpdateBuildId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const tryFlushRefresh = () => {
+      if (isSpotEditingBusy() || syncingCountRef.current > 0) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (!isSpotEditingBusy() && syncingCountRef.current === 0) {
+          void performHardRefresh(pendingWebUpdateBuildId);
+        }
+      }, 250);
+    };
+    tryFlushRefresh();
+    const unsub = subscribeSpotEditingBusy(tryFlushRefresh);
+    return () => {
+      if (timer) clearTimeout(timer);
+      unsub();
+    };
+  }, [pendingWebUpdateBuildId, syncingCount]);
 
   useEffect(() => {
     async function initSecureSession() {
       try {
-        const sessionRes = await fetch('/api/auth/session', {
-          cache: 'no-store',
-        });
+        const [sessionRes] = await Promise.all([
+          fetch(`/api/auth/session?t=${Date.now()}`, { cache: 'no-store' }),
+          runHeartbeatAndVersionCheck(),
+        ]);
         if (sessionRes.ok) {
-          const sessionData = await sessionRes.json();
+          const sessionData = (await sessionRes.json()) as {
+            user?: AuthSessionUser | null;
+            code?: AuthRejectionCode;
+            error?: string;
+          };
           if (sessionData.user) {
             setCurrentUser(sessionData.user);
             await fetchAuthorizedData();
+          } else if (
+            sessionData.code &&
+            sessionData.code !== 'UNAUTHENTICATED' &&
+            sessionData.error
+          ) {
+            setSessionNotice({
+              code: sessionData.code,
+              message: sessionData.error,
+            });
           }
         }
       } catch {
@@ -256,33 +492,51 @@ export default function HomePage() {
       }
     }
     initSecureSession();
-  }, [fetchAuthorizedData]);
+  }, [fetchAuthorizedData, runHeartbeatAndVersionCheck]);
 
-  // סנכרון שקט אוטומטי בחזרה למסך (Mobile app switch / tab focus) וכל 25 שניות כשהמסך גלוי
+  // דופק אבטחה וגרסאות כל 5 שניות כשהמשתמש מחובר וצופה במסך + סנכרון מלא כל 25 שניות + חזרה מרקע
   useEffect(() => {
-    if (!currentUser || typeof window === 'undefined') return;
+    if (typeof window === 'undefined') return;
 
-    const syncIfFresh = () => {
+    const onReturnToForeground = () => {
       if (document.visibilityState === 'hidden') return;
       if (!window.navigator.onLine) return;
-      if (Date.now() - lastFetchAtRef.current < 3500) return;
-      void fetchAuthorizedData();
-    };
-
-    window.addEventListener('focus', syncIfFresh);
-    document.addEventListener('visibilitychange', syncIfFresh);
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible' && window.navigator.onLine) {
+      if (Date.now() - lastHeartbeatAtRef.current >= 1500) {
+        void runHeartbeatAndVersionCheck();
+      }
+      if (
+        currentUserRef.current &&
+        Date.now() - lastFetchAtRef.current >= 3500
+      ) {
         void fetchAuthorizedData();
       }
-    }, 25000);
+    };
+
+    window.addEventListener('focus', onReturnToForeground);
+    document.addEventListener('visibilitychange', onReturnToForeground);
+
+    const hbIntervalMs = currentUser ? 5000 : 30000;
+    const hbInterval = setInterval(() => {
+      if (document.visibilityState === 'visible' && window.navigator.onLine) {
+        void runHeartbeatAndVersionCheck();
+      }
+    }, hbIntervalMs);
+
+    const dataInterval = currentUser
+      ? setInterval(() => {
+          if (document.visibilityState === 'visible' && window.navigator.onLine) {
+            void fetchAuthorizedData();
+          }
+        }, 25000)
+      : null;
 
     return () => {
-      window.removeEventListener('focus', syncIfFresh);
-      document.removeEventListener('visibilitychange', syncIfFresh);
-      clearInterval(interval);
+      window.removeEventListener('focus', onReturnToForeground);
+      document.removeEventListener('visibilitychange', onReturnToForeground);
+      clearInterval(hbInterval);
+      if (dataInterval) clearInterval(dataInterval);
     };
-  }, [currentUser, fetchAuthorizedData]);
+  }, [currentUser, fetchAuthorizedData, runHeartbeatAndVersionCheck]);
 
   // סנכרון צעדים אוטומטי מאפליקציית האנדרואיד (Health Connect + Google Play Services Local Recording + WorkManager)
   const syncNativeAndroidSteps = useCallback(async () => {
@@ -364,18 +618,31 @@ export default function HomePage() {
     }
   }, [currentUser]);
 
+  const refreshAndroidVersionGate = useCallback(async () => {
+    if (!isNativeAndroidApp()) return null;
+    const info = await checkNativeAppUpdate();
+    if (info) {
+      setAndroidUpdateInfo(info);
+    }
+    return info;
+  }, []);
+
   useEffect(() => {
     if (!isNativeAndroidApp()) return;
     let active = true;
     checkNativeAppUpdate().then((info) => {
-      if (active && info?.updateAvailable) {
+      if (active && info) {
         setAndroidUpdateInfo(info);
       }
     });
+    const unsubResume = subscribeAndroidAppResume(() => {
+      void refreshAndroidVersionGate();
+    });
     return () => {
       active = false;
+      unsubResume();
     };
-  }, []);
+  }, [refreshAndroidVersionGate]);
 
   useEffect(() => {
     if (!isNativeAndroidApp() || !currentUser || currentUser.role !== 'trainee') {
@@ -637,9 +904,26 @@ export default function HomePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (res.status === 401) {
-        setCurrentUser(null);
-        setTrainees([]);
+      if (res.status === 401 || res.status === 403) {
+        const cloned = await res
+          .clone()
+          .json()
+          .catch(() => null) as {
+          code?: AuthRejectionCode;
+          error?: string;
+        } | null;
+        if (
+          res.status === 401 ||
+          cloned?.code === 'SESSION_REVOKED' ||
+          cloned?.code === 'ACCOUNT_BLOCKED'
+        ) {
+          clearAllClientSessionState({
+            code: cloned?.code || 'SESSION_REVOKED',
+            message:
+              cloned?.error ||
+              'נותקת מהמערכת או שחשבונך הושהה. אנא התחבר מחדש.',
+          });
+        }
       }
       return res;
     } catch {
@@ -700,6 +984,7 @@ export default function HomePage() {
   };
 
   const handleLoginSuccess = async (user: AuthSessionUser) => {
+    setSessionNotice(null);
     setCurrentUser(user);
     setCoachPreviewTraineeId(null);
     setSkippedCoachOnboarding(false);
@@ -1973,6 +2258,68 @@ export default function HomePage() {
     return {};
   };
 
+  const handleForceLogoutTrainee = async (
+    traineeId: string
+  ): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
+    const res = await postDataAction({
+      action: 'force-logout-trainee',
+      traineeId,
+    });
+    if (!res || !res.ok) {
+      return { error: await extractApiError(res, 'שגיאה בניתוק המתאמן מרחוק') };
+    }
+    return {};
+  };
+
+  const handleForceLogoutCoach = async (
+    coachId: string
+  ): Promise<{ error?: string }> => {
+    if (currentUser?.role !== 'admin') return {};
+    const res = await postDataAction({
+      action: 'admin-force-logout-coach',
+      coachId,
+    });
+    if (!res || !res.ok) {
+      return { error: await extractApiError(res, 'שגיאה בניתוק המאמן מרחוק') };
+    }
+    return {};
+  };
+
+  const handleUpdateAppPolicy = async (
+    policy: AppReleasePolicy
+  ): Promise<{ error?: string }> => {
+    if (currentUser?.role !== 'admin') {
+      return { error: 'מותר למנהל הראשי בלבד' };
+    }
+    const res = await postDataAction({
+      action: 'admin-update-app-policy',
+      ...policy,
+    });
+    if (!res || !res.ok) {
+      return { error: await extractApiError(res, 'שגיאה בשמירת מדיניות הגרסאות') };
+    }
+    const data = (await res.json().catch(() => null)) as {
+      appReleasePolicy?: AppReleasePolicy;
+    } | null;
+    if (data?.appReleasePolicy) {
+      setAppReleasePolicy(data.appReleasePolicy);
+    } else {
+      setAppReleasePolicy(policy);
+    }
+    return {};
+  };
+
+  // שער נעילה הרמטי לאנדרואיד — נבדק ראשון לפני הכל (גם במסך התחברות וגם כשמחוברים)
+  if (androidUpdateInfo?.isForceUpdateBlocked) {
+    return (
+      <AndroidForceUpdateGate
+        info={androidUpdateInfo}
+        onRecheckVersion={refreshAndroidVersionGate}
+      />
+    );
+  }
+
   if (!hydrated) {
     return (
       <div
@@ -1986,30 +2333,66 @@ export default function HomePage() {
           padding: 20,
         }}
       >
-        <div
+        <img
+          src="/app-logo.png"
+          alt="SPOT Fitness"
           style={{
-            width: 52,
-            height: 52,
-            borderRadius: 15,
-            background: 'var(--accent-volt)',
-            color: '#ffffff',
-            fontWeight: 900,
-            fontSize: 26,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            width: 72,
+            height: 72,
+            borderRadius: 20,
+            objectFit: 'cover',
             boxShadow: '0 10px 28px rgba(214, 125, 9, 0.35)',
           }}
-        >
-          S
-        </div>
+        />
         <Loader2 size={22} className="spot-spinner" color="var(--accent-volt)" />
       </div>
     );
   }
 
   if (!currentUser) {
-    return <AuthGateView onLoginSuccess={handleLoginSuccess} />;
+    return (
+      <>
+        {pendingWebUpdateBuildId && (
+          <div
+            style={{
+              background: 'rgba(214, 125, 9, 0.16)',
+              borderBottom: '1px solid rgba(214, 125, 9, 0.4)',
+              color: 'var(--accent-volt)',
+              padding: '8px 14px',
+              fontSize: 12,
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+            }}
+          >
+            <span>עדכון גרסה חדש של SPOT מוכן</span>
+            <button
+              type="button"
+              onClick={() =>
+                void performHardRefresh(pendingWebUpdateBuildId, { force: true })
+              }
+              className="btn-volt"
+              style={{
+                padding: '4px 12px',
+                fontSize: 11,
+                fontWeight: 900,
+                borderRadius: 999,
+                cursor: 'pointer',
+              }}
+            >
+              רענן עכשיו
+            </button>
+          </div>
+        )}
+        <AuthGateView
+          onLoginSuccess={handleLoginSuccess}
+          sessionNotice={sessionNotice}
+          onClearSessionNotice={() => setSessionNotice(null)}
+        />
+      </>
+    );
   }
 
   const loggedInTraineeProfile =
@@ -2079,6 +2462,49 @@ export default function HomePage() {
 
   return (
     <div style={{ minHeight: '100dvh' }}>
+      {pendingWebUpdateBuildId && (
+        <div
+          style={{
+            background: 'rgba(214, 125, 9, 0.18)',
+            borderBottom: '1px solid rgba(214, 125, 9, 0.45)',
+            color: 'var(--accent-volt)',
+            padding: '8px 14px',
+            fontSize: 12,
+            fontWeight: 800,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 10,
+            flexWrap: 'wrap',
+            zIndex: 130,
+            position: 'relative',
+          }}
+        >
+          <RefreshCw size={14} />
+          <span>
+            גרסה חדשה של SPOT זמינה — תתרענן אוטומטית בסגירת החלונית
+          </span>
+          <button
+            type="button"
+            onClick={() =>
+              void performHardRefresh(pendingWebUpdateBuildId, { force: true })
+            }
+            style={{
+              background: 'var(--accent-volt)',
+              color: '#ffffff',
+              border: 'none',
+              padding: '3px 12px',
+              borderRadius: 999,
+              fontSize: 11,
+              fontWeight: 900,
+              cursor: 'pointer',
+            }}
+          >
+            רענן עכשיו
+          </button>
+        </div>
+      )}
+
       {isOffline && (
         <div
           role="alert"
@@ -2149,23 +2575,17 @@ export default function HomePage() {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            <div
+            <img
+              src="/app-logo.png"
+              alt="SPOT"
               style={{
-                width: 26,
-                height: 26,
+                width: 28,
+                height: 28,
                 borderRadius: 8,
-                background: 'var(--accent-volt)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#ffffff',
-                fontWeight: 900,
-                fontSize: 14,
+                objectFit: 'cover',
                 flexShrink: 0,
               }}
-            >
-              S
-            </div>
+            />
             <span
               className="num-mono"
               style={{
@@ -2305,58 +2725,80 @@ export default function HomePage() {
         </div>
       </header>
 
-      {androidUpdateInfo?.updateAvailable && !dismissedUpdateBanner && (
-        <div
-          style={{
-            background: 'rgba(214, 125, 9, 0.14)',
-            borderBottom: '1px solid rgba(214, 125, 9, 0.35)',
-            color: 'var(--accent-volt)',
-            padding: '8px 16px',
-            fontSize: 12,
-            fontWeight: 800,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 10,
-            flexWrap: 'wrap',
-          }}
-        >
-          <Download size={15} />
-          <span>
-            גרסה חדשה לאפליקציית האנדרואיד זמינה (v
-            {androidUpdateInfo.latestVersionName})
-          </span>
-          <a
-            href={androidUpdateInfo.apkDownloadUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+      {androidUpdateInfo?.updateAvailable &&
+        !androidUpdateInfo.isForceUpdateBlocked &&
+        !dismissedUpdateBanner && (
+          <div
             style={{
-              background: 'var(--accent-volt)',
-              color: '#ffffff',
-              padding: '3px 10px',
-              borderRadius: 999,
-              textDecoration: 'none',
-              fontSize: 11,
-              fontWeight: 900,
-            }}
-          >
-            הורד עדכון
-          </a>
-          <button
-            type="button"
-            onClick={() => setDismissedUpdateBanner(true)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer',
+              background: 'rgba(214, 125, 9, 0.14)',
+              borderBottom: '1px solid rgba(214, 125, 9, 0.35)',
+              color: 'var(--accent-volt)',
+              padding: '8px 16px',
+              fontSize: 12,
               fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              flexWrap: 'wrap',
             }}
           >
-            ✕
-          </button>
-        </div>
-      )}
+            <Download size={15} />
+            <span>
+              גרסה חדשה לאפליקציית האנדרואיד זמינה (v
+              {androidUpdateInfo.latestVersionName})
+            </span>
+            <button
+              type="button"
+              disabled={optionalApkDownloading}
+              onClick={async () => {
+                setOptionalApkDownloading(true);
+                try {
+                  const res = await downloadAndInstallAndroidApk(
+                    androidUpdateInfo.apkDownloadUrl
+                  );
+                  if (res.needsInstallPermission) {
+                    notifications.show({
+                      color: 'orange',
+                      title: 'נדרשת הרשאת התקנה',
+                      message:
+                        'אשר בהגדרות שפתחנו "הרשה ממקור זה" וחזור לאפליקציה להשלמת העדכון.',
+                    });
+                  } else if (!res.started && res.error) {
+                    window.open(androidUpdateInfo.apkDownloadUrl, '_blank');
+                  }
+                } finally {
+                  setOptionalApkDownloading(false);
+                }
+              }}
+              style={{
+                background: 'var(--accent-volt)',
+                color: '#ffffff',
+                border: 'none',
+                padding: '4px 12px',
+                borderRadius: 999,
+                fontSize: 11,
+                fontWeight: 900,
+                cursor: optionalApkDownloading ? 'wait' : 'pointer',
+              }}
+            >
+              {optionalApkDownloading ? 'מוריד ומפעיל התקנה...' : 'עדכן והתקן'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setDismissedUpdateBanner(true)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontWeight: 800,
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
       {showIosA2hsBanner && (
         <div
@@ -2561,10 +3003,14 @@ export default function HomePage() {
             onUpdateAiNotesAndSplit={handleUpdateAiNotesAndSplit}
             onOpenCoachOnboarding={() => setEditingCoachOnboarding(true)}
             onDeleteTrainee={handleDeleteTrainee}
+            onForceLogoutTrainee={handleForceLogoutTrainee}
             onCreateCoach={handleCreateCoach}
             onUpdateCoachStatus={handleUpdateCoachStatus}
+            onForceLogoutCoach={handleForceLogoutCoach}
             onUpdateCoachCredentials={handleUpdateCoachCredentials}
             onDeleteCoach={handleDeleteCoach}
+            appReleasePolicy={appReleasePolicy}
+            onUpdateAppPolicy={handleUpdateAppPolicy}
             onPreviewTraineeMobile={(id) => setCoachPreviewTraineeId(id)}
           />
         )}

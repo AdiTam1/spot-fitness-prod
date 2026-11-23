@@ -23,6 +23,7 @@ import {
   NutritionTemplate,
 } from '@/types/nutrition';
 import { getTodayIso, ISRAELI_FOOD_CATALOG } from '@/data/israeliFoodCatalog';
+import { useSpotUnsavedEditing } from '@/lib/webVersionGuard';
 
 interface CoachOnboardingWizardProps {
   coachName: string;
@@ -237,6 +238,7 @@ export function CoachOnboardingWizard({
   ]);
   const [customGroupName, setCustomGroupName] = useState('');
   const [isFinishing, setIsFinishing] = useState(false);
+  useSpotUnsavedEditing('coach-onboarding-wizard', true);
 
   const handleFinish = async () => {
     if (isFinishing) return;

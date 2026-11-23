@@ -19,6 +19,7 @@ import {
 import { getTodayIso } from '@/data/israeliFoodCatalog';
 import { computeAgeFromBirthDate } from '@/lib/dateUtils';
 import { BodyMeasurementGuide } from './BodyMeasurementGuide';
+import { useSpotUnsavedEditing } from '@/lib/webVersionGuard';
 
 interface TraineeOnboardingWizardProps {
   trainee: TraineeProfile;
@@ -240,6 +241,7 @@ export function TraineeOnboardingWizard({
     existing?.scheduleAndNotes || ''
   );
   const [isFinishing, setIsFinishing] = useState(false);
+  useSpotUnsavedEditing('trainee-onboarding-wizard', true);
 
   const toggleMultiOption = (
     list: string[],

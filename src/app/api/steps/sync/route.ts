@@ -4,15 +4,15 @@ export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
 import {
-  clearSessionCookie,
   getSessionFromRequest,
   sanitizeNumber,
   signStepsSyncToken,
   verifyCsrfOrigin,
   verifyStepsSyncToken,
 } from '@/lib/serverAuth';
+import { authenticateActiveSession } from '@/lib/liveAuth';
 import {
-  getSingleTraineeFromServer,
+  getTraineeAuthStateFromServer,
   updateServerDbState,
 } from '@/lib/serverStore';
 import { DailyLog, StepsSyncSource } from '@/types/nutrition';
@@ -34,25 +34,22 @@ interface IncomingStepEntry {
 }
 
 export async function GET(request: NextRequest) {
-  const session = getSessionFromRequest(request);
-  if (!session || session.role !== 'trainee') {
+  const auth = await authenticateActiveSession(request, { touchLastSeen: true });
+  if (!auth.ok) {
+    return auth.response;
+  }
+  if (auth.session.role !== 'trainee') {
     return NextResponse.json(
       { error: 'נדרשת התחברות כמתאמן' },
-      { status: 401 }
+      { status: 403 }
     );
-  }
-
-  const liveTrainee = await getSingleTraineeFromServer(session.id);
-  if (!liveTrainee || liveTrainee.status !== 'active') {
-    const res = NextResponse.json({ error: 'החשבון אינו פעיל' }, { status: 403 });
-    return clearSessionCookie(res);
   }
 
   return NextResponse.json(
     {
       ok: true,
-      traineeId: session.id,
-      syncToken: signStepsSyncToken(session.id),
+      traineeId: auth.session.id,
+      syncToken: signStepsSyncToken(auth.session.id, auth.sessionVersion),
     },
     { headers: { 'Cache-Control': 'no-store, max-age=0' } }
   );
@@ -70,13 +67,37 @@ export async function POST(request: NextRequest) {
     let authorizedTraineeId: string | null = null;
     const cookieSession = getSessionFromRequest(request);
     if (cookieSession?.role === 'trainee') {
-      authorizedTraineeId = cookieSession.id;
+      const auth = await authenticateActiveSession(request, {
+        touchLastSeen: true,
+      });
+      if (!auth.ok) {
+        return auth.response;
+      }
+      authorizedTraineeId = auth.session.id;
     } else {
       const authHeader = request.headers.get('authorization') || '';
       const bearer = authHeader.toLowerCase().startsWith('bearer ')
         ? authHeader.slice(7).trim()
         : '';
-      authorizedTraineeId = verifyStepsSyncToken(bearer);
+      const parsedToken = verifyStepsSyncToken(bearer);
+      if (parsedToken) {
+        const liveTrainee = await getTraineeAuthStateFromServer(
+          parsedToken.traineeId
+        );
+        if (!liveTrainee || liveTrainee.status !== 'active') {
+          return NextResponse.json(
+            { error: 'החשבון אינו פעיל', code: 'ACCOUNT_BLOCKED' },
+            { status: 403 }
+          );
+        }
+        if ((liveTrainee.sessionVersion ?? 1) !== parsedToken.sv) {
+          return NextResponse.json(
+            { error: 'הסשן פג תוקף מרחוק', code: 'SESSION_REVOKED' },
+            { status: 401 }
+          );
+        }
+        authorizedTraineeId = parsedToken.traineeId;
+      }
     }
 
     if (!authorizedTraineeId) {
@@ -84,11 +105,6 @@ export async function POST(request: NextRequest) {
         { error: 'נדרש אימות מתאמן תקף לסנכרון צעדים' },
         { status: 401 }
       );
-    }
-
-    const liveTrainee = await getSingleTraineeFromServer(authorizedTraineeId);
-    if (!liveTrainee || liveTrainee.status !== 'active') {
-      return NextResponse.json({ error: 'החשבון אינו פעיל' }, { status: 403 });
     }
 
     const body = (await request.json()) as { entries?: unknown };

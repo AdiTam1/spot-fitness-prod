@@ -205,6 +205,20 @@ export interface DailyLog {
 
 export type UserRole = 'admin' | 'coach' | 'trainee';
 export type AccountStatus = 'active' | 'pending' | 'paused';
+export type AuthRejectionCode =
+  | 'UNAUTHENTICATED'
+  | 'SESSION_REVOKED'
+  | 'ACCOUNT_BLOCKED'
+  | 'ANDROID_VERSION_BLOCKED';
+
+export interface AppReleasePolicy {
+  androidBlockedUpToVersionCode: number; // חסימה מלאה באנדרואיד כאשר versionCode <= ערך זה (0 = ללא חסימה)
+  androidLatestVersionCode?: number;
+  androidLatestVersionName?: string;
+  androidApkDownloadUrl?: string;
+  androidReleaseNotes?: string;
+  updatedAt?: string;
+}
 
 export interface BodyMeasurementEntry {
   date: string;
@@ -289,6 +303,8 @@ export interface CoachProfile {
   phone: string;
   inviteCode: string;
   status: 'active' | 'paused';
+  sessionVersion?: number;
+  lastSeenAt?: string;
   onboarding?: CoachOnboardingData;
   createdAt?: string;
 }
@@ -543,6 +559,8 @@ export interface TraineeProfile {
   lastForegroundState?: { isInForeground: boolean; updatedAt: string }; // מעקב חזית כדי לשלוח פוש AI רק אם יצא
   pushHistory?: TraineePushHistoryEntry[]; // היסטוריית פושים אחרונים למתאמן
   logs: Record<string, DailyLog>;
+  sessionVersion?: number;
+  lastSeenAt?: string;
   createdAt?: string;
 }
 
@@ -552,4 +570,5 @@ export interface AuthSessionUser {
   name: string;
   role: UserRole;
   status: AccountStatus;
+  sv?: number;
 }

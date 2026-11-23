@@ -41,9 +41,12 @@ import {
   LayoutGrid,
   Table2,
   CalendarRange,
+  LogOut,
+  Smartphone,
 } from 'lucide-react';
 import {
   AccountStatus,
+  AppReleasePolicy,
   AuthSessionUser,
   CoachDirectoryItem,
   CoachProfile,
@@ -63,6 +66,7 @@ import {
 import { computeAgeFromBirthDate } from '@/lib/dateUtils';
 import { QuickChipsAdminPanel } from './QuickChipsAdminPanel';
 import { CoachSavedMealsPanel } from './CoachSavedMealsPanel';
+import { CLIENT_WEB_BUILD_ID } from '@/lib/webVersionGuard';
 import { CoachPushModal } from './CoachPushModal';
 import { CoachAlertSettingsModal } from './CoachAlertSettingsModal';
 import { AdminScrapersPanel } from './AdminScrapersPanel';
@@ -158,6 +162,7 @@ interface CoachDashboardViewProps {
   ) => Promise<{ error?: string }> | void;
   onOpenCoachOnboarding?: () => void;
   onDeleteTrainee: (traineeId: string) => Promise<{ error?: string }> | void;
+  onForceLogoutTrainee?: (traineeId: string) => Promise<{ error?: string }> | void;
   onCreateCoach: (data: {
     name: string;
     email: string;
@@ -166,6 +171,7 @@ interface CoachDashboardViewProps {
     inviteCode: string;
   }) => Promise<{ error?: string }>;
   onUpdateCoachStatus: (coachId: string, status: 'active' | 'paused') => Promise<{ error?: string }> | void;
+  onForceLogoutCoach?: (coachId: string) => Promise<{ error?: string }> | void;
   onUpdateCoachCredentials: (
     coachId: string,
     email: string,
@@ -173,6 +179,8 @@ interface CoachDashboardViewProps {
     inviteCode: string
   ) => Promise<{ error?: string }> | void;
   onDeleteCoach: (coachId: string) => Promise<{ error?: string }> | void;
+  appReleasePolicy?: AppReleasePolicy;
+  onUpdateAppPolicy?: (policy: AppReleasePolicy) => Promise<{ error?: string }> | void;
   onPreviewTraineeMobile: (traineeId: string) => void;
   globalQuickChips?: QuickContextChip[];
   onManageToolsAndUnits?: (
@@ -255,10 +263,14 @@ export function CoachDashboardView({
   onUpdateAiNotesAndSplit,
   onOpenCoachOnboarding,
   onDeleteTrainee,
+  onForceLogoutTrainee,
   onCreateCoach,
   onUpdateCoachStatus,
+  onForceLogoutCoach,
   onUpdateCoachCredentials,
   onDeleteCoach,
+  appReleasePolicy,
+  onUpdateAppPolicy,
   onPreviewTraineeMobile,
   globalQuickChips = [],
   onManageToolsAndUnits,
@@ -316,6 +328,53 @@ export function CoachDashboardView({
     trainees[0]?.id || ''
   );
   const [coachAlertsModalOpen, setCoachAlertsModalOpen] = useState(false);
+
+  const [policyBlockedUpTo, setPolicyBlockedUpTo] = useState<number>(
+    appReleasePolicy?.androidBlockedUpToVersionCode ?? 0
+  );
+  const [policyLatestCode, setPolicyLatestCode] = useState<string>(
+    appReleasePolicy?.androidLatestVersionCode
+      ? String(appReleasePolicy.androidLatestVersionCode)
+      : ''
+  );
+  const [policyLatestName, setPolicyLatestName] = useState<string>(
+    appReleasePolicy?.androidLatestVersionName || ''
+  );
+  const [policyApkUrl, setPolicyApkUrl] = useState<string>(
+    appReleasePolicy?.androidApkDownloadUrl || ''
+  );
+  const [policyReleaseNotes, setPolicyReleaseNotes] = useState<string>(
+    appReleasePolicy?.androidReleaseNotes || ''
+  );
+
+  useEffect(() => {
+    if (!appReleasePolicy) return;
+    setPolicyBlockedUpTo(appReleasePolicy.androidBlockedUpToVersionCode ?? 0);
+    setPolicyLatestCode(
+      appReleasePolicy.androidLatestVersionCode
+        ? String(appReleasePolicy.androidLatestVersionCode)
+        : ''
+    );
+    setPolicyLatestName(appReleasePolicy.androidLatestVersionName || '');
+    setPolicyApkUrl(appReleasePolicy.androidApkDownloadUrl || '');
+    setPolicyReleaseNotes(appReleasePolicy.androidReleaseNotes || '');
+  }, [appReleasePolicy]);
+
+  const formatLiveActivityBadge = (lastSeenAt?: string) => {
+    if (!lastSeenAt) return null;
+    const ts = Date.parse(lastSeenAt);
+    if (!Number.isFinite(ts)) return null;
+    const diffMs = Date.now() - ts;
+    if (diffMs < 75_000) {
+      return { label: 'מחובר כעת', isOnline: true };
+    }
+    const mins = Math.floor(diffMs / 60_000);
+    if (mins < 60) return { label: `נראה לפני ${mins} דק׳`, isOnline: false };
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return { label: `נראה לפני ${hrs} שע׳`, isOnline: false };
+    const days = Math.floor(hrs / 24);
+    return { label: `נראה לפני ${days} ימים`, isOnline: false };
+  };
 
   useEffect(() => {
     if (!externalInspectTraineeRequest?.traineeId) return;
@@ -4659,6 +4718,7 @@ export function CoachDashboardView({
                 <tbody>
                   {trainees.map((t) => {
                     const isOwner = isOwnerOfTrainee(t);
+                    const liveBadge = formatLiveActivityBadge(t.lastSeenAt);
                     return (
                       <tr
                         key={t.id}
@@ -4667,7 +4727,34 @@ export function CoachDashboardView({
                         }}
                       >
                         <td style={{ padding: '14px 20px', fontWeight: 800 }}>
-                          {t.name}
+                          <div>{t.name}</div>
+                          {liveBadge && (
+                            <div
+                              style={{
+                                marginTop: 4,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 5,
+                                fontSize: 10.5,
+                                fontWeight: 700,
+                                color: liveBadge.isOnline
+                                  ? '#22c55e'
+                                  : 'var(--text-muted)',
+                              }}
+                            >
+                              <span
+                                style={{
+                                  width: 6,
+                                  height: 6,
+                                  borderRadius: '50%',
+                                  background: liveBadge.isOnline
+                                    ? '#22c55e'
+                                    : 'var(--text-muted)',
+                                }}
+                              />
+                              <span>{liveBadge.label}</span>
+                            </div>
+                          )}
                         </td>
                         <td
                           className="num-mono"
@@ -4775,7 +4862,7 @@ export function CoachDashboardView({
                                     runBusy(
                                       `st-tr-${t.id}`,
                                       () => onUpdateTraineeStatus(t.id, 'active'),
-                                      `הגישה של ${t.name} הופעלה`
+                                      `הגישה של ${t.name} הופעלה והחסימה הוסרה`
                                     )
                                   }
                                   className="btn-volt"
@@ -4794,38 +4881,80 @@ export function CoachDashboardView({
                                     <PlayCircle size={13} />
                                   )}
                                   <span>
-                                    {isBusy(`st-tr-${t.id}`) ? 'מפעיל...' : 'הפעל'}
+                                    {isBusy(`st-tr-${t.id}`)
+                                      ? 'מפעיל...'
+                                      : t.status === 'paused'
+                                      ? 'בטל חסימה'
+                                      : 'הפעל'}
                                   </span>
                                 </button>
                               ) : (
-                                <button
-                                  disabled={isBusy(`st-tr-${t.id}`)}
-                                  onClick={() =>
-                                    runBusy(
-                                      `st-tr-${t.id}`,
-                                      () => onUpdateTraineeStatus(t.id, 'paused'),
-                                      `המנוי של ${t.name} הושהה`
-                                    )
-                                  }
-                                  className="btn-surface"
-                                  style={{
-                                    padding: '6px 10px',
-                                    fontSize: 11,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 4,
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  {isBusy(`st-tr-${t.id}`) ? (
-                                    <BusyIcon size={13} />
-                                  ) : (
-                                    <PauseCircle size={13} />
+                                <>
+                                  {onForceLogoutTrainee && (
+                                    <button
+                                      title="נתק את המתאמן מכל המכשירים המחוברים בלייב (ללא חסימה)"
+                                      disabled={isBusy(`fl-tr-${t.id}`)}
+                                      onClick={() =>
+                                        runBusy(
+                                          `fl-tr-${t.id}`,
+                                          () => onForceLogoutTrainee(t.id),
+                                          `${t.name} נותק מכל המכשירים מרחוק`
+                                        )
+                                      }
+                                      className="btn-surface"
+                                      style={{
+                                        padding: '6px 10px',
+                                        fontSize: 11,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 4,
+                                        cursor: 'pointer',
+                                        color: '#fbbf24',
+                                        borderColor: 'rgba(245, 158, 11, 0.3)',
+                                      }}
+                                    >
+                                      {isBusy(`fl-tr-${t.id}`) ? (
+                                        <BusyIcon size={13} />
+                                      ) : (
+                                        <LogOut size={13} />
+                                      )}
+                                      <span>
+                                        {isBusy(`fl-tr-${t.id}`) ? 'מנתק...' : 'נתק'}
+                                      </span>
+                                    </button>
                                   )}
-                                  <span>
-                                    {isBusy(`st-tr-${t.id}`) ? 'משהה...' : 'השהה'}
-                                  </span>
-                                </button>
+                                  <button
+                                    title="חסום גישה ונתק מיד מהאפליקציה"
+                                    disabled={isBusy(`st-tr-${t.id}`)}
+                                    onClick={() =>
+                                      runBusy(
+                                        `st-tr-${t.id}`,
+                                        () => onUpdateTraineeStatus(t.id, 'paused'),
+                                        `החשבון של ${t.name} נחסם ונותק מהמכשירים`
+                                      )
+                                    }
+                                    className="btn-surface"
+                                    style={{
+                                      padding: '6px 10px',
+                                      fontSize: 11,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 4,
+                                      cursor: 'pointer',
+                                      color: '#f87171',
+                                      borderColor: 'rgba(239, 68, 68, 0.3)',
+                                    }}
+                                  >
+                                    {isBusy(`st-tr-${t.id}`) ? (
+                                      <BusyIcon size={13} />
+                                    ) : (
+                                      <PauseCircle size={13} />
+                                    )}
+                                    <span>
+                                      {isBusy(`st-tr-${t.id}`) ? 'חוסם...' : 'חסום'}
+                                    </span>
+                                  </button>
+                                </>
                               )}
 
                               <button
@@ -5008,7 +5137,38 @@ export function CoachDashboardView({
                           <td
                             style={{ padding: '14px 22px', fontWeight: 800 }}
                           >
-                            {c.name}
+                            <div>{c.name}</div>
+                            {(() => {
+                              const liveBadge = formatLiveActivityBadge(c.lastSeenAt);
+                              if (!liveBadge) return null;
+                              return (
+                                <div
+                                  style={{
+                                    marginTop: 4,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 5,
+                                    fontSize: 10.5,
+                                    fontWeight: 700,
+                                    color: liveBadge.isOnline
+                                      ? '#22c55e'
+                                      : 'var(--text-muted)',
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      width: 6,
+                                      height: 6,
+                                      borderRadius: '50%',
+                                      background: liveBadge.isOnline
+                                        ? '#22c55e'
+                                        : 'var(--text-muted)',
+                                    }}
+                                  />
+                                  <span>{liveBadge.label}</span>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td
                             className="num-mono"
@@ -5069,32 +5229,72 @@ export function CoachDashboardView({
                           >
                             <div style={{ display: 'inline-flex', gap: 6 }}>
                               {c.status === 'active' ? (
-                                <button
-                                  disabled={isBusy(`st-co-${c.id}`)}
-                                  onClick={() =>
-                                    runBusy(
-                                      `st-co-${c.id}`,
-                                      () => onUpdateCoachStatus(c.id, 'paused'),
-                                      `חשבון המאמן ${c.name} הושהה`
-                                    )
-                                  }
-                                  className="btn-surface"
-                                  style={{
-                                    padding: '6px 10px',
-                                    fontSize: 11,
-                                    cursor: 'pointer',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: 4,
-                                  }}
-                                >
-                                  {isBusy(`st-co-${c.id}`) && <BusyIcon size={12} />}
-                                  <span>
-                                    {isBusy(`st-co-${c.id}`)
-                                      ? 'משהה...'
-                                      : 'השהה מאמן'}
-                                  </span>
-                                </button>
+                                <>
+                                  {onForceLogoutCoach && (
+                                    <button
+                                      title="נתק את המאמן מכל המכשירים המחוברים בלייב (ללא חסימה)"
+                                      disabled={isBusy(`fl-co-${c.id}`)}
+                                      onClick={() =>
+                                        runBusy(
+                                          `fl-co-${c.id}`,
+                                          () => onForceLogoutCoach(c.id),
+                                          `המאמן ${c.name} נותק מכל המכשירים מרחוק`
+                                        )
+                                      }
+                                      className="btn-surface"
+                                      style={{
+                                        padding: '6px 10px',
+                                        fontSize: 11,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: 4,
+                                        color: '#fbbf24',
+                                        borderColor: 'rgba(245, 158, 11, 0.3)',
+                                      }}
+                                    >
+                                      {isBusy(`fl-co-${c.id}`) ? (
+                                        <BusyIcon size={12} />
+                                      ) : (
+                                        <LogOut size={12} />
+                                      )}
+                                      <span>
+                                        {isBusy(`fl-co-${c.id}`)
+                                          ? 'מנתק...'
+                                          : 'נתק מאמן'}
+                                      </span>
+                                    </button>
+                                  )}
+                                  <button
+                                    title="חסום מאמן ונתק אותו מיידית מהאפליקציה"
+                                    disabled={isBusy(`st-co-${c.id}`)}
+                                    onClick={() =>
+                                      runBusy(
+                                        `st-co-${c.id}`,
+                                        () => onUpdateCoachStatus(c.id, 'paused'),
+                                        `חשבון המאמן ${c.name} נחסם ונותק מרחוק`
+                                      )
+                                    }
+                                    className="btn-surface"
+                                    style={{
+                                      padding: '6px 10px',
+                                      fontSize: 11,
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 4,
+                                      color: '#f87171',
+                                      borderColor: 'rgba(239, 68, 68, 0.3)',
+                                    }}
+                                  >
+                                    {isBusy(`st-co-${c.id}`) && <BusyIcon size={12} />}
+                                    <span>
+                                      {isBusy(`st-co-${c.id}`)
+                                        ? 'חוסם...'
+                                        : 'חסום מאמן'}
+                                    </span>
+                                  </button>
+                                </>
                               ) : (
                                 <button
                                   disabled={isBusy(`st-co-${c.id}`)}
@@ -5180,6 +5380,207 @@ export function CoachDashboardView({
               </table>
             </div>
           </div>
+
+          {onUpdateAppPolicy && (
+            <div className="pro-card" style={{ padding: 20 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  flexWrap: 'wrap',
+                  marginBottom: 14,
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 800,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <Smartphone size={18} color="var(--accent-volt)" />
+                    <span>בקרת גרסאות, Web Hard Refresh ועדכוני APK לאנדרואיד</span>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: 'var(--text-secondary)',
+                      marginTop: 4,
+                    }}
+                  >
+                    בווב/PWA מתבצע Hard Refresh אוטומטי בעליית גרסה. באנדרואיד, כל
+                    גרסה ש־<span dir="ltr">versionCode &lt;=</span> לסף החסימה תינעל
+                    הרמטית עד להתקנת ה-APK החדש.
+                  </div>
+                </div>
+                <div
+                  className="num-mono"
+                  style={{
+                    fontSize: 11,
+                    padding: '5px 10px',
+                    borderRadius: 999,
+                    background: 'var(--bg-surface-2)',
+                    border: '1px solid var(--border-subtle)',
+                    color: 'var(--text-secondary)',
+                  }}
+                  dir="ltr"
+                >
+                  Web Build: {CLIENT_WEB_BUILD_ID || 'dev'}
+                </div>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const parsedLatestCode = policyLatestCode.trim()
+                    ? Math.max(0, Math.round(Number(policyLatestCode) || 0))
+                    : undefined;
+                  runBusy(
+                    'save-app-policy',
+                    () =>
+                      onUpdateAppPolicy({
+                        androidBlockedUpToVersionCode: Math.max(
+                          0,
+                          Math.round(Number(policyBlockedUpTo) || 0)
+                        ),
+                        androidLatestVersionCode: parsedLatestCode,
+                        androidLatestVersionName:
+                          policyLatestName.trim() || undefined,
+                        androidApkDownloadUrl: policyApkUrl.trim() || undefined,
+                        androidReleaseNotes:
+                          policyReleaseNotes.trim() || undefined,
+                      }),
+                    'מדיניות הגרסאות והחסימה באנדרואיד עודכנה'
+                  );
+                }}
+                style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+              >
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+                    gap: 12,
+                  }}
+                >
+                  <NumberInput
+                    label="חסום אפליקציית אנדרואיד עד וכולל (versionCode <=)"
+                    description="0 = ללא חסימה. למשל 10002 יחסום גרסאות 10002 ומטה"
+                    min={0}
+                    max={99999999}
+                    value={policyBlockedUpTo}
+                    onChange={(val) =>
+                      setPolicyBlockedUpTo(Math.max(0, Number(val) || 0))
+                    }
+                  />
+                  <TextInput
+                    dir="ltr"
+                    label="גרסת APK אחרונה להצגה (אופציונלי)"
+                    placeholder="למשל 1.0.3 (ברירת מחדל: אוטומטי)"
+                    value={policyLatestName}
+                    onChange={(e) => setPolicyLatestName(e.currentTarget.value)}
+                  />
+                  <TextInput
+                    dir="ltr"
+                    label="versionCode אחרון (אופציונלי)"
+                    placeholder="למשל 10003"
+                    value={policyLatestCode}
+                    onChange={(e) =>
+                      setPolicyLatestCode(
+                        e.currentTarget.value.replace(/[^0-9]/g, '')
+                      )
+                    }
+                  />
+                </div>
+
+                <div>
+                  <TextInput
+                    dir="ltr"
+                    label="כתובת הורדת קובץ ה-APK (שמור אצלכם בשרת או Storage)"
+                    description="ניתן להשאיר ריק לזיהוי אוטומטי מקובץ public/downloads/spot-fitness-release.apk או מ-GitHub Releases"
+                    placeholder="/downloads/spot-fitness-release.apk או https://..."
+                    value={policyApkUrl}
+                    onChange={(e) => setPolicyApkUrl(e.currentTarget.value)}
+                  />
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: 8,
+                      flexWrap: 'wrap',
+                      marginTop: 6,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPolicyApkUrl('/downloads/spot-fitness-release.apk')
+                      }
+                      className="btn-surface"
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: 11,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      הגדר נתיב שרת מקומי (/downloads/spot-fitness-release.apk)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPolicyApkUrl('')}
+                      className="btn-surface"
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: 11,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      זיהוי אוטומטי / GitHub Releases
+                    </button>
+                  </div>
+                </div>
+
+                <Textarea
+                  label="הערות גרסה שיוצגו במסך העדכון באנדרואיד (אופציונלי)"
+                  placeholder="מה חדש בעדכון זה..."
+                  minRows={2}
+                  value={policyReleaseNotes}
+                  onChange={(e) => setPolicyReleaseNotes(e.currentTarget.value)}
+                />
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    type="submit"
+                    disabled={isBusy('save-app-policy')}
+                    className="btn-volt"
+                    style={{
+                      padding: '10px 18px',
+                      fontSize: 13,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    {isBusy('save-app-policy') ? (
+                      <BusyIcon size={14} />
+                    ) : (
+                      <Check size={14} />
+                    )}
+                    <span>
+                      {isBusy('save-app-policy')
+                        ? 'שומר מדיניות...'
+                        : 'שמור מדיניות גרסאות וחסימה'}
+                    </span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
 
           <QuickChipsAdminPanel
             scope="global"

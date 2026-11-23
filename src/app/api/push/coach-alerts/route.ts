@@ -5,18 +5,16 @@ export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
 import {
-  clearSessionCookie,
   generateSecureId,
-  getSessionFromRequest,
   sanitizeText,
   verifyCsrfOrigin,
 } from '@/lib/serverAuth';
+import { authenticateActiveSession } from '@/lib/liveAuth';
 import {
   canCoachAccessTrainee,
   canCoachManageGroup,
   createDefaultCoachPushSettings,
   getServerDbState,
-  getSingleCoachFromServer,
   sanitizeCoachPushSettingsForClient,
   updateServerDbState,
 } from '@/lib/serverStore';
@@ -36,23 +34,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const session = getSessionFromRequest(request);
-    if (!session || (session.role !== 'coach' && session.role !== 'admin')) {
+    const auth = await authenticateActiveSession(request, { touchLastSeen: true });
+    if (!auth.ok) {
+      return auth.response;
+    }
+    const session = auth.session;
+    if (session.role !== 'coach' && session.role !== 'admin') {
       return NextResponse.json(
         { error: 'רק מאמן או מנהל ראשי יכולים לנהל התראות בזמן אמת' },
         { status: 403 }
       );
-    }
-
-    if (session.role === 'coach') {
-      const liveCoach = await getSingleCoachFromServer(session.id);
-      if (!liveCoach || liveCoach.status !== 'active') {
-        const res = NextResponse.json(
-          { error: 'חשבון המאמן מושהה' },
-          { status: 403 }
-        );
-        return clearSessionCookie(res);
-      }
     }
 
     const body = (await request.json()) as {

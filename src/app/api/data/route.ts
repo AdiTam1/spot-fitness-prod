@@ -7,12 +7,12 @@ export const fetchCache = 'force-no-store';
 import {
   clearSessionCookie,
   generateSecureId,
-  getSessionFromRequest,
   hashPassword,
   sanitizeNumber,
   sanitizeText,
   verifyCsrfOrigin,
 } from '@/lib/serverAuth';
+import { authenticateActiveSession } from '@/lib/liveAuth';
 import {
   buildCoachDirectory,
   canCoachAccessTrainee,
@@ -42,6 +42,7 @@ import { DEFAULT_TEMPLATES, getTodayIso } from '@/data/israeliFoodCatalog';
 import { diagnoseSupabaseError } from '@/lib/supabase';
 import {
   AccountStatus,
+  AppReleasePolicy,
   CoachOnboardingData,
   CoachProfile,
   DailyLog,
@@ -418,13 +419,11 @@ function buildSanitizedSavedPreset(
 }
 
 export async function GET(request: NextRequest) {
-  const session = getSessionFromRequest(request);
-  if (!session) {
-    return NextResponse.json(
-      { error: 'לא מחובר' },
-      { status: 401, headers: { 'Cache-Control': 'no-store, max-age=0' } }
-    );
+  const auth = await authenticateActiveSession(request, { touchLastSeen: true });
+  if (!auth.ok) {
+    return auth.response;
   }
+  const session = auth.session;
 
   // 1. מתאמן מחובר: מקבל אך ורק את הפרופיל של עצמו + צ'יפים קבוצתיים/כלליים לקונטקסט AI
   if (session.role === 'trainee') {
@@ -524,6 +523,9 @@ export async function GET(request: NextRequest) {
         state.coachPushSettings?.[session.id],
         session.id
       ),
+      appReleasePolicy: state.appReleasePolicy || {
+        androidBlockedUpToVersionCode: 0,
+      },
       role: 'admin',
       dbError,
     },
@@ -536,22 +538,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'בקשה אינה מורשית' }, { status: 403 });
   }
 
-  const session = getSessionFromRequest(request);
-  if (!session) {
-    return NextResponse.json({ error: 'לא מחובר' }, { status: 401 });
+  const auth = await authenticateActiveSession(request, { touchLastSeen: true });
+  if (!auth.ok) {
+    return auth.response;
   }
-
-  // בדיקה חיה שמאמן לא הושהה בזמן אמת
-  if (session.role === 'coach') {
-    const liveCoach = await getSingleCoachFromServer(session.id);
-    if (!liveCoach || liveCoach.status !== 'active') {
-      const res = NextResponse.json(
-        { error: 'חשבון המאמן אינו פעיל' },
-        { status: 403 }
-      );
-      return clearSessionCookie(res);
-    }
-  }
+  const session = auth.session;
 
   try {
     const body = await request.json();
@@ -1902,7 +1893,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, sharedCount });
     }
 
-    // יא. עדכון סטטוס מתאמן (אישור pending / השהיה / הפעלה) - בעלים ראשי או מנהל ראשי בלבד!
+    // יא. עדכון סטטוס מתאמן (אישור pending / חסימה / הפעלה) - בעלים ראשי או מנהל ראשי בלבד!
     if (action === 'update-trainee-status') {
       const traineeId = String(body.traineeId || '');
       const status = body.status as AccountStatus;
@@ -1925,6 +1916,9 @@ export async function POST(request: NextRequest) {
             ? {
                 ...t,
                 status,
+                ...(status === 'paused'
+                  ? { sessionVersion: Math.max(1, Number(t.sessionVersion) || 1) + 1 }
+                  : {}),
                 ...(isSuperAdmin(session) && assignPrimaryCoachId
                   ? { primaryCoachId: assignPrimaryCoachId }
                   : {}),
@@ -1934,6 +1928,30 @@ export async function POST(request: NextRequest) {
       }));
 
       return NextResponse.json({ ok: true });
+    }
+
+    // יא-2. ניתוק מתאמן מרחוק מכל המכשירים המחוברים (Force Logout ללא חסימת חשבון)
+    if (action === 'force-logout-trainee') {
+      const traineeId = String(body.traineeId || '');
+      const target = state.trainees.find((t) => t.id === traineeId);
+      if (!target || !isPrimaryOwnerOfTrainee(session, target)) {
+        return NextResponse.json(
+          { error: 'רק המאמן הראשי של המתאמן או המנהל הראשי רשאים לנתק מתאמן מרחוק' },
+          { status: 403 }
+        );
+      }
+
+      const nextSessionVersion = Math.max(1, Number(target.sessionVersion) || 1) + 1;
+      await updateServerDbState((prev) => ({
+        ...prev,
+        trainees: prev.trainees.map((t) =>
+          t.id === traineeId
+            ? { ...t, sessionVersion: nextSessionVersion }
+            : t
+        ),
+      }));
+
+      return NextResponse.json({ ok: true, sessionVersion: nextSessionVersion });
     }
 
     // יב. איפוס אימייל וסיסמה למתאמן - בעלים ראשי או מנהל ראשי בלבד!
@@ -2094,6 +2112,7 @@ export async function POST(request: NextRequest) {
         phone,
         inviteCode,
         status: 'active',
+        sessionVersion: 1,
       };
 
       const nextState = await updateServerDbState((prev) => ({
@@ -2115,13 +2134,90 @@ export async function POST(request: NextRequest) {
       const nextState = await updateServerDbState((prev) => ({
         ...prev,
         coaches: prev.coaches.map((c) =>
-          c.id === coachId ? { ...c, status } : c
+          c.id === coachId
+            ? {
+                ...c,
+                status,
+                ...(status === 'paused'
+                  ? { sessionVersion: Math.max(1, Number(c.sessionVersion) || 1) + 1 }
+                  : {}),
+              }
+            : c
         ),
       }));
 
       return NextResponse.json({
         ok: true,
         coachDirectory: buildCoachDirectory(nextState),
+      });
+    }
+
+    if (action === 'admin-force-logout-coach') {
+      const coachId = String(body.coachId || '');
+      const targetCoach = state.coaches.find((c) => c.id === coachId);
+      if (!targetCoach) {
+        return NextResponse.json({ error: 'מאמן לא נמצא' }, { status: 404 });
+      }
+      const nextSessionVersion =
+        Math.max(1, Number(targetCoach.sessionVersion) || 1) + 1;
+
+      await updateServerDbState((prev) => ({
+        ...prev,
+        coaches: prev.coaches.map((c) =>
+          c.id === coachId
+            ? { ...c, sessionVersion: nextSessionVersion }
+            : c
+        ),
+      }));
+
+      return NextResponse.json({ ok: true, sessionVersion: nextSessionVersion });
+    }
+
+    if (action === 'admin-update-app-policy') {
+      const blockedUpTo = Math.round(
+        sanitizeNumber(body.androidBlockedUpToVersionCode, 0, 99999999, 0)
+      );
+      const latestCodeRaw =
+        body.androidLatestVersionCode !== undefined &&
+        body.androidLatestVersionCode !== '' &&
+        body.androidLatestVersionCode !== null
+          ? Math.round(sanitizeNumber(body.androidLatestVersionCode, 0, 99999999, 0))
+          : undefined;
+      const latestNameRaw = sanitizeText(body.androidLatestVersionName, 40);
+      const rawUrl =
+        typeof body.androidApkDownloadUrl === 'string'
+          ? body.androidApkDownloadUrl.trim().slice(0, 500)
+          : '';
+      if (
+        rawUrl &&
+        !rawUrl.startsWith('/') &&
+        !/^https?:\/\//i.test(rawUrl)
+      ) {
+        return NextResponse.json(
+          { error: 'קישור ה-APK חייב להתחיל ב-https:// או ב-/ (נתיב יחסי בשרת)' },
+          { status: 400 }
+        );
+      }
+      const releaseNotesRaw = sanitizeText(body.androidReleaseNotes, 400);
+
+      const nextPolicy: AppReleasePolicy = {
+        androidBlockedUpToVersionCode: blockedUpTo,
+        androidLatestVersionCode:
+          latestCodeRaw && latestCodeRaw > 0 ? latestCodeRaw : undefined,
+        androidLatestVersionName: latestNameRaw || undefined,
+        androidApkDownloadUrl: rawUrl || undefined,
+        androidReleaseNotes: releaseNotesRaw || undefined,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await updateServerDbState((prev) => ({
+        ...prev,
+        appReleasePolicy: nextPolicy,
+      }));
+
+      return NextResponse.json({
+        ok: true,
+        appReleasePolicy: nextPolicy,
       });
     }
 

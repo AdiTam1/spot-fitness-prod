@@ -1,6 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import {
   AccountStatus,
+  AppReleasePolicy,
   BodyMeasurementEntry,
   CoachOnboardingData,
   CoachProfile,
@@ -103,6 +104,11 @@ function mapRowToCoach(row: Record<string, unknown>): CoachProfile {
     phone: String(row.phone || ''),
     inviteCode: String(row.invite_code || ''),
     status: row.status === 'paused' ? 'paused' : 'active',
+    sessionVersion:
+      typeof row.session_version === 'number' && Number.isFinite(row.session_version)
+        ? row.session_version
+        : undefined,
+    lastSeenAt: typeof row.last_seen_at === 'string' ? row.last_seen_at : undefined,
     onboarding,
   };
 }
@@ -144,6 +150,8 @@ interface EmbeddedTraineeMeta {
   primaryCoachId?: string;
   sharedCoachIds?: string[];
   groupId?: string | null;
+  sessionVersion?: number;
+  lastSeenAt?: string;
 }
 
 function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
@@ -307,6 +315,17 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
       ? embeddedMeta.pushHistory
       : [],
     logs: rawLogs as TraineeProfile['logs'],
+    sessionVersion: Math.max(
+      1,
+      Number(row.session_version) || 1,
+      Number(embeddedMeta.sessionVersion) || 1
+    ),
+    lastSeenAt:
+      typeof row.last_seen_at === 'string' &&
+      (!embeddedMeta.lastSeenAt ||
+        Date.parse(row.last_seen_at) >= Date.parse(embeddedMeta.lastSeenAt))
+        ? row.last_seen_at
+        : embeddedMeta.lastSeenAt,
   };
 }
 
@@ -372,6 +391,7 @@ export async function loadStateFromSupabase(): Promise<{
   trainees: TraineeProfile[];
   globalQuickChips: QuickContextChip[];
   coachPushSettings: Record<string, CoachPushSubscriptionSettings>;
+  appReleasePolicy?: AppReleasePolicy;
   readErrors: string[];
 }> {
   if (!supabase) {
@@ -382,6 +402,7 @@ export async function loadStateFromSupabase(): Promise<{
       trainees: [],
       globalQuickChips: [],
       coachPushSettings: {},
+      appReleasePolicy: undefined,
       readErrors: [],
     };
   }
@@ -418,6 +439,7 @@ export async function loadStateFromSupabase(): Promise<{
   let fallbackGroups: TraineeGroup[] = [];
   let globalQuickChips: QuickContextChip[] = [];
   let coachPushSettings: Record<string, CoachPushSubscriptionSettings> = {};
+  let appReleasePolicy: AppReleasePolicy | undefined;
 
   if (
     systemMetaRow &&
@@ -429,6 +451,7 @@ export async function loadStateFromSupabase(): Promise<{
       groups?: TraineeGroup[];
       globalQuickChips?: QuickContextChip[];
       coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
+      appReleasePolicy?: AppReleasePolicy;
     };
     if (Array.isArray(metaObj.coaches)) {
       fallbackCoaches = metaObj.coaches;
@@ -445,6 +468,12 @@ export async function loadStateFromSupabase(): Promise<{
     ) {
       coachPushSettings = metaObj.coachPushSettings;
     }
+    if (
+      metaObj.appReleasePolicy &&
+      typeof metaObj.appReleasePolicy === 'object'
+    ) {
+      appReleasePolicy = metaObj.appReleasePolicy;
+    }
   }
 
   const tableCoaches: CoachProfile[] = Array.isArray(coachesRes.data)
@@ -454,12 +483,28 @@ export async function loadStateFromSupabase(): Promise<{
   // מיזוג חכם: אם טבלת coaches החזירה שורות נשתמש בהן + נשלים מאמנים שנשמרו בגיבוי
   const coachMap = new Map<string, CoachProfile>();
   for (const fc of fallbackCoaches) {
-    coachMap.set(fc.id, fc);
+    coachMap.set(fc.id, {
+      ...fc,
+      sessionVersion: fc.sessionVersion ?? 1,
+    });
   }
   for (const tc of tableCoaches) {
     const existingFallback = coachMap.get(tc.id);
+    const mergedSv = Math.max(
+      1,
+      tc.sessionVersion ?? 1,
+      existingFallback?.sessionVersion ?? 1
+    );
+    const mergedLastSeen =
+      tc.lastSeenAt &&
+      (!existingFallback?.lastSeenAt ||
+        Date.parse(tc.lastSeenAt) >= Date.parse(existingFallback.lastSeenAt))
+        ? tc.lastSeenAt
+        : existingFallback?.lastSeenAt;
     coachMap.set(tc.id, {
       ...tc,
+      sessionVersion: mergedSv,
+      lastSeenAt: mergedLastSeen,
       onboarding: tc.onboarding || existingFallback?.onboarding,
     });
   }
@@ -507,8 +552,138 @@ export async function loadStateFromSupabase(): Promise<{
     trainees,
     globalQuickChips,
     coachPushSettings,
+    appReleasePolicy,
     readErrors,
   };
+}
+
+export interface LiveAuthRecord {
+  id: string;
+  role: 'trainee' | 'coach';
+  name: string;
+  status: AccountStatus;
+  sessionVersion: number;
+  lastSeenAt?: string;
+}
+
+export async function loadTraineeLiveAuthState(
+  traineeId: string
+): Promise<LiveAuthRecord | null> {
+  if (!supabase) return null;
+  const fastRes = await supabase
+    .from('trainees')
+    .select('id, status, name, session_version, last_seen_at')
+    .eq('id', traineeId)
+    .maybeSingle();
+
+  if (!fastRes.error && fastRes.data) {
+    return {
+      id: String(fastRes.data.id),
+      role: 'trainee',
+      name: String(fastRes.data.name || 'מתאמן'),
+      status: (fastRes.data.status as AccountStatus) || 'active',
+      sessionVersion: Math.max(1, Number(fastRes.data.session_version) || 1),
+      lastSeenAt:
+        typeof fastRes.data.last_seen_at === 'string'
+          ? fastRes.data.last_seen_at
+          : undefined,
+    };
+  }
+
+  // Fallback אם עמודת session_version טרם הורצה ב-SQL Editor
+  const full = await loadSingleTraineeFromSupabase(traineeId);
+  if (!full) return null;
+  return {
+    id: full.id,
+    role: 'trainee',
+    name: full.name,
+    status: full.status || 'active',
+    sessionVersion: Math.max(1, Number(full.sessionVersion) || 1),
+    lastSeenAt: full.lastSeenAt,
+  };
+}
+
+export async function loadCoachLiveAuthState(
+  coachId: string
+): Promise<LiveAuthRecord | null> {
+  if (!supabase) return null;
+  const fastRes = await supabase
+    .from('coaches')
+    .select('id, status, name, session_version, last_seen_at')
+    .eq('id', coachId)
+    .maybeSingle();
+
+  if (!fastRes.error && fastRes.data) {
+    return {
+      id: String(fastRes.data.id),
+      role: 'coach',
+      name: String(fastRes.data.name || 'מאמן'),
+      status: fastRes.data.status === 'paused' ? 'paused' : 'active',
+      sessionVersion: Math.max(1, Number(fastRes.data.session_version) || 1),
+      lastSeenAt:
+        typeof fastRes.data.last_seen_at === 'string'
+          ? fastRes.data.last_seen_at
+          : undefined,
+    };
+  }
+
+  const full = await loadSingleCoachFromSupabase(coachId);
+  if (!full) return null;
+  return {
+    id: full.id,
+    role: 'coach',
+    name: full.name,
+    status: full.status || 'active',
+    sessionVersion: Math.max(1, Number(full.sessionVersion) || 1),
+    lastSeenAt: full.lastSeenAt,
+  };
+}
+
+export async function touchUserLastSeenInSupabase(
+  role: 'trainee' | 'coach',
+  userId: string,
+  nowIso: string
+): Promise<void> {
+  if (!supabase) return;
+  const table = role === 'trainee' ? 'trainees' : 'coaches';
+  try {
+    await supabase
+      .from(table)
+      .update({ last_seen_at: nowIso })
+      .eq('id', userId);
+  } catch {
+    // שקט: לא חוסם פעילות אם טרם רצה סכמה מעודכנת
+  }
+}
+
+export async function loadAppReleasePolicyFromSupabase(): Promise<AppReleasePolicy> {
+  const defaultPolicy: AppReleasePolicy = {
+    androidBlockedUpToVersionCode: 0,
+  };
+  if (!supabase) return defaultPolicy;
+  try {
+    const { data, error } = await supabase
+      .from('nutrition_templates')
+      .select('meals')
+      .eq('id', SYSTEM_META_TEMPLATE_ID)
+      .maybeSingle();
+    if (error || !data?.meals || typeof data.meals !== 'object') {
+      return defaultPolicy;
+    }
+    const raw = (data.meals as { appReleasePolicy?: AppReleasePolicy })
+      .appReleasePolicy;
+    if (!raw || typeof raw !== 'object') return defaultPolicy;
+    return {
+      ...defaultPolicy,
+      ...raw,
+      androidBlockedUpToVersionCode: Math.max(
+        0,
+        Math.round(Number(raw.androidBlockedUpToVersionCode) || 0)
+      ),
+    };
+  } catch {
+    return defaultPolicy;
+  }
 }
 
 export async function loadSingleTraineeFromSupabase(
@@ -600,6 +775,7 @@ export async function saveSystemMetaBackup(partial: {
   groups?: TraineeGroup[];
   globalQuickChips?: QuickContextChip[];
   coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
+  appReleasePolicy?: AppReleasePolicy;
 }): Promise<{ ok: boolean; error?: string }> {
   const run = async (): Promise<{ ok: boolean; error?: string }> => {
     if (!supabase) return { ok: false, error: 'Supabase client not configured' };
@@ -617,6 +793,7 @@ export async function saveSystemMetaBackup(partial: {
             groups?: TraineeGroup[];
             globalQuickChips?: QuickContextChip[];
             coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
+            appReleasePolicy?: AppReleasePolicy;
           })
         : {};
 
@@ -637,6 +814,10 @@ export async function saveSystemMetaBackup(partial: {
         partial.coachPushSettings !== undefined
           ? partial.coachPushSettings
           : currentMeta.coachPushSettings || {},
+      appReleasePolicy:
+        partial.appReleasePolicy !== undefined
+          ? partial.appReleasePolicy
+          : currentMeta.appReleasePolicy,
     };
 
     const attempts: Record<string, unknown>[] = [
@@ -711,6 +892,15 @@ export async function saveCoachPushSettingsToSupabase(
   }
 }
 
+export async function saveAppReleasePolicyToSupabase(
+  appReleasePolicy: AppReleasePolicy
+) {
+  const res = await saveSystemMetaBackup({ appReleasePolicy });
+  if (!res.ok) {
+    throw new Error(res.error || 'Supabase app release policy save failed');
+  }
+}
+
 export async function saveCoachesToSupabase(
   coaches: CoachProfile[],
   options?: { skipMetaBackup?: boolean }
@@ -722,6 +912,26 @@ export async function saveCoachesToSupabase(
     : await saveSystemMetaBackup({ coaches });
 
   if (coaches.length === 0) return;
+
+  const sessionAwareRows = coaches.map((c) => ({
+    id: c.id,
+    email: c.email,
+    password: c.password || '',
+    name: c.name,
+    avatar: c.avatar,
+    phone: c.phone,
+    invite_code: c.inviteCode,
+    status: c.status,
+    session_version: Math.max(1, Number(c.sessionVersion) || 1),
+    ...(c.lastSeenAt ? { last_seen_at: c.lastSeenAt } : {}),
+    onboarding: c.onboarding || {},
+    updated_at: new Date().toISOString(),
+  }));
+
+  const withSv = await supabase
+    .from('coaches')
+    .upsert(sessionAwareRows, { onConflict: 'id' });
+  if (!withSv.error) return;
 
   const fullRows = coaches.map((c) => ({
     id: c.id,
@@ -942,8 +1152,54 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
       primaryCoachId: t.primaryCoachId || 'coach-admin',
       sharedCoachIds: t.sharedCoachIds || [],
       groupId: t.groupId || null,
+      sessionVersion: Math.max(1, Number(t.sessionVersion) || 1),
+      lastSeenAt: t.lastSeenAt,
     },
   });
+
+  const sessionAwareRows = trainees.map((t) => ({
+    id: t.id,
+    email: t.email,
+    password: t.password,
+    status: t.status || 'active',
+    name: t.name,
+    avatar: t.avatar,
+    phone: t.phone,
+    goal: t.goal,
+    current_weight: t.currentWeight,
+    target_weight: t.targetWeight,
+    tolerance_percent: t.tolerancePercent,
+    primary_coach_id: t.primaryCoachId || 'coach-admin',
+    shared_coach_ids: t.sharedCoachIds || [],
+    group_id: t.groupId || null,
+    workout_template: t.workoutTemplate,
+    rest_template: t.restTemplate,
+    favorite_food_ids: t.favoriteFoodIds,
+    weight_history: t.weightHistory,
+    measurements_history: t.measurementsHistory || [],
+    onboarding: t.onboarding || {},
+    observation_dates: t.observationDates || [],
+    count_observation_in_stats: Boolean(t.countObservationInStats),
+    activity_targets: t.activityTargets || {},
+    enable_workout_rest_split: Boolean(t.enableWorkoutRestSplit),
+    coach_ai_notes: t.coachAiNotes || '',
+    ai_learned_preferences: t.aiLearnedPreferences || [],
+    weekly_check_ins: t.weeklyCheckIns || [],
+    saved_meals: t.savedMeals || [],
+    custom_serving_tools: t.customServingTools || [],
+    custom_food_units: t.customFoodUnits || [],
+    recent_context_chips: t.recentContextChips || [],
+    pending_ai_jobs: t.pendingAiJobs || [],
+    logs: packLogsWithMeta(t),
+    session_version: Math.max(1, Number(t.sessionVersion) || 1),
+    ...(t.lastSeenAt ? { last_seen_at: t.lastSeenAt } : {}),
+    updated_at: new Date().toISOString(),
+  }));
+
+  const withSv = await supabase
+    .from('trainees')
+    .upsert(sessionAwareRows, { onConflict: 'id' });
+  if (!withSv.error) return;
 
   const fullRows = trainees.map((t) => ({
     id: t.id,

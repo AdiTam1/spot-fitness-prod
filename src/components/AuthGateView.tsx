@@ -13,13 +13,19 @@ import {
   ChevronRight,
   Loader2,
 } from 'lucide-react';
-import { AuthSessionUser } from '@/types/nutrition';
+import { AuthRejectionCode, AuthSessionUser } from '@/types/nutrition';
 
 interface AuthGateViewProps {
   onLoginSuccess: (user: AuthSessionUser) => void;
+  sessionNotice?: { code: AuthRejectionCode; message: string } | null;
+  onClearSessionNotice?: () => void;
 }
 
-export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
+export function AuthGateView({
+  onLoginSuccess,
+  sessionNotice,
+  onClearSessionNotice,
+}: AuthGateViewProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [regStep, setRegStep] = useState<1 | 2>(1);
 
@@ -44,6 +50,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
     if (submittingRef.current) return;
     setError(null);
     setPendingNotice(null);
+    onClearSessionNotice?.();
 
     const cleanEmail = email.trim().toLowerCase();
     const cleanPass = password.trim();
@@ -111,6 +118,7 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
     if (submittingRef.current) return;
     setError(null);
     setPendingNotice(null);
+    onClearSessionNotice?.();
 
     if (!regName.trim() || !regEmail.trim() || !regPassword.trim()) {
       setError('נא למלא שם מלא, אימייל וסיסמה');
@@ -202,24 +210,19 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
         />
 
         <div style={{ textAlign: 'center', marginBottom: 14 }}>
-          <div
+          <img
+            src="/app-logo.png"
+            alt="SPOT"
             style={{
-              width: 38,
-              height: 38,
-              borderRadius: 11,
-              background: 'var(--accent-volt)',
-              color: '#ffffff',
-              fontWeight: 900,
-              fontSize: 19,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: 6,
+              width: 54,
+              height: 54,
+              borderRadius: 15,
+              objectFit: 'cover',
+              display: 'inline-block',
+              marginBottom: 8,
               boxShadow: '0 8px 20px rgba(214, 125, 9, 0.32)',
             }}
-          >
-            S
-          </div>
+          />
           <div
             className="num-mono"
             style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.03em' }}
@@ -299,6 +302,35 @@ export function AuthGateView({ onLoginSuccess }: AuthGateViewProps) {
             <span>הרשמת מתאמן</span>
           </button>
         </div>
+
+        {sessionNotice && !error && !pendingNotice && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 8,
+              padding: '10px 12px',
+              borderRadius: 10,
+              background:
+                sessionNotice.code === 'ACCOUNT_BLOCKED'
+                  ? 'rgba(239, 68, 68, 0.14)'
+                  : 'rgba(245, 158, 11, 0.14)',
+              border:
+                sessionNotice.code === 'ACCOUNT_BLOCKED'
+                  ? '1px solid rgba(239, 68, 68, 0.4)'
+                  : '1px solid rgba(245, 158, 11, 0.4)',
+              color:
+                sessionNotice.code === 'ACCOUNT_BLOCKED' ? '#f87171' : '#fbbf24',
+              fontSize: 12.5,
+              fontWeight: 700,
+              marginBottom: 12,
+              lineHeight: 1.5,
+            }}
+          >
+            <ShieldAlert size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>{sessionNotice.message}</span>
+          </div>
+        )}
 
         {error && (
           <div

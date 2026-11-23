@@ -7,17 +7,15 @@ import {
   checkRateLimit,
   clearSessionCookie,
   generateSecureId,
-  getSessionFromRequest,
   hashPassword,
   sanitizeNumber,
   sanitizeText,
   verifyCsrfOrigin,
   verifyPassword,
 } from '@/lib/serverAuth';
+import { authenticateActiveSession } from '@/lib/liveAuth';
 import {
   getServerDbState,
-  getSingleCoachFromServer,
-  getSingleTraineeFromServer,
   updateServerDbState,
 } from '@/lib/serverStore';
 import {
@@ -28,44 +26,27 @@ import {
 import { DEFAULT_TEMPLATES, getTodayIso } from '@/data/israeliFoodCatalog';
 
 export async function GET(request: NextRequest) {
-  const user = getSessionFromRequest(request);
-  if (!user) {
-    return NextResponse.json(
-      { user: null },
+  const auth = await authenticateActiveSession(request, { touchLastSeen: true });
+  if (!auth.ok) {
+    const res = NextResponse.json(
+      {
+        user: null,
+        ...(auth.code !== 'UNAUTHENTICATED'
+          ? {
+              code: auth.code,
+              error: auth.message,
+              suspended: auth.code === 'ACCOUNT_BLOCKED',
+              revoked: auth.code === 'SESSION_REVOKED',
+            }
+          : {}),
+      },
       { headers: { 'Cache-Control': 'no-store, max-age=0' } }
     );
-  }
-
-  // אימות חי למתאמן: אם הושהה או נמחק – הסשן מבוטל מיד (וכן סנכרון שם משתמש עדכני)
-  if (user.role === 'trainee') {
-    const liveTrainee = await getSingleTraineeFromServer(user.id);
-    if (!liveTrainee || liveTrainee.status !== 'active') {
-      const res = NextResponse.json(
-        { user: null, suspended: true },
-        { headers: { 'Cache-Control': 'no-store, max-age=0' } }
-      );
-      return clearSessionCookie(res);
-    }
-    return NextResponse.json(
-      { user: { ...user, name: liveTrainee.name } },
-      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
-    );
-  }
-
-  // אימות חי למאמן: אם המנהל הראשי השהה או מחק את המאמן – הסשן מבוטל מיד
-  if (user.role === 'coach') {
-    const liveCoach = await getSingleCoachFromServer(user.id);
-    if (!liveCoach || liveCoach.status !== 'active') {
-      const res = NextResponse.json(
-        { user: null, suspended: true },
-        { headers: { 'Cache-Control': 'no-store, max-age=0' } }
-      );
-      return clearSessionCookie(res);
-    }
+    return auth.code === 'UNAUTHENTICATED' ? res : clearSessionCookie(res);
   }
 
   return NextResponse.json(
-    { user },
+    { user: { ...auth.session, name: auth.liveName } },
     { headers: { 'Cache-Control': 'no-store, max-age=0' } }
   );
 }
@@ -227,6 +208,7 @@ export async function POST(request: NextRequest) {
           ? [{ date: 'התחלה', weight: currentWeight }]
           : [],
         logs: {},
+        sessionVersion: 1,
       };
 
       await updateServerDbState((prev) => ({
@@ -240,6 +222,7 @@ export async function POST(request: NextRequest) {
         name: newTrainee.name,
         role: 'trainee',
         status: initialStatus,
+        sv: 1,
       };
 
       const res = NextResponse.json({
@@ -303,6 +286,7 @@ export async function POST(request: NextRequest) {
         name: matchedCoach.name,
         role: 'coach',
         status: 'active',
+        sv: Math.max(1, Number(matchedCoach.sessionVersion) || 1),
       };
       const res = NextResponse.json({ user: coachUser });
       return attachSessionCookie(res, coachUser);
@@ -345,6 +329,7 @@ export async function POST(request: NextRequest) {
       name: matchedTrainee.name,
       role: 'trainee',
       status: 'active',
+      sv: Math.max(1, Number(matchedTrainee.sessionVersion) || 1),
     };
 
     const res = NextResponse.json({ user: traineeUser });

@@ -163,6 +163,12 @@ function startMediaRecorderFlow(opts: StartVoiceCaptureOptions): VoiceCaptureCon
               customApiKey: opts.customApiKey,
             }),
           });
+          if (res.status === 401 || res.status === 403) {
+            const { handlePossibleAuthRejection } = await import(
+              '@/lib/webVersionGuard'
+            );
+            if (await handlePossibleAuthRejection(res)) return;
+          }
           const data = (await res.json().catch(() => ({}))) as {
             transcript?: string;
             error?: string;

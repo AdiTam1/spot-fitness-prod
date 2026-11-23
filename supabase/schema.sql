@@ -15,6 +15,8 @@ create table if not exists public.coaches (
   phone text,
   invite_code text unique not null,
   status text not null default 'active', -- 'active' | 'paused'
+  session_version integer not null default 1,
+  last_seen_at timestamptz,
   onboarding jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
@@ -22,6 +24,8 @@ create table if not exists public.coaches (
 alter table public.coaches add column if not exists avatar text not null default 'מ';
 alter table public.coaches add column if not exists phone text;
 alter table public.coaches add column if not exists status text not null default 'active';
+alter table public.coaches add column if not exists session_version integer not null default 1;
+alter table public.coaches add column if not exists last_seen_at timestamptz;
 alter table public.coaches add column if not exists onboarding jsonb not null default '{}'::jsonb;
 alter table public.coaches add column if not exists updated_at timestamptz not null default now();
 
@@ -94,6 +98,8 @@ create table if not exists public.trainees (
   recent_context_chips jsonb not null default '[]'::jsonb,
   pending_ai_jobs jsonb not null default '[]'::jsonb,
   logs jsonb not null default '{}'::jsonb,
+  session_version integer not null default 1,
+  last_seen_at timestamptz,
   updated_at timestamptz not null default now()
 );
 
@@ -126,6 +132,8 @@ alter table public.trainees add column if not exists custom_food_units jsonb not
 alter table public.trainees add column if not exists recent_context_chips jsonb not null default '[]'::jsonb;
 alter table public.trainees add column if not exists pending_ai_jobs jsonb not null default '[]'::jsonb;
 alter table public.trainees add column if not exists logs jsonb not null default '{}'::jsonb;
+alter table public.trainees add column if not exists session_version integer not null default 1;
+alter table public.trainees add column if not exists last_seen_at timestamptz;
 alter table public.trainees add column if not exists updated_at timestamptz not null default now();
 
 -- 5. אינדקסים לביצועים מהירים

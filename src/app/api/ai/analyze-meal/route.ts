@@ -16,15 +16,13 @@ import {
 } from '@/types/nutrition';
 import {
   checkRateLimit,
-  clearSessionCookie,
-  getSessionFromRequest,
   sanitizeNumber,
   sanitizeText,
   verifyCsrfOrigin,
 } from '@/lib/serverAuth';
+import { authenticateActiveSession } from '@/lib/liveAuth';
 import {
   canCoachAccessTrainee,
-  getSingleCoachFromServer,
   getSingleTraineeFromServer,
   updateServerDbState,
 } from '@/lib/serverStore';
@@ -405,35 +403,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'בקשה אינה מורשית' }, { status: 403 });
     }
 
-    // 1. אימות סשן חתום קריפטוגרפית בשרת (HttpOnly Cookie)
-    const sessionUser = getSessionFromRequest(request);
-    if (!sessionUser || sessionUser.status !== 'active') {
-      return NextResponse.json(
-        { error: 'גישה נדחתה: נדרשת התחברות פעילה למערכת לשימוש ב-AI' },
-        { status: 401 }
-      );
+    // 1. אימות סשן חי מלא מול מסד הנתונים (חתימה, סטטוס פעיל ו-sessionVersion)
+    const auth = await authenticateActiveSession(request, { touchLastSeen: true });
+    if (!auth.ok) {
+      return auth.response;
     }
-
-    // אימות חי מול מסד הנתונים שחשבון המתאמן או המאמן לא הושהה או נמחק
-    if (sessionUser.role === 'trainee') {
-      const liveTrainee = await getSingleTraineeFromServer(sessionUser.id);
-      if (!liveTrainee || liveTrainee.status !== 'active') {
-        const res = NextResponse.json(
-          { error: 'החשבון אינו פעיל' },
-          { status: 403 }
-        );
-        return clearSessionCookie(res);
-      }
-    } else if (sessionUser.role === 'coach') {
-      const liveCoach = await getSingleCoachFromServer(sessionUser.id);
-      if (!liveCoach || liveCoach.status !== 'active') {
-        const res = NextResponse.json(
-          { error: 'חשבון המאמן מושהה' },
-          { status: 403 }
-        );
-        return clearSessionCookie(res);
-      }
-    }
+    const sessionUser = auth.session;
 
     // 2. הגנת Rate-Limit על מכסת ה-AI (עד 50 קריאות בשעה למשתמש)
     const rl = checkRateLimit(`ai-${sessionUser.id}`, 50, 3600);

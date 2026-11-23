@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { DEFAULT_TEMPLATES } from '@/data/israeliFoodCatalog';
 import {
+  AppReleasePolicy,
   AuthSessionUser,
   CoachDirectoryItem,
   CoachProfile,
@@ -20,16 +21,22 @@ import {
   deleteTemplateFromSupabase,
   deleteTraineeFromSupabase,
   isSupabaseConfigured,
+  LiveAuthRecord,
+  loadAppReleasePolicyFromSupabase,
+  loadCoachLiveAuthState,
   loadQuickChipsContextForTraineeFromSupabase,
   loadSingleCoachFromSupabase,
   loadSingleTraineeFromSupabase,
   loadStateFromSupabase,
+  loadTraineeLiveAuthState,
+  saveAppReleasePolicyToSupabase,
   saveCoachPushSettingsToSupabase,
   saveCoachesToSupabase,
   saveGlobalQuickChipsToSupabase,
   saveGroupsToSupabase,
   saveTemplatesToSupabase,
   saveTraineesToSupabase,
+  touchUserLastSeenInSupabase,
 } from '@/lib/supabase';
 
 export interface ServerDatabaseState {
@@ -42,6 +49,7 @@ export interface ServerDatabaseState {
   trainees: TraineeProfile[];
   globalQuickChips?: QuickContextChip[];
   coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
+  appReleasePolicy?: AppReleasePolicy;
   readErrors?: string[];
 }
 
@@ -89,6 +97,7 @@ function createCleanInitialState(): ServerDatabaseState {
     trainees: [],
     globalQuickChips: [],
     coachPushSettings: {},
+    appReleasePolicy: { androidBlockedUpToVersionCode: 0 },
   };
 }
 
@@ -184,6 +193,9 @@ export async function getServerDbState(): Promise<ServerDatabaseState> {
       trainees: remote.trainees,
       globalQuickChips: remote.globalQuickChips || [],
       coachPushSettings: remote.coachPushSettings || {},
+      appReleasePolicy: remote.appReleasePolicy || {
+        androidBlockedUpToVersionCode: 0,
+      },
       readErrors: remote.readErrors,
     };
   }
@@ -191,7 +203,87 @@ export async function getServerDbState(): Promise<ServerDatabaseState> {
   const localState = loadLocalServerFile();
   localState.coachEmail = coachEmail;
   localState.coachPasswordHash = coachPasswordHash;
+  if (!localState.appReleasePolicy) {
+    localState.appReleasePolicy = { androidBlockedUpToVersionCode: 0 };
+  }
   return localState;
+}
+
+export async function getAppReleasePolicyFromServer(): Promise<AppReleasePolicy> {
+  if (isSupabaseConfigured) {
+    return await loadAppReleasePolicyFromSupabase();
+  }
+  const state = await getServerDbState();
+  return (
+    state.appReleasePolicy || {
+      androidBlockedUpToVersionCode: 0,
+    }
+  );
+}
+
+export async function getTraineeAuthStateFromServer(
+  traineeId: string
+): Promise<LiveAuthRecord | null> {
+  if (isSupabaseConfigured) {
+    return await loadTraineeLiveAuthState(traineeId);
+  }
+  const state = await getServerDbState();
+  const found = state.trainees.find((t) => t.id === traineeId);
+  if (!found) return null;
+  return {
+    id: found.id,
+    role: 'trainee',
+    name: found.name,
+    status: found.status || 'active',
+    sessionVersion: Math.max(1, Number(found.sessionVersion) || 1),
+    lastSeenAt: found.lastSeenAt,
+  };
+}
+
+export async function getCoachAuthStateFromServer(
+  coachId: string
+): Promise<LiveAuthRecord | null> {
+  if (isSupabaseConfigured) {
+    return await loadCoachLiveAuthState(coachId);
+  }
+  const state = await getServerDbState();
+  const found = state.coaches.find((c) => c.id === coachId);
+  if (!found) return null;
+  return {
+    id: found.id,
+    role: 'coach',
+    name: found.name,
+    status: found.status || 'active',
+    sessionVersion: Math.max(1, Number(found.sessionVersion) || 1),
+    lastSeenAt: found.lastSeenAt,
+  };
+}
+
+export async function touchUserLastSeenOnServer(
+  role: 'trainee' | 'coach',
+  userId: string,
+  prevLastSeenAt?: string
+): Promise<void> {
+  const prevTs = prevLastSeenAt ? Date.parse(prevLastSeenAt) : 0;
+  if (Number.isFinite(prevTs) && prevTs > 0 && Date.now() - prevTs < 45_000) {
+    return;
+  }
+  const nowIso = new Date().toISOString();
+  if (isSupabaseConfigured) {
+    await touchUserLastSeenInSupabase(role, userId, nowIso);
+    return;
+  }
+  const state = loadLocalServerFile();
+  if (role === 'trainee') {
+    state.trainees = state.trainees.map((t) =>
+      t.id === userId ? { ...t, lastSeenAt: nowIso } : t
+    );
+  } else {
+    state.coaches = state.coaches.map((c) =>
+      c.id === userId ? { ...c, lastSeenAt: nowIso } : c
+    );
+  }
+  saveLocalServerFile(state);
 }
 
 export async function getSingleTraineeFromServer(
@@ -266,6 +358,9 @@ export async function updateServerDbState(
     }
     if (next.coachPushSettings !== current.coachPushSettings) {
       tasks.push(saveCoachPushSettingsToSupabase(next.coachPushSettings || {}));
+    }
+    if (next.appReleasePolicy !== current.appReleasePolicy && next.appReleasePolicy) {
+      tasks.push(saveAppReleasePolicyToSupabase(next.appReleasePolicy));
     }
     if (tasks.length > 0) {
       await Promise.all(tasks);

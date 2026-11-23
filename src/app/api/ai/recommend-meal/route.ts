@@ -4,11 +4,11 @@ export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 import {
   checkRateLimit,
-  getSessionFromRequest,
   sanitizeNumber,
   sanitizeText,
   verifyCsrfOrigin,
 } from '@/lib/serverAuth';
+import { authenticateActiveSession } from '@/lib/liveAuth';
 import {
   canCoachAccessTrainee,
   getSingleTraineeFromServer,
@@ -381,10 +381,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'בקשה אינה מורשית' }, { status: 403 });
   }
 
-  const session = getSessionFromRequest(request);
-  if (!session || session.status !== 'active') {
-    return NextResponse.json({ error: 'נדרשת התחברות' }, { status: 401 });
+  const auth = await authenticateActiveSession(request, { touchLastSeen: true });
+  if (!auth.ok) {
+    return auth.response;
   }
+  const session = auth.session;
 
   const rl = checkRateLimit(`ai-rec-${session.id}`, 30, 3600);
   if (!rl.allowed) {

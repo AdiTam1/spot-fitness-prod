@@ -73,6 +73,10 @@ import {
   VoiceCaptureController,
   VoiceCaptureState,
 } from '@/lib/voiceRecorder';
+import {
+  handlePossibleAuthRejection,
+  useSpotUnsavedEditing,
+} from '@/lib/webVersionGuard';
 
 function formatDrawerDateLabel(selectedDate?: string): { dayTag: string; shortDate: string } | null {
   if (!selectedDate || !/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) return null;
@@ -185,6 +189,7 @@ export function AddMealDrawer({
   backgroundAiJobs = [],
   onStartBackgroundAiAnalysis,
 }: AddMealDrawerProps) {
+  useSpotUnsavedEditing('add-meal-drawer', opened);
   const [activeTab, setActiveTab] = useState<string>(initialTab);
   const [items, setItems] = useState<LoggedFoodItem[]>([]);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | undefined>(
@@ -801,6 +806,7 @@ export function AddMealDrawer({
           customApiKey: geminiApiKey,
         }),
       });
+      if (await handlePossibleAuthRejection(res)) return;
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setAiSummary({
@@ -916,6 +922,7 @@ export function AddMealDrawer({
           customApiKey: geminiApiKey,
         }),
       });
+      if (await handlePossibleAuthRejection(res)) return;
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setAiSummary({
@@ -960,6 +967,7 @@ export function AddMealDrawer({
           customApiKey: geminiApiKey,
         }),
       });
+      if (await handlePossibleAuthRejection(res)) return;
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.learnedRule) {
         setLearnedFeedbackBanner({

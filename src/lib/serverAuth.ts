@@ -110,6 +110,7 @@ export function getSessionFromRequest(request: NextRequest): AuthSessionUser | n
 interface ScopedStepsPayload {
   scope: 'steps-sync';
   traineeId: string;
+  sv?: number;
   exp: number;
 }
 
@@ -119,10 +120,14 @@ const STEPS_SYNC_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 ימים לסנכ�
  * יצירת טוקן ייעודי המוגבל אך ורק לסנכרון צעדים של מתאמן ספציפי (ללא גישה לארוחות או הגדרות מאמן).
  * מאפשר ל-WorkManager ברקע לסנכרן גם כשהאפליקציה נהרגה מהזיכרון והעוגייה של WebView טרם נטענה.
  */
-export function signStepsSyncToken(traineeId: string): string {
+export function signStepsSyncToken(
+  traineeId: string,
+  sessionVersion = 1
+): string {
   const payload: ScopedStepsPayload = {
     scope: 'steps-sync',
     traineeId,
+    sv: Math.max(1, Number(sessionVersion) || 1),
     exp: Math.floor(Date.now() / 1000) + STEPS_SYNC_TOKEN_TTL_SECONDS,
   };
   const payloadBase64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -133,7 +138,9 @@ export function signStepsSyncToken(traineeId: string): string {
   return `${payloadBase64}.${signature}`;
 }
 
-export function verifyStepsSyncToken(token: string | undefined | null): string | null {
+export function verifyStepsSyncToken(
+  token: string | undefined | null
+): { traineeId: string; sv: number } | null {
   if (!token || !token.includes('.')) return null;
   try {
     const [payloadBase64, providedSig] = token.split('.');
@@ -164,7 +171,10 @@ export function verifyStepsSyncToken(token: string | undefined | null): string |
       return null;
     }
 
-    return decoded.traineeId;
+    return {
+      traineeId: decoded.traineeId,
+      sv: Math.max(1, Number(decoded.sv) || 1),
+    };
   } catch {
     return null;
   }

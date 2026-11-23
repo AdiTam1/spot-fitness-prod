@@ -6,10 +6,10 @@ export const fetchCache = 'force-no-store';
 
 import {
   generateSecureId,
-  getSessionFromRequest,
   sanitizeText,
   verifyCsrfOrigin,
 } from '@/lib/serverAuth';
+import { authenticateActiveSession } from '@/lib/liveAuth';
 import {
   canCoachAccessTrainee,
   getSingleTraineeFromServer,
@@ -34,8 +34,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const session = getSessionFromRequest(request);
-    if (!session || (session.role !== 'coach' && session.role !== 'admin')) {
+    const auth = await authenticateActiveSession(request, { touchLastSeen: true });
+    if (!auth.ok) {
+      return auth.response;
+    }
+    const session = auth.session;
+    if (session.role !== 'coach' && session.role !== 'admin') {
       return NextResponse.json(
         { error: 'רק מאמן או מנהל ראשי יכולים לשלוח הודעות פוש למתאמנים' },
         { status: 403 }

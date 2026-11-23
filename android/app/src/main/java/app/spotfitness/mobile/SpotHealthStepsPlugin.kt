@@ -13,6 +13,7 @@ import android.provider.Settings
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.FileProvider
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import com.getcapacitor.JSArray
@@ -26,6 +27,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 
 @CapacitorPlugin(name = "SpotHealthSteps")
 class SpotHealthStepsPlugin : Plugin(), SensorEventListener {
@@ -384,6 +390,216 @@ class SpotHealthStepsPlugin : Plugin(), SensorEventListener {
                 put("versionName", vName)
             }
         )
+    }
+
+    @PluginMethod
+    fun canRequestPackageInstalls(call: PluginCall) {
+        val granted = try {
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+                context.packageManager.canRequestPackageInstalls()
+        } catch (_: Throwable) {
+            false
+        }
+        call.resolve(JSObject().put("granted", granted))
+    }
+
+    @PluginMethod
+    fun openUnknownSourcesSettings(call: PluginCall) {
+        val opened = openInstallUnknownSourcesIntent()
+        call.resolve(JSObject().put("opened", opened))
+    }
+
+    private fun openInstallUnknownSourcesIntent(): Boolean {
+        return try {
+            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:${context.packageName}")
+                )
+            } else {
+                Intent(Settings.ACTION_SECURITY_SETTINGS)
+            }
+            bridge.activity.startActivity(intent)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    @PluginMethod
+    fun downloadAndInstallApk(call: PluginCall) {
+        val url = call.getString("url", "")?.trim().orEmpty()
+        if (!url.startsWith("https://", ignoreCase = true) &&
+            !url.startsWith("http://", ignoreCase = true)
+        ) {
+            call.reject("כתובת הורדת ה-APK אינה תקינה")
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val canInstall = try {
+                context.packageManager.canRequestPackageInstalls()
+            } catch (_: Throwable) {
+                false
+            }
+            if (!canInstall) {
+                val opened = openInstallUnknownSourcesIntent()
+                call.resolve(
+                    JSObject().apply {
+                        put("started", false)
+                        put("needsInstallPermission", true)
+                        put("settingsOpened", opened)
+                    }
+                )
+                return
+            }
+        }
+
+        pluginScope.launch {
+            try {
+                val apkFile = withContext(Dispatchers.IO) {
+                    downloadApkFileWithRedirects(url)
+                }
+
+                val apkUri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    apkFile
+                )
+
+                val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(apkUri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                bridge.activity.startActivity(installIntent)
+
+                call.resolve(
+                    JSObject().apply {
+                        put("started", true)
+                        put("needsInstallPermission", false)
+                        put("bytes", apkFile.length())
+                    }
+                )
+            } catch (e: Exception) {
+                call.reject(e.message ?: "שגיאה בהורדת או התקנת העדכון")
+            }
+        }
+    }
+
+    private fun downloadApkFileWithRedirects(initialUrl: String): File {
+        var currentUrl = initialUrl
+        var connection: HttpURLConnection? = null
+        var hops = 0
+
+        while (hops < 6) {
+            val conn = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
+                instanceFollowRedirects = false
+                connectTimeout = 15_000
+                readTimeout = 60_000
+                setRequestProperty("User-Agent", "SpotFitness-Android-Updater/1.0")
+                setRequestProperty("Accept", "application/vnd.android.package-archive, */*")
+            }
+            val status = conn.responseCode
+            if (status == HttpURLConnection.HTTP_MOVED_PERM ||
+                status == HttpURLConnection.HTTP_MOVED_TEMP ||
+                status == HttpURLConnection.HTTP_SEE_OTHER ||
+                status == 307 ||
+                status == 308
+            ) {
+                val location = conn.getHeaderField("Location")
+                conn.disconnect()
+                if (location.isNullOrBlank()) {
+                    throw IllegalStateException("הפניית הורדה חסרה מהשרת")
+                }
+                currentUrl = URL(URL(currentUrl), location).toString()
+                hops += 1
+                continue
+            }
+            connection = conn
+            break
+        }
+
+        val activeConn = connection ?: throw IllegalStateException("יותר מדי הפניות בהורדת הקובץ")
+        try {
+            val code = activeConn.responseCode
+            if (code !in 200..299) {
+                throw IllegalStateException("השרת החזיר שגיאה ($code) בהורדת ה-APK")
+            }
+
+            val totalBytes = activeConn.contentLengthLong
+            val tempFile = File(context.cacheDir, "spot-fitness-update.apk.tmp")
+            val finalFile = File(context.cacheDir, "spot-fitness-update.apk")
+            if (tempFile.exists()) tempFile.delete()
+
+            var downloadedBytes = 0L
+            var firstTwoBytesRead = 0
+            val sigBytes = ByteArray(2)
+            var lastEmitMs = 0L
+
+            activeConn.inputStream.use { input ->
+                FileOutputStream(tempFile).use { output ->
+                    val buffer = ByteArray(16 * 1024)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        if (read == 0) continue
+                        if (firstTwoBytesRead < 2) {
+                            for (i in 0 until minOf(read, 2 - firstTwoBytesRead)) {
+                                sigBytes[firstTwoBytesRead + i] = buffer[i]
+                            }
+                            firstTwoBytesRead += minOf(read, 2 - firstTwoBytesRead)
+                        }
+                        output.write(buffer, 0, read)
+                        downloadedBytes += read
+
+                        val now = System.currentTimeMillis()
+                        if (now - lastEmitMs >= 120L) {
+                            lastEmitMs = now
+                            val pct = if (totalBytes > 0) {
+                                ((downloadedBytes * 100L) / totalBytes).toInt().coerceIn(0, 99)
+                            } else {
+                                -1
+                            }
+                            notifyListeners(
+                                "apkDownloadProgress",
+                                JSObject().apply {
+                                    put("percent", pct)
+                                    put("loadedBytes", downloadedBytes)
+                                    put("totalBytes", totalBytes)
+                                }
+                            )
+                        }
+                    }
+                    output.flush()
+                }
+            }
+
+            // בדיקה שהקובץ שהורד הוא אכן קובץ APK/ZIP תקין (חותמת PK) ולא דף שגיאה HTML
+            if (downloadedBytes < 100_000L || sigBytes[0] != 0x50.toByte() || sigBytes[1] != 0x4B.toByte()) {
+                tempFile.delete()
+                throw IllegalStateException("הקובץ שהורד אינו קובץ APK תקין — בדוק את כתובת השרת")
+            }
+
+            if (finalFile.exists()) finalFile.delete()
+            if (!tempFile.renameTo(finalFile)) {
+                tempFile.copyTo(finalFile, overwrite = true)
+                tempFile.delete()
+            }
+
+            notifyListeners(
+                "apkDownloadProgress",
+                JSObject().apply {
+                    put("percent", 100)
+                    put("loadedBytes", downloadedBytes)
+                    put("totalBytes", downloadedBytes)
+                }
+            )
+
+            return finalFile
+        } finally {
+            activeConn.disconnect()
+        }
     }
 
     private fun snapshotToJson(s: StepEngineStatusSnapshot): JSObject {

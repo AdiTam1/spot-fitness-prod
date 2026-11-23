@@ -5,12 +5,11 @@ export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
 import {
-  clearSessionCookie,
   generateSecureId,
-  getSessionFromRequest,
   sanitizeText,
   verifyCsrfOrigin,
 } from '@/lib/serverAuth';
+import { authenticateActiveSession } from '@/lib/liveAuth';
 import {
   getSingleTraineeFromServer,
   updateServerDbState,
@@ -32,18 +31,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const session = getSessionFromRequest(request);
-    if (!session || session.role !== 'trainee') {
+    const auth = await authenticateActiveSession(request, { touchLastSeen: true });
+    if (!auth.ok) {
+      return auth.response;
+    }
+    const session = auth.session;
+    if (session.role !== 'trainee') {
       return NextResponse.json(
         { error: 'נדרשת התחברות כמתאמן' },
-        { status: 401 }
+        { status: 403 }
       );
-    }
-
-    const liveTrainee = await getSingleTraineeFromServer(session.id);
-    if (!liveTrainee || liveTrainee.status !== 'active') {
-      const res = NextResponse.json({ error: 'החשבון אינו פעיל' }, { status: 403 });
-      return clearSessionCookie(res);
     }
 
     const body = (await request.json()) as {
@@ -231,6 +228,10 @@ export async function POST(request: NextRequest) {
     }
 
     if (op === 'update-preferences') {
+      const liveTrainee = await getSingleTraineeFromServer(session.id);
+      if (!liveTrainee || liveTrainee.status !== 'active') {
+        return NextResponse.json({ error: 'החשבון אינו פעיל' }, { status: 403 });
+      }
       const nextPrefs = {
         aiMealReady:
           typeof body.aiMealReady === 'boolean'
@@ -251,6 +252,10 @@ export async function POST(request: NextRequest) {
     }
 
     if (op === 'test-self') {
+      const liveTrainee = await getSingleTraineeFromServer(session.id);
+      if (!liveTrainee || liveTrainee.status !== 'active') {
+        return NextResponse.json({ error: 'החשבון אינו פעיל' }, { status: 403 });
+      }
       if (!hasAnyRegisteredPushTarget(liveTrainee)) {
         return NextResponse.json(
           {

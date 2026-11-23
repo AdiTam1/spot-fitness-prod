@@ -1,7 +1,17 @@
 /** @type {import('next').NextConfig} */
+const RESOLVED_WEB_BUILD_ID = (
+  process.env.VERCEL_DEPLOYMENT_ID ||
+  process.env.VERCEL_GIT_COMMIT_SHA ||
+  process.env.NEXT_BUILD_ID ||
+  `spot-${Date.now()}`
+).slice(0, 32);
+
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false, // מסתיר את הכותרת X-Powered-By: Next.js מסורקי תוקפים
+  env: {
+    NEXT_PUBLIC_WEB_BUILD_ID: RESOLVED_WEB_BUILD_ID,
+  },
   experimental: {
     optimizePackageImports: ['@mantine/core', '@mantine/hooks', 'lucide-react'],
     serverComponentsExternalPackages: ['web-push'],
