@@ -16,10 +16,12 @@ import {
   updateServerDbState,
 } from '@/lib/serverStore';
 import {
-  getFcmConfigErrorMessage,
-  sendFcmNotificationToTokens,
-} from '@/lib/fcmServer';
+  hasAnyRegisteredPushTarget,
+  sendUnifiedPushToTrainee,
+  stripDeadPushTargetsFromTrainee,
+} from '@/lib/pushDispatcher';
 import { getTodayIso } from '@/data/israeliFoodCatalog';
+import { TraineeWebPushSubscriptionEntry } from '@/types/nutrition';
 
 export async function POST(request: NextRequest) {
   try {
@@ -48,6 +50,16 @@ export async function POST(request: NextRequest) {
       op?: string;
       token?: string;
       deviceLabel?: string;
+      platform?: string;
+      isDeclarativeCapable?: boolean;
+      endpoint?: string;
+      subscription?: {
+        endpoint?: string;
+        keys?: {
+          p256dh?: string;
+          auth?: string;
+        };
+      };
       isInForeground?: boolean;
       aiMealReady?: boolean;
       coachMessages?: boolean;
@@ -114,6 +126,93 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    if (op === 'register-web-push') {
+      const subEndpoint =
+        typeof body.subscription?.endpoint === 'string'
+          ? body.subscription.endpoint.trim().slice(0, 1000)
+          : '';
+      const p256dh =
+        typeof body.subscription?.keys?.p256dh === 'string'
+          ? body.subscription.keys.p256dh.trim().slice(0, 300)
+          : '';
+      const auth =
+        typeof body.subscription?.keys?.auth === 'string'
+          ? body.subscription.keys.auth.trim().slice(0, 200)
+          : '';
+
+      if (
+        !subEndpoint.startsWith('https://') ||
+        subEndpoint.length < 24 ||
+        !p256dh ||
+        !auth
+      ) {
+        return NextResponse.json(
+          { error: 'מנוי Web Push אינו תקין' },
+          { status: 400 }
+        );
+      }
+
+      const platform: TraineeWebPushSubscriptionEntry['platform'] =
+        body.platform === 'ios-pwa' ? 'ios-pwa' : 'web';
+      const deviceLabel =
+        sanitizeText(
+          body.deviceLabel ||
+            (platform === 'ios-pwa' ? 'iPhone (מסך הבית)' : 'דפדפן Web'),
+          60
+        ) || (platform === 'ios-pwa' ? 'iPhone (מסך הבית)' : 'דפדפן Web');
+
+      const newEntry: TraineeWebPushSubscriptionEntry = {
+        endpoint: subEndpoint,
+        keys: { p256dh, auth },
+        platform,
+        updatedAt: nowIso,
+        deviceLabel,
+        isDeclarativeCapable: Boolean(body.isDeclarativeCapable),
+      };
+
+      await updateServerDbState((prev) => ({
+        ...prev,
+        trainees: prev.trainees.map((t) => {
+          if (t.id !== session.id) return t;
+          const remaining = (t.webPushSubscriptions || []).filter(
+            (x) => x.endpoint !== subEndpoint
+          );
+          return {
+            ...t,
+            webPushSubscriptions: [newEntry, ...remaining].slice(0, 8),
+          };
+        }),
+      }));
+
+      return NextResponse.json({ ok: true });
+    }
+
+    if (op === 'unregister-web-push') {
+      const targetEndpoint =
+        typeof body.endpoint === 'string'
+          ? body.endpoint.trim().slice(0, 1000)
+          : '';
+      await updateServerDbState((prev) => ({
+        ...prev,
+        trainees: prev.trainees.map((t) => {
+          if (t.id !== session.id) return t;
+          return {
+            ...t,
+            webPushSubscriptions: targetEndpoint
+              ? (t.webPushSubscriptions || []).filter(
+                  (x) => x.endpoint !== targetEndpoint
+                )
+              : [],
+            lastForegroundState: {
+              isInForeground: false,
+              updatedAt: nowIso,
+            },
+          };
+        }),
+      }));
+      return NextResponse.json({ ok: true });
+    }
+
     if (op === 'heartbeat') {
       await updateServerDbState((prev) => ({
         ...prev,
@@ -152,54 +251,55 @@ export async function POST(request: NextRequest) {
     }
 
     if (op === 'test-self') {
-      const configError = getFcmConfigErrorMessage();
-      if (configError) {
-        return NextResponse.json({ error: configError }, { status: 422 });
-      }
-      const tokens = (liveTrainee.fcmTokens || []).map((t) => t.token);
-      if (tokens.length === 0) {
+      if (!hasAnyRegisteredPushTarget(liveTrainee)) {
         return NextResponse.json(
           {
             error:
-              'המכשיר טרם נרשם לקבלת התראות. ודא שהאפליקציה הורשאה להתראות ושקובץ google-services.json חובר.',
+              'המכשיר טרם נרשם לקבלת התראות. יש לאשר התראות קודם במסך הפרופיל.',
           },
           { status: 400 }
         );
       }
 
-      const sendRes = await sendFcmNotificationToTokens(tokens, {
+      const sendRes = await sendUnifiedPushToTrainee(liveTrainee, {
+        pushId: generateSecureId('push'),
         title: 'בדיקת התראות SPOT 💪',
         body: `${liveTrainee.name}, התראות הדחיפה מוגדרות ועובדות במכשיר שלך!`,
-        channelId: 'spot_coach_alerts',
-        data: {
-          spotPushId: generateSecureId('push'),
-          spotKind: 'test',
-          spotScreen: 'profile',
-          spotDate: getTodayIso(),
-        },
+        kind: 'test',
+        screen: 'profile',
+        date: getTodayIso(),
+        origin: request.nextUrl.origin,
       });
 
-      if (sendRes.invalidTokens.length > 0) {
-        const deadSet = new Set(sendRes.invalidTokens);
+      if (
+        sendRes.invalidFcmTokens.length > 0 ||
+        sendRes.expiredWebEndpoints.length > 0
+      ) {
         await updateServerDbState((prev) => ({
           ...prev,
           trainees: prev.trainees.map((t) =>
             t.id === session.id
-              ? {
-                  ...t,
-                  fcmTokens: (t.fcmTokens || []).filter(
-                    (x) => !deadSet.has(x.token)
-                  ),
-                }
+              ? stripDeadPushTargetsFromTrainee(
+                  t,
+                  sendRes.invalidFcmTokens,
+                  sendRes.expiredWebEndpoints
+                )
               : t
           ),
         }));
       }
 
+      if (sendRes.sentCount === 0 && sendRes.configError) {
+        return NextResponse.json(
+          { error: sendRes.configError },
+          { status: 422 }
+        );
+      }
+
       if (sendRes.sentCount === 0) {
         return NextResponse.json(
           {
-            error: `שליחת התראת הבדיקה נכשלה (${sendRes.errors[0] || 'שגיאת FCM'})`,
+            error: `שליחת התראת הבדיקה נכשלה (${sendRes.errors[0] || 'שגיאת שליחה'})`,
           },
           { status: 502 }
         );

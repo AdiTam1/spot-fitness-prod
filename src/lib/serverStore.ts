@@ -437,6 +437,14 @@ export function sanitizeTraineeForClient(
       ...entry,
       token: entry.token ? `fcm_${entry.token.slice(-6)}` : '',
     })),
+    // מסתיר מפתחות הצפנת Web Push ו-endpoint מלא מפני חשיפה לדפדפן
+    webPushSubscriptions: (trainee.webPushSubscriptions || []).map(
+      (sub, idx) => ({
+        ...sub,
+        endpoint: `webpush_${idx}_${sub.endpoint ? sub.endpoint.slice(-8) : ''}`,
+        keys: { p256dh: '', auth: '' },
+      })
+    ),
   };
 }
 

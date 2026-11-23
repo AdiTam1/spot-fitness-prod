@@ -124,6 +124,7 @@ interface EmbeddedTraineeMeta {
   recentContextChips?: QuickContextChip[];
   pendingAiJobs?: PendingAiMealJob[];
   fcmTokens?: TraineeProfile['fcmTokens'];
+  webPushSubscriptions?: TraineeProfile['webPushSubscriptions'];
   pushPreferences?: TraineeProfile['pushPreferences'];
   lastForegroundState?: TraineeProfile['lastForegroundState'];
   pushHistory?: TraineeProfile['pushHistory'];
@@ -276,6 +277,9 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
       : [],
     fcmTokens: Array.isArray(embeddedMeta.fcmTokens)
       ? embeddedMeta.fcmTokens
+      : [],
+    webPushSubscriptions: Array.isArray(embeddedMeta.webPushSubscriptions)
+      ? embeddedMeta.webPushSubscriptions
       : [],
     pushPreferences: embeddedMeta.pushPreferences || {
       aiMealReady: true,
@@ -871,6 +875,7 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
       recentContextChips: t.recentContextChips || [],
       pendingAiJobs: t.pendingAiJobs || [],
       fcmTokens: t.fcmTokens || [],
+      webPushSubscriptions: t.webPushSubscriptions || [],
       pushPreferences: t.pushPreferences || {
         aiMealReady: true,
         coachMessages: true,

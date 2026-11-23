@@ -30,11 +30,12 @@ import {
   cleanGeminiKey,
 } from '@/lib/geminiClient';
 import {
-  isFcmConfigured,
-  sendFcmNotificationToTokens,
-  shouldNotifyAiBackgroundCompletion,
-} from '@/lib/fcmServer';
+  sendUnifiedPushToTrainee,
+  shouldNotifyUnifiedAiCompletion,
+  stripDeadPushTargetsFromTrainee,
+} from '@/lib/pushDispatcher';
 
+export const runtime = 'nodejs';
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
@@ -630,12 +631,12 @@ export async function POST(request: NextRequest) {
         }),
       }));
 
-      // פוש אוטומטי אך ורק כשהפענוח הצליח והמתאמן יצא מהאפליקציה בזמן הטעינה
-      if (succeeded && isFcmConfigured()) {
+      // פוש אוטומטי (אנדרואיד FCM + אייפון PWA / דפדפן) אך ורק כשהפענוח הצליח והמתאמן יצא מהאפליקציה בזמן הטעינה
+      if (succeeded) {
         const latestTrainee = updatedState.trainees.find(
           (t) => t.id === authorizedBgJob!.targetTraineeId
         );
-        if (latestTrainee && shouldNotifyAiBackgroundCompletion(latestTrainee)) {
+        if (latestTrainee && shouldNotifyUnifiedAiCompletion(latestTrainee)) {
           const itemsList = params.items!;
           const dishNames = itemsList.map((i) => i.name).filter(Boolean);
           const dishLabel =
@@ -650,34 +651,31 @@ export async function POST(request: NextRequest) {
             itemsList.reduce((sum, i) => sum + (Number(i.macros?.calories) || 0), 0)
           );
 
-          const sendRes = await sendFcmNotificationToTokens(
-            (latestTrainee.fcmTokens || []).map((x) => x.token),
-            {
-              title: `זיהוי ${finishedJob.mealSlotName} הושלם ✨`,
-              body: `זיהוי הארוחה הושלם: "${dishLabel} (${totalCalories} קלוריות)"`,
-              channelId: 'spot_ai_meals',
-              data: {
-                spotPushId: finishedJob.id,
-                spotKind: 'ai-meal',
-                spotScreen: 'meal',
-                spotMealSlotId: finishedJob.mealSlotId,
-                spotDate: finishedJob.date,
-              },
-            }
-          ).catch(() => null);
+          const sendRes = await sendUnifiedPushToTrainee(latestTrainee, {
+            pushId: finishedJob.id,
+            title: `זיהוי ${finishedJob.mealSlotName} הושלם ✨`,
+            body: `זיהוי הארוחה הושלם: "${dishLabel} (${totalCalories} קלוריות)"`,
+            kind: 'ai-meal',
+            screen: 'meal',
+            mealSlotId: finishedJob.mealSlotId,
+            date: finishedJob.date,
+            origin: request.nextUrl.origin,
+          }).catch(() => null);
 
-          if (sendRes && sendRes.invalidTokens.length > 0) {
-            const deadSet = new Set(sendRes.invalidTokens);
+          if (
+            sendRes &&
+            (sendRes.invalidFcmTokens.length > 0 ||
+              sendRes.expiredWebEndpoints.length > 0)
+          ) {
             await updateServerDbState((prev) => ({
               ...prev,
               trainees: prev.trainees.map((t) =>
                 t.id === latestTrainee.id
-                  ? {
-                      ...t,
-                      fcmTokens: (t.fcmTokens || []).filter(
-                        (x) => !deadSet.has(x.token)
-                      ),
-                    }
+                  ? stripDeadPushTargetsFromTrainee(
+                      t,
+                      sendRes.invalidFcmTokens,
+                      sendRes.expiredWebEndpoints
+                    )
                   : t
               ),
             })).catch(() => {});

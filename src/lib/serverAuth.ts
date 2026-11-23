@@ -3,7 +3,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AuthSessionUser } from '@/types/nutrition';
 
 const SESSION_COOKIE_NAME = 'spot_session_token';
-const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 ימים (שומר חיבור גם אחרי רענון דף וסגירת דפדפן)
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 ימים למאמנים ומנהלים
+const TRAINEE_SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 ימים למתאמנים (רציפות בחיבור PWA באייפון ובאפליקציה)
+
+function getSessionTtlSeconds(role: AuthSessionUser['role']): number {
+  return role === 'trainee' ? TRAINEE_SESSION_TTL_SECONDS : SESSION_TTL_SECONDS;
+}
 
 function getServerSecret(): string {
   return (
@@ -50,7 +55,7 @@ interface SignedPayload {
 export function signSessionToken(user: AuthSessionUser): string {
   const payload: SignedPayload = {
     user,
-    exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
+    exp: Math.floor(Date.now() / 1000) + getSessionTtlSeconds(user.role),
   };
   const payloadBase64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const signature = crypto
@@ -177,7 +182,7 @@ export function attachSessionCookie(
     sameSite: 'lax', // מגן מפני התקפות CSRF
     secure: process.env.NODE_ENV === 'production', // HTTPS בלבד בפרודקשן
     path: '/',
-    maxAge: SESSION_TTL_SECONDS,
+    maxAge: getSessionTtlSeconds(user.role),
   });
   return response;
 }

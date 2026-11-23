@@ -351,6 +351,18 @@ export interface TraineeFcmTokenEntry {
   deviceLabel?: string;
 }
 
+export interface TraineeWebPushSubscriptionEntry {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+  platform: 'ios-pwa' | 'web';
+  updatedAt: string;
+  deviceLabel?: string;
+  isDeclarativeCapable?: boolean;
+}
+
 export interface TraineePushPreferences {
   aiMealReady: boolean;
   coachMessages: boolean;
@@ -400,6 +412,7 @@ export interface TraineeProfile {
   recentContextChips?: QuickContextChip[]; // צ'יפים מהירים פר-משתמש מסודרים לפי MRU
   pendingAiJobs?: PendingAiMealJob[]; // משימות פענוח AI שמתבצעות ברקע ומסתנכרנות אוטומטית ליומן
   fcmTokens?: TraineeFcmTokenEntry[]; // טוקנים רשומים של אפליקציית האנדרואיד (FCM)
+  webPushSubscriptions?: TraineeWebPushSubscriptionEntry[]; // מנויי Web Push (אייפון במסך הבית + דפדפנים)
   pushPreferences?: TraineePushPreferences; // העדפות פושים של המתאמן
   lastForegroundState?: { isInForeground: boolean; updatedAt: string }; // מעקב חזית כדי לשלוח פוש AI רק אם יצא
   pushHistory?: TraineePushHistoryEntry[]; // היסטוריית פושים אחרונים למתאמן

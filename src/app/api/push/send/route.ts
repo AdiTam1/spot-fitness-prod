@@ -16,9 +16,10 @@ import {
   updateServerDbState,
 } from '@/lib/serverStore';
 import {
-  getFcmConfigErrorMessage,
-  sendFcmNotificationToTokens,
-} from '@/lib/fcmServer';
+  hasAnyRegisteredPushTarget,
+  sendUnifiedPushToTrainee,
+  stripDeadPushTargetsFromTrainee,
+} from '@/lib/pushDispatcher';
 import { getTodayIso } from '@/data/israeliFoodCatalog';
 import { TraineePushHistoryEntry } from '@/types/nutrition';
 
@@ -81,17 +82,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const configError = getFcmConfigErrorMessage();
-    if (configError) {
-      return NextResponse.json({ error: configError }, { status: 422 });
-    }
-
-    const tokens = (targetTrainee.fcmTokens || []).map((t) => t.token);
-    if (tokens.length === 0) {
+    if (!hasAnyRegisteredPushTarget(targetTrainee)) {
       return NextResponse.json(
         {
           error:
-            'למתאמן זה אין עדיין מכשיר אנדרואיד רשום להתראות (צריך לפתוח את ה-APK ולאשר התראות).',
+            'למתאמן זה אין עדיין מכשיר רשום להתראות (יש לאשר התראות באפליקציית האנדרואיד או בהוספה למסך הבית באייפון / דפדפן).',
         },
         { status: 400 }
       );
@@ -108,17 +103,15 @@ export async function POST(request: NextRequest) {
     const pushId = generateSecureId('push');
     const sentAt = new Date().toISOString();
 
-    const sendRes = await sendFcmNotificationToTokens(tokens, {
+    const sendRes = await sendUnifiedPushToTrainee(targetTrainee, {
+      pushId,
       title: messageTitle,
       body: messageBody,
-      channelId: 'spot_coach_alerts',
-      data: {
-        spotPushId: pushId,
-        spotKind: 'coach',
-        spotScreen: targetScreen,
-        spotMealSlotId: targetMealSlotId || '',
-        spotDate: targetDate,
-      },
+      kind: 'coach',
+      screen: targetScreen,
+      mealSlotId: targetMealSlotId,
+      date: targetDate,
+      origin: request.nextUrl.origin,
     });
 
     const historyEntry: TraineePushHistoryEntry = {
@@ -131,30 +124,36 @@ export async function POST(request: NextRequest) {
       targetMealSlotId,
     };
 
-    const deadSet = new Set(sendRes.invalidTokens);
     await updateServerDbState((prev) => ({
       ...prev,
       trainees: prev.trainees.map((t) => {
         if (t.id !== traineeId) return t;
-        const cleanedTokens =
-          deadSet.size > 0
-            ? (t.fcmTokens || []).filter((x) => !deadSet.has(x.token))
-            : t.fcmTokens || [];
+        const cleaned = stripDeadPushTargetsFromTrainee(
+          t,
+          sendRes.invalidFcmTokens,
+          sendRes.expiredWebEndpoints
+        );
         return {
-          ...t,
-          fcmTokens: cleanedTokens,
+          ...cleaned,
           pushHistory:
             sendRes.sentCount > 0
-              ? [historyEntry, ...(t.pushHistory || [])].slice(0, 20)
-              : t.pushHistory || [],
+              ? [historyEntry, ...(cleaned.pushHistory || [])].slice(0, 20)
+              : cleaned.pushHistory || [],
         };
       }),
     }));
 
+    if (sendRes.sentCount === 0 && sendRes.configError) {
+      return NextResponse.json(
+        { error: sendRes.configError },
+        { status: 422 }
+      );
+    }
+
     if (sendRes.sentCount === 0) {
       return NextResponse.json(
         {
-          error: `שליחת ההודעה נכשלה (${sendRes.errors[0] || 'הטוקן אינו תקף במכשיר'})`,
+          error: `שליחת ההודעה נכשלה (${sendRes.errors[0] || 'המנוי פג תוקף במכשיר'})`,
         },
         { status: 502 }
       );

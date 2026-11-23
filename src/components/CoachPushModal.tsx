@@ -57,7 +57,19 @@ export function CoachPushModal({
 
   if (!trainee) return null;
 
-  const hasDevice = (trainee.fcmTokens?.length || 0) > 0;
+  const androidCount = trainee.fcmTokens?.length || 0;
+  const iosPwaCount = (trainee.webPushSubscriptions || []).filter(
+    (s) => s.platform === 'ios-pwa'
+  ).length;
+  const webBrowserCount = (trainee.webPushSubscriptions || []).filter(
+    (s) => s.platform !== 'ios-pwa'
+  ).length;
+  const deviceParts: string[] = [];
+  if (androidCount > 0) deviceParts.push(`${androidCount} אנדרואיד`);
+  if (iosPwaCount > 0) deviceParts.push(`${iosPwaCount} אייפון (מסך הבית)`);
+  if (webBrowserCount > 0) deviceParts.push(`${webBrowserCount} דפדפן`);
+
+  const hasDevice = androidCount + iosPwaCount + webBrowserCount > 0;
   const coachAlertsEnabled = trainee.pushPreferences?.coachMessages !== false;
 
   const presets = [
@@ -173,7 +185,7 @@ export function CoachPushModal({
             <>
               <Smartphone size={14} />
               <span>
-                למתאמן יש מכשיר אנדרואיד רשום ({trainee.fcmTokens?.length}) ומוכן לקבלת פוש
+                מוכן לקבלת פוש: {deviceParts.join(', ')}
               </span>
             </>
           ) : (
@@ -182,7 +194,7 @@ export function CoachPushModal({
               <span>
                 {!coachAlertsEnabled
                   ? 'המתאמן כיבה התראות מאמן בהגדרות הפרופיל'
-                  : 'למתאמן אין עדיין מכשיר אנדרואיד רשום להתראות (צריך להתחבר ב-APK ולאשר התראות)'}
+                  : 'למתאמן אין עדיין מכשיר רשום להתראות (יש לאשר התראות באפליקציית האנדרואיד, בהוספה למסך הבית באייפון, או בדפדפן)'}
               </span>
             </>
           )}

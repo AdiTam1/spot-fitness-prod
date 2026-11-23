@@ -19,6 +19,9 @@ import {
   Loader2,
   ExternalLink,
   AlertTriangle,
+  Share,
+  PlusSquare,
+  Globe,
 } from 'lucide-react';
 import { Switch } from '@mantine/core';
 import { TraineeProfile, TraineePushPreferences } from '@/types/nutrition';
@@ -29,6 +32,12 @@ import {
   openAndroidNotificationSettings,
   requestAndRegisterAndroidPush,
 } from '@/lib/capacitorPush';
+import {
+  WebPushEnvironmentStatus,
+  ensurePushServiceWorkerRegistered,
+  getWebPushEnvironmentStatus,
+  requestAndSubscribeWebPush,
+} from '@/lib/webPushClient';
 
 interface TraineeProfileViewProps {
   trainee: TraineeProfile;
@@ -57,6 +66,9 @@ export function TraineeProfileView({
   const [mealSearch, setMealSearch] = useState('');
 
   const [pushStatus, setPushStatus] = useState<AndroidPushStatus | null>(null);
+  const [webStatus, setWebStatus] = useState<WebPushEnvironmentStatus | null>(
+    null
+  );
   const [prefs, setPrefs] = useState<TraineePushPreferences>({
     aiMealReady: trainee.pushPreferences?.aiMealReady !== false,
     coachMessages: trainee.pushPreferences?.coachMessages !== false,
@@ -79,12 +91,16 @@ export function TraineeProfileView({
   }, [trainee.pushPreferences]);
 
   const refreshPushStatus = async () => {
-    const st = await getAndroidPushStatus();
-    setPushStatus(st);
+    const [androidSt, webSt] = await Promise.all([
+      getAndroidPushStatus(),
+      getWebPushEnvironmentStatus(),
+    ]);
+    setPushStatus(androidSt);
+    setWebStatus(webSt);
   };
 
   useEffect(() => {
-    void refreshPushStatus();
+    void ensurePushServiceWorkerRegistered().then(() => refreshPushStatus());
   }, []);
 
   // מיני-דשבורד סטטיסטיקות (7 ימים אחרונים + מגמת משקל)
@@ -314,6 +330,58 @@ export function TraineeProfileView({
       setPushBusy(false);
     }
   };
+
+  const handleEnableWebPushFromProfile = async () => {
+    if (pushBusy || isCoachPreview) return;
+    setPushBusy(true);
+    setPushFeedback(null);
+    try {
+      // חשוב: לא להוסיף כאן await מיותר לפני הקריאה כדי לשמור על Transient User Activation באייפון
+      const res = await requestAndSubscribeWebPush();
+      await refreshPushStatus();
+      if (res.ok) {
+        setPushFeedback({
+          ok: true,
+          text: 'התראות הדפדפן/אייפון הופעלו בהצלחה ✓',
+        });
+      } else if (res.reason === 'needs-ios-a2hs') {
+        setPushFeedback({
+          ok: false,
+          text: 'באייפון יש להוסיף קודם למסך הבית (כפתור שתף > הוסף למסך הבית) ולפתוח מהאייקון.',
+        });
+      } else if (res.reason === 'vapid-missing') {
+        setPushFeedback({
+          ok: false,
+          text: 'מפתחות השרת (VAPID) להתראות Web/iPhone טרם הוגדרו ב-Vercel.',
+        });
+      } else if (res.reason === 'denied') {
+        setPushFeedback({
+          ok: false,
+          text: 'הרשאת ההתראות נחסמה — יש לאפשר התראות בהגדרות האייפון / הדפדפן ולנסות שוב.',
+        });
+      } else {
+        setPushFeedback({
+          ok: false,
+          text: 'לא ניתן היה להפעיל התראות כרגע. נסה שוב.',
+        });
+      }
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const isAndroidGranted = Boolean(
+    pushStatus?.isNativeAndroid &&
+      pushStatus.permissionState === 'granted' &&
+      pushStatus.systemNotificationsEnabled
+  );
+  const isWebGranted = Boolean(
+    !pushStatus?.isNativeAndroid &&
+      webStatus?.webPushSupported &&
+      webStatus.permissionState === 'granted' &&
+      webStatus.isSubscribed
+  );
+  const isCurrentPlatformPushActive = isAndroidGranted || isWebGranted;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -581,8 +649,7 @@ export function TraineeProfileView({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            {pushStatus?.permissionState === 'granted' &&
-            pushStatus.systemNotificationsEnabled ? (
+            {isCurrentPlatformPushActive ? (
               <Bell size={16} color="var(--accent-volt)" />
             ) : (
               <BellOff size={16} color="var(--text-secondary)" />
@@ -592,27 +659,20 @@ export function TraineeProfileView({
             </span>
           </div>
 
-          {pushStatus?.isNativeAndroid && (
+          {(pushStatus?.isNativeAndroid || webStatus?.webPushSupported) && (
             <span
               style={{
                 fontSize: 10.5,
                 fontWeight: 800,
                 padding: '3px 8px',
                 borderRadius: 999,
-                background:
-                  pushStatus.permissionState === 'granted' &&
-                  pushStatus.systemNotificationsEnabled
-                    ? 'rgba(34, 197, 94, 0.16)'
-                    : 'rgba(245, 158, 11, 0.16)',
-                color:
-                  pushStatus.permissionState === 'granted' &&
-                  pushStatus.systemNotificationsEnabled
-                    ? '#4ade80'
-                    : '#fcd34d',
+                background: isCurrentPlatformPushActive
+                  ? 'rgba(34, 197, 94, 0.16)'
+                  : 'rgba(245, 158, 11, 0.16)',
+                color: isCurrentPlatformPushActive ? '#4ade80' : '#fcd34d',
               }}
             >
-              {pushStatus.permissionState === 'granted' &&
-              pushStatus.systemNotificationsEnabled
+              {isCurrentPlatformPushActive
                 ? 'מאושר במכשיר ✓'
                 : 'כבוי / ממתין לאישור'}
             </span>
@@ -730,6 +790,200 @@ export function TraineeProfileView({
               </div>
             )}
           </div>
+        ) : webStatus?.needsIosAddToHomeScreen && !isCoachPreview ? (
+          <div
+            style={{
+              background: 'var(--bg-surface-2)',
+              border: '1px solid rgba(210, 255, 40, 0.25)',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 14,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 12.5,
+                fontWeight: 800,
+                color: 'var(--accent-volt)',
+              }}
+            >
+              <Smartphone size={15} />
+              <span>הפעלת התראות באייפון (באמצעות מסך הבית)</span>
+            </div>
+            {webStatus.isIosInAppBrowser && (
+              <div
+                style={{
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  color: '#fcd34d',
+                  background: 'rgba(245, 158, 11, 0.12)',
+                  padding: '6px 9px',
+                  borderRadius: 8,
+                }}
+              >
+                פתחת מתוך דפדפן פנימי (וואטסאפ/אינסטגרם). יש לפתוח קודם את העמוד בדפדפן <strong>Safari</strong>.
+              </div>
+            )}
+            <div
+              style={{
+                fontSize: 12,
+                color: 'var(--text-secondary)',
+                lineHeight: 1.6,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 5,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Share size={13} color="var(--accent-volt)" style={{ flexShrink: 0 }} />
+                <span>
+                  1. לחץ/י על כפתור <strong>השיתוף (Share)</strong> בסרגל Safari.
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <PlusSquare size={13} color="var(--accent-volt)" style={{ flexShrink: 0 }} />
+                <span>
+                  2. גלול/י ובחר/י <strong>הוסף למסך הבית (Add to Home Screen)</strong>.
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Bell size={13} color="var(--accent-volt)" style={{ flexShrink: 0 }} />
+                <span>
+                  3. פתח/י את אייקון <strong>SPOT</strong> ממסך הבית וחזור/י לכאן לאישור התראות.
+                </span>
+              </div>
+            </div>
+          </div>
+        ) : webStatus?.webPushSupported && !isCoachPreview ? (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              marginBottom: 14,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11.5,
+                color: 'var(--text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <Globe size={13} color="var(--accent-volt)" />
+              <span>סביבה מזוהה: {webStatus.deviceLabel}</span>
+            </div>
+
+            {!webStatus.vapidConfigured && (
+              <div
+                style={{
+                  background: 'rgba(245, 158, 11, 0.1)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: 10,
+                  padding: '8px 10px',
+                  fontSize: 11.5,
+                  color: '#fcd34d',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+                <span>
+                  מפתחות השרת להתראות Web/iPhone (NEXT_PUBLIC_VAPID_PUBLIC_KEY) טרם הוגדרו ב-Vercel.
+                </span>
+              </div>
+            )}
+
+            {webStatus.permissionState === 'denied' && (
+              <div
+                style={{
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: 10,
+                  padding: '8px 10px',
+                  fontSize: 11.5,
+                  color: '#fca5a5',
+                }}
+              >
+                {webStatus.isIos
+                  ? 'ההתראות חסומות באייפון: פתח את הגדרות האייפון > התראות > Spot Fitness > הפעל "אפשר התראות".'
+                  : 'ההתראות חסומות בדפדפן: לחץ על סמל ההגדרות/מנעול בשורת הכתובת והפעל התראות.'}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {(webStatus.permissionState !== 'granted' ||
+                !webStatus.isSubscribed) && (
+                <button
+                  type="button"
+                  disabled={pushBusy}
+                  onClick={handleEnableWebPushFromProfile}
+                  className="btn-volt"
+                  style={{
+                    flex: 1,
+                    minWidth: 160,
+                    padding: '9px 12px',
+                    fontSize: 12,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Bell size={14} />
+                  <span>
+                    {pushBusy
+                      ? 'מפעיל התראות...'
+                      : 'אשר קבלת התראות במכשיר זה'}
+                  </span>
+                </button>
+              )}
+
+              {webStatus.permissionState === 'granted' &&
+                webStatus.isSubscribed &&
+                webStatus.vapidConfigured && (
+                  <button
+                    type="button"
+                    disabled={pushBusy}
+                    onClick={handleTestPush}
+                    className="btn-surface"
+                    style={{
+                      padding: '9px 12px',
+                      fontSize: 12,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Send size={13} color="var(--accent-volt)" />
+                    <span>שלח התראת בדיקה</span>
+                  </button>
+                )}
+            </div>
+
+            {pushFeedback && (
+              <div
+                style={{
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  color: pushFeedback.ok ? '#4ade80' : '#fca5a5',
+                }}
+              >
+                {pushFeedback.text}
+              </div>
+            )}
+          </div>
         ) : (
           <div
             style={{
@@ -748,7 +1002,11 @@ export function TraineeProfileView({
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <Smartphone size={14} color="var(--accent-volt)" />
-              <span>התראות פוש פועלות באפליקציית האנדרואיד (APK) בלבד.</span>
+              <span>
+                {isCoachPreview
+                  ? 'תצוגת מתאמן: הגדרת התראות זמינה במכשיר האישי של המתאמן (אנדרואיד APK, אייפון במסך הבית או דפדפן).'
+                  : 'הדפדפן הנוכחי אינו תומך בהתראות Web Push (ניתן להשתמש בספארי אייפון ממסך הבית, דפדפן עדכני או באפליקציית האנדרואיד).'}
+              </span>
             </span>
             {!isCoachPreview && (
               <Link
@@ -763,7 +1021,7 @@ export function TraineeProfileView({
                   gap: 4,
                 }}
               >
-                <span>להורדת האפליקציה</span>
+                <span>להורדת APK אנדרואיד</span>
                 <ExternalLink size={11} />
               </Link>
             )}

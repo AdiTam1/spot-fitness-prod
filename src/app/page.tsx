@@ -15,6 +15,8 @@ import {
   RefreshCw,
   Download,
   Bell,
+  Share,
+  Smartphone,
 } from 'lucide-react';
 import {
   AccountStatus,
@@ -66,6 +68,16 @@ import {
   subscribeAndroidPushLifecycle,
   unregisterAndroidPushOnLogout,
 } from '@/lib/capacitorPush';
+import {
+  dismissIosAddToHomeBanner,
+  ensurePushServiceWorkerRegistered,
+  getWebPushEnvironmentStatus,
+  requestAndSubscribeWebPush,
+  shouldShowIosAddToHomeBanner,
+  subscribeWebPushLifecycle,
+  syncExistingWebPushIfGranted,
+  unregisterWebPushOnLogout,
+} from '@/lib/webPushClient';
 
 export default function HomePage() {
   const [currentUser, setCurrentUser] = useState<AuthSessionUser | null>(null);
@@ -117,6 +129,8 @@ export default function HomePage() {
     nonce: number;
   } | null>(null);
   const [pushPromptOpen, setPushPromptOpen] = useState(false);
+  const [webPushPromptOpen, setWebPushPromptOpen] = useState(false);
+  const [showIosA2hsBanner, setShowIosA2hsBanner] = useState(false);
   const [pushPromptBusy, setPushPromptBusy] = useState(false);
 
   const traineesRef = useRef<TraineeProfile[]>([]);
@@ -364,6 +378,34 @@ export default function HomePage() {
     isNativeAndroidApp() && currentUser?.role === 'trainee'
       ? currentUser.id
       : '';
+  const activeWebTraineeId =
+    !isNativeAndroidApp() && currentUser?.role === 'trainee'
+      ? currentUser.id
+      : '';
+
+  const applyPushDeepLinkTarget = useCallback(
+    (target: PushDeepLinkTarget, traineeId: string) => {
+      if (!traineeId) return;
+      void fetchAuthorizedData({ force: true });
+      const targetDate = target.date || getLocalDateOffsetIso(0);
+      if (target.screen === 'meal' && target.mealSlotId) {
+        setExternalOpenMealRequest({
+          traineeId,
+          date: targetDate,
+          mealSlotId: target.mealSlotId,
+          nonce: Date.now(),
+        });
+      } else {
+        setExternalSectionRequest({
+          traineeId,
+          section: target.screen === 'meal' ? 'journal' : target.screen,
+          date: target.date,
+          nonce: Date.now(),
+        });
+      }
+    },
+    [fetchAuthorizedData]
+  );
 
   useEffect(() => {
     if (!activeAndroidTraineeId) {
@@ -371,26 +413,6 @@ export default function HomePage() {
     }
 
     let cancelled = false;
-    const applyDeepLinkTarget = (target: PushDeepLinkTarget) => {
-      if (cancelled) return;
-      void fetchAuthorizedData({ force: true });
-      const targetDate = target.date || getLocalDateOffsetIso(0);
-      if (target.screen === 'meal' && target.mealSlotId) {
-        setExternalOpenMealRequest({
-          traineeId: activeAndroidTraineeId,
-          date: targetDate,
-          mealSlotId: target.mealSlotId,
-          nonce: Date.now(),
-        });
-      } else {
-        setExternalSectionRequest({
-          traineeId: activeAndroidTraineeId,
-          section: target.screen === 'meal' ? 'journal' : target.screen,
-          date: target.date,
-          nonce: Date.now(),
-        });
-      }
-    };
 
     void getAndroidPushStatus().then((status) => {
       if (cancelled || !status.firebaseConfigured) return;
@@ -419,7 +441,9 @@ export default function HomePage() {
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     const unsubPush = subscribeAndroidPushLifecycle({
-      onDeepLinkTarget: applyDeepLinkTarget,
+      onDeepLinkTarget: (target) => {
+        if (!cancelled) applyPushDeepLinkTarget(target, activeAndroidTraineeId);
+      },
       onForegroundCoachPush: (notif) => {
         if (cancelled) return;
         void fetchAuthorizedData({ force: true });
@@ -438,7 +462,55 @@ export default function HomePage() {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       unsubPush();
     };
-  }, [activeAndroidTraineeId, fetchAuthorizedData]);
+  }, [activeAndroidTraineeId, applyPushDeepLinkTarget, fetchAuthorizedData]);
+
+  useEffect(() => {
+    if (!activeWebTraineeId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void ensurePushServiceWorkerRegistered().then(async () => {
+      if (cancelled) return;
+      await syncExistingWebPushIfGranted();
+      if (cancelled) return;
+
+      if (shouldShowIosAddToHomeBanner()) {
+        setShowIosA2hsBanner(true);
+      }
+
+      const webSt = await getWebPushEnvironmentStatus();
+      if (cancelled) return;
+      let alreadyPrompted = true;
+      try {
+        alreadyPrompted =
+          localStorage.getItem('spot_web_push_prompted_v1') === '1';
+      } catch {
+        alreadyPrompted = false;
+      }
+
+      if (
+        webSt.webPushSupported &&
+        webSt.vapidConfigured &&
+        webSt.permissionState === 'default' &&
+        !alreadyPrompted
+      ) {
+        setWebPushPromptOpen(true);
+      }
+    });
+
+    const unsubWebPush = subscribeWebPushLifecycle({
+      onDeepLinkTarget: (target) => {
+        if (!cancelled) applyPushDeepLinkTarget(target, activeWebTraineeId);
+      },
+    });
+
+    return () => {
+      cancelled = true;
+      unsubWebPush();
+    };
+  }, [activeWebTraineeId, applyPushDeepLinkTarget]);
 
   const handleRenameTraineeProfile = useCallback(
     async (newName: string): Promise<{ error?: string }> => {
@@ -588,8 +660,11 @@ export default function HomePage() {
           enabled: false,
         }).catch(() => {}),
         unregisterAndroidPushOnLogout().catch(() => {}),
+        unregisterWebPushOnLogout().catch(() => {}),
       ]);
       setPushPromptOpen(false);
+      setWebPushPromptOpen(false);
+      setShowIosA2hsBanner(false);
       await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {});
       setCurrentUser(null);
       setTrainees([]);
@@ -2176,6 +2251,74 @@ export default function HomePage() {
         </div>
       )}
 
+      {showIosA2hsBanner && currentUser.role === 'trainee' && (
+        <div
+          style={{
+            background: 'rgba(56, 189, 248, 0.12)',
+            borderBottom: '1px solid rgba(56, 189, 248, 0.35)',
+            color: '#e0f2fe',
+            padding: '9px 14px',
+            fontSize: 12,
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 10,
+            flexWrap: 'wrap',
+          }}
+        >
+          <Smartphone size={15} color="#38bdf8" />
+          <span>
+            לקבלת התראות באייפון: לחץ על{' '}
+            <Share
+              size={13}
+              style={{ display: 'inline', verticalAlign: 'middle' }}
+            />{' '}
+            <strong>שתף</strong> &larr; <strong>הוסף למסך הבית</strong>
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              dismissIosAddToHomeBanner();
+              setShowIosA2hsBanner(false);
+              setExternalSectionRequest({
+                traineeId: currentUser.id,
+                section: 'profile',
+                nonce: Date.now(),
+              });
+            }}
+            style={{
+              background: 'var(--accent-volt)',
+              color: '#08090c',
+              border: 'none',
+              padding: '3px 10px',
+              borderRadius: 999,
+              fontSize: 11,
+              fontWeight: 900,
+              cursor: 'pointer',
+            }}
+          >
+            מדריך מלא בפרופיל
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              dismissIosAddToHomeBanner();
+              setShowIosA2hsBanner(false);
+            }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              fontWeight: 800,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <main
         style={{
           maxWidth: 1180,
@@ -2475,6 +2618,131 @@ export default function HomePage() {
                 onClick={() => {
                   markAndroidPushPrompted();
                   setPushPromptOpen(false);
+                }}
+                className="btn-surface"
+                style={{
+                  padding: '11px 14px',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                לא עכשיו
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {!isNativeAndroidApp() && currentUser.role === 'trainee' && (
+        <Modal
+          opened={webPushPromptOpen}
+          onClose={() => {
+            try {
+              localStorage.setItem('spot_web_push_prompted_v1', '1');
+            } catch {
+              // ignore
+            }
+            setWebPushPromptOpen(false);
+          }}
+          centered
+          radius="lg"
+          title={
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                fontWeight: 800,
+                fontSize: 16,
+              }}
+            >
+              <Bell size={18} color="var(--accent-volt)" />
+              <span>הפעלת התראות SPOT במכשיר זה</span>
+            </span>
+          }
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div
+              style={{
+                fontSize: 13,
+                color: 'var(--text-secondary)',
+                lineHeight: 1.6,
+              }}
+            >
+              אשר/י קבלת התראות כדי להתעדכן אוטומטית כשה-AI מסיים לפענח ארוחה
+              אחרי שיצאת מהאפליקציה, ולקבל הודעות אישיות מהמאמן שלך.
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: 'var(--text-secondary)',
+                background: 'var(--bg-surface-2)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 12,
+                padding: '10px 12px',
+              }}
+            >
+              ניתן לכבות או לשנות הגדרות התראה בכל עת מתוך{' '}
+              <strong>פרופיל &gt; הגדרות פושים</strong>.
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <button
+                type="button"
+                disabled={pushPromptBusy}
+                onClick={async () => {
+                  try {
+                    localStorage.setItem('spot_web_push_prompted_v1', '1');
+                  } catch {
+                    // ignore
+                  }
+                  setPushPromptBusy(true);
+                  try {
+                    const res = await requestAndSubscribeWebPush();
+                    setWebPushPromptOpen(false);
+                    if (res.ok) {
+                      notifications.show({
+                        title: 'התראות הופעלו בהצלחה',
+                        message:
+                          'תקבל/י התראות ממאמן האישי ובסיום פענוח AI ברקע',
+                        color: 'lime',
+                      });
+                    } else if (res.reason === 'denied') {
+                      notifications.show({
+                        title: 'הרשאת ההתראות לא אושרה',
+                        message: 'ניתן לאשר בכל עת ממסך הפרופיל / הגדרות המכשיר',
+                        color: 'yellow',
+                      });
+                    }
+                  } finally {
+                    setPushPromptBusy(false);
+                  }
+                }}
+                className="btn-volt"
+                style={{
+                  flex: 1,
+                  padding: '11px 14px',
+                  fontSize: 13,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                }}
+              >
+                {pushPromptBusy && <Loader2 size={14} className="spot-spinner" />}
+                <span>כן, הפעל התראות</span>
+              </button>
+              <button
+                type="button"
+                disabled={pushPromptBusy}
+                onClick={() => {
+                  try {
+                    localStorage.setItem('spot_web_push_prompted_v1', '1');
+                  } catch {
+                    // ignore
+                  }
+                  setWebPushPromptOpen(false);
                 }}
                 className="btn-surface"
                 style={{
