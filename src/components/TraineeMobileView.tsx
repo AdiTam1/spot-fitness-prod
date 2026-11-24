@@ -206,6 +206,8 @@ interface TraineeMobileViewProps {
     date?: string;
     nonce: number;
   } | null;
+  onConsumeExternalOpenMealRequest?: (nonce: number) => void;
+  onConsumeExternalSectionRequest?: (nonce: number) => void;
   onRenameProfile?: (name: string) => Promise<{ error?: string }>;
   onPushPreferencesUpdated?: (prefs: TraineePushPreferences) => void;
   onUpdateMealShortcuts?: (
@@ -279,6 +281,8 @@ export function TraineeMobileView({
   onStartBackgroundAiAnalysis,
   externalOpenMealRequest,
   externalSectionRequest,
+  onConsumeExternalOpenMealRequest,
+  onConsumeExternalSectionRequest,
   onRenameProfile,
   onPushPreferencesUpdated,
   onUpdateMealShortcuts,
@@ -331,6 +335,10 @@ export function TraineeMobileView({
   const [savingMeasurements, setSavingMeasurements] = useState(false);
   const weightLockRef = useRef(false);
   const checkInLockRef = useRef(false);
+  const latestTraineeRef = useRef(trainee);
+  latestTraineeRef.current = trainee;
+  const lastHandledMealNonceRef = useRef<number | null>(null);
+  const lastHandledSectionNonceRef = useRef<number | null>(null);
 
   // סנכרון משקל ומדדים כאשר עוברים מתאמן (בתצוגת מאמן) או כשהנתונים מתעדכנים מהשרת
   useEffect(() => {
@@ -346,33 +354,42 @@ export function TraineeMobileView({
   }, [trainee.id, trainee.weeklyCheckIns]);
 
   useEffect(() => {
-    if (!externalOpenMealRequest || externalOpenMealRequest.traineeId !== trainee.id) {
+    if (
+      !externalOpenMealRequest ||
+      externalOpenMealRequest.traineeId !== trainee.id ||
+      lastHandledMealNonceRef.current === externalOpenMealRequest.nonce
+    ) {
       return;
     }
+    lastHandledMealNonceRef.current = externalOpenMealRequest.nonce;
     setMobileSection('journal');
     setSelectedDate(externalOpenMealRequest.date);
     const targetSlot = findTraineeMealSlotById(
-      trainee,
+      latestTraineeRef.current,
       externalOpenMealRequest.mealSlotId
     );
     if (targetSlot) {
       setActiveMealSlot(targetSlot);
       setDrawerTab(externalOpenMealRequest.initialTab || 'hub');
     }
-  }, [externalOpenMealRequest, trainee]);
+    onConsumeExternalOpenMealRequest?.(externalOpenMealRequest.nonce);
+  }, [externalOpenMealRequest, trainee.id, onConsumeExternalOpenMealRequest]);
 
   useEffect(() => {
     if (
       !externalSectionRequest ||
-      externalSectionRequest.traineeId !== trainee.id
+      externalSectionRequest.traineeId !== trainee.id ||
+      lastHandledSectionNonceRef.current === externalSectionRequest.nonce
     ) {
       return;
     }
+    lastHandledSectionNonceRef.current = externalSectionRequest.nonce;
     setMobileSection(externalSectionRequest.section);
     if (externalSectionRequest.date) {
       setSelectedDate(externalSectionRequest.date);
     }
-  }, [externalSectionRequest, trainee.id]);
+    onConsumeExternalSectionRequest?.(externalSectionRequest.nonce);
+  }, [externalSectionRequest, trainee.id, onConsumeExternalSectionRequest]);
 
   // נעילה אוטומטית לימי תשקיף אם היום יום תשקיף בארץ והגדרה זו פעילה אצל המתאמן
   useEffect(() => {

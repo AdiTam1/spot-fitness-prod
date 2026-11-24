@@ -213,6 +213,8 @@ export default function HomePage() {
       bgJobAbortControllersRef.current.clear();
       setLiveBgJobIds([]);
       setLocalBgJobs([]);
+      setExternalOpenMealRequest(null);
+      setExternalSectionRequest(null);
       setPushPromptOpen(false);
       setWebPushPromptOpen(false);
       setShowIosA2hsBanner(false);
@@ -710,6 +712,18 @@ export default function HomePage() {
     },
     [fetchAuthorizedData]
   );
+
+  const handleConsumeExternalMealRequest = useCallback((nonce: number) => {
+    setExternalOpenMealRequest((prev) =>
+      prev && prev.nonce === nonce ? null : prev
+    );
+  }, []);
+
+  const handleConsumeExternalSectionRequest = useCallback((nonce: number) => {
+    setExternalSectionRequest((prev) =>
+      prev && prev.nonce === nonce ? null : prev
+    );
+  }, []);
 
   useEffect(() => {
     if (!activeAndroidTraineeId) {
@@ -2890,6 +2904,8 @@ export default function HomePage() {
             onStartBackgroundAiAnalysis={handleStartBackgroundAiAnalysis}
             externalOpenMealRequest={externalOpenMealRequest}
             externalSectionRequest={externalSectionRequest}
+            onConsumeExternalOpenMealRequest={handleConsumeExternalMealRequest}
+            onConsumeExternalSectionRequest={handleConsumeExternalSectionRequest}
             onRenameProfile={handleRenameTraineeProfile}
             onPushPreferencesUpdated={handlePushPreferencesUpdated}
             onUpdateMealShortcuts={handleUpdateMealShortcuts}
@@ -2925,6 +2941,8 @@ export default function HomePage() {
             onStartBackgroundAiAnalysis={handleStartBackgroundAiAnalysis}
             externalOpenMealRequest={externalOpenMealRequest}
             externalSectionRequest={externalSectionRequest}
+            onConsumeExternalOpenMealRequest={handleConsumeExternalMealRequest}
+            onConsumeExternalSectionRequest={handleConsumeExternalSectionRequest}
             onUpdateMealShortcuts={handleUpdateMealShortcuts}
             onSyncNativeStepsNow={syncNativeAndroidSteps}
           />
