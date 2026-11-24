@@ -7,6 +7,16 @@
    attribute on <html> (persisted in localStorage, defaults to system).
    ============================================================ */
 
+:root {
+  /* Safe-area insets. Capacitor's SystemBars plugin (insetsHandling: 'css') exposes
+     --safe-area-inset-* on Android WebViews where env() resolves to 0; iOS/modern
+     browsers fall back to env(). Always use these instead of env() directly. */
+  --sa-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --sa-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  --sa-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --sa-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+}
+
 :root,
 :root[data-mantine-color-scheme='dark'] {
   color-scheme: dark;
@@ -303,7 +313,7 @@ a:focus-visible {
   color: var(--on-accent);
 }
 
-/* Header kept as a translucent bar that follows the theme. */
+/* Top app bar: translucent, never cut by the phone's status bar / notch. */
 .spot-sticky-header {
   position: sticky;
   top: 0;
@@ -312,19 +322,125 @@ a:focus-visible {
   backdrop-filter: blur(22px) saturate(180%);
   -webkit-backdrop-filter: blur(22px) saturate(180%);
   border-bottom: 1px solid var(--line);
-  padding: calc(7px + env(safe-area-inset-top, 0px)) 14px 7px;
+  /* status bar / notch inset + 8px breathing room; side insets for landscape cutouts */
+  padding: calc(var(--sa-top) + 8px) max(14px, var(--sa-right)) 8px max(14px, var(--sa-left));
 }
 
-@media (max-width: 640px) {
-  .spot-sticky-header {
-    padding: calc(5px + env(safe-area-inset-top, 0px)) 10px 5px;
+.spot-header-row {
+  max-width: 1180px;
+  margin: 0 auto;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.spot-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.spot-header-brand img {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  object-fit: cover;
+}
+
+.spot-header-wordmark {
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: -0.04em;
+}
+
+.spot-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.spot-header-user {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+  max-width: 170px;
+  color: var(--text);
+}
+
+.spot-header-user-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spot-header-saving {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  flex: none;
+}
+
+.spot-header-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0;
+  flex: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.spot-header-btn-wide {
+  width: auto;
+  padding: 0 14px;
+}
+
+/* Narrow phones: drop the name chip's text before anything gets clipped. */
+@media (max-width: 400px) {
+  .spot-header-user {
+    max-width: 112px;
+    padding: 0 10px;
+  }
+  .spot-header-wordmark {
+    display: none;
+  }
+}
+
+@media (max-width: 340px) {
+  .spot-header-user {
+    display: none;
   }
 }
 
 /* ---------- Floating dock (trainee + coach) ---------- */
 .mobile-bottom-dock {
   position: fixed;
-  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(18px + var(--sa-bottom));
   left: 50%;
   transform: translateX(-50%);
   z-index: 90;
@@ -340,7 +456,7 @@ a:focus-visible {
   left: 0;
   right: 0;
   bottom: 0;
-  height: calc(120px + env(safe-area-inset-bottom, 0px));
+  height: calc(120px + var(--sa-bottom));
   background: linear-gradient(to top, var(--bg), transparent);
   pointer-events: none;
   z-index: 89;
@@ -348,10 +464,10 @@ a:focus-visible {
 
 @media (max-width: 768px) {
   .mantine-Drawer-header {
-    padding-top: max(12px, env(safe-area-inset-top, 0px)) !important;
+    padding-top: max(12px, var(--sa-top)) !important;
   }
   .mantine-Drawer-body {
-    padding-bottom: max(18px, env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: max(18px, var(--sa-bottom)) !important;
   }
 }
 
@@ -576,11 +692,11 @@ input, textarea, select {
     max-width: 100% !important;
     box-sizing: border-box;
     margin: 0 !important;
-    max-height: calc(100dvh - 52px - env(safe-area-inset-top, 0px)) !important;
+    max-height: calc(100dvh - 52px - var(--sa-top)) !important;
     border-radius: var(--radius-sheet) var(--radius-sheet) 0 0 !important;
     border-bottom: none !important;
     box-shadow: var(--sheet-shadow) !important;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: var(--sa-bottom);
     /* The drag handle is drawn by ::before; it also acts as the drag zone. */
     position: relative;
   }
@@ -843,4 +959,24 @@ a.glass {
     justify-content: center;
     font-size: 15px !important;
   }
+}
+
+/* Toasts stay below the status bar / notch. */
+.mantine-Notifications-root[data-position^='top'] {
+  top: calc(var(--sa-top) + 8px) !important;
+}
+.mantine-Notifications-root[data-position^='bottom'] {
+  bottom: calc(var(--sa-bottom) + 90px) !important;
+}
+
+/* Wizard step navigation stays reachable above the keyboard / home indicator. */
+.wizard-nav {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+  position: sticky;
+  bottom: 0;
+  padding: 10px 0 calc(var(--sa-bottom) + 8px);
+  background: linear-gradient(to top, var(--bg) 70%, transparent);
+  z-index: 5;
 }

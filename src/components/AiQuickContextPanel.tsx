@@ -204,9 +204,9 @@ export function AiQuickContextPanel({
   return (
     <div
       style={{
-        background: 'var(--bg-surface-2)',
-        border: '1px solid var(--border-subtle)',
-        borderRadius: 14,
+        background: 'var(--surface-2)',
+        border: '1px solid var(--line)',
+        borderRadius: 20,
         padding: '10px 12px',
         display: 'flex',
         flexDirection: 'column',
@@ -319,9 +319,9 @@ export function AiQuickContextPanel({
                 fontWeight: 700,
                 cursor: 'pointer',
                 border: active ? '1px solid var(--sel-bg)'
-                  : '1px solid var(--border-subtle)',
+                  : '1px solid var(--line)',
                 background: active ? 'var(--sel-bg)'
-                  : 'var(--bg-surface-1)',
+                  : 'var(--card)',
                 color: active ? 'var(--sel-text)' : 'var(--text-secondary)',
               }}
             >

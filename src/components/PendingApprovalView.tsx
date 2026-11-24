@@ -32,7 +32,7 @@ export function PendingApprovalView({ name, paused, loggingOut, onRecheck, onLog
       style={{
         boxSizing: 'border-box',
         minHeight: '100dvh',
-        padding: 'calc(120px + env(safe-area-inset-top, 0px)) 28px calc(32px + env(safe-area-inset-bottom, 0px))',
+        padding: 'calc(120px + var(--sa-top)) 28px calc(32px + var(--sa-bottom))',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',

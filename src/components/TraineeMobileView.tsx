@@ -595,14 +595,14 @@ export function TraineeMobileView({
             justifyContent: 'space-between',
             padding: '10px 14px',
             borderRadius: 14,
-            background: 'rgba(56, 189, 248, 0.1)',
-            border: '1px solid rgba(56, 189, 248, 0.35)',
+            background: 'var(--surface-2)',
+            border: '1px solid var(--line-2)',
             marginBottom: 12,
             cursor: 'pointer',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Ruler size={16} color="#38bdf8" />
+            <Ruler size={16} color="var(--text-2)" />
             <span style={{ fontSize: 12, fontWeight: 700, color: '#38bdf8' }}>
               טרם השלמת מדידת היקפים ראשונית – לחץ להדרכה מונפשת
             </span>
@@ -936,15 +936,15 @@ export function TraineeMobileView({
                 style={{
                   padding: '10px 14px',
                   borderRadius: 14,
-                  background: 'rgba(56, 189, 248, 0.1)',
-                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--line-2)',
                   marginBottom: 14,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 10,
                 }}
               >
-                <Eye size={18} color="#38bdf8" style={{ flexShrink: 0 }} />
+                <Eye size={18} color="var(--text-2)" style={{ flexShrink: 0 }} />
                 <div style={{ fontSize: 12 }}>
                   <div style={{ fontWeight: 800, color: '#38bdf8' }}>
                     יום תשקיף (ללא מטרת יעד קלורי)
@@ -977,7 +977,7 @@ export function TraineeMobileView({
               aria-label="סיכום יומי"
               style={{
                 background: 'var(--card)',
-                border: `1px solid ${isObservationDay ? 'rgba(56, 189, 248, 0.35)' : 'var(--line)'}`,
+                border: `1px solid ${isObservationDay ? 'var(--surface-2)' : 'var(--line)'}`,
                 borderRadius: 28,
                 padding: 20,
                 marginBottom: 20,
@@ -1869,7 +1869,7 @@ export function TraineeMobileView({
                       borderRadius: 24,
                       borderColor:
                         hasItems && isObservationDay
-                          ? 'rgba(56, 189, 248, 0.3)'
+                          ? 'var(--surface-2)'
                           : 'var(--border-subtle)',
                     }}
                   >

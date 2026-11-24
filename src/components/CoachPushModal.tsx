@@ -170,17 +170,17 @@ export function CoachPushModal({
             alignItems: 'center',
             gap: 8,
             padding: '8px 10px',
-            borderRadius: 10,
+            borderRadius: 16,
             fontSize: 12,
             fontWeight: 700,
             background:
               hasDevice && coachAlertsEnabled
-                ? 'rgba(34, 197, 94, 0.12)'
-                : 'rgba(245, 158, 11, 0.12)',
+                ? 'var(--surface-2)'
+                : 'var(--surface-2)',
             border:
               hasDevice && coachAlertsEnabled
-                ? '1px solid rgba(34, 197, 94, 0.35)'
-                : '1px solid rgba(245, 158, 11, 0.35)',
+                ? '1px solid var(--line-2)'
+                : '1px solid var(--line-2)',
             color: hasDevice && coachAlertsEnabled ? 'var(--ok-text)' : 'var(--warn-text)',
           }}
         >
@@ -332,7 +332,7 @@ export function CoachPushModal({
         {(trainee.pushHistory?.length || 0) > 0 && (
           <div
             style={{
-              borderTop: '1px solid var(--border-subtle)',
+              borderTop: '1px solid var(--line)',
               paddingTop: 10,
               marginTop: 4,
             }}
@@ -353,9 +353,9 @@ export function CoachPushModal({
                   key={h.id}
                   style={{
                     fontSize: 12,
-                    background: 'var(--bg-surface-2)',
+                    background: 'var(--surface-2)',
                     padding: '6px 9px',
-                    borderRadius: 8,
+                    borderRadius: 16,
                     color: 'var(--text-secondary)',
                   }}
                 >

@@ -307,10 +307,10 @@ export function ServingToolsManagerModal({
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
             gap: 6,
-            background: 'var(--bg-surface-2)',
+            background: 'var(--surface-2)',
             padding: 4,
-            borderRadius: 12,
-            border: '1px solid var(--border-subtle)',
+            borderRadius: 18,
+            border: '1px solid var(--line)',
           }}
         >
           <button
@@ -318,7 +318,7 @@ export function ServingToolsManagerModal({
             onClick={() => setSection('tools')}
             style={{
               padding: '8px',
-              borderRadius: 8,
+              borderRadius: 16,
               border: 'none',
               background: section === 'tools' ? 'var(--sel-bg)' : 'transparent',
               color: section === 'tools' ? 'var(--sel-text)' : 'var(--text-secondary)',
@@ -339,7 +339,7 @@ export function ServingToolsManagerModal({
             onClick={() => setSection('units')}
             style={{
               padding: '8px',
-              borderRadius: 8,
+              borderRadius: 16,
               border: 'none',
               background: section === 'units' ? 'var(--sel-bg)' : 'transparent',
               color: section === 'units' ? 'var(--sel-text)' : 'var(--text-secondary)',
@@ -361,7 +361,7 @@ export function ServingToolsManagerModal({
           <div
             style={{
               padding: '8px 12px',
-              borderRadius: 10,
+              borderRadius: 16,
               background: 'rgba(239, 68, 68, 0.14)',
               border: '1px solid rgba(239, 68, 68, 0.35)',
               color: 'var(--danger-text)',
@@ -415,9 +415,9 @@ export function ServingToolsManagerModal({
             {measureMode === 'ai' && (
               <div
                 style={{
-                  background: 'var(--bg-surface-2)',
+                  background: 'var(--surface-2)',
                   border: '1px solid var(--line-2)',
-                  borderRadius: 14,
+                  borderRadius: 20,
                   padding: 12,
                   display: 'flex',
                   flexDirection: 'column',
@@ -432,7 +432,7 @@ export function ServingToolsManagerModal({
                     color: 'var(--text-secondary)',
                     background: 'rgba(56, 189, 248, 0.08)',
                     border: '1px solid rgba(56, 189, 248, 0.25)',
-                    borderRadius: 10,
+                    borderRadius: 16,
                     padding: '8px 10px',
                   }}
                 >
@@ -464,9 +464,9 @@ export function ServingToolsManagerModal({
                           position: 'relative',
                           width: 84,
                           height: 84,
-                          borderRadius: 10,
+                          borderRadius: 16,
                           overflow: 'hidden',
-                          border: '1px solid var(--border-subtle)',
+                          border: '1px solid var(--line)',
                         }}
                       >
                         <img
@@ -533,7 +533,7 @@ export function ServingToolsManagerModal({
                       cursor: 'pointer',
                     }}
                   >
-                    <ImageIcon size={13} color="#38bdf8" />
+                    <ImageIcon size={13} color="var(--text-2)" />
                     <span>בחר מהגלריה (עד 3)</span>
                     <input
                       type="file"
@@ -603,7 +603,7 @@ export function ServingToolsManagerModal({
                   <div
                     style={{
                       padding: '8px 10px',
-                      borderRadius: 10,
+                      borderRadius: 16,
                       fontSize: 12,
                       fontWeight: 600,
                       background: aiResultNote.isError
@@ -727,9 +727,9 @@ export function ServingToolsManagerModal({
                 <div
                   key={tool.id}
                   style={{
-                    background: 'var(--bg-surface-2)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 12,
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 18,
                     padding: '8px 12px',
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -845,9 +845,9 @@ export function ServingToolsManagerModal({
                 <div
                   key={u.id}
                   style={{
-                    background: 'var(--bg-surface-2)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 12,
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 18,
                     padding: '8px 12px',
                     display: 'flex',
                     justifyContent: 'space-between',

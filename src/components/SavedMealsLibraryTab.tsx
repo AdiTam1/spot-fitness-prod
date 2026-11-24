@@ -369,8 +369,8 @@ export function SavedMealsLibraryTab({
             position: 'relative',
             display: 'flex',
             alignItems: 'center',
-            background: 'var(--bg-surface-2)',
-            border: '1px solid var(--border-subtle)',
+            background: 'var(--surface-2)',
+            border: '1px solid var(--line)',
             borderRadius: 999,
             padding: '0 12px',
             height: 38,
@@ -483,10 +483,10 @@ export function SavedMealsLibraryTab({
               cursor: 'pointer',
               border:
                 filterMode === f.id ? '1px solid var(--sel-bg)'
-                  : '1px solid var(--border-subtle)',
+                  : '1px solid var(--line)',
               background:
                 filterMode === f.id ? 'var(--sel-bg)'
-                  : 'var(--bg-surface-2)',
+                  : 'var(--surface-2)',
               color:
                 filterMode === f.id ? 'var(--sel-text)'
                   : 'var(--text-secondary)',
@@ -501,7 +501,7 @@ export function SavedMealsLibraryTab({
         <div
           style={{
             padding: '8px 12px',
-            borderRadius: 10,
+            borderRadius: 16,
             fontSize: 12,
             fontWeight: 600,
             background: feedbackBanner.isError
@@ -535,9 +535,9 @@ export function SavedMealsLibraryTab({
               <div
                 key={entry.key}
                 style={{
-                  background: 'var(--bg-surface-2)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 12,
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 18,
                   padding: '10px 12px',
                   display: 'flex',
                   flexDirection: 'column',
@@ -546,7 +546,7 @@ export function SavedMealsLibraryTab({
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <History size={13} color="#38bdf8" />
+                    <History size={13} color="var(--text-2)" />
                     <span className="num-mono" style={{ fontSize: 12, fontWeight: 700, color: '#38bdf8' }}>
                       {entry.date}
                     </span>
@@ -592,9 +592,9 @@ export function SavedMealsLibraryTab({
               style={{
                 padding: 20,
                 textAlign: 'center',
-                borderRadius: 14,
-                background: 'var(--bg-surface-2)',
-                border: '1px dashed var(--border-subtle)',
+                borderRadius: 20,
+                background: 'var(--surface-2)',
+                border: '1px dashed var(--line)',
                 fontSize: 12,
                 color: 'var(--text-muted)',
               }}
@@ -656,7 +656,7 @@ export function SavedMealsLibraryTab({
                           style={{
                             width: 34,
                             height: 34,
-                            borderRadius: 10,
+                            borderRadius: 16,
                             objectFit: 'cover',
                             border: '1px solid rgba(255,255,255,0.35)',
                           }}
@@ -666,7 +666,7 @@ export function SavedMealsLibraryTab({
                           style={{
                             width: 34,
                             height: 34,
-                            borderRadius: 10,
+                            borderRadius: 16,
                             background: 'var(--line-2)',
                             display: 'flex',
                             alignItems: 'center',
@@ -768,10 +768,10 @@ export function SavedMealsLibraryTab({
                   <div
                     key={preset.id}
                     style={{
-                      background: 'var(--bg-surface-2)',
+                      background: 'var(--surface-2)',
                       border: preset.isPinned
                         ? '1px solid var(--line-2)'
-                        : '1px solid var(--border-subtle)',
+                        : '1px solid var(--line)',
                       borderRadius: 16,
                       padding: 12,
                       display: 'flex',
@@ -789,7 +789,7 @@ export function SavedMealsLibraryTab({
                           style={{
                             width: 44,
                             height: 44,
-                            borderRadius: 10,
+                            borderRadius: 16,
                             objectFit: 'cover',
                             flexShrink: 0,
                           }}
@@ -932,7 +932,7 @@ export function SavedMealsLibraryTab({
                     <div
                       style={{
                         padding: '7px 10px',
-                        borderRadius: 10,
+                        borderRadius: 16,
                         background:
                           preset.coachQuestion.status === 'answered'
                             ? 'var(--fill-1)'
@@ -1020,7 +1020,7 @@ export function SavedMealsLibraryTab({
                         cursor: 'pointer',
                       }}
                     >
-                      <MessageCircle size={12} color="#38bdf8" />
+                      <MessageCircle size={12} color="var(--text-2)" />
                       <span>שאל מאמן</span>
                     </button>
 
@@ -1049,7 +1049,7 @@ export function SavedMealsLibraryTab({
                     <div
                       style={{
                         padding: 10,
-                        borderRadius: 10,
+                        borderRadius: 16,
                         background: 'var(--fill-1)',
                         border: '1px solid var(--line-2)',
                         display: 'flex',
@@ -1108,9 +1108,9 @@ export function SavedMealsLibraryTab({
                     <div
                       style={{
                         padding: 10,
-                        borderRadius: 10,
-                        background: 'var(--bg-surface-1)',
-                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 16,
+                        background: 'var(--card)',
+                        border: '1px solid var(--line)',
                         display: 'flex',
                         flexDirection: 'column',
                         gap: 8,
@@ -1190,7 +1190,7 @@ export function SavedMealsLibraryTab({
                     <div
                       style={{
                         padding: 10,
-                        borderRadius: 10,
+                        borderRadius: 16,
                         background: 'rgba(56, 189, 248, 0.06)',
                         border: '1px solid rgba(56, 189, 248, 0.25)',
                         display: 'flex',

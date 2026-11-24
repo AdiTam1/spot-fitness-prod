@@ -302,7 +302,7 @@ export function CoachOnboardingWizard({
         margin: '0 auto',
         display: 'flex',
         alignItems: 'flex-start',
-        padding: '6px 0 calc(28px + env(safe-area-inset-bottom, 0px))',
+        padding: '6px 0 calc(28px + var(--sa-bottom))',
       }}
     >
       <div style={{ width: '100%', padding: '14px 4px 0' }}>
@@ -338,10 +338,12 @@ export function CoachOnboardingWizard({
                 type="button"
                 disabled={isFinishing}
                 onClick={onSkip}
-                className="btn-surface"
+                className="glass"
                 style={{
-                  padding: '6px 12px',
-                  fontSize: 12,
+                  height: 44,
+                  borderRadius: 999,
+                  padding: '0 16px',
+                  fontSize: 14,
                   cursor: 'pointer',
                 }}
               >
@@ -370,7 +372,7 @@ export function CoachOnboardingWizard({
                     height: 4,
                     borderRadius: 999,
                     border: 'none',
-                    background: active ? 'var(--accent-volt)'
+                    background: active ? 'var(--accent)'
                       : done
                       ? 'var(--surface-2)'
                       : 'var(--bg-surface-3)',
@@ -439,14 +441,9 @@ export function CoachOnboardingWizard({
         {step === 2 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
             <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                padding: 11,
-                borderRadius: 12,
-                border: '1px solid var(--border-subtle)',
-              }}
+              style={{ padding: 0 }}
             >
-              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
                 תחומי ההתמחות שלך:
               </div>
               <div
@@ -471,10 +468,11 @@ export function CoachOnboardingWizard({
                         )
                       }
                       style={{
-                        padding: '5px 10px',
+                        minHeight: 40,
+                        padding: '0 14px',
                         borderRadius: 999,
                         border: selected ? '1px solid var(--sel-bg)'
-                          : '1px solid var(--border-subtle)',
+                          : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)'
                           : 'var(--bg-surface-1)',
                         color: selected ? 'var(--sel-text)'
@@ -504,14 +502,16 @@ export function CoachOnboardingWizard({
               onChange={(e) => setWelcomeMessage(e.currentTarget.value)}
             />
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+            <div className="wizard-nav">
               <button
                 type="button"
                 onClick={() => setStep(1)}
-                className="btn-surface"
+                className="glass"
                 style={{
-                  padding: '10px 14px',
-                  fontSize: 12,
+                  height: 52,
+                  borderRadius: 999,
+                  padding: '0 18px',
+                  fontSize: 15,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 4,
@@ -547,12 +547,7 @@ export function CoachOnboardingWizard({
         {step === 3 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
             <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                padding: 11,
-                borderRadius: 12,
-                border: '1px solid var(--border-subtle)',
-              }}
+              style={{ padding: 0 }}
             >
               <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 4 }}>
                 ימי תשקיף אוטומטיים למתאמן חדש
@@ -585,19 +580,20 @@ export function CoachOnboardingWizard({
                     type="button"
                     onClick={() => setDefaultObservationDays(opt.days)}
                     style={{
-                      padding: '8px 4px',
-                      borderRadius: 9,
+                      minHeight: 44,
+                      padding: '0 4px',
+                      borderRadius: 14,
                       border:
                         defaultObservationDays === opt.days ? '1px solid var(--sel-bg)'
-                          : '1px solid var(--border-subtle)',
+                          : '1px solid var(--line-2)',
                       background:
                         defaultObservationDays === opt.days ? 'var(--sel-bg)'
-                          : 'var(--bg-surface-1)',
+                          : 'transparent',
                       color:
                         defaultObservationDays === opt.days ? 'var(--sel-text)'
-                          : 'var(--text-secondary)',
-                      fontSize: 12,
-                      fontWeight: 800,
+                          : 'var(--text)',
+                      fontSize: 14,
+                      fontWeight: 600,
                       cursor: 'pointer',
                     }}
                   >
@@ -621,14 +617,9 @@ export function CoachOnboardingWizard({
             </div>
 
             <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                padding: 11,
-                borderRadius: 12,
-                border: '1px solid var(--border-subtle)',
-              }}
+              style={{ padding: 0 }}
             >
-              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
                 ספירת ימי תשקיף ביעדים כברירת מחדל:
               </div>
               <div
@@ -642,17 +633,18 @@ export function CoachOnboardingWizard({
                   type="button"
                   onClick={() => setDefaultCountObservationInStats(false)}
                   style={{
-                    padding: '8px 6px',
-                    borderRadius: 9,
+                    minHeight: 44,
+                    padding: '0 6px',
+                    borderRadius: 14,
                     border: !defaultCountObservationInStats
-                      ? '1px solid var(--accent-volt)'
-                      : '1px solid var(--border-subtle)',
+                      ? '1px solid var(--sel-bg)'
+                      : '1px solid var(--line-2)',
                     background: !defaultCountObservationInStats
-                      ? 'var(--surface-2)'
-                      : 'var(--bg-surface-1)',
+                      ? 'var(--sel-bg)'
+                      : 'transparent',
                     color: !defaultCountObservationInStats
-                      ? 'var(--accent-volt)'
-                      : 'var(--text-secondary)',
+                      ? 'var(--sel-text)'
+                      : 'var(--text)',
                     fontSize: 12,
                     fontWeight: 800,
                     cursor: 'pointer',
@@ -664,17 +656,18 @@ export function CoachOnboardingWizard({
                   type="button"
                   onClick={() => setDefaultCountObservationInStats(true)}
                   style={{
-                    padding: '8px 6px',
-                    borderRadius: 9,
+                    minHeight: 44,
+                    padding: '0 6px',
+                    borderRadius: 14,
                     border: defaultCountObservationInStats
-                      ? '1px solid var(--accent-volt)'
-                      : '1px solid var(--border-subtle)',
+                      ? '1px solid var(--sel-bg)'
+                      : '1px solid var(--line-2)',
                     background: defaultCountObservationInStats
-                      ? 'var(--surface-2)'
-                      : 'var(--bg-surface-1)',
+                      ? 'var(--sel-bg)'
+                      : 'transparent',
                     color: defaultCountObservationInStats
-                      ? 'var(--accent-volt)'
-                      : 'var(--text-secondary)',
+                      ? 'var(--sel-text)'
+                      : 'var(--text)',
                     fontSize: 12,
                     fontWeight: 800,
                     cursor: 'pointer',
@@ -697,10 +690,10 @@ export function CoachOnboardingWizard({
                   background: 'var(--bg-surface-2)',
                   padding: 10,
                   borderRadius: 12,
-                  border: '1px solid var(--border-subtle)',
+                  border: '1px solid var(--line-2)',
                 }}
               >
-                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
                   גמישות קלורית:
                 </div>
                 <div style={{ display: 'flex', gap: 5 }}>
@@ -711,11 +704,12 @@ export function CoachOnboardingWizard({
                       onClick={() => setDefaultTolerancePercent(pct)}
                       style={{
                         flex: 1,
-                        padding: '6px 2px',
-                        borderRadius: 8,
+                        minHeight: 44,
+                        padding: '0 2px',
+                        borderRadius: 14,
                         border:
                           defaultTolerancePercent === pct ? '1px solid var(--sel-bg)'
-                            : '1px solid var(--border-subtle)',
+                            : '1px solid var(--line-2)',
                         background:
                           defaultTolerancePercent === pct ? 'var(--sel-bg)'
                             : 'var(--bg-surface-1)',
@@ -738,10 +732,10 @@ export function CoachOnboardingWizard({
                   background: 'var(--bg-surface-2)',
                   padding: 10,
                   borderRadius: 12,
-                  border: '1px solid var(--border-subtle)',
+                  border: '1px solid var(--line-2)',
                 }}
               >
-                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
                   יעד מים (כוסות):
                 </div>
                 <div style={{ display: 'flex', gap: 5 }}>
@@ -752,20 +746,15 @@ export function CoachOnboardingWizard({
                       onClick={() => setDefaultWaterGoal(cups)}
                       style={{
                         flex: 1,
-                        padding: '6px 2px',
-                        borderRadius: 8,
+                        minHeight: 44,
+                        padding: '0 2px',
+                        borderRadius: 14,
                         border:
                           defaultWaterGoal === cups
-                            ? '1px solid #38bdf8'
-                            : '1px solid var(--border-subtle)',
-                        background:
-                          defaultWaterGoal === cups
-                            ? 'rgba(56, 189, 248, 0.15)'
-                            : 'var(--bg-surface-1)',
-                        color:
-                          defaultWaterGoal === cups
-                            ? '#38bdf8'
-                            : 'var(--text-secondary)',
+                            ? '1px solid var(--sel-bg)'
+                            : '1px solid var(--line-2)',
+                        background: defaultWaterGoal === cups ? 'var(--sel-bg)' : 'transparent',
+                        color: defaultWaterGoal === cups ? 'var(--sel-text)' : 'var(--text)',
                         fontSize: 12,
                         fontWeight: 800,
                         cursor: 'pointer',
@@ -780,12 +769,7 @@ export function CoachOnboardingWizard({
 
             {/* ברירת מחדל: טווח תאריכים פעילים לניווט מתאמן */}
             <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                padding: 11,
-                borderRadius: 12,
-                border: '1px solid var(--border-subtle)',
-              }}
+              style={{ padding: 0 }}
             >
               <div
                 style={{
@@ -862,12 +846,7 @@ export function CoachOnboardingWizard({
 
             {/* ברירת מחדל: מאכלים אהובים (רק אם המאמן מסמן במפורש) */}
             <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                padding: 11,
-                borderRadius: 12,
-                border: '1px solid var(--border-subtle)',
-              }}
+              style={{ padding: 0 }}
             >
               <div
                 style={{
@@ -964,7 +943,7 @@ export function CoachOnboardingWizard({
                           fontWeight: 700,
                           cursor: 'pointer',
                           border: selected ? '1px solid var(--sel-bg)'
-                            : '1px solid var(--border-subtle)',
+                            : '1px solid var(--line-2)',
                           background: selected ? 'var(--sel-bg)'
                             : 'var(--bg-surface-1)',
                           color: selected ? 'var(--sel-text)'
@@ -979,14 +958,16 @@ export function CoachOnboardingWizard({
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+            <div className="wizard-nav">
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                className="btn-surface"
+                className="glass"
                 style={{
-                  padding: '10px 14px',
-                  fontSize: 12,
+                  height: 52,
+                  borderRadius: 999,
+                  padding: '0 18px',
+                  fontSize: 15,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 4,
@@ -1026,7 +1007,7 @@ export function CoachOnboardingWizard({
                 background: 'var(--bg-surface-2)',
                 padding: 12,
                 borderRadius: 12,
-                border: '1px solid var(--border-subtle)',
+                border: '1px solid var(--line-2)',
               }}
             >
               <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>
@@ -1043,7 +1024,7 @@ export function CoachOnboardingWizard({
                         borderRadius: 10,
                         background: 'var(--bg-surface-1)',
                         border: checked ? '1px solid var(--text-3)'
-                          : '1px solid var(--border-subtle)',
+                          : '1px solid var(--line-2)',
                       }}
                     >
                       <Checkbox
@@ -1078,14 +1059,16 @@ export function CoachOnboardingWizard({
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+            <div className="wizard-nav">
               <button
                 type="button"
                 onClick={() => setStep(3)}
-                className="btn-surface"
+                className="glass"
                 style={{
-                  padding: '10px 14px',
-                  fontSize: 12,
+                  height: 52,
+                  borderRadius: 999,
+                  padding: '0 18px',
+                  fontSize: 15,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 4,
@@ -1125,7 +1108,7 @@ export function CoachOnboardingWizard({
                 background: 'var(--bg-surface-2)',
                 padding: 12,
                 borderRadius: 12,
-                border: '1px solid var(--border-subtle)',
+                border: '1px solid var(--line-2)',
               }}
             >
               <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>
@@ -1156,7 +1139,7 @@ export function CoachOnboardingWizard({
                         padding: '6px 11px',
                         borderRadius: 999,
                         border: selected ? '1px solid var(--sel-bg)'
-                          : '1px solid var(--border-subtle)',
+                          : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)'
                           : 'var(--bg-surface-1)',
                         color: selected ? 'var(--sel-text)'
@@ -1179,15 +1162,17 @@ export function CoachOnboardingWizard({
               />
             </div>
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+            <div className="wizard-nav">
               <button
                 type="button"
                 disabled={isFinishing}
                 onClick={() => setStep(4)}
-                className="btn-surface"
+                className="glass"
                 style={{
-                  padding: '10px 14px',
-                  fontSize: 12,
+                  height: 52,
+                  borderRadius: 999,
+                  padding: '0 18px',
+                  fontSize: 15,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 4,
@@ -1205,8 +1190,8 @@ export function CoachOnboardingWizard({
                 className="btn-volt"
                 style={{
                   flex: 1,
-                  padding: '11px 16px',
-                  fontSize: 14,
+                  height: 52,
+                  fontSize: 16,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',

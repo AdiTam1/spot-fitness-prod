@@ -107,7 +107,7 @@ export function AndroidForceUpdateGate({
         display: 'flex',
         alignItems: 'stretch',
         justifyContent: 'center',
-        padding: 'calc(24px + env(safe-area-inset-top, 0px)) 24px calc(24px + env(safe-area-inset-bottom, 0px))',
+        padding: 'calc(24px + var(--sa-top)) 24px calc(24px + var(--sa-bottom))',
         overflowY: 'auto',
       }}
     >

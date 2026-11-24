@@ -787,7 +787,7 @@ export function CoachDashboardView({
     if (isTodayObs && !t.countObservationInStats) {
       return {
         statusColor: '#38bdf8',
-        statusBg: 'rgba(56, 189, 248, 0.14)',
+        statusBg: 'var(--surface-2)',
         label: 'יום תשקיף (מוחרג מיעד)',
         consumed,
         target,
@@ -815,7 +815,7 @@ export function CoachDashboardView({
     if (consumed.calories > maxAllowed) {
       return {
         statusColor: 'var(--status-warn)',
-        statusBg: 'rgba(245, 158, 11, 0.12)',
+        statusBg: 'var(--surface-2)',
         label: isTodayObs ? 'תשקיף (נספר - חריגה)' : 'חריגה מהיעד',
         consumed,
         target,
@@ -827,7 +827,7 @@ export function CoachDashboardView({
 
     return {
       statusColor: 'var(--status-ok)',
-      statusBg: 'rgba(34, 197, 94, 0.12)',
+      statusBg: 'var(--surface-2)',
       label: isTodayObs ? 'תשקיף (נספר - ביעד)' : 'עומד ביעדים',
       consumed,
       target,
@@ -1046,7 +1046,7 @@ export function CoachDashboardView({
                   </span>
                   <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                     <span style={{ fontSize: 15, fontWeight: 600 }}>{p.name}</span>
-                    <bdi dir="ltr" style={{ fontSize: 12, color: 'var(--text-2)', textAlign: 'start', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <bdi dir="ltr" style={{ fontSize: 13, color: 'var(--text-2)', textAlign: 'start', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {p.email}
                     </bdi>
                   </span>
@@ -1190,7 +1190,7 @@ export function CoachDashboardView({
                     alignItems: 'center',
                     gap: 8,
                     padding: '9px 15px',
-                    borderRadius: 12,
+                    borderRadius: 18,
                     border: active ? '1px solid var(--sel-bg)'
                       : '1px solid transparent',
                     background: active ? 'var(--sel-bg)'
@@ -1220,7 +1220,7 @@ export function CoachDashboardView({
               alignItems: 'center',
               gap: 6,
               padding: '9px 14px',
-              fontSize: 12,
+              fontSize: 13,
               cursor: 'pointer',
               borderColor: coachAlertsDeviceReady
                 ? 'var(--surface-2)'
@@ -1250,7 +1250,7 @@ export function CoachDashboardView({
                 alignItems: 'center',
                 gap: 6,
                 padding: '9px 14px',
-                fontSize: 12,
+                fontSize: 13,
                 cursor: 'pointer',
               }}
             >
@@ -1267,7 +1267,7 @@ export function CoachDashboardView({
               alignItems: 'center',
               gap: 6,
               padding: '9px 14px',
-              fontSize: 12,
+              fontSize: 13,
               cursor: 'pointer',
             }}
           >
@@ -1324,7 +1324,7 @@ export function CoachDashboardView({
             zIndex: 400,
             maxWidth: 'calc(100% - 32px)',
             padding: '12px 18px',
-            borderRadius: 14,
+            borderRadius: 20,
             background: 'var(--card)',
             border: toastIsError
               ? '1px solid rgba(239, 68, 68, 0.55)'
@@ -1378,7 +1378,7 @@ export function CoachDashboardView({
               <span
                 className="only-desktop"
                 style={{
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: 700,
                   color: 'var(--text-muted)',
                   marginLeft: 4,
@@ -1401,7 +1401,7 @@ export function CoachDashboardView({
                   color:
                     selectedGroupFilter === 'all' ? 'var(--sel-text)'
                       : 'var(--text-secondary)',
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: 700,
                   cursor: 'pointer',
                 }}
@@ -1427,7 +1427,7 @@ export function CoachDashboardView({
                       border: active ? '1px solid var(--sel-bg)' : '1px solid var(--line-2)',
                       background: active ? 'var(--sel-bg)' : 'transparent',
                       color: active ? 'var(--sel-text)' : 'var(--text)',
-                      fontSize: 12,
+                      fontSize: 13,
                       fontWeight: 700,
                       cursor: 'pointer',
                     }}
@@ -1461,7 +1461,7 @@ export function CoachDashboardView({
                   color:
                     selectedGroupFilter === 'unassigned' ? 'var(--sel-text)'
                       : 'var(--text-secondary)',
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: 700,
                   cursor: 'pointer',
                 }}
@@ -1523,7 +1523,7 @@ export function CoachDashboardView({
                     {filteredTrainees.length} מתאמנים)
                   </div>
                   <div
-                    style={{ fontSize: 12, color: 'var(--text-secondary)' }}
+                    style={{ fontSize: 13, color: 'var(--text-secondary)' }}
                   >
                     החל טמפלייט תזונה או שתף מאמן נוסף על כל חברי הקבוצה בלחיצה
                     אחת
@@ -1579,7 +1579,7 @@ export function CoachDashboardView({
                   className="btn-volt"
                   style={{
                     padding: '7px 14px',
-                    fontSize: 12,
+                    fontSize: 13,
                     cursor: 'pointer',
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -1627,7 +1627,7 @@ export function CoachDashboardView({
                       className="btn-surface"
                       style={{
                         padding: '7px 12px',
-                        fontSize: 12,
+                        fontSize: 13,
                         cursor: 'pointer',
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -1700,15 +1700,15 @@ export function CoachDashboardView({
               gap: 8,
             }}
           >
-            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)' }}>
               {filteredTrainees.length} מתאמנים מוצגים
             </span>
             <div
               style={{
                 display: 'inline-flex',
-                background: 'var(--bg-surface-2)',
+                background: 'var(--surface-2)',
                 border: '1px solid var(--line-2)',
-                borderRadius: 10,
+                borderRadius: 16,
                 padding: 3,
                 gap: 2,
               }}
@@ -1730,7 +1730,7 @@ export function CoachDashboardView({
                     rosterViewMode === 'cards' ? 'var(--sel-bg)' : 'transparent',
                   color:
                     rosterViewMode === 'cards' ? 'var(--sel-text)' : 'var(--text-secondary)',
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: 700,
                   cursor: 'pointer',
                 }}
@@ -1755,7 +1755,7 @@ export function CoachDashboardView({
                     rosterViewMode === 'table' ? 'var(--sel-bg)' : 'transparent',
                   color:
                     rosterViewMode === 'table' ? 'var(--sel-text)' : 'var(--text-secondary)',
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: 700,
                   cursor: 'pointer',
                 }}
@@ -1870,7 +1870,7 @@ export function CoachDashboardView({
                               color: 'var(--on-accent)',
                               border: 'none',
                               fontFamily: 'inherit',
-                              fontSize: 12,
+                              fontSize: 13,
                               fontWeight: 700,
                               display: 'inline-flex',
                               alignItems: 'center',
@@ -1890,7 +1890,7 @@ export function CoachDashboardView({
                               borderRadius: 999,
                               background: 'var(--surface-2)',
                               color: st.statusColor,
-                              fontSize: 12,
+                              fontSize: 13,
                               fontWeight: 700,
                               display: 'inline-flex',
                               alignItems: 'center',
@@ -1995,9 +1995,9 @@ export function CoachDashboardView({
                 <thead>
                   <tr
                     style={{
-                      borderBottom: '1px solid var(--border-subtle)',
+                      borderBottom: '1px solid var(--line)',
                       color: 'var(--text-muted)',
-                      fontSize: 12,
+                      fontSize: 13,
                       fontWeight: 700,
                     }}
                   >
@@ -2049,7 +2049,7 @@ export function CoachDashboardView({
                         <tr
                           key={t.id}
                           style={{
-                            borderBottom: '1px solid var(--border-subtle)',
+                            borderBottom: '1px solid var(--line)',
                           }}
                         >
                           <td style={{ padding: '14px 20px' }}>
@@ -2084,7 +2084,7 @@ export function CoachDashboardView({
                                 <div
                                   className="num-mono"
                                   style={{
-                                    fontSize: 12,
+                                    fontSize: 13,
                                     color: 'var(--text-secondary)',
                                   }}
                                 >
@@ -2106,10 +2106,10 @@ export function CoachDashboardView({
                                         marginTop: 4,
                                         padding: '2px 7px',
                                         borderRadius: 999,
-                                        background: 'rgba(56, 189, 248, 0.16)',
-                                        border: '1px solid rgba(56, 189, 248, 0.35)',
+                                        background: 'var(--surface-2)',
+                                        border: '1px solid var(--line-2)',
                                         color: 'var(--info-text)',
-                                        fontSize: 12,
+                                        fontSize: 13,
                                         fontWeight: 700,
                                         display: 'inline-flex',
                                         alignItems: 'center',
@@ -2160,7 +2160,7 @@ export function CoachDashboardView({
                             >
                               <div
                                 style={{
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   fontWeight: 700,
                                   display: 'flex',
                                   alignItems: 'center',
@@ -2173,10 +2173,10 @@ export function CoachDashboardView({
                                 {!isOwner && (
                                   <span
                                     style={{
-                                      fontSize: 12,
+                                      fontSize: 13,
                                       padding: '1px 6px',
                                       borderRadius: 999,
-                                      background: 'rgba(56, 189, 248, 0.14)',
+                                      background: 'var(--surface-2)',
                                       color: '#38bdf8',
                                     }}
                                   >
@@ -2187,7 +2187,7 @@ export function CoachDashboardView({
                               {sharedNames.length > 0 && (
                                 <div
                                   style={{
-                                    fontSize: 12,
+                                    fontSize: 13,
                                     color: 'var(--text-secondary)',
                                   }}
                                 >
@@ -2215,7 +2215,7 @@ export function CoachDashboardView({
                                   borderRadius: 999,
                                   background: st.statusBg,
                                   color: st.statusColor,
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   fontWeight: 700,
                                 }}
                               >
@@ -2245,14 +2245,14 @@ export function CoachDashboardView({
                                     borderRadius: 6,
                                     border: st.isTodayObs
                                       ? '1px solid #38bdf8'
-                                      : '1px solid var(--border-subtle)',
+                                      : '1px solid var(--line)',
                                     background: st.isTodayObs
-                                      ? 'rgba(56, 189, 248, 0.15)'
-                                      : 'var(--bg-surface-2)',
+                                      ? 'var(--surface-2)'
+                                      : 'var(--surface-2)',
                                     color: st.isTodayObs
                                       ? '#38bdf8'
                                       : 'var(--text-muted)',
-                                    fontSize: 12,
+                                    fontSize: 13,
                                     fontWeight: 700,
                                     cursor: 'pointer',
                                   }}
@@ -2288,14 +2288,14 @@ export function CoachDashboardView({
                                       borderRadius: 6,
                                       border: t.countObservationInStats
                                         ? '1px solid var(--accent-volt)'
-                                        : '1px solid var(--border-subtle)',
+                                        : '1px solid var(--line)',
                                       background: t.countObservationInStats
                                         ? 'var(--surface-2)'
-                                        : 'var(--bg-surface-2)',
+                                        : 'var(--surface-2)',
                                       color: t.countObservationInStats
                                         ? 'var(--accent-volt)'
                                         : 'var(--text-secondary)',
-                                      fontSize: 12,
+                                      fontSize: 13,
                                       fontWeight: 700,
                                       cursor: 'pointer',
                                     }}
@@ -2315,7 +2315,7 @@ export function CoachDashboardView({
                               style={{
                                 display: 'flex',
                                 justifyContent: 'space-between',
-                                fontSize: 12,
+                                fontSize: 13,
                                 marginBottom: 4,
                               }}
                             >
@@ -2358,7 +2358,7 @@ export function CoachDashboardView({
                                 className="btn-surface"
                                 style={{
                                   padding: '6px 12px',
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   cursor: 'pointer',
                                 }}
                               >
@@ -2371,7 +2371,7 @@ export function CoachDashboardView({
                                 className="btn-surface"
                                 style={{
                                   padding: '6px 10px',
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   cursor: 'pointer',
                                   display: 'flex',
                                   alignItems: 'center',
@@ -2403,7 +2403,7 @@ export function CoachDashboardView({
                                   className="btn-surface"
                                   style={{
                                     padding: '6px 10px',
-                                    fontSize: 12,
+                                    fontSize: 13,
                                     cursor: 'pointer',
                                     display: 'flex',
                                     alignItems: 'center',
@@ -2423,7 +2423,7 @@ export function CoachDashboardView({
                                 className="btn-surface"
                                 style={{
                                   padding: '6px 10px',
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   cursor: 'pointer',
                                   display: 'flex',
                                   alignItems: 'center',
@@ -2492,7 +2492,7 @@ export function CoachDashboardView({
                 gap: 16,
                 paddingBottom: 16,
                 marginBottom: 16,
-                borderBottom: '1px solid var(--border-subtle)',
+                borderBottom: '1px solid var(--line)',
               }}
             >
               <div>
@@ -2500,7 +2500,7 @@ export function CoachDashboardView({
                   נתוני קליטה (Onboarding), היקפים וימי תשקיף —{' '}
                   {selectedTrainee.name}
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                   {selectedTrainee.onboarding?.completed
                     ? `הושלם בתאריך ${
                         selectedTrainee.onboarding.completedAt || ''
@@ -2519,14 +2519,14 @@ export function CoachDashboardView({
                 {selectedTrainee.onboarding?.estimatedBmr && (
                   <div
                     style={{
-                      background: 'var(--bg-surface-2)',
+                      background: 'var(--surface-2)',
                       padding: '8px 14px',
-                      borderRadius: 12,
-                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 18,
+                      border: '1px solid var(--line)',
                     }}
                   >
                     <div
-                      style={{ fontSize: 12, color: 'var(--text-secondary)' }}
+                      style={{ fontSize: 13, color: 'var(--text-secondary)' }}
                     >
                       BMR / TDEE משוער
                     </div>
@@ -2549,13 +2549,13 @@ export function CoachDashboardView({
                   return (
                     <div
                       style={{
-                        background: 'rgba(56, 189, 248, 0.08)',
+                        background: 'var(--surface-2)',
                         padding: '8px 14px',
-                        borderRadius: 12,
-                        border: '1px solid rgba(56, 189, 248, 0.3)',
+                        borderRadius: 18,
+                        border: '1px solid var(--line-2)',
                       }}
                     >
-                      <div style={{ fontSize: 12, color: 'var(--text)' }}>
+                      <div style={{ fontSize: 13, color: 'var(--text)' }}>
                         ממוצע ימי תשקיף ({obsAvg.loggedCount} מתוך {obsAvg.count}{' '}
                         ימים)
                       </div>
@@ -2581,8 +2581,8 @@ export function CoachDashboardView({
                   className="btn-surface"
                   style={{
                     padding: '8px 14px',
-                    borderRadius: 12,
-                    fontSize: 12,
+                    borderRadius: 18,
+                    fontSize: 13,
                     fontWeight: 700,
                     cursor: 'pointer',
                     display: 'inline-flex',
@@ -2625,7 +2625,7 @@ export function CoachDashboardView({
               return (
                 <div
                   style={{
-                    background: 'var(--bg-surface-2)',
+                    background: 'var(--surface-2)',
                     padding: 14,
                     borderRadius: 20,
                     border: '1px solid var(--line-2)',
@@ -2654,17 +2654,18 @@ export function CoachDashboardView({
                         ל-{selectedTrainee.name}
                       </div>
                       <div
-                        style={{ fontSize: 12, color: 'var(--text-secondary)' }}
+                        style={{ fontSize: 13, color: 'var(--text-secondary)' }}
                       >
                         יעדים אלו מוצגים למתאמן להזנה יומית ביומן שלו
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: 8, fontSize: 12 }}>
+                    <div style={{ display: 'flex', gap: 8, fontSize: 13, flexWrap: 'wrap' }}>
                       <span
                         className="num-mono"
                         style={{
-                          padding: '3px 9px',
+                          padding: '4px 10px',
+                          whiteSpace: 'nowrap',
                           borderRadius: 999,
                           background: 'var(--surface-2)',
                           color: 'var(--text)',
@@ -2677,9 +2678,10 @@ export function CoachDashboardView({
                       <span
                         className="num-mono"
                         style={{
-                          padding: '3px 9px',
+                          padding: '4px 10px',
+                          whiteSpace: 'nowrap',
                           borderRadius: 999,
-                          background: 'rgba(56, 189, 248, 0.14)',
+                          background: 'var(--surface-2)',
                           color: 'var(--text)',
                           fontWeight: 800,
                         }}
@@ -2690,7 +2692,8 @@ export function CoachDashboardView({
                       <span
                         className="num-mono"
                         style={{
-                          padding: '3px 9px',
+                          padding: '4px 10px',
+                          whiteSpace: 'nowrap',
                           borderRadius: 999,
                           background: 'var(--surface-2)',
                           color: 'var(--text)',
@@ -2703,9 +2706,10 @@ export function CoachDashboardView({
                       <span
                         className="num-mono"
                         style={{
-                          padding: '3px 9px',
+                          padding: '4px 10px',
+                          whiteSpace: 'nowrap',
                           borderRadius: 999,
-                          background: 'rgba(34, 197, 94, 0.15)',
+                          background: 'var(--surface-2)',
                           color: 'var(--ok-text)',
                           fontWeight: 800,
                         }}
@@ -2803,7 +2807,7 @@ export function CoachDashboardView({
                   <div>
                     <div
                       style={{
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight: 700,
                         marginBottom: 6,
                       }}
@@ -2843,12 +2847,12 @@ export function CoachDashboardView({
                               padding: '5px 10px',
                               borderRadius: 999,
                               border: active ? '1px solid var(--sel-bg)'
-                                : '1px solid var(--border-subtle)',
+                                : '1px solid var(--line)',
                               background: active ? 'var(--sel-bg)'
-                                : 'var(--bg-surface-1)',
+                                : 'var(--card)',
                               color: active ? 'var(--sel-text)'
                                 : 'var(--text-muted)',
-                              fontSize: 12,
+                              fontSize: 13,
                               fontWeight: 700,
                               cursor: 'pointer',
                             }}
@@ -2896,7 +2900,7 @@ export function CoachDashboardView({
                         className="btn-surface"
                         style={{
                           padding: '6px 12px',
-                          fontSize: 12,
+                          fontSize: 13,
                           cursor: 'pointer',
                         }}
                       >
@@ -2914,7 +2918,7 @@ export function CoachDashboardView({
                 justifyContent: 'space-between',
                 flexWrap: 'wrap',
                 gap: 10,
-                background: 'var(--bg-surface-2)',
+                background: 'var(--surface-2)',
                 padding: '12px 14px',
                 borderRadius: 20,
                 marginBottom: 14,
@@ -2925,7 +2929,7 @@ export function CoachDashboardView({
                   ניהול ימי תשקיף ({selectedTrainee.observationDates?.length || 0}{' '}
                   ימים מוגדרים)
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                   הגדר ימי תשקיף מראש או בדיעבד, ובחר בקליק אם הקלוריות שלהם
                   נחשבות בספירת היעדים
                 </div>
@@ -2947,7 +2951,7 @@ export function CoachDashboardView({
                   className="btn-surface"
                   style={{
                     padding: '7px 12px',
-                    fontSize: 12,
+                    fontSize: 13,
                     cursor: 'pointer',
                     borderColor: (
                       selectedTrainee.observationDates || []
@@ -2978,7 +2982,7 @@ export function CoachDashboardView({
                   className="btn-surface"
                   style={{
                     padding: '7px 12px',
-                    fontSize: 12,
+                    fontSize: 13,
                     cursor: 'pointer',
                   }}
                 >
@@ -3000,7 +3004,7 @@ export function CoachDashboardView({
                   className="btn-surface"
                   style={{
                     padding: '7px 12px',
-                    fontSize: 12,
+                    fontSize: 13,
                     cursor: 'pointer',
                   }}
                 >
@@ -3012,10 +3016,10 @@ export function CoachDashboardView({
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 4,
-                    background: 'var(--bg-surface-1)',
+                    background: 'var(--card)',
                     padding: '3px 6px',
-                    borderRadius: 10,
-                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 16,
+                    border: '1px solid var(--line)',
                   }}
                 >
                   <NumberInput
@@ -3048,7 +3052,7 @@ export function CoachDashboardView({
                     className="btn-surface"
                     style={{
                       padding: '5px 10px',
-                      fontSize: 12,
+                      fontSize: 13,
                       cursor: 'pointer',
                     }}
                   >
@@ -3081,7 +3085,7 @@ export function CoachDashboardView({
                   }
                   style={{
                     padding: '7px 14px',
-                    fontSize: 12,
+                    fontSize: 13,
                     cursor: 'pointer',
                   }}
                 >
@@ -3115,7 +3119,7 @@ export function CoachDashboardView({
                   }
                   style={{
                     padding: '7px 14px',
-                    fontSize: 12,
+                    fontSize: 13,
                     cursor: 'pointer',
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -3153,7 +3157,7 @@ export function CoachDashboardView({
                     className="btn-surface"
                     style={{
                       padding: '7px 10px',
-                      fontSize: 12,
+                      fontSize: 13,
                       color: '#ef4444',
                       cursor: 'pointer',
                     }}
@@ -3190,7 +3194,7 @@ export function CoachDashboardView({
                     <CalendarRange size={14} />
                     <span>חלון תאריכים פעילים לניווט המתאמן</span>
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                     קובע לאילו תאריכים המתאמן יכול לנווט בסרגל השבועי ובלוח השנה החודשי (ימי תשקיף וימים מתועדים זמינים תמיד).
                   </div>
                 </div>
@@ -3288,7 +3292,7 @@ export function CoachDashboardView({
                         ניהול ימים חסומים ({selectedTrainee.blockedDates?.length || 0} ימים חסומים)
                       </span>
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                       ביום חסום המתאמן לא יוכל להזין ארוחות, מדדים, מים, משקל או פעילות.
                     </div>
                   </div>
@@ -3334,10 +3338,10 @@ export function CoachDashboardView({
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: 6,
-                        background: 'var(--bg-surface-1)',
+                        background: 'var(--card)',
                         padding: '3px 6px',
-                        borderRadius: 10,
-                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 16,
+                        border: '1px solid var(--line)',
                       }}
                     >
                       <input
@@ -3373,7 +3377,7 @@ export function CoachDashboardView({
                         className="btn-surface"
                         style={{
                           padding: '4px 9px',
-                          fontSize: 12,
+                          fontSize: 13,
                           cursor: customBlockDateInput ? 'pointer' : 'not-allowed',
                         }}
                       >
@@ -3409,7 +3413,7 @@ export function CoachDashboardView({
                         className="btn-surface"
                         style={{
                           padding: '6px 10px',
-                          fontSize: 12,
+                          fontSize: 13,
                           color: '#ef4444',
                           cursor: 'pointer',
                         }}
@@ -3442,9 +3446,10 @@ export function CoachDashboardView({
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: 5,
-                          padding: '3px 9px',
+                          padding: '4px 10px',
+                          whiteSpace: 'nowrap',
                           borderRadius: 999,
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: 700,
                           background: 'rgba(239, 68, 68, 0.14)',
                           border: '1px solid rgba(239, 68, 68, 0.38)',
@@ -3471,10 +3476,10 @@ export function CoachDashboardView({
             >
               <div
                 style={{
-                  background: 'var(--bg-surface-2)',
+                  background: 'var(--surface-2)',
                   padding: 12,
-                  borderRadius: 12,
-                  fontSize: 12,
+                  borderRadius: 18,
+                  fontSize: 13,
                 }}
               >
                 <div
@@ -3515,10 +3520,10 @@ export function CoachDashboardView({
 
               <div
                 style={{
-                  background: 'var(--bg-surface-2)',
+                  background: 'var(--surface-2)',
                   padding: 12,
-                  borderRadius: 12,
-                  fontSize: 12,
+                  borderRadius: 18,
+                  fontSize: 13,
                 }}
               >
                 <div
@@ -3570,10 +3575,10 @@ export function CoachDashboardView({
 
               <div
                 style={{
-                  background: 'var(--bg-surface-2)',
+                  background: 'var(--surface-2)',
                   padding: 12,
-                  borderRadius: 12,
-                  fontSize: 12,
+                  borderRadius: 18,
+                  fontSize: 13,
                 }}
               >
                 <div
@@ -3626,7 +3631,7 @@ export function CoachDashboardView({
             >
               <div
                 style={{
-                  background: 'var(--bg-surface-2)',
+                  background: 'var(--surface-2)',
                   padding: 14,
                   borderRadius: 20,
                   border: '1px solid var(--line-2)',
@@ -3650,7 +3655,7 @@ export function CoachDashboardView({
                 </div>
                 <div
                   style={{
-                    fontSize: 12,
+                    fontSize: 13,
                     color: 'var(--text-secondary)',
                     marginBottom: 8,
                   }}
@@ -3676,7 +3681,7 @@ export function CoachDashboardView({
                 <div style={{ marginTop: 10 }}>
                   <div
                     style={{
-                      fontSize: 12,
+                      fontSize: 13,
                       fontWeight: 700,
                       color: 'var(--text-secondary)',
                       marginBottom: 6,
@@ -3686,7 +3691,7 @@ export function CoachDashboardView({
                     {(selectedTrainee.aiLearnedPreferences || []).length}):
                   </div>
                   {(selectedTrainee.aiLearnedPreferences || []).length === 0 ? (
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
                       טרם נלמדו כללים מתגובות המתאמן.
                     </div>
                   ) : (
@@ -3703,7 +3708,7 @@ export function CoachDashboardView({
                               borderRadius: 999,
                               background: 'var(--fill-1)',
                               border: '1px solid var(--line-2)',
-                              fontSize: 12,
+                              fontSize: 13,
                               color: 'var(--text)',
                               fontWeight: 700,
                             }}
@@ -3751,10 +3756,10 @@ export function CoachDashboardView({
               {/* כרטיס צ'ק-אין שבועי אחרון של המתאמן + העתקת דו"ח לוואטסאפ */}
               <div
                 style={{
-                  background: 'var(--bg-surface-2)',
+                  background: 'var(--surface-2)',
                   padding: 14,
                   borderRadius: 20,
-                  border: '1px solid var(--border-subtle)',
+                  border: '1px solid var(--line)',
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
@@ -3846,7 +3851,7 @@ export function CoachDashboardView({
                       className="btn-surface"
                       style={{
                         padding: '5px 10px',
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight: 700,
                         cursor: 'pointer',
                         color: 'var(--text)',
@@ -3865,7 +3870,7 @@ export function CoachDashboardView({
                       return (
                         <div
                           style={{
-                            fontSize: 12,
+                            fontSize: 13,
                             color: 'var(--text-muted)',
                             marginTop: 10,
                           }}
@@ -3877,7 +3882,7 @@ export function CoachDashboardView({
                     return (
                       <div
                         style={{
-                          fontSize: 12,
+                          fontSize: 13,
                           display: 'flex',
                           flexDirection: 'column',
                           gap: 6,
@@ -3902,7 +3907,7 @@ export function CoachDashboardView({
                           <div
                             style={{
                               padding: '6px 10px',
-                              borderRadius: 8,
+                              borderRadius: 16,
                               background: 'var(--fill-1)',
                               color: 'var(--text-primary)',
                             }}
@@ -3942,7 +3947,7 @@ export function CoachDashboardView({
                 <div style={{ fontSize: 16, fontWeight: 800 }}>
                   הגדרת ארוחות ומאקרו — {selectedTrainee.name}
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                   מאמן ראשי: {getCoachNameById(selectedTrainee.primaryCoachId)}
                 </div>
               </div>
@@ -3959,10 +3964,10 @@ export function CoachDashboardView({
             {/* מתג בשליטת המאמן: האם לפתוח למתאמן פיצול לתפריט יום אימון / יום מנוחה */}
             <div
               style={{
-                background: 'var(--bg-surface-2)',
+                background: 'var(--surface-2)',
                 padding: '10px 12px',
-                borderRadius: 12,
-                border: '1px solid var(--border-subtle)',
+                borderRadius: 18,
+                border: '1px solid var(--line)',
                 marginBottom: 14,
               }}
             >
@@ -4012,7 +4017,7 @@ export function CoachDashboardView({
                 <div
                   style={{
                     flex: 1,
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: 700,
                     color: 'var(--text-secondary)',
                     padding: '6px 0',
@@ -4047,8 +4052,8 @@ export function CoachDashboardView({
                 <div
                   key={meal.id}
                   style={{
-                    background: 'var(--bg-surface-2)',
-                    border: '1px solid var(--border-subtle)',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--line)',
                     borderRadius: 20,
                     padding: 12,
                   }}
@@ -4170,7 +4175,7 @@ export function CoachDashboardView({
                   alignItems: 'center',
                   gap: 6,
                   padding: '8px 14px',
-                  fontSize: 12,
+                  fontSize: 13,
                   cursor: 'pointer',
                 }}
               >
@@ -4211,17 +4216,17 @@ export function CoachDashboardView({
                 <div style={{ fontSize: 16, fontWeight: 800 }}>
                   יומן אכילה ופידבק — {selectedTrainee.name}
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                   הפידבק יישלח חתום על שמך ({currentUser.name})
                 </div>
               </div>
               <span
                 className="num-mono"
                 style={{
-                  fontSize: 12,
+                  fontSize: 13,
                   padding: '4px 10px',
                   borderRadius: 999,
-                  background: 'var(--bg-surface-2)',
+                  background: 'var(--surface-2)',
                   color: 'var(--text-secondary)',
                 }}
               >
@@ -4242,8 +4247,8 @@ export function CoachDashboardView({
                   <div
                     key={slot.id}
                     style={{
-                      background: 'var(--bg-surface-2)',
-                      border: '1px solid var(--border-subtle)',
+                      background: 'var(--surface-2)',
+                      border: '1px solid var(--line)',
                       borderRadius: 20,
                       padding: 14,
                     }}
@@ -4262,7 +4267,7 @@ export function CoachDashboardView({
                           <span
                             dir="ltr"
                             className="num-mono"
-                            style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}
+                            style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}
                           >
                             {entry?.mealTime || slot.timeHint}
                           </span>
@@ -4271,7 +4276,7 @@ export function CoachDashboardView({
                       <div
                         className="num-mono"
                         style={{
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: 700,
                           color:
                             items.length > 0
@@ -4287,7 +4292,7 @@ export function CoachDashboardView({
                     {items.length === 0 ? (
                       <div
                         style={{
-                          fontSize: 12,
+                          fontSize: 13,
                           color: 'var(--text-muted)',
                           marginBottom: 10,
                         }}
@@ -4303,7 +4308,7 @@ export function CoachDashboardView({
                           marginBottom: 10,
                           padding: '8px 10px',
                           background: 'var(--surface-2)',
-                          borderRadius: 10,
+                          borderRadius: 16,
                         }}
                       >
                         {items.map((it) => (
@@ -4312,7 +4317,7 @@ export function CoachDashboardView({
                             style={{
                               display: 'flex',
                               justifyContent: 'space-between',
-                              fontSize: 12,
+                              fontSize: 13,
                             }}
                           >
                             <span>
@@ -4359,12 +4364,12 @@ export function CoachDashboardView({
                         }}
                         style={{
                           flex: 1,
-                          background: 'var(--bg-surface-1)',
-                          border: '1px solid var(--border-subtle)',
-                          borderRadius: 10,
+                          background: 'var(--card)',
+                          border: '1px solid var(--line)',
+                          borderRadius: 16,
                           padding: '7px 12px',
                           color: 'var(--text-primary)',
-                          fontSize: 12,
+                          fontSize: 13,
                         }}
                       />
                       <button
@@ -4373,7 +4378,7 @@ export function CoachDashboardView({
                         className="btn-volt"
                         style={{
                           padding: '7px 14px',
-                          fontSize: 12,
+                          fontSize: 13,
                           display: 'flex',
                           alignItems: 'center',
                           gap: 5,
@@ -4454,7 +4459,7 @@ export function CoachDashboardView({
                         borderRadius: 999,
                         background: 'var(--surface-2)',
                         color: 'var(--text-2)',
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight: 700,
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -4513,7 +4518,7 @@ export function CoachDashboardView({
               gap: 16,
               paddingBottom: 18,
               marginBottom: 18,
-              borderBottom: '1px solid var(--border-subtle)',
+              borderBottom: '1px solid var(--line)',
             }}
           >
             <div
@@ -4530,7 +4535,7 @@ export function CoachDashboardView({
                 className="btn-surface"
                 style={{
                   padding: '9px 14px',
-                  fontSize: 12,
+                  fontSize: 13,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
@@ -4554,7 +4559,7 @@ export function CoachDashboardView({
                   className="btn-volt"
                   style={{
                     padding: '9px 14px',
-                    fontSize: 12,
+                    fontSize: 13,
                     display: 'flex',
                     alignItems: 'center',
                     gap: 6,
@@ -4582,10 +4587,10 @@ export function CoachDashboardView({
                   gap: 8,
                   alignItems: 'flex-end',
                   flexWrap: 'wrap',
-                  background: 'var(--bg-surface-2)',
+                  background: 'var(--surface-2)',
                   padding: '10px 14px',
-                  borderRadius: 14,
-                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 20,
+                  border: '1px solid var(--line)',
                 }}
               >
                 <Select
@@ -4626,7 +4631,7 @@ export function CoachDashboardView({
                   className="btn-volt"
                   style={{
                     padding: '7px 14px',
-                    fontSize: 12,
+                    fontSize: 13,
                     cursor: 'pointer',
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -4675,10 +4680,10 @@ export function CoachDashboardView({
               <div
                 key={meal.id}
                 style={{
-                  background: 'var(--bg-surface-2)',
+                  background: 'var(--surface-2)',
                   padding: 14,
-                  borderRadius: 14,
-                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 20,
+                  border: '1px solid var(--line)',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 8,
@@ -4818,7 +4823,7 @@ export function CoachDashboardView({
                 <span>הוסף ארוחה לטמפלייט</span>
               </button>
             ) : (
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                 זהו טמפלייט מערכתי של המנהל הראשי (לקריאה והקצאה). לעריכה לחץ על
                 &ldquo;שכפל לטמפלייטים האישיים שלי&rdquo;.
               </div>
@@ -4859,7 +4864,7 @@ export function CoachDashboardView({
                       className="btn-surface"
                       style={{
                         padding: '10px 14px',
-                        fontSize: 12,
+                        fontSize: 13,
                         cursor: 'pointer',
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -4976,7 +4981,7 @@ export function CoachDashboardView({
                     className="btn-volt"
                     style={{
                       padding: '9px 16px',
-                      fontSize: 12,
+                      fontSize: 13,
                       cursor: 'pointer',
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -4995,13 +5000,13 @@ export function CoachDashboardView({
             <div
               style={{
                 padding: '18px 22px',
-                borderBottom: '1px solid var(--border-subtle)',
+                borderBottom: '1px solid var(--line)',
               }}
             >
               <div style={{ fontSize: 16, fontWeight: 800 }}>
                 ניהול חשבונות מתאמנים, סיסמאות ושיתוף מאמנים
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                 רק המאמן הראשי של המתאמן (או המנהל הראשי) יכול להשהות, למחוק או
                 לנהל את רשימת המאמנים השותפים שלו
               </div>
@@ -5018,9 +5023,9 @@ export function CoachDashboardView({
                 <thead>
                   <tr
                     style={{
-                      borderBottom: '1px solid var(--border-subtle)',
+                      borderBottom: '1px solid var(--line)',
                       color: 'var(--text-muted)',
-                      fontSize: 12,
+                      fontSize: 13,
                       fontWeight: 700,
                     }}
                   >
@@ -5041,7 +5046,7 @@ export function CoachDashboardView({
                       <tr
                         key={t.id}
                         style={{
-                          borderBottom: '1px solid var(--border-subtle)',
+                          borderBottom: '1px solid var(--line)',
                         }}
                       >
                         <td style={{ padding: '14px 20px', fontWeight: 800 }}>
@@ -5099,9 +5104,9 @@ export function CoachDashboardView({
                               style={{
                                 padding: '4px 10px',
                                 borderRadius: 999,
-                                background: 'rgba(34, 197, 94, 0.14)',
+                                background: 'var(--surface-2)',
                                 color: '#22c55e',
-                                fontSize: 12,
+                                fontSize: 13,
                                 fontWeight: 700,
                               }}
                             >
@@ -5112,9 +5117,9 @@ export function CoachDashboardView({
                               style={{
                                 padding: '4px 10px',
                                 borderRadius: 999,
-                                background: 'rgba(245, 158, 11, 0.14)',
+                                background: 'var(--surface-2)',
                                 color: 'var(--warn-text)',
-                                fontSize: 12,
+                                fontSize: 13,
                                 fontWeight: 700,
                               }}
                             >
@@ -5127,7 +5132,7 @@ export function CoachDashboardView({
                                 borderRadius: 999,
                                 background: 'rgba(239, 68, 68, 0.14)',
                                 color: '#ef4444',
-                                fontSize: 12,
+                                fontSize: 13,
                                 fontWeight: 700,
                               }}
                             >
@@ -5159,7 +5164,7 @@ export function CoachDashboardView({
                                 className="btn-surface"
                                 style={{
                                   padding: '6px 10px',
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   display: 'flex',
                                   alignItems: 'center',
                                   gap: 4,
@@ -5186,7 +5191,7 @@ export function CoachDashboardView({
                                   className="btn-volt"
                                   style={{
                                     padding: '6px 10px',
-                                    fontSize: 12,
+                                    fontSize: 13,
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: 4,
@@ -5222,13 +5227,13 @@ export function CoachDashboardView({
                                       className="btn-surface"
                                       style={{
                                         padding: '6px 10px',
-                                        fontSize: 12,
+                                        fontSize: 13,
                                         display: 'flex',
                                         alignItems: 'center',
                                         gap: 4,
                                         cursor: 'pointer',
                                         color: 'var(--warn-text)',
-                                        borderColor: 'rgba(245, 158, 11, 0.3)',
+                                        borderColor: 'var(--surface-2)',
                                       }}
                                     >
                                       {isBusy(`fl-tr-${t.id}`) ? (
@@ -5254,7 +5259,7 @@ export function CoachDashboardView({
                                     className="btn-surface"
                                     style={{
                                       padding: '6px 10px',
-                                      fontSize: 12,
+                                      fontSize: 13,
                                       display: 'flex',
                                       alignItems: 'center',
                                       gap: 4,
@@ -5284,7 +5289,7 @@ export function CoachDashboardView({
                                 className="btn-surface"
                                 style={{
                                   padding: '6px 10px',
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   display: 'flex',
                                   alignItems: 'center',
                                   gap: 4,
@@ -5328,7 +5333,7 @@ export function CoachDashboardView({
                           ) : (
                             <span
                               style={{
-                                fontSize: 12,
+                                fontSize: 13,
                                 color: 'var(--text-muted)',
                               }}
                             >
@@ -5370,7 +5375,7 @@ export function CoachDashboardView({
               <div style={{ fontSize: 17, fontWeight: 800 }}>
                 ניהול מאמנים
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                 הוסף מאמנים חדשים, הגדר להם קוד הזמנה אישי, או השהה מאמן (במחיקת
                 מאמן כל המתאמנים שלו עוברים אוטומטית אליך)
               </div>
@@ -5408,9 +5413,9 @@ export function CoachDashboardView({
                 <thead>
                   <tr
                     style={{
-                      borderBottom: '1px solid var(--border-subtle)',
+                      borderBottom: '1px solid var(--line)',
                       color: 'var(--text-muted)',
-                      fontSize: 12,
+                      fontSize: 13,
                       fontWeight: 700,
                     }}
                   >
@@ -5453,7 +5458,7 @@ export function CoachDashboardView({
                         <tr
                           key={c.id}
                           style={{
-                            borderBottom: '1px solid var(--border-subtle)',
+                            borderBottom: '1px solid var(--line)',
                           }}
                         >
                           <td
@@ -5503,10 +5508,10 @@ export function CoachDashboardView({
                               className="num-mono"
                               style={{
                                 padding: '3px 10px',
-                                borderRadius: 8,
+                                borderRadius: 16,
                                 background: 'var(--surface-2)',
                                 color: 'var(--accent-volt)',
-                                fontSize: 12,
+                                fontSize: 13,
                                 fontWeight: 800,
                               }}
                             >
@@ -5523,9 +5528,9 @@ export function CoachDashboardView({
                                 style={{
                                   padding: '4px 10px',
                                   borderRadius: 999,
-                                  background: 'rgba(34, 197, 94, 0.14)',
+                                  background: 'var(--surface-2)',
                                   color: '#22c55e',
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   fontWeight: 700,
                                 }}
                               >
@@ -5538,7 +5543,7 @@ export function CoachDashboardView({
                                   borderRadius: 999,
                                   background: 'rgba(239, 68, 68, 0.14)',
                                   color: '#ef4444',
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   fontWeight: 700,
                                 }}
                               >
@@ -5566,13 +5571,13 @@ export function CoachDashboardView({
                                       className="btn-surface"
                                       style={{
                                         padding: '6px 10px',
-                                        fontSize: 12,
+                                        fontSize: 13,
                                         cursor: 'pointer',
                                         display: 'inline-flex',
                                         alignItems: 'center',
                                         gap: 4,
                                         color: 'var(--warn-text)',
-                                        borderColor: 'rgba(245, 158, 11, 0.3)',
+                                        borderColor: 'var(--surface-2)',
                                       }}
                                     >
                                       {isBusy(`fl-co-${c.id}`) ? (
@@ -5600,7 +5605,7 @@ export function CoachDashboardView({
                                     className="btn-surface"
                                     style={{
                                       padding: '6px 10px',
-                                      fontSize: 12,
+                                      fontSize: 13,
                                       cursor: 'pointer',
                                       display: 'inline-flex',
                                       alignItems: 'center',
@@ -5630,7 +5635,7 @@ export function CoachDashboardView({
                                   className="btn-volt"
                                   style={{
                                     padding: '6px 10px',
-                                    fontSize: 12,
+                                    fontSize: 13,
                                     cursor: 'pointer',
                                     display: 'inline-flex',
                                     alignItems: 'center',
@@ -5656,7 +5661,7 @@ export function CoachDashboardView({
                                 className="btn-surface"
                                 style={{
                                   padding: '6px 10px',
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   cursor: 'pointer',
                                 }}
                               >
@@ -5730,7 +5735,7 @@ export function CoachDashboardView({
                   </div>
                   <div
                     style={{
-                      fontSize: 12,
+                      fontSize: 13,
                       color: 'var(--text-secondary)',
                       marginTop: 4,
                     }}
@@ -5743,11 +5748,11 @@ export function CoachDashboardView({
                 <div
                   className="num-mono"
                   style={{
-                    fontSize: 12,
+                    fontSize: 13,
                     padding: '5px 10px',
                     borderRadius: 999,
-                    background: 'var(--bg-surface-2)',
-                    border: '1px solid var(--border-subtle)',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--line)',
                     color: 'var(--text-secondary)',
                   }}
                   dir="ltr"
@@ -5844,7 +5849,7 @@ export function CoachDashboardView({
                       className="btn-surface"
                       style={{
                         padding: '4px 10px',
-                        fontSize: 12,
+                        fontSize: 13,
                         cursor: 'pointer',
                       }}
                     >
@@ -5856,7 +5861,7 @@ export function CoachDashboardView({
                       className="btn-surface"
                       style={{
                         padding: '4px 10px',
-                        fontSize: 12,
+                        fontSize: 13,
                         cursor: 'pointer',
                       }}
                     >
@@ -6129,7 +6134,7 @@ export function CoachDashboardView({
               </div>
               <div
                 style={{
-                  fontSize: 12,
+                  fontSize: 13,
                   color: 'var(--text-secondary)',
                   marginBottom: 10,
                 }}
@@ -6143,15 +6148,15 @@ export function CoachDashboardView({
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 8,
-                  background: 'var(--bg-surface-2)',
+                  background: 'var(--surface-2)',
                   padding: 12,
-                  borderRadius: 12,
-                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 18,
+                  border: '1px solid var(--line)',
                 }}
               >
                 {coachDirectory.filter((c) => c.id !== sharingPrimaryId)
                   .length === 0 ? (
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
                     אין מאמנים פעילים נוספים במערכת לשיתוף כרגע.
                   </div>
                 ) : (
@@ -6336,10 +6341,10 @@ export function CoachDashboardView({
             <div
               style={{
                 padding: '8px 12px',
-                borderRadius: 10,
+                borderRadius: 16,
                 background: 'rgba(239, 68, 68, 0.14)',
                 color: 'var(--danger-text)',
-                fontSize: 12,
+                fontSize: 13,
                 fontWeight: 700,
               }}
             >

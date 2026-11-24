@@ -182,7 +182,7 @@ export function AuthGateView({
         display: 'flex',
         alignItems: 'flex-start',
         justifyContent: 'center',
-        padding: 'calc(56px + env(safe-area-inset-top, 0px)) 24px 32px',
+        padding: 'calc(56px + var(--sa-top)) 24px 32px',
       }}
     >
       <div

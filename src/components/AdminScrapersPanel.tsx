@@ -226,7 +226,7 @@ export function AdminScrapersPanel({
             </div>
             <p
               style={{
-                fontSize: 12,
+                fontSize: 13,
                 color: 'var(--text-secondary)',
                 margin: '6px 0 0 0',
                 lineHeight: 1.5,
@@ -325,9 +325,9 @@ export function AdminScrapersPanel({
           <div
             style={{
               padding: '10px 14px',
-              borderRadius: 12,
-              background: 'rgba(56, 232, 138, 0.1)',
-              border: '1px solid rgba(56, 232, 138, 0.35)',
+              borderRadius: 18,
+              background: 'var(--surface-2)',
+              border: '1px solid var(--line-2)',
               display: 'flex',
               alignItems: 'center',
               gap: 8,
@@ -359,12 +359,12 @@ export function AdminScrapersPanel({
               border: '1px solid var(--line)',
             }}
           >
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>סטטוס סקרייפרים</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>סטטוס סקרייפרים</div>
             <div className="num-mono" style={{ fontSize: 26, fontWeight: 700, marginTop: 4 }}>
               <span>{report?.totalHealthy ?? 0}</span>
               <span style={{ color: 'var(--text-muted)', fontSize: 14 }}> / {results.length || 12} תקינים</span>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>
               שבורים: {report?.totalBroken ?? 0} · ממתינים/אזהרה: {report?.totalWarning ?? 0}
             </div>
           </div>
@@ -377,7 +377,7 @@ export function AdminScrapersPanel({
               border: '1px solid var(--line)',
             }}
           >
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>מוצרים שמורים במאגר</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>מוצרים שמורים במאגר</div>
             <div
               className="num-mono"
               style={{ fontSize: 26, fontWeight: 700, marginTop: 4 }}
@@ -387,7 +387,7 @@ export function AdminScrapersPanel({
                 report?.sqlCatalogStats?.totalCount ?? 0
               ).toLocaleString('he-IL')}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>
               {report?.sqlCatalogStats?.available
                 ? `טבלת SQL מאונדקסת (${report.sqlCatalogStats.totalCount.toLocaleString('he-IL')} שורות) + חיפוש חי`
                 : '+ חיפוש חי על 25,000+ פריטים בזמן אמת'}
@@ -402,11 +402,11 @@ export function AdminScrapersPanel({
               border: '1px solid var(--line)',
             }}
           >
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>בדיקה אוטומטית אחרונה</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>בדיקה אוטומטית אחרונה</div>
             <div className="num-mono" style={{ fontSize: 14, fontWeight: 800, marginTop: 6 }}>
               {formatHeDateTime(report?.lastCheckedAt)}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>
               טריגר:{' '}
               {report?.trigger === 'auto'
                 ? 'אוטומטי בדשבורד'
@@ -424,11 +424,11 @@ export function AdminScrapersPanel({
               border: '1px solid var(--line)',
             }}
           >
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>לוח בדיקה אוטומטית</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>לוח בדיקה אוטומטית</div>
             <div className="num-mono" style={{ fontSize: 14, fontWeight: 800, marginTop: 6 }}>
               כל 6 שעות + Cron יומי
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>
               הבאה החל מ: {formatHeDateTime(report?.nextAutoCheckAt)}
             </div>
           </div>
@@ -458,7 +458,7 @@ export function AdminScrapersPanel({
             </strong>
             <span
               style={{
-                fontSize: 12,
+                fontSize: 13,
                 fontWeight: 800,
                 padding: '2px 8px',
                 borderRadius: 999,
@@ -495,7 +495,7 @@ export function AdminScrapersPanel({
               </>
             )}
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
             להזנה מלאה של אלפי מוצרים (שופרסל, משרד הבריאות 4,624+, Fuder וברקודים):{' '}
             <code dir="ltr" style={{ color: 'var(--accent-volt)' }}>
               node --use-system-ca scripts/seed-shufersal.mjs --full
@@ -514,7 +514,7 @@ export function AdminScrapersPanel({
               alignItems: 'center',
               gap: 6,
               padding: '8px 14px',
-              fontSize: 12,
+              fontSize: 13,
               fontWeight: 700,
               cursor: 'pointer',
               borderColor: 'var(--line-2)',
@@ -542,7 +542,7 @@ export function AdminScrapersPanel({
               alignItems: 'center',
               gap: 6,
               padding: '8px 14px',
-              fontSize: 12,
+              fontSize: 13,
               fontWeight: 700,
               cursor: 'pointer',
               borderColor: 'var(--line-2)',
@@ -600,11 +600,11 @@ export function AdminScrapersPanel({
                     <span
                       className="num-mono"
                       style={{
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight: 800,
                         padding: '1px 6px',
                         borderRadius: 6,
-                        background: 'var(--bg-surface-2)',
+                        background: 'var(--surface-2)',
                         color: 'var(--text-muted)',
                       }}
                     >
@@ -629,14 +629,14 @@ export function AdminScrapersPanel({
                       <span>{item.domain}</span>
                       <ExternalLink size={11} />
                     </a>
-                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>· {item.category}</span>
+                    <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>· {item.category}</span>
                   </div>
                 </div>
 
                 <span
                   style={{
                     flexShrink: 0,
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: 800,
                     padding: '4px 9px',
                     borderRadius: 999,
@@ -670,10 +670,10 @@ export function AdminScrapersPanel({
                   display: 'flex',
                   flexWrap: 'wrap',
                   gap: 8,
-                  fontSize: 12,
+                  fontSize: 13,
                   padding: '8px 10px',
-                  borderRadius: 10,
-                  background: 'var(--bg-surface-2)',
+                  borderRadius: 16,
+                  background: 'var(--surface-2)',
                 }}
               >
                 <span>היקף: <strong>{item.estimatedCatalogSize}</strong></span>
@@ -688,7 +688,7 @@ export function AdminScrapersPanel({
                 <div
                   style={{
                     padding: '8px 10px',
-                    borderRadius: 10,
+                    borderRadius: 16,
                     background: 'var(--fill-1)',
                     border: '1px solid var(--line-2)',
                     fontSize: 12.5,
@@ -709,7 +709,7 @@ export function AdminScrapersPanel({
                 <div
                   style={{
                     padding: '8px 10px',
-                    borderRadius: 10,
+                    borderRadius: 16,
                     background:
                       item.status === 'broken'
                         ? 'rgba(255, 94, 126, 0.1)'
@@ -802,9 +802,9 @@ export function AdminScrapersPanel({
                   style={{
                     marginTop: 4,
                     padding: 10,
-                    borderRadius: 10,
-                    background: 'var(--bg-surface-2)',
-                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 16,
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--line)',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 8,
@@ -818,11 +818,11 @@ export function AdminScrapersPanel({
                       placeholder="הזן מאכל לבדיקה (למשל קוטג׳, חזה עוף)..."
                       style={{
                         flex: 1,
-                        fontSize: 12,
+                        fontSize: 13,
                         padding: '6px 8px',
-                        borderRadius: 8,
-                        border: '1px solid var(--border-subtle)',
-                        background: 'var(--bg-surface-1)',
+                        borderRadius: 16,
+                        border: '1px solid var(--line)',
+                        background: 'var(--card)',
                         color: 'var(--text-primary)',
                       }}
                     />
@@ -842,10 +842,10 @@ export function AdminScrapersPanel({
                         <div
                           key={tr.id}
                           style={{
-                            fontSize: 12,
+                            fontSize: 13,
                             padding: '5px 8px',
                             borderRadius: 6,
-                            background: 'var(--bg-surface-1)',
+                            background: 'var(--card)',
                             display: 'flex',
                             justifyContent: 'space-between',
                             gap: 8,
@@ -878,14 +878,14 @@ export function AdminScrapersPanel({
                 key={`${h.checkedAt}-${i}`}
                 className="num-mono"
                 style={{
-                  fontSize: 12,
+                  fontSize: 13,
                   padding: '6px 10px',
-                  borderRadius: 8,
-                  background: 'var(--bg-surface-2)',
+                  borderRadius: 16,
+                  background: 'var(--surface-2)',
                   border:
                     h.broken > 0
                       ? '1px solid rgba(255, 94, 126, 0.45)'
-                      : '1px solid var(--border-subtle)',
+                      : '1px solid var(--line)',
                 }}
               >
                 {formatHeDateTime(h.checkedAt)} ·{' '}

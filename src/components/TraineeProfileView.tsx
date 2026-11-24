@@ -633,7 +633,7 @@ export function TraineeProfileView({
                 marginBottom: 4,
               }}
             >
-              <Droplets size={13} color="#38bdf8" />
+              <Droplets size={13} color="var(--text-2)" />
               <span>ממוצע מים יומי</span>
             </div>
             <div className="num-mono" style={{ fontSize: 16, fontWeight: 900 }}>
@@ -714,8 +714,8 @@ export function TraineeProfileView({
                 padding: '3px 8px',
                 borderRadius: 999,
                 background: isCurrentPlatformPushActive
-                  ? 'rgba(34, 197, 94, 0.16)'
-                  : 'rgba(245, 158, 11, 0.16)',
+                  ? 'var(--surface-2)'
+                  : 'var(--surface-2)',
                 color: isCurrentPlatformPushActive ? 'var(--ok-text)' : 'var(--warn-text)',
               }}
             >
@@ -738,8 +738,8 @@ export function TraineeProfileView({
             {!pushStatus.firebaseConfigured && (
               <div
                 style={{
-                  background: 'rgba(245, 158, 11, 0.1)',
-                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--line-2)',
                   borderRadius: 10,
                   padding: '8px 10px',
                   fontSize: 12.5,
@@ -869,7 +869,7 @@ export function TraineeProfileView({
                   fontSize: 12.5,
                   fontWeight: 700,
                   color: 'var(--warn-text)',
-                  background: 'rgba(245, 158, 11, 0.12)',
+                  background: 'var(--surface-2)',
                   padding: '6px 9px',
                   borderRadius: 8,
                 }}
@@ -932,8 +932,8 @@ export function TraineeProfileView({
             {!webStatus.vapidConfigured && (
               <div
                 style={{
-                  background: 'rgba(245, 158, 11, 0.1)',
-                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--line-2)',
                   borderRadius: 10,
                   padding: '8px 10px',
                   fontSize: 12.5,

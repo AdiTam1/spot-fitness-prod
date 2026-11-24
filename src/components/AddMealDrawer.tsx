@@ -1522,7 +1522,7 @@ export function AddMealDrawer({
                       cursor: 'pointer',
                     }}
                   >
-                    <ImageIcon size={13} color="#38bdf8" />
+                    <ImageIcon size={13} color="var(--text-2)" />
                     <span>גלריה (מרובה)</span>
                     <input
                       type="file"
@@ -2845,7 +2845,7 @@ export function AddMealDrawer({
                           borderColor: 'rgba(56, 189, 248, 0.35)',
                         }}
                       >
-                        <ImageIcon size={14} color="#38bdf8" />
+                        <ImageIcon size={14} color="var(--text-2)" />
                         <span>
                           {photoUploading
                             ? 'מכווץ ומעבד...'
@@ -3785,7 +3785,7 @@ export function AddMealDrawer({
               flexShrink: 0,
               background: 'var(--card)',
               borderTop: '1px solid var(--line)',
-              padding: '10px 14px calc(10px + env(safe-area-inset-bottom, 0px))',
+              padding: '10px 14px calc(10px + var(--sa-bottom))',
               display: 'flex',
               alignItems: 'center',
               gap: 10,

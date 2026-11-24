@@ -332,7 +332,7 @@ export function TraineeOnboardingWizard({
         margin: '0 auto',
         display: 'flex',
         alignItems: 'flex-start',
-        padding: '6px 0 calc(28px + env(safe-area-inset-bottom, 0px))',
+        padding: '6px 0 calc(28px + var(--sa-bottom))',
       }}
     >
       <div style={{ width: '100%', padding: '14px 4px 0' }}>
@@ -424,7 +424,7 @@ export function TraineeOnboardingWizard({
                   background: 'var(--bg-surface-2)',
                   padding: 4,
                   borderRadius: 12,
-                  border: '1px solid var(--border-subtle)',
+                  border: '1px solid var(--line-2)',
                 }}
               >
                 {[
@@ -495,7 +495,7 @@ export function TraineeOnboardingWizard({
                     height: 36,
                     padding: '0 10px',
                     borderRadius: 12,
-                    border: '1px solid var(--border-subtle)',
+                    border: '1px solid var(--line-2)',
                     background: 'var(--bg-surface-2)',
                     color: 'var(--text-primary)',
                     fontSize: 13,
@@ -558,14 +558,9 @@ export function TraineeOnboardingWizard({
         {step === 2 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
             <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                padding: 11,
-                borderRadius: 12,
-                border: '1px solid var(--border-subtle)',
-              }}
+              style={{ padding: 0 }}
             >
-              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
                 אורח חיים יומי (מחוץ לאימונים):
               </div>
               <div
@@ -584,16 +579,17 @@ export function TraineeOnboardingWizard({
                       type="button"
                       onClick={() => setActivityLevel(opt)}
                       style={{
-                        padding: '5px 10px',
+                        minHeight: 40,
+                        padding: '0 14px',
                         borderRadius: 999,
                         border: selected ? '1px solid var(--sel-bg)'
-                          : '1px solid var(--border-subtle)',
+                          : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)'
-                          : 'var(--bg-surface-1)',
+                          : 'transparent',
                         color: selected ? 'var(--sel-text)'
-                          : 'var(--text-secondary)',
-                        fontSize: 11,
-                        fontWeight: 700,
+                          : 'var(--text)',
+                        fontSize: 14,
+                        fontWeight: 600,
                         cursor: 'pointer',
                       }}
                     >
@@ -611,14 +607,9 @@ export function TraineeOnboardingWizard({
             </div>
 
             <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                padding: 11,
-                borderRadius: 12,
-                border: '1px solid var(--border-subtle)',
-              }}
+              style={{ padding: 0 }}
             >
-              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
                 ממוצע שעות שינה בלילה:
               </div>
               <div
@@ -637,16 +628,17 @@ export function TraineeOnboardingWizard({
                       type="button"
                       onClick={() => setSleepHours(opt)}
                       style={{
-                        padding: '5px 10px',
+                        minHeight: 40,
+                        padding: '0 14px',
                         borderRadius: 999,
                         border: selected ? '1px solid var(--sel-bg)'
-                          : '1px solid var(--border-subtle)',
+                          : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)'
-                          : 'var(--bg-surface-1)',
+                          : 'transparent',
                         color: selected ? 'var(--sel-text)'
-                          : 'var(--text-secondary)',
-                        fontSize: 11,
-                        fontWeight: 700,
+                          : 'var(--text)',
+                        fontSize: 14,
+                        fontWeight: 600,
                         cursor: 'pointer',
                       }}
                     >
@@ -663,14 +655,16 @@ export function TraineeOnboardingWizard({
               />
             </div>
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+            <div className="wizard-nav">
               <button
                 type="button"
                 onClick={() => setStep(1)}
-                className="btn-surface"
+                className="glass"
                 style={{
-                  padding: '10px 14px',
-                  fontSize: 12,
+                  height: 52,
+                  borderRadius: 999,
+                  padding: '0 18px',
+                  fontSize: 15,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 4,
@@ -708,12 +702,7 @@ export function TraineeOnboardingWizard({
         {step === 3 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
             <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                padding: 11,
-                borderRadius: 12,
-                border: '1px solid var(--border-subtle)',
-              }}
+              style={{ padding: 0 }}
             >
               <div
                 style={{
@@ -744,16 +733,17 @@ export function TraineeOnboardingWizard({
                       type="button"
                       onClick={() => setStrengthWorkouts(opt)}
                       style={{
-                        padding: '5px 10px',
+                        minHeight: 40,
+                        padding: '0 14px',
                         borderRadius: 999,
                         border: selected ? '1px solid var(--sel-bg)'
-                          : '1px solid var(--border-subtle)',
+                          : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)'
-                          : 'var(--bg-surface-1)',
+                          : 'transparent',
                         color: selected ? 'var(--sel-text)'
-                          : 'var(--text-secondary)',
-                        fontSize: 11,
-                        fontWeight: 700,
+                          : 'var(--text)',
+                        fontSize: 14,
+                        fontWeight: 600,
                         cursor: 'pointer',
                       }}
                     >
@@ -773,12 +763,7 @@ export function TraineeOnboardingWizard({
             </div>
 
             <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                padding: 11,
-                borderRadius: 12,
-                border: '1px solid rgba(56, 189, 248, 0.25)',
-              }}
+              style={{ padding: 0 }}
             >
               <div
                 style={{
@@ -790,7 +775,7 @@ export function TraineeOnboardingWizard({
                   gap: 6,
                 }}
               >
-                <Footprints size={14} color="#38bdf8" />
+                <Footprints size={16} color="var(--text-2)" />
                 <span>כמה פעמים הליכה / אירובי בשבוע?</span>
               </div>
               <div
@@ -809,15 +794,16 @@ export function TraineeOnboardingWizard({
                       type="button"
                       onClick={() => setWalkingSessions(opt)}
                       style={{
-                        padding: '5px 10px',
+                        minHeight: 40,
+                        padding: '0 14px',
                         borderRadius: 999,
                         border: selected
                           ? '1px solid var(--sel-bg)'
                           : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)' : 'transparent',
                         color: selected ? 'var(--sel-text)' : 'var(--text)',
-                        fontSize: 11,
-                        fontWeight: 700,
+                        fontSize: 14,
+                        fontWeight: 600,
                         cursor: 'pointer',
                       }}
                     >
@@ -836,14 +822,16 @@ export function TraineeOnboardingWizard({
               />
             </div>
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+            <div className="wizard-nav">
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                className="btn-surface"
+                className="glass"
                 style={{
-                  padding: '10px 14px',
-                  fontSize: 12,
+                  height: 52,
+                  borderRadius: 999,
+                  padding: '0 18px',
+                  fontSize: 15,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 4,
@@ -969,14 +957,9 @@ export function TraineeOnboardingWizard({
         {step === 5 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
             <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                padding: 11,
-                borderRadius: 12,
-                border: '1px solid var(--border-subtle)',
-              }}
+              style={{ padding: 0 }}
             >
-              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
                 סגנון תזונה (ניתן לבחור כמה):
               </div>
               <div
@@ -1001,16 +984,17 @@ export function TraineeOnboardingWizard({
                         )
                       }
                       style={{
-                        padding: '5px 10px',
+                        minHeight: 40,
+                        padding: '0 14px',
                         borderRadius: 999,
                         border: selected ? '1px solid var(--sel-bg)'
-                          : '1px solid var(--border-subtle)',
+                          : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)'
-                          : 'var(--bg-surface-1)',
+                          : 'transparent',
                         color: selected ? 'var(--sel-text)'
-                          : 'var(--text-secondary)',
-                        fontSize: 11,
-                        fontWeight: 700,
+                          : 'var(--text)',
+                        fontSize: 14,
+                        fontWeight: 600,
                         cursor: 'pointer',
                       }}
                     >
@@ -1030,14 +1014,9 @@ export function TraineeOnboardingWizard({
             </div>
 
             <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                padding: 11,
-                borderRadius: 12,
-                border: '1px solid var(--border-subtle)',
-              }}
+              style={{ padding: 0 }}
             >
-              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
                 מאכלים או פינוקים שחשוב לך לשלב בתפריט:
               </div>
               <div
@@ -1062,16 +1041,17 @@ export function TraineeOnboardingWizard({
                         )
                       }
                       style={{
-                        padding: '5px 10px',
+                        minHeight: 40,
+                        padding: '0 14px',
                         borderRadius: 999,
                         border: selected ? '1px solid var(--sel-bg)'
-                          : '1px solid var(--border-subtle)',
+                          : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)'
-                          : 'var(--bg-surface-1)',
+                          : 'transparent',
                         color: selected ? 'var(--sel-text)'
-                          : 'var(--text-secondary)',
-                        fontSize: 11,
-                        fontWeight: 700,
+                          : 'var(--text)',
+                        fontSize: 14,
+                        fontWeight: 600,
                         cursor: 'pointer',
                       }}
                     >
@@ -1090,14 +1070,16 @@ export function TraineeOnboardingWizard({
               />
             </div>
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+            <div className="wizard-nav">
               <button
                 type="button"
                 onClick={() => setStep(4)}
-                className="btn-surface"
+                className="glass"
                 style={{
-                  padding: '10px 14px',
-                  fontSize: 12,
+                  height: 52,
+                  borderRadius: 999,
+                  padding: '0 18px',
+                  fontSize: 15,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 4,
@@ -1135,14 +1117,9 @@ export function TraineeOnboardingWizard({
         {step === 6 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
             <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                padding: 11,
-                borderRadius: 12,
-                border: '1px solid var(--border-subtle)',
-              }}
+              style={{ padding: 0 }}
             >
-              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
                 רגישויות, אלרגיות או מאכלים שלא אוכל:
               </div>
               <div
@@ -1167,15 +1144,16 @@ export function TraineeOnboardingWizard({
                         )
                       }
                       style={{
-                        padding: '5px 10px',
+                        minHeight: 40,
+                        padding: '0 14px',
                         borderRadius: 999,
                         border: selected ? '1px solid var(--sel-bg)'
-                          : '1px solid var(--border-subtle)',
+                          : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)'
                           : 'var(--bg-surface-1)',
-                        color: selected ? 'var(--sel-text)' : 'var(--text-secondary)',
-                        fontSize: 11,
-                        fontWeight: 700,
+                        color: selected ? 'var(--sel-text)' : 'var(--text)',
+                        fontSize: 14,
+                        fontWeight: 600,
                         cursor: 'pointer',
                       }}
                     >
@@ -1195,14 +1173,9 @@ export function TraineeOnboardingWizard({
             </div>
 
             <div
-              style={{
-                background: 'var(--bg-surface-2)',
-                padding: 11,
-                borderRadius: 12,
-                border: '1px solid var(--border-subtle)',
-              }}
+              style={{ padding: 0 }}
             >
-              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
                 אתגרים והערות למאמן:
               </div>
               <div
@@ -1227,13 +1200,14 @@ export function TraineeOnboardingWizard({
                         )
                       }
                       style={{
-                        padding: '5px 10px',
+                        minHeight: 40,
+                        padding: '0 14px',
                         borderRadius: 999,
                         border: selected ? '1px solid var(--sel-bg)' : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)' : 'transparent',
                         color: selected ? 'var(--sel-text)' : 'var(--text)',
-                        fontSize: 11,
-                        fontWeight: 700,
+                        fontSize: 14,
+                        fontWeight: 600,
                         cursor: 'pointer',
                       }}
                     >
@@ -1251,15 +1225,17 @@ export function TraineeOnboardingWizard({
               />
             </div>
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+            <div className="wizard-nav">
               <button
                 type="button"
                 disabled={isFinishing}
                 onClick={() => setStep(5)}
-                className="btn-surface"
+                className="glass"
                 style={{
-                  padding: '10px 14px',
-                  fontSize: 12,
+                  height: 52,
+                  borderRadius: 999,
+                  padding: '0 18px',
+                  fontSize: 15,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 4,
@@ -1277,8 +1253,8 @@ export function TraineeOnboardingWizard({
                 className="btn-volt"
                 style={{
                   flex: 1,
-                  padding: '11px 16px',
-                  fontSize: 14,
+                  height: 52,
+                  fontSize: 16,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',

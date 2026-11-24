@@ -2537,139 +2537,51 @@ export default function HomePage() {
       )}
 
       <header className="spot-sticky-header">
-        <div
-          style={{
-            maxWidth: 1180,
-            margin: '0 auto',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 8,
-            flexWrap: 'nowrap',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            <img
-              src="/app-logo.png"
-              alt="SPOT"
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 8,
-                objectFit: 'cover',
-                flexShrink: 0,
-              }}
-            />
-            <span
-              className="num-mono"
-              style={{
-                fontWeight: 800,
-                fontSize: 15,
-                letterSpacing: '-0.04em',
-              }}
-            >
-              SPOT
-            </span>
+        <div className="spot-header-row">
+          <div className="spot-header-brand">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/app-logo.png" alt="SPOT" width={32} height={32} />
+            <span className="num-mono spot-header-wordmark">SPOT</span>
           </div>
 
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              flexWrap: 'nowrap',
-              minWidth: 0,
-            }}
-          >
+          <div className="spot-header-actions">
             {syncingCount > 0 && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '4px 8px',
-                  borderRadius: 999,
-                  background: 'var(--surface-2)',
-                  border: '1px solid var(--line-2)',
-                  color: 'var(--accent-orange-bright)',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  flexShrink: 0,
-                }}
-              >
-                <Loader2 size={11} className="spot-spinner" />
+              <span className="spot-header-saving" role="status">
+                <Loader2 size={13} className="spot-spinner" />
                 <span>שומר</span>
-              </div>
+              </span>
             )}
 
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '4px 10px',
-                borderRadius: 999,
-                background: 'var(--bg-surface-1)',
-                border: '1px solid var(--border-subtle)',
-                fontSize: 11.5,
-                fontWeight: 700,
-                maxWidth: coachPreviewTraineeId ? 115 : 165,
-                minWidth: 0,
-              }}
-            >
+            <span className="spot-header-user" title={currentUser.name}>
               {currentUser.role === 'admin' ? (
-                <Crown size={13} color="currentColor" style={{ flexShrink: 0 }} />
+                <Crown size={14} style={{ flexShrink: 0 }} />
               ) : currentUser.role === 'coach' ? (
-                <ShieldCheck size={13} color="#38bdf8" style={{ flexShrink: 0 }} />
+                <ShieldCheck size={14} style={{ flexShrink: 0 }} />
               ) : (
-                <User size={13} color="currentColor" style={{ flexShrink: 0 }} />
+                <User size={14} style={{ flexShrink: 0 }} />
               )}
-              <span
-                style={{
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
+              <span className="spot-header-user-name">
                 {currentUser.name}
-                {currentUser.role === 'admin'
-                  ? ' (מנהל)'
-                  : currentUser.role === 'coach'
-                  ? ' (מאמן)'
-                  : ''}
+                {currentUser.role === 'admin' ? ' (מנהל)' : currentUser.role === 'coach' ? ' (מאמן)' : ''}
               </span>
-            </div>
+            </span>
 
-            {(currentUser.role === 'coach' || currentUser.role === 'admin') &&
-              coachPreviewTraineeId && (
-                <button
-                  type="button"
-                  onClick={() => setCoachPreviewTraineeId(null)}
-                  title="חזרה לדאשבורד מאמן"
-                  style={{
-                    height: 30,
-                    padding: '0 9px',
-                    borderRadius: 999,
-                    border: '1px solid var(--line-2)',
-                    background: 'var(--surface-2)',
-                    color: 'var(--warn-text)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    fontSize: 11,
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    flexShrink: 0,
-                  }}
-                >
-                  <ArrowRight size={12} />
-                  <span>חזרה למאמן</span>
-                </button>
-              )}
+            {(currentUser.role === 'coach' || currentUser.role === 'admin') && coachPreviewTraineeId && (
+              <button
+                type="button"
+                className="glass spot-header-btn spot-header-btn-wide"
+                onClick={() => setCoachPreviewTraineeId(null)}
+                aria-label="חזרה לדאשבורד מאמן"
+              >
+                <ArrowRight size={16} />
+                <span>חזרה</span>
+              </button>
+            )}
 
             <button
-              title="סנכרן נתונים עדכניים מהשרת"
+              type="button"
+              className="glass spot-header-btn"
+              aria-label="סנכרן נתונים עדכניים מהשרת"
               disabled={manualSyncing || isOffline}
               onClick={async () => {
                 setManualSyncing(true);
@@ -2679,49 +2591,18 @@ export default function HomePage() {
                   setManualSyncing(false);
                 }
               }}
-              className="btn-surface"
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: manualSyncing ? 'wait' : 'pointer',
-                padding: 0,
-                flexShrink: 0,
-              }}
             >
-              <RefreshCw
-                size={13}
-                className={manualSyncing ? 'spot-spinner' : undefined}
-                color={manualSyncing ? 'var(--accent-volt)' : 'var(--text-secondary)'}
-              />
+              <RefreshCw size={18} className={manualSyncing ? 'spot-spinner' : undefined} />
             </button>
 
             <button
-              title="התנתק מהחשבון"
+              type="button"
+              className="glass spot-header-btn"
+              aria-label={loggingOut ? 'מתנתק' : 'התנתק מהחשבון'}
               disabled={loggingOut}
               onClick={handleLogout}
-              className="btn-surface"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '5px 9px',
-                borderRadius: 999,
-                fontSize: 11.5,
-                cursor: 'pointer',
-                flexShrink: 0,
-                whiteSpace: 'nowrap',
-              }}
             >
-              {loggingOut ? (
-                <Loader2 size={12} className="spot-spinner" />
-              ) : (
-                <LogOut size={12} color="var(--text-secondary)" />
-              )}
-              <span>{loggingOut ? 'מתנתק...' : 'התנתק'}</span>
+              {loggingOut ? <Loader2 size={18} className="spot-spinner" /> : <LogOut size={18} />}
             </button>
           </div>
         </div>
@@ -2805,8 +2686,8 @@ export default function HomePage() {
       {showIosA2hsBanner && (
         <div
           style={{
-            background: 'rgba(56, 189, 248, 0.12)',
-            borderBottom: '1px solid rgba(56, 189, 248, 0.35)',
+            background: 'var(--surface-2)',
+            borderBottom: '1px solid var(--line-2)',
             color: 'var(--text)',
             padding: '9px 14px',
             fontSize: 12,
@@ -2818,7 +2699,7 @@ export default function HomePage() {
             flexWrap: 'wrap',
           }}
         >
-          <Smartphone size={15} color="#38bdf8" />
+          <Smartphone size={15} color="var(--text-2)" />
           <span>
             לקבלת התראות באייפון: לחץ על{' '}
             <Share
