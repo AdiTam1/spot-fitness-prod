@@ -166,7 +166,41 @@ export function InteractionLayer() {
     };
     vv?.addEventListener('resize', onViewport);
 
+    // ---------- 4. Hit areas: every small control gets an invisible >=44px target ----------
+    const MIN = 44;
+    const TARGETS = 'button, a[href], [role="button"], [role="tab"], [role="radio"], [role="switch"], summary';
+    let raf = 0;
+    const expand = () => {
+      raf = 0;
+      const nodes = document.querySelectorAll<HTMLElement>(TARGETS);
+      const reads: { el: HTMLElement; w: number; h: number }[] = [];
+      nodes.forEach((el) => {
+        if (el.dataset.hit === '1' || el.classList.contains('hit-44-sm') || el.classList.contains('hit-44-md')) return;
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) return;
+        if (r.width >= MIN - 0.5 && r.height >= MIN - 0.5) return;
+        reads.push({ el, w: r.width, h: r.height });
+      });
+      reads.forEach(({ el, w, h }) => {
+        const cs = getComputedStyle(el);
+        if (cs.position === 'static') el.style.position = 'relative';
+        el.style.setProperty('--hx', `${Math.max(0, (MIN - w) / 2)}px`);
+        el.style.setProperty('--hy', `${Math.max(0, (MIN - h) / 2)}px`);
+        el.dataset.hit = '1';
+        el.classList.add('hit-44-auto');
+      });
+    };
+    const schedule = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => window.setTimeout(expand, 120));
+    };
+    const mo = new MutationObserver(schedule);
+    mo.observe(document.body, { childList: true, subtree: true });
+    schedule();
+
     return () => {
+      mo.disconnect();
+      if (raf) window.cancelAnimationFrame(raf);
       document.removeEventListener('pointerdown', onDown);
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup', finish);

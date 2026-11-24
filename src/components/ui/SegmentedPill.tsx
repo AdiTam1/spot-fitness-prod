@@ -53,6 +53,7 @@ export function SegmentedPill<T extends string = string>({
             type="button"
             role="radio"
             aria-checked={on}
+            className={size === 'sm' ? 'hit-44-sm' : 'hit-44-md'}
             disabled={opt.disabled}
             onClick={() => !opt.disabled && onChange(opt.value)}
             style={{

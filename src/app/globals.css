@@ -220,7 +220,7 @@ a:focus-visible {
   font-weight: 700 !important;
   border: none !important;
   border-radius: 999px !important;
-  min-height: 36px;
+  min-height: 44px;
   transition: background-color 0.18s ease, transform 0.18s ease !important;
 }
 
@@ -636,4 +636,35 @@ input, textarea, select {
 .mantine-Select-option[data-checked],
 .mantine-Combobox-option[data-checked] {
   font-weight: 700;
+}
+
+/* ---------- Touch targets: visuals may be smaller, hit areas are >= 44px ---------- */
+.hit-44-sm,
+.hit-44-md {
+  position: relative;
+}
+.hit-44-sm::after {
+  content: '';
+  position: absolute;
+  inset: -5px -2px;
+}
+.hit-44-md::after {
+  content: '';
+  position: absolute;
+  inset: -2px 0;
+}
+button.glass,
+a.glass {
+  min-width: 44px;
+  min-height: 44px;
+}
+.btn-surface {
+  min-height: 44px;
+}
+
+/* Auto-expanded hit area (set by InteractionLayer for controls smaller than 44px). */
+.hit-44-auto::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--hy, 0px) * -1) calc(var(--hx, 0px) * -1);
 }

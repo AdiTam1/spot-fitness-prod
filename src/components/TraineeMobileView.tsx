@@ -672,7 +672,7 @@ export function TraineeMobileView({
               setCalendarModalOpen(true);
             }}
             style={{
-              height: 40,
+              height: 44,
               padding: '0 12px 0 14px',
               borderRadius: 999,
               display: 'flex',
@@ -701,7 +701,7 @@ export function TraineeMobileView({
                 className="glass"
                 onClick={() => setSelectedDate(todayIso)}
                 style={{
-                  height: 40,
+                  height: 44,
                   padding: '0 14px',
                   borderRadius: 999,
                   fontFamily: 'inherit',
@@ -715,7 +715,7 @@ export function TraineeMobileView({
             )}
             <GlassButton
               label="שבוע קודם"
-              size={40}
+              size={44}
               disabled={!canPrevWeek}
               onClick={() => {
                 const candidates = getWeekDaysAroundDate(prevWeekAnchor, todayIso).filter((d) =>
@@ -730,7 +730,7 @@ export function TraineeMobileView({
             </GlassButton>
             <GlassButton
               label="שבוע הבא"
-              size={40}
+              size={44}
               disabled={!canNextWeek}
               onClick={() => {
                 const candidates = getWeekDaysAroundDate(nextWeekAnchor, todayIso).filter((d) =>
