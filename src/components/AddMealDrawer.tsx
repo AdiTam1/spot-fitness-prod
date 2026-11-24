@@ -34,6 +34,7 @@ import {
   X,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   SlidersHorizontal,
   Utensils,
   FolderOpen,
@@ -222,6 +223,9 @@ export function AddMealDrawer({
   const [freeTextPrompt, setFreeTextPrompt] = useState('');
   const [contextParams, setContextParams] = useState<AiContextParams>({});
   const [toolsModalOpen, setToolsModalOpen] = useState(false);
+  // AI correction ("תקן") UI only. TODO(ai-correction): backend not wired yet, see docs/redesign/TODO-ai-correction.md
+  const [correctionOpen, setCorrectionOpen] = useState(false);
+  const [correctionText, setCorrectionText] = useState('');
   const [saveAsPreset, setSaveAsPreset] = useState(false);
   const [presetTitleInput, setPresetTitleInput] = useState('');
   const [voiceState, setVoiceState] = useState<VoiceCaptureState>('idle');
@@ -3337,11 +3341,41 @@ export function AddMealDrawer({
                     gap: 14,
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
-                      <bdi className="ltr-num">{items.length}</bdi> מרכיבים · יעד{' '}
-                      <bdi className="ltr-num">{mealSlot.targets.calories}</bdi>
-                    </span>
+                  <div style={{ display: 'flex', flexDirection: heroScreen ? 'row-reverse' : 'row', alignItems: heroScreen ? 'center' : 'baseline', justifyContent: 'space-between' }}>
+                    {heroScreen ? (
+                      <label
+                        className="btn-surface"
+                        style={{
+                          position: 'relative',
+                          height: 44,
+                          padding: '0 14px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        <ChevronDown size={15} />
+                        <span>{mealSlot.name.replace(/^ארוחת\s+/, '')} ·</span>
+                        <bdi dir="ltr" className="num-mono ltr-num">
+                          {mealTime || mealSlot.timeHint || '12:00'}
+                        </bdi>
+                        <input
+                          type="time"
+                          aria-label="שעת הארוחה"
+                          value={mealTime || mealSlot.timeHint || '12:00'}
+                          onChange={(e) => setMealTime(e.target.value)}
+                          dir="ltr"
+                          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
+                        />
+                      </label>
+                    ) : (
+                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                        <bdi className="ltr-num">{items.length}</bdi> מרכיבים · יעד{' '}
+                        <bdi className="ltr-num">{mealSlot.targets.calories}</bdi>
+                      </span>
+                    )}
                     <span>
                       <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 36, fontWeight: 700, lineHeight: 1 }}>
                         {currentTotals.calories}
@@ -3777,6 +3811,28 @@ export function AddMealDrawer({
               {savingMeal ? <Loader2 size={16} className="spot-spinner" /> : <Check size={16} />}
               <span>{savingMeal ? 'שומר ארוחה...' : `שמור ארוחה (${currentTotals.calories} קק״ל)`}</span>
             </button>
+            <button
+              type="button"
+              className="glass"
+              onClick={() => setCorrectionOpen(true)}
+              style={{
+                height: 56,
+                padding: '0 20px',
+                borderRadius: 999,
+                marginInlineStart: 10,
+                flex: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                fontFamily: 'inherit',
+                fontSize: 15,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              <Wand2 size={16} />
+              תקן
+            </button>
           </div>
         )}
 
@@ -4186,6 +4242,40 @@ export function AddMealDrawer({
             </button>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        opened={correctionOpen}
+        onClose={() => setCorrectionOpen(false)}
+        title="תיקון הארוחה"
+        zIndex={270}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Textarea
+            autosize
+            minRows={3}
+            maxRows={6}
+            placeholder="מה לתקן? למשל: האורז היה חצי כמות, ויש גם כף שמן זית"
+            value={correctionText}
+            onChange={(e) => setCorrectionText(e.currentTarget.value)}
+            aria-label="הוראת תיקון ל-AI"
+          />
+          <button
+            type="button"
+            className="btn-volt"
+            disabled={!correctionText.trim()}
+            onClick={() => {
+              // TODO(ai-correction): send correctionText + current items to the AI and apply the result.
+              // Intentionally a no-op until the backend exists (docs/redesign/TODO-ai-correction.md).
+              setCorrectionOpen(false);
+              setCorrectionText('');
+            }}
+            style={{ height: 52, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer' }}
+          >
+            <Check size={16} />
+            <span>שלח ל-AI</span>
+          </button>
+        </div>
       </Modal>
 
       <ServingToolsManagerModal
