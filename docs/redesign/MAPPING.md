@@ -55,3 +55,8 @@
 | 53 | `AdminChips` | מנהל · צ׳יפים גלובליים | `QuickChipsAdminPanel` | Done | Cards grouped by category, 52px inputs, removable chips |
 | 54 | `AdminScrapers` | מנהל · סקרייפרים ומאגר מזון | `AdminScrapersPanel` | Partial | KPI grid, neutral banners, code snippets isolated; source rows unchanged |
 | 55 | `AdminVersions` | מנהל · בקרת גרסאות | `CoachDashboardView` (admin section) | Partial | Mixed-direction strings isolated (bdi), 52px fields; original policy form |
+
+
+## Open follow-ups
+
+- AI correction ("תקן") on the result screen is UI only; backend not implemented. See `docs/redesign/TODO-ai-correction.md`.
