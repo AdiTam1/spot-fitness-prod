@@ -15,11 +15,11 @@
 | 13 | `MealTime` | שעת ארוחה | `TraineeMobileView` (meal-time sheet) | Done | Snap wheel (hours/minutes, CSS scroll-snap), now / by-menu shortcuts, 56px save. Snapping verified with mouse wheel; touch swipe not verifiable in the headless harness |
 | 14 | `ServingTools` | כלים ויחידות מידה | `ServingToolsManagerModal` | Partial | Sheet + neutral instruction box; dense form kept |
 | 15 | `AiSync` | ניתוח AI ברקע | `BackgroundAiSyncBanner` | Partial | Neutral tints |
-| 16 | `Metrics` | מדדים | `TraineeMobileView` (metrics section) | Partial | Week strip kept (edits past days); card order differs from design |
+| 16 | `Metrics` | מדדים | `TraineeMobileView` (metrics section) | Done | Weight/water/measurement cards, 52px weight entry, check-in section; verified light/dark. Week strip kept (edits past days) |
 | 17 | `CheckIn` | מדדים · צ׳ק-אין שבועי | `TraineeMobileView` (check-in section) | Done | Weekly stats grid, 44px rating tiles, textarea, pinned actions; selection stays gray per color rules (design shows orange) |
 | 18 | `StepsCard` | מד צעדים יומי | `DailyStepsCard` | Partial | Neutral buttons/tokens; layout unchanged |
 | 19 | `MeasureGuide` | מדריך מדידת היקפים | `BodyMeasurementGuide` | Partial | Pill zone tabs + neutral palette; per-region cards of the design not built |
-| 20 | `Profile` | פרופיל | `TraineeProfileView` + `ui/ThemeToggle` | Partial | Theme toggle (system/dark/light) present; layout partially restyled |
+| 20 | `Profile` | פרופיל | `TraineeProfileView` + `ui/ThemeToggle` | Done | Identity header, theme toggle, 2×2 stat cards, readable meal history (date/time LTR, no ISO strings); push-settings card restyled; verified light/dark |
 | 21 | `AuthLogin` | התחברות | `AuthGateView` | Done | Redesigned earlier on main |
 | 22 | `AuthRegister` | הרשמת מתאמן | `AuthGateView` | Partial | Step counter fixed (RTL flip); same view otherwise |
 | 23 | `AuthPending` | ממתין לאישור מאמן | `PendingApprovalView` (new, used by `app/page.tsx`) | Done | "בדוק שוב" re-fetches; paused accounts get their own copy |
@@ -31,7 +31,7 @@
 | 29 | `OnboardingNutrition` | שאלון · סגנון תזונה | `TraineeOnboardingWizard` (step 5) | Done | Unboxed groups, 40px chips, pinned back/next; verified dark at 390px (light spot-checked on the last step) |
 | 30 | `OnbSensitivities` | שאלון · רגישויות והערות | `TraineeOnboardingWizard` (step 6) | Done | Unboxed groups, 40px chips, pinned back/next; verified dark at 390px (light spot-checked on the last step) |
 | 31 | `Coach` | מאמן · מצבת מתאמנים | `CoachDashboardView` | Done | Header, flat group chips, search, cards per design |
-| 32 | `CoachTrainee` | מאמן · תפריט ויומן של מתאמן | `CoachDashboardView` | Partial | Header + tabs (data / menu / journal) per design; inner cards are the original ones (neutral headings) |
+| 32 | `CoachTrainee` | מאמן · תפריט ויומן של מתאמן | `CoachDashboardView` | Partial | Header + tabs; onboarding summary rows as label/value; observation/goals forms restyled but not rebuilt |
 | 33 | `CoachMenu` | מאמן · תפריט מתאמן | `CoachDashboardView` | Not restructured | Color rules only |
 | 34 | `CoachJournal` | מאמן · יומן אכילה ופידבק | `CoachDashboardView` | Partial | Reachable as the "יומן" tab of the trainee inspector; original journal cards |
 | 35 | `CoachAccess` | מאמן · עריכת פרטי גישה | `CoachDashboardView` | Not restructured | Color rules only |
@@ -53,5 +53,5 @@
 | 51 | `AdminApprovals` | מנהל · ממתינים לאישור | `CoachDashboardView` (pending queue) | Partial | Rebuilt as cards per design; not screenshot-verified (needs pending-trainee fixture) |
 | 52 | `AdminCoaches` | מנהל · ניהול מאמנים | `CoachDashboardView` (admin section) | Partial | Header + table as stacked cards; original actions |
 | 53 | `AdminChips` | מנהל · צ׳יפים גלובליים | `QuickChipsAdminPanel` | Done | Cards grouped by category, 52px inputs, removable chips |
-| 54 | `AdminScrapers` | מנהל · סקרייפרים ומאגר מזון | `AdminScrapersPanel` | Partial | 2×2 KPI grid, 52px actions, neutral banners; source rows unchanged |
-| 55 | `AdminVersions` | מנהל · בקרת גרסאות | `CoachDashboardView` (admin section) | Partial | Header/type scale; original policy form |
+| 54 | `AdminScrapers` | מנהל · סקרייפרים ומאגר מזון | `AdminScrapersPanel` | Partial | KPI grid, neutral banners, code snippets isolated; source rows unchanged |
+| 55 | `AdminVersions` | מנהל · בקרת גרסאות | `CoachDashboardView` (admin section) | Partial | Mixed-direction strings isolated (bdi), 52px fields; original policy form |

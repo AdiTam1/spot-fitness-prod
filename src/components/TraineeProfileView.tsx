@@ -201,6 +201,7 @@ export function TraineeProfileView({
       mealSlotId: string;
       mealSlotName: string;
       updatedAt?: string;
+      mealTime?: string;
       calories: number;
       protein: number;
       itemsSummary: string;
@@ -226,6 +227,7 @@ export function TraineeProfileView({
           mealSlotId: slotId,
           mealSlotName: slotName,
           updatedAt: entry.updatedAt,
+          mealTime: entry.mealTime,
           calories: Math.round(m.calories),
           protein: Math.round(m.protein),
           itemsSummary: summary,
@@ -531,7 +533,7 @@ export function TraineeProfileView({
       </section>
 
       {/* 2. מיני-דשבורד סטטיסטיקות (7 ימים אחרונים) */}
-      <div className="pro-card" style={{ padding: 16 }}>
+      <div className="pro-card" style={{ padding: 18, borderRadius: 28 }}>
         <div
           style={{
             display: 'flex',
@@ -540,10 +542,10 @@ export function TraineeProfileView({
             marginBottom: 12,
           }}
         >
-          <span style={{ fontSize: 14, fontWeight: 800 }}>
+          <span style={{ fontSize: 17, fontWeight: 700 }}>
             סטטיסטיקות שבוע אחרון
           </span>
-          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+          <span style={{ fontSize: 12, color: 'var(--text-2)' }}>
             {stats.activeDays} ימים מתועדים • {stats.mealsLoggedCount} ארוחות
           </span>
         </div>
@@ -557,9 +559,9 @@ export function TraineeProfileView({
         >
           <div
             style={{
-              background: 'var(--bg-surface-2)',
-              padding: '10px 12px',
-              borderRadius: 12,
+              background: 'var(--surface-2)',
+              padding: '14px 16px',
+              borderRadius: 22,
             }}
           >
             <div
@@ -567,18 +569,18 @@ export function TraineeProfileView({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 5,
-                fontSize: 12,
-                color: 'var(--text-secondary)',
-                marginBottom: 4,
+                fontSize: 13,
+                color: 'var(--text-2)',
+                marginBottom: 6,
               }}
             >
               <Flame size={13} color="currentColor" />
               <span>ממוצע קלורי וחלבון</span>
             </div>
-            <div className="num-mono" style={{ fontSize: 16, fontWeight: 900 }}>
+            <div className="num-mono" style={{ fontSize: 24, fontWeight: 700 }}>
               {stats.avgCalories.toLocaleString()} קק״ל
             </div>
-            <div style={{ fontSize: 12, color: 'var(--macro-protein)', fontWeight: 700 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-2)', fontWeight: 500 }}>
               ממוצע {stats.avgProtein}g חלבון ליום
             </div>
           </div>
@@ -588,9 +590,9 @@ export function TraineeProfileView({
           ) && (
             <div
               style={{
-                background: 'var(--bg-surface-2)',
-                padding: '10px 12px',
-                borderRadius: 12,
+                background: 'var(--surface-2)',
+                padding: '14px 16px',
+                borderRadius: 22,
               }}
             >
               <div
@@ -599,17 +601,17 @@ export function TraineeProfileView({
                   alignItems: 'center',
                   gap: 5,
                   fontSize: 12,
-                  color: 'var(--text-secondary)',
+                  color: 'var(--text-2)',
                   marginBottom: 4,
                 }}
               >
                 <Footprints size={13} color="var(--ok-text)" />
                 <span>ממוצע צעדים יומי</span>
               </div>
-              <div className="num-mono" style={{ fontSize: 16, fontWeight: 900 }}>
+              <div className="num-mono" style={{ fontSize: 24, fontWeight: 700 }}>
                 {stats.avgSteps.toLocaleString()}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              <div style={{ fontSize: 13, color: 'var(--text-3)' }}>
                 יעד:{' '}
                 {(trainee.activityTargets?.dailyStepsTarget ?? 8000).toLocaleString()}
               </div>
@@ -618,9 +620,9 @@ export function TraineeProfileView({
 
           <div
             style={{
-              background: 'var(--bg-surface-2)',
-              padding: '10px 12px',
-              borderRadius: 12,
+              background: 'var(--surface-2)',
+              padding: '14px 16px',
+              borderRadius: 22,
             }}
           >
             <div
@@ -628,27 +630,27 @@ export function TraineeProfileView({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 5,
-                fontSize: 12,
-                color: 'var(--text-secondary)',
-                marginBottom: 4,
+                fontSize: 13,
+                color: 'var(--text-2)',
+                marginBottom: 6,
               }}
             >
               <Droplets size={13} color="var(--text-2)" />
               <span>ממוצע מים יומי</span>
             </div>
-            <div className="num-mono" style={{ fontSize: 16, fontWeight: 900 }}>
+            <div className="num-mono" style={{ fontSize: 24, fontWeight: 700 }}>
               {stats.avgWater} כוסות
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            <div style={{ fontSize: 13, color: 'var(--text-3)' }}>
               יעד יומי: ~12 כוסות
             </div>
           </div>
 
           <div
             style={{
-              background: 'var(--bg-surface-2)',
-              padding: '10px 12px',
-              borderRadius: 12,
+              background: 'var(--surface-2)',
+              padding: '14px 16px',
+              borderRadius: 22,
             }}
           >
             <div
@@ -656,18 +658,18 @@ export function TraineeProfileView({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 5,
-                fontSize: 12,
-                color: 'var(--text-secondary)',
-                marginBottom: 4,
+                fontSize: 13,
+                color: 'var(--text-2)',
+                marginBottom: 6,
               }}
             >
               <TrendingUp size={13} color="var(--accent-orange-bright)" />
               <span>שינוי משקל כולל</span>
             </div>
-            <div className="num-mono" style={{ fontSize: 16, fontWeight: 900 }}>
+            <div className="num-mono" style={{ fontSize: 24, fontWeight: 700 }}>
               {trainee.currentWeight} ק״ג
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            <div style={{ fontSize: 13, color: 'var(--text-3)' }}>
               {stats.weightDelta === null
                 ? `יעד: ${trainee.targetWeight} ק״ג`
                 : (
@@ -685,7 +687,7 @@ export function TraineeProfileView({
       </div>
 
       {/* 3. הגדרות פושים והתראות */}
-      <div className="pro-card" style={{ padding: 16 }}>
+      <div className="pro-card" style={{ padding: 18, borderRadius: 28 }}>
         <div
           style={{
             display: 'flex',
@@ -709,7 +711,7 @@ export function TraineeProfileView({
           {(pushStatus?.isNativeAndroid || webStatus?.webPushSupported) && (
             <span
               style={{
-                fontSize: 12.5,
+                fontSize: 14,
                 fontWeight: 800,
                 padding: '3px 8px',
                 borderRadius: 999,
@@ -740,9 +742,9 @@ export function TraineeProfileView({
                 style={{
                   background: 'var(--surface-2)',
                   border: '1px solid var(--line-2)',
-                  borderRadius: 10,
+                  borderRadius: 20,
                   padding: '8px 10px',
-                  fontSize: 12.5,
+                  fontSize: 14,
                   color: 'var(--warn-text)',
                   display: 'flex',
                   alignItems: 'center',
@@ -828,7 +830,7 @@ export function TraineeProfileView({
             {pushFeedback && (
               <div
                 style={{
-                  fontSize: 12.5,
+                  fontSize: 14,
                   fontWeight: 700,
                   color: pushFeedback.ok ? 'var(--ok-text)' : 'var(--danger-text)',
                 }}
@@ -842,7 +844,7 @@ export function TraineeProfileView({
             style={{
               background: 'var(--bg-surface-2)',
               border: '1px solid var(--line-2)',
-              borderRadius: 12,
+              borderRadius: 20,
               padding: 12,
               marginBottom: 14,
               display: 'flex',
@@ -855,9 +857,9 @@ export function TraineeProfileView({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
-                fontSize: 12.5,
+                fontSize: 14,
                 fontWeight: 800,
-                color: 'var(--accent-volt)',
+                color: 'var(--text)',
               }}
             >
               <Smartphone size={15} />
@@ -866,7 +868,7 @@ export function TraineeProfileView({
             {webStatus.isIosInAppBrowser && (
               <div
                 style={{
-                  fontSize: 12.5,
+                  fontSize: 14,
                   fontWeight: 700,
                   color: 'var(--warn-text)',
                   background: 'var(--surface-2)',
@@ -880,7 +882,7 @@ export function TraineeProfileView({
             <div
               style={{
                 fontSize: 12,
-                color: 'var(--text-secondary)',
+                color: 'var(--text-2)',
                 lineHeight: 1.6,
                 display: 'flex',
                 flexDirection: 'column',
@@ -918,8 +920,8 @@ export function TraineeProfileView({
           >
             <div
               style={{
-                fontSize: 12.5,
-                color: 'var(--text-secondary)',
+                fontSize: 14,
+                color: 'var(--text-2)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
@@ -934,9 +936,9 @@ export function TraineeProfileView({
                 style={{
                   background: 'var(--surface-2)',
                   border: '1px solid var(--line-2)',
-                  borderRadius: 10,
+                  borderRadius: 20,
                   padding: '8px 10px',
-                  fontSize: 12.5,
+                  fontSize: 14,
                   color: 'var(--warn-text)',
                   display: 'flex',
                   alignItems: 'center',
@@ -955,9 +957,9 @@ export function TraineeProfileView({
                 style={{
                   background: 'rgba(239, 68, 68, 0.1)',
                   border: '1px solid rgba(239, 68, 68, 0.3)',
-                  borderRadius: 10,
+                  borderRadius: 20,
                   padding: '8px 10px',
-                  fontSize: 12.5,
+                  fontSize: 14,
                   color: 'var(--danger-text)',
                 }}
               >
@@ -1022,7 +1024,7 @@ export function TraineeProfileView({
             {pushFeedback && (
               <div
                 style={{
-                  fontSize: 12.5,
+                  fontSize: 14,
                   fontWeight: 700,
                   color: pushFeedback.ok ? 'var(--ok-text)' : 'var(--danger-text)',
                 }}
@@ -1035,11 +1037,11 @@ export function TraineeProfileView({
           <div
             style={{
               background: 'var(--bg-surface-2)',
-              borderRadius: 10,
+              borderRadius: 20,
               padding: '9px 12px',
               marginBottom: 12,
               fontSize: 12,
-              color: 'var(--text-secondary)',
+              color: 'var(--text-2)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -1067,14 +1069,14 @@ export function TraineeProfileView({
               gap: 10,
               background: 'var(--bg-surface-2)',
               padding: '10px 12px',
-              borderRadius: 10,
+              borderRadius: 20,
             }}
           >
             <div>
-              <div style={{ fontSize: 12.5, fontWeight: 700 }}>
+              <div style={{ fontSize: 14, fontWeight: 700 }}>
                 סיום זיהוי ארוחה ב־AI ברקע
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-2)' }}>
                 שולח התראה עם שם המנה והקלוריות רק אם יצאת מהאפליקציה בזמן הטעינה
               </div>
             </div>
@@ -1099,14 +1101,14 @@ export function TraineeProfileView({
               gap: 10,
               background: 'var(--bg-surface-2)',
               padding: '10px 12px',
-              borderRadius: 10,
+              borderRadius: 20,
             }}
           >
             <div>
-              <div style={{ fontSize: 12.5, fontWeight: 700 }}>
+              <div style={{ fontSize: 14, fontWeight: 700 }}>
                 הודעות ותזכורות מהמאמן
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-2)' }}>
                 קבלת תזכורות אישיות ומעבר ישיר לארוחה שהמאמן ביקש
               </div>
             </div>
@@ -1127,7 +1129,7 @@ export function TraineeProfileView({
 
       {/* 3.5 התאמת קיצורי דרך בכרטיסי הארוחה (עד 2 לבחירה) */}
       {onUpdateMealShortcuts && (
-        <div className="pro-card" style={{ padding: 16 }}>
+        <div className="pro-card" style={{ padding: 18, borderRadius: 28 }}>
           <div
             style={{
               display: 'flex',
@@ -1162,8 +1164,8 @@ export function TraineeProfileView({
           </div>
           <div
             style={{
-              fontSize: 12.5,
-              color: 'var(--text-secondary)',
+              fontSize: 14,
+              color: 'var(--text-2)',
               marginBottom: 10,
             }}
           >
@@ -1197,62 +1199,41 @@ export function TraineeProfileView({
       )}
 
       {/* 4. הארוחות שלי — היסטוריה מלאה וחיפוש */}
-      <div className="pro-card" style={{ padding: 16 }}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: 8,
-            marginBottom: 10,
-          }}
-        >
-          <span
-            style={{
-              fontSize: 14,
-              fontWeight: 800,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            <Utensils size={15} color="currentColor" />
-            <span>הארוחות שלי ({loggedMealsList.length})</span>
-          </span>
-          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            לחץ על ארוחה לפתיחה ביומן
-          </span>
+      <section aria-label="הארוחות שלי" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <Utensils size={17} />
+            <span>
+              הארוחות שלי (<bdi className="ltr-num">{loggedMealsList.length}</bdi>)
+            </span>
+          </h2>
+          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>לחץ לפתיחה ביומן</span>
         </div>
 
-        <div
-          style={{
-            position: 'relative',
-            marginBottom: 12,
-          }}
-        >
+        <div style={{ position: 'relative' }}>
           <Search
-            size={14}
-            color="var(--text-muted)"
-            style={{
-              position: 'absolute',
-              right: 11,
-              top: '50%',
-              transform: 'translateY(-50%)',
-            }}
+            size={18}
+            color="var(--text-3)"
+            style={{ position: 'absolute', insetInlineStart: 16, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
           />
           <input
-            type="text"
+            type="search"
+            aria-label="חיפוש בארוחות שלי"
             value={mealSearch}
             onChange={(e) => setMealSearch(e.target.value)}
-            placeholder="חפש מאכל, שם ארוחה או תאריך (YYYY-MM-DD)..."
+            placeholder="חפש מאכל, שם ארוחה או תאריך"
             style={{
               width: '100%',
-              background: 'var(--bg-surface-2)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 10,
-              padding: '8px 34px 8px 12px',
-              color: 'var(--text-primary)',
-              fontSize: 12.5,
+              height: 52,
+              boxSizing: 'border-box',
+              background: 'var(--card)',
+              border: '1px solid var(--line-2)',
+              borderRadius: 999,
+              paddingInline: '46px 16px',
+              color: 'var(--text)',
+              fontFamily: 'inherit',
+              fontSize: 16,
+              outline: 'none',
             }}
           />
         </div>
@@ -1260,75 +1241,75 @@ export function TraineeProfileView({
         {loggedMealsList.length === 0 ? (
           <div
             style={{
-              padding: '22px 12px',
+              padding: '22px 16px',
               textAlign: 'center',
-              fontSize: 12.5,
-              color: 'var(--text-muted)',
+              fontSize: 14,
+              color: 'var(--text-2)',
+              border: '1.5px dashed var(--line-2)',
+              borderRadius: 22,
             }}
           >
             לא נמצאו ארוחות מתועדות התואמות לחיפוש
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {loggedMealsList.map((row) => (
-              <button
-                key={row.id}
-                type="button"
-                onClick={() => onOpenMealFromHistory(row.date, row.mealSlotId)}
-                style={{
-                  textAlign: 'right',
-                  width: '100%',
-                  background: 'var(--bg-surface-2)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 12,
-                  padding: '10px 12px',
-                  cursor: 'pointer',
-                  color: 'var(--text-primary)',
-                }}
-              >
-                <div
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {loggedMealsList.map((row) => {
+              const [yy, mo, dd] = row.date.split('-');
+              const time =
+                row.mealTime ||
+                (row.updatedAt
+                  ? new Date(row.updatedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false })
+                  : '');
+              return (
+                <button
+                  key={row.id}
+                  type="button"
+                  onClick={() => onOpenMealFromHistory(row.date, row.mealSlotId)}
                   style={{
+                    textAlign: 'start',
+                    width: '100%',
+                    background: 'var(--card)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 22,
+                    padding: '14px 16px',
+                    cursor: 'pointer',
+                    color: 'var(--text)',
+                    fontFamily: 'inherit',
                     display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: 8,
-                    marginBottom: 4,
+                    flexDirection: 'column',
+                    gap: 6,
+                    boxShadow: 'var(--card-shadow)',
                   }}
                 >
-                  <span style={{ fontSize: 12.5, fontWeight: 800 }}>
-                    {row.mealSlotName} •{' '}
-                    <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
-                      {row.date}
-                      {row.updatedAt ? ` (${row.updatedAt})` : ''}
+                  <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{ fontSize: 15, fontWeight: 600 }}>{row.mealSlotName}</span>
+                    <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                      <bdi dir="ltr" className="ltr-num">
+                        {dd}.{mo}.{yy}
+                      </bdi>
+                      {time ? (
+                        <>
+                          {' · '}
+                          <bdi dir="ltr" className="ltr-num">{time}</bdi>
+                        </>
+                      ) : null}
                     </span>
                   </span>
-                  <span
-                    className="num-mono"
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 800,
-                      color: 'var(--accent-volt)',
-                    }}
-                  >
-                    {row.calories} קק״ל • {row.protein}g ח׳
+                  <span style={{ fontSize: 13, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {row.itemsSummary}
                   </span>
-                </div>
-                <div
-                  style={{
-                    fontSize: 12.5,
-                    color: 'var(--text-secondary)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {row.itemsSummary}
-                </div>
-              </button>
-            ))}
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>
+                    <bdi dir="ltr" className="num-mono ltr-num">{row.calories}</bdi> קק״ל
+                    <span style={{ color: 'var(--text-2)', fontWeight: 500 }}>
+                      {' · '}ח׳ <bdi dir="ltr" className="ltr-num">{row.protein}</bdi>
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }

@@ -945,7 +945,7 @@ export function TraineeMobileView({
                   <div style={{ fontWeight: 800, color: 'var(--danger-text)' }}>
                     יום חסום להזנה
                   </div>
-                  <div style={{ color: 'var(--text-secondary)' }}>
+                  <div style={{ color: 'var(--text-2)' }}>
                     היום הנבחר מוגדר כיום חסום — לא ניתן להזין או לערוך ארוחות, פעילות, מים או מדדים.
                   </div>
                 </div>
@@ -971,14 +971,14 @@ export function TraineeMobileView({
                   <div style={{ fontWeight: 800, color: '#38bdf8' }}>
                     יום תשקיף (ללא מטרת יעד קלורי)
                   </div>
-                  <div style={{ color: 'var(--text-secondary)' }}>
+                  <div style={{ color: 'var(--text-2)' }}>
                     תיעוד חופשי ללא חישוב חריגה מהיעד.
                   </div>
                   {obsLockedToObservation && (
                     <div
                       style={{
                         marginTop: 3,
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight: 700,
                         color: 'var(--info-text)',
                         display: 'inline-flex',
@@ -1033,7 +1033,7 @@ export function TraineeMobileView({
                   </span>
                   <span
                     style={{
-                      fontSize: 12,
+                      fontSize: 13,
                       marginTop: 4,
                       color: isObservationDay
                         ? 'var(--macro-protein)'
@@ -1240,13 +1240,13 @@ export function TraineeMobileView({
                   >
                     <div
                       style={{
-                        background: 'var(--bg-surface-2)',
+                        background: 'var(--surface-2)',
                         borderRadius: 14,
                         padding: '10px 8px',
                         border:
                           remainingWorkouts === 0
                             ? '1px solid var(--line-2)'
-                            : '1px solid var(--border-subtle)',
+                            : '1px solid var(--line)',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
@@ -1271,20 +1271,20 @@ export function TraineeMobileView({
                           ? 'יעד הושלם ✓'
                           : `נותרו ${remainingWorkouts}`}
                       </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 700 }}>
+                      <div style={{ fontSize: 13, color: 'var(--text-3)', fontWeight: 700 }}>
                         אימונים ({workoutsThisWeek}/{actTargets.weeklyWorkoutsTarget})
                       </div>
                     </div>
 
                     <div
                       style={{
-                        background: 'var(--bg-surface-2)',
+                        background: 'var(--surface-2)',
                         borderRadius: 14,
                         padding: '10px 8px',
                         border:
                           remainingCardio === 0
                             ? '1px solid var(--line-2)'
-                            : '1px solid var(--border-subtle)',
+                            : '1px solid var(--line)',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
@@ -1309,7 +1309,7 @@ export function TraineeMobileView({
                           ? 'יעד הושלם ✓'
                           : `נותרו ${remainingCardio}`}
                       </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 700 }}>
+                      <div style={{ fontSize: 13, color: 'var(--text-3)', fontWeight: 700 }}>
                         הליכה/ריצה ({cardioThisWeek}/{actTargets.weeklyCardioTarget})
                       </div>
                     </div>
@@ -1317,13 +1317,13 @@ export function TraineeMobileView({
                     {hasSyncedSteps && (
                       <div
                         style={{
-                          background: 'var(--bg-surface-2)',
+                          background: 'var(--surface-2)',
                           borderRadius: 14,
                           padding: '10px 8px',
                           border:
                             remainingSteps === 0
                               ? '1px solid var(--line-2)'
-                              : '1px solid var(--border-subtle)',
+                              : '1px solid var(--line)',
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
@@ -1343,12 +1343,12 @@ export function TraineeMobileView({
                             style={{ position: 'absolute' }}
                           />
                         </div>
-                        <div className="num-mono" style={{ fontSize: 12, fontWeight: 900 }}>
+                        <div className="num-mono" style={{ fontSize: 13, fontWeight: 900 }}>
                           {remainingSteps === 0
                             ? 'יעד הושלם ✓'
                             : `נותרו ${remainingSteps.toLocaleString()}`}
                         </div>
-                        <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 700 }}>
+                        <div style={{ fontSize: 13, color: 'var(--text-3)', fontWeight: 700 }}>
                           צעדים ({currentSteps.toLocaleString()})
                         </div>
                       </div>
@@ -1380,12 +1380,12 @@ export function TraineeMobileView({
                   {/* 1. אימון יומי + סוג אימון */}
                   <div
                     style={{
-                      background: 'var(--bg-surface-2)',
+                      background: 'var(--surface-2)',
                       padding: '10px 12px',
                       borderRadius: 12,
                       border: todayWorkout?.completed
                         ? '1px solid var(--line-2)'
-                        : '1px solid var(--border-subtle)',
+                        : '1px solid var(--line)',
                     }}
                   >
                     <div
@@ -1401,7 +1401,7 @@ export function TraineeMobileView({
                           display: 'flex',
                           alignItems: 'center',
                           gap: 6,
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: 800,
                         }}
                       >
@@ -1411,7 +1411,7 @@ export function TraineeMobileView({
                       <span
                         className="num-mono"
                         style={{
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: 800,
                           color:
                             workoutsThisWeek >= actTargets.weeklyWorkoutsTarget
@@ -1461,15 +1461,15 @@ export function TraineeMobileView({
                               }
                             }}
                             style={{
-                              padding: '5px 10px',
+                              minHeight: 40, padding: '0 14px',
                               borderRadius: 999,
                               border: isSelected ? '1px solid var(--sel-border)'
-                                : '1px solid var(--border-subtle)',
+                                : '1px solid var(--line)',
                               background: isSelected ? 'var(--sel-bg)'
-                                : 'var(--bg-surface-1)',
+                                : 'var(--card)',
                               color: isSelected ? 'var(--sel-text)'
                                 : 'var(--text-secondary)',
-                              fontSize: 12,
+                              fontSize: 13,
                               fontWeight: 700,
                               opacity: isBlockedDay ? 0.45 : 1,
                               cursor: isBlockedDay ? 'not-allowed' : 'pointer',
@@ -1485,12 +1485,12 @@ export function TraineeMobileView({
                   {/* 2. הליכה / ריצה יומית */}
                   <div
                     style={{
-                      background: 'var(--bg-surface-2)',
+                      background: 'var(--surface-2)',
                       padding: '10px 12px',
                       borderRadius: 12,
                       border: todayCardio?.completed
                         ? '1px solid var(--line-2)'
-                        : '1px solid var(--border-subtle)',
+                        : '1px solid var(--line)',
                     }}
                   >
                     <div
@@ -1506,7 +1506,7 @@ export function TraineeMobileView({
                           display: 'flex',
                           alignItems: 'center',
                           gap: 6,
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: 800,
                         }}
                       >
@@ -1519,7 +1519,7 @@ export function TraineeMobileView({
                       <span
                         className="num-mono"
                         style={{
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: 800,
                           color:
                             cardioThisWeek >= actTargets.weeklyCardioTarget
@@ -1577,15 +1577,15 @@ export function TraineeMobileView({
                               });
                             }}
                             style={{
-                              padding: '5px 10px',
+                              minHeight: 40, padding: '0 14px',
                               borderRadius: 999,
                               border: isSelected ? '1px solid var(--sel-border)'
-                                : '1px solid var(--border-subtle)',
+                                : '1px solid var(--line)',
                               background: isSelected ? 'var(--sel-bg)'
-                                : 'var(--bg-surface-1)',
+                                : 'var(--card)',
                               color: isSelected ? 'var(--sel-text)'
                                 : 'var(--text-secondary)',
-                              fontSize: 12,
+                              fontSize: 13,
                               fontWeight: 700,
                               cursor: isBlockedDay ? 'not-allowed' : 'pointer',
                               opacity: isBlockedDay ? 0.45 : 1,
@@ -1601,12 +1601,12 @@ export function TraineeMobileView({
                   {/* 3. שעות שינה הלילה */}
                   <div
                     style={{
-                      background: 'var(--bg-surface-2)',
+                      background: 'var(--surface-2)',
                       padding: '10px 12px',
                       borderRadius: 12,
                       border: todaySleep
                         ? '1px solid var(--line-2)'
-                        : '1px solid var(--border-subtle)',
+                        : '1px solid var(--line)',
                     }}
                   >
                     <div
@@ -1622,7 +1622,7 @@ export function TraineeMobileView({
                           display: 'flex',
                           alignItems: 'center',
                           gap: 6,
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: 800,
                         }}
                       >
@@ -1632,7 +1632,7 @@ export function TraineeMobileView({
                       <span
                         className="num-mono"
                         style={{
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: 800,
                           color:
                             (todaySleep || 0) >=
@@ -1672,12 +1672,12 @@ export function TraineeMobileView({
                               padding: '6px 2px',
                               borderRadius: 8,
                               border: isSelected ? '1px solid var(--sel-border)'
-                                : '1px solid var(--border-subtle)',
+                                : '1px solid var(--line)',
                               background: isSelected ? 'var(--sel-bg)'
-                                : 'var(--bg-surface-1)',
+                                : 'var(--card)',
                               color: isSelected ? 'var(--sel-text)'
                                 : 'var(--text-secondary)',
-                              fontSize: 12,
+                              fontSize: 13,
                               fontWeight: 800,
                               cursor: isBlockedDay ? 'not-allowed' : 'pointer',
                               opacity: isBlockedDay ? 0.45 : 1,
@@ -1707,12 +1707,12 @@ export function TraineeMobileView({
                               padding: '6px 2px',
                               borderRadius: 8,
                               border: isSelected ? '1px solid var(--sel-border)'
-                                : '1px solid var(--border-subtle)',
+                                : '1px solid var(--line)',
                               background: isSelected ? 'var(--sel-bg)'
-                                : 'var(--bg-surface-1)',
+                                : 'var(--card)',
                               color: isSelected ? 'var(--sel-text)'
                                 : 'var(--text-secondary)',
-                              fontSize: 12,
+                              fontSize: 13,
                               fontWeight: 800,
                               cursor: isBlockedDay ? 'not-allowed' : 'pointer',
                               opacity: isBlockedDay ? 0.45 : 1,
@@ -1757,12 +1757,12 @@ export function TraineeMobileView({
                           style={{
                             flex: 1,
                             minWidth: 0,
-                            background: 'var(--bg-surface-1)',
+                            background: 'var(--card)',
                             border: '1px solid var(--line-2)',
                             borderRadius: 8,
-                            padding: '6px 10px',
+                            minHeight: 40, padding: '0 14px',
                             color: 'var(--text-primary)',
-                            fontSize: 12,
+                            fontSize: 13,
                             fontWeight: 700,
                             textAlign: 'center',
                             outline: 'none',
@@ -1772,8 +1772,8 @@ export function TraineeMobileView({
                           type="submit"
                           className="btn-volt"
                           style={{
-                            padding: '6px 12px',
-                            fontSize: 12.5,
+                            minHeight: 40, padding: '0 14px',
+                            fontSize: 13,
                             cursor: 'pointer',
                           }}
                         >
@@ -1801,11 +1801,11 @@ export function TraineeMobileView({
                 </span>
                 <span
                   style={{
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: 700,
                     padding: '2px 8px',
                     borderRadius: 999,
-                    background: 'var(--bg-surface-2)',
+                    background: 'var(--surface-2)',
                     color: isObservationDay
                       ? '#38bdf8'
                       : 'var(--text-secondary)',
@@ -1827,9 +1827,9 @@ export function TraineeMobileView({
                     onClick={() => openMealDrawer(activeTemplate.meals[0], 'saved-meals')}
                     className="btn-surface"
                     style={{
-                      padding: '5px 10px',
+                      minHeight: 40, padding: '0 14px',
                       borderRadius: 999,
-                      fontSize: 12,
+                      fontSize: 13,
                       fontWeight: 700,
                       display: 'flex',
                       alignItems: 'center',
@@ -1838,7 +1838,7 @@ export function TraineeMobileView({
                       borderColor:
                         answeredCount > 0
                           ? 'var(--surface-2)'
-                          : 'var(--border-subtle)',
+                          : 'var(--line)',
                       color:
                         answeredCount > 0
                           ? 'var(--accent-volt)'
@@ -1851,7 +1851,7 @@ export function TraineeMobileView({
                       <span
                         className="num-mono"
                         style={{
-                          fontSize: 12,
+                          fontSize: 13,
                           padding: '1px 5px',
                           borderRadius: 999,
                           background: 'var(--surface-2)',
@@ -1892,7 +1892,7 @@ export function TraineeMobileView({
                       borderColor:
                         hasItems && isObservationDay
                           ? 'var(--surface-2)'
-                          : 'var(--border-subtle)',
+                          : 'var(--line)',
                     }}
                   >
                     <div
@@ -1951,7 +1951,7 @@ export function TraineeMobileView({
                             className="num-mono"
                             style={{
                               position: 'absolute',
-                              fontSize: 12,
+                              fontSize: 13,
                               fontWeight: 800,
                               color: hasItems
                                 ? isObservationDay
@@ -2011,7 +2011,7 @@ export function TraineeMobileView({
                                     ? 'var(--text)'
                                     : 'var(--text-secondary)',
                                   minHeight: 26,
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   fontWeight: 700,
                                   opacity: isBlockedDay ? 0.5 : 1,
                                   cursor:
@@ -2029,8 +2029,8 @@ export function TraineeMobileView({
                           </div>
                           <div
                             style={{
-                              fontSize: 12,
-                              color: 'var(--text-secondary)',
+                              fontSize: 13,
+                              color: 'var(--text-2)',
                               display: 'flex',
                               gap: 10,
                               marginTop: 3,
@@ -2078,9 +2078,9 @@ export function TraineeMobileView({
                           {!isObservationDay && (
                             <span
                               style={{
-                                fontSize: 12,
+                                fontSize: 13,
                                 fontWeight: 500,
-                                color: 'var(--text-secondary)',
+                                color: 'var(--text-2)',
                               }}
                             >
                               {' '}
@@ -2090,8 +2090,8 @@ export function TraineeMobileView({
                         </div>
                         <div
                           style={{
-                            fontSize: 12,
-                            color: 'var(--text-muted)',
+                            fontSize: 13,
+                            color: 'var(--text-3)',
                           }}
                         >
                           קק״ל
@@ -2104,7 +2104,7 @@ export function TraineeMobileView({
                         style={{
                           background: 'var(--surface-2)',
                           borderRadius: 16,
-                          padding: '8px 12px',
+                          minHeight: 40, padding: '0 14px',
                           marginBottom: 12,
                           border: '1px solid var(--fill-1)',
                         }}
@@ -2133,7 +2133,7 @@ export function TraineeMobileView({
                             <div style={{ flex: 1 }}>
                               <div
                                 style={{
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   fontWeight: 700,
                                   color: 'var(--accent-volt)',
                                 }}
@@ -2143,8 +2143,8 @@ export function TraineeMobileView({
                               {entry.photoNote && (
                                 <div
                                   style={{
-                                    fontSize: 12,
-                                    color: 'var(--text-secondary)',
+                                    fontSize: 13,
+                                    color: 'var(--text-2)',
                                   }}
                                 >
                                   {entry.photoNote}
@@ -2187,8 +2187,8 @@ export function TraineeMobileView({
                               </div>
                               <div
                                 style={{
-                                  fontSize: 12,
-                                  color: 'var(--text-muted)',
+                                  fontSize: 13,
+                                  color: 'var(--text-3)',
                                 }}
                               >
                                 {item.unitLabel} · ח׳ {item.macros.protein}g · פ׳{' '}
@@ -2208,8 +2208,8 @@ export function TraineeMobileView({
                               {item.macros.calories}{' '}
                               <span
                                 style={{
-                                  fontSize: 12,
-                                  color: 'var(--text-muted)',
+                                  fontSize: 13,
+                                  color: 'var(--text-3)',
                                   fontWeight: 500,
                                 }}
                               >
@@ -2332,7 +2332,7 @@ export function TraineeMobileView({
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: 4,
-                                fontSize: 12.5,
+                                fontSize: 13,
                                 fontWeight: 700,
                                 whiteSpace: 'nowrap',
                                 flexShrink: 0,
@@ -2359,7 +2359,7 @@ export function TraineeMobileView({
                           justifyContent: 'center',
                           gap: 5,
                           padding: '9px 10px',
-                          fontSize: 12.5,
+                          fontSize: 13,
                           whiteSpace: 'nowrap',
                           opacity: isBlockedDay ? 0.45 : 1,
                           cursor: isBlockedDay ? 'not-allowed' : 'pointer',
@@ -2385,7 +2385,7 @@ export function TraineeMobileView({
             style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
           >
             {/* כרטיס היקפי גוף ומדריך מדידה מונפש */}
-            <div className="pro-card" style={{ padding: 18 }}>
+            <div className="pro-card" style={{ padding: 18, borderRadius: 28 }}>
               <div
                 style={{
                   display: 'flex',
@@ -2399,7 +2399,7 @@ export function TraineeMobileView({
                     style={{
                       width: 36,
                       height: 36,
-                      borderRadius: 10,
+                      borderRadius: 18,
                       background: 'var(--surface-2)',
                       display: 'flex',
                       alignItems: 'center',
@@ -2412,7 +2412,7 @@ export function TraineeMobileView({
                     <div style={{ fontSize: 15, fontWeight: 800 }}>
                       מדידת היקפי גוף (חזה, בטן, זרוע, ירך)
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
                       כולל מדריך מדידה מונפש שלב-אחר-שלב
                     </div>
                   </div>
@@ -2426,8 +2426,11 @@ export function TraineeMobileView({
                   }}
                   className="btn-volt"
                   style={{
-                    padding: '7px 14px',
-                    fontSize: 12,
+                    height: 44,
+                    padding: '0 16px',
+                    fontSize: 14,
+                    whiteSpace: 'nowrap',
+                    flex: 'none',
                     opacity: isBlockedDay ? 0.45 : 1,
                     cursor: isBlockedDay ? 'not-allowed' : 'pointer',
                   }}
@@ -2453,11 +2456,11 @@ export function TraineeMobileView({
                     <div
                       key={item.label}
                       style={{
-                        background: 'var(--bg-surface-2)',
+                        background: 'var(--surface-2)',
                         padding: '10px 6px',
-                        borderRadius: 12,
+                        borderRadius: 18,
                         textAlign: 'center',
-                        border: '1px solid var(--border-subtle)',
+                        border: '1px solid var(--line)',
                       }}
                     >
                       <div
@@ -2471,7 +2474,7 @@ export function TraineeMobileView({
                         {item.val ? `${item.val}` : '—'}
                       </div>
                       <div
-                        style={{ fontSize: 12, color: 'var(--text-secondary)' }}
+                        style={{ fontSize: 13, color: 'var(--text-2)' }}
                       >
                         {item.label} (ס״מ)
                       </div>
@@ -2481,8 +2484,8 @@ export function TraineeMobileView({
               ) : (
                 <div
                   style={{
-                    fontSize: 12,
-                    color: 'var(--text-muted)',
+                    fontSize: 13,
+                    color: 'var(--text-3)',
                     textAlign: 'center',
                     padding: 10,
                   }}
@@ -2494,7 +2497,7 @@ export function TraineeMobileView({
             </div>
 
             {/* כרטיס הידרציה / שתיית מים */}
-            <div className="pro-card" style={{ padding: 18 }}>
+            <div className="pro-card" style={{ padding: 18, borderRadius: 28 }}>
               <div
                 style={{
                   display: 'flex',
@@ -2508,7 +2511,7 @@ export function TraineeMobileView({
                     style={{
                       width: 36,
                       height: 36,
-                      borderRadius: 10,
+                      borderRadius: 18,
                       background: 'var(--surface-2)',
                       display: 'flex',
                       alignItems: 'center',
@@ -2521,7 +2524,7 @@ export function TraineeMobileView({
                     <div style={{ fontSize: 15, fontWeight: 800 }}>
                       מאזן נוזלים יומי
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
                       כל כוס = 250 מ״ל ({dailyLog.waterCups * 0.25} ליטר היום)
                     </div>
                   </div>
@@ -2556,13 +2559,13 @@ export function TraineeMobileView({
                       }}
                       style={{
                         height: 44,
-                        borderRadius: 14,
-                        border: filled ? '1px solid var(--accent)' : '1px solid var(--border-subtle)',
-                        background: filled ? 'var(--accent)' : 'var(--bg-surface-2)',
+                        borderRadius: 18,
+                        border: filled ? '1px solid var(--accent)' : '1px solid var(--line)',
+                        background: filled ? 'var(--accent)' : 'var(--surface-2)',
                         color: filled ? 'var(--on-accent)' : 'var(--text-muted)',
                         fontFamily: 'var(--font-num)',
                         fontWeight: 700,
-                        fontSize: 12,
+                        fontSize: 13,
                         opacity: isBlockedDay ? 0.45 : 1,
                         cursor: isBlockedDay ? 'not-allowed' : 'pointer',
                       }}
@@ -2575,7 +2578,7 @@ export function TraineeMobileView({
             </div>
 
             {/* כרטיס מעקב משקל גוף ומגמה */}
-            <div className="pro-card" style={{ padding: 18 }}>
+            <div className="pro-card" style={{ padding: 18, borderRadius: 28 }}>
               <div
                 style={{
                   display: 'flex',
@@ -2589,7 +2592,7 @@ export function TraineeMobileView({
                     style={{
                       width: 36,
                       height: 36,
-                      borderRadius: 10,
+                      borderRadius: 18,
                       background: 'var(--surface-2)',
                       display: 'flex',
                       alignItems: 'center',
@@ -2602,7 +2605,7 @@ export function TraineeMobileView({
                     <div style={{ fontSize: 15, fontWeight: 800 }}>
                       מגמת משקל גוף
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
                       יעד מאמן: {trainee.targetWeight} ק״ג
                     </div>
                   </div>
@@ -2634,22 +2637,22 @@ export function TraineeMobileView({
                   <div
                     key={idx}
                     style={{
-                      background: 'var(--bg-surface-2)',
+                      background: 'var(--surface-2)',
                       padding: '8px 6px',
-                      borderRadius: 10,
+                      borderRadius: 18,
                       textAlign: 'center',
-                      border: '1px solid var(--border-subtle)',
+                      border: '1px solid var(--line)',
                     }}
                   >
                     <div
                       className="num-mono"
-                      style={{ fontSize: 14, fontWeight: 800 }}
+                      style={{ fontSize: 17, fontWeight: 700 }}
                     >
                       {w.weight}
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      {w.date}
-                    </div>
+                    <bdi dir="ltr" className="ltr-num" style={{ fontSize: 13, color: 'var(--text-3)' }}>
+                      {w.date.slice(8, 10)}.{w.date.slice(5, 7)}
+                    </bdi>
                   </div>
                 ))}
               </div>
@@ -2688,19 +2691,26 @@ export function TraineeMobileView({
                 <input
                   type="number"
                   step="0.1"
+                  inputMode="decimal"
                   dir="ltr"
+                  aria-label="שקילת היום בק״ג"
+                  placeholder="שקילת היום (ק״ג)"
                   disabled={savingWeight || isBlockedDay}
                   value={weightInput}
                   onChange={(e) => setWeightInput(e.target.value)}
+                  className="num-mono"
                   style={{
                     flex: 1,
-                    background: 'var(--bg-surface-2)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 12,
-                    padding: '10px 14px',
-                    color: 'var(--text-primary)',
-                    fontSize: 14,
-                    fontWeight: 700,
+                    minWidth: 0,
+                    height: 52,
+                    background: 'transparent',
+                    border: '1px solid var(--line-2)',
+                    borderRadius: 999,
+                    padding: '0 18px',
+                    color: 'var(--text)',
+                    fontSize: 18,
+                    fontWeight: 600,
+                    outline: 'none',
                     opacity: isBlockedDay ? 0.5 : 1,
                   }}
                 />
@@ -2708,8 +2718,13 @@ export function TraineeMobileView({
                   type="submit"
                   disabled={savingWeight || isBlockedDay}
                   className="btn-volt"
+                  aria-label="תיעוד שקילה"
                   style={{
-                    padding: '10px 18px',
+                    height: 52,
+                    padding: '0 22px',
+                    fontSize: 16,
+                    whiteSpace: 'nowrap',
+                    flex: 'none',
                     cursor: isBlockedDay ? 'not-allowed' : 'pointer',
                     opacity: isBlockedDay ? 0.45 : 1,
                     display: 'inline-flex',
@@ -2717,15 +2732,15 @@ export function TraineeMobileView({
                     gap: 6,
                   }}
                 >
-                  {savingWeight && <Loader2 size={14} className="spot-spinner" />}
-                  <span>{savingWeight ? 'שומר...' : 'תיעוד שקילה'}</span>
+                  {savingWeight && <Loader2 size={16} className="spot-spinner" />}
+                  <span>{savingWeight ? 'שומר...' : 'תיעוד'}</span>
                 </button>
               </form>
               {weightFeedback && (
                 <div
                   style={{
                     marginTop: 8,
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: 700,
                     color: weightFeedback.isError ? 'var(--danger-text)' : 'var(--ok-text)',
                   }}
@@ -2761,7 +2776,7 @@ export function TraineeMobileView({
                     <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 20, fontWeight: 700 }}>
                       {s.value}
                     </bdi>
-                    <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{s.label}</span>
+                    <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{s.label}</span>
                   </div>
                 ))}
               </div>
@@ -2799,7 +2814,7 @@ export function TraineeMobileView({
                             className="num-mono"
                             style={{
                               height: 44,
-                              borderRadius: 14,
+                              borderRadius: 18,
                               border: `1px solid ${on ? 'var(--sel-border)' : 'var(--line-2)'}`,
                               background: on ? 'var(--sel-bg)' : 'transparent',
                               color: on ? 'var(--sel-text)' : 'var(--text)',

@@ -11,6 +11,7 @@ import {
   Select,
   PasswordInput,
   Checkbox,
+  Switch,
 } from '@mantine/core';
 import {
   Users,
@@ -3477,58 +3478,68 @@ export function CoachDashboardView({
               <div
                 style={{
                   background: 'var(--surface-2)',
-                  padding: 12,
-                  borderRadius: 18,
-                  fontSize: 13,
+                  padding: 16,
+                  borderRadius: 22,
+                  fontSize: 14,
                 }}
               >
                 <div
                   style={{
-                    fontWeight: 800,
+                    fontWeight: 700,
+                    fontSize: 15,
                     color: 'var(--text)',
                     marginBottom: 6,
                   }}
                 >
                   אימונים, הליכה ואורח חיים
                 </div>
-                <div>
-                  <b>אורח חיים:</b>{' '}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+                  <span style={{ color: 'var(--text-2)', flex: 'none' }}>אורח חיים</span>
+                  <span style={{ textAlign: 'end', minWidth: 0 }}>
                   {selectedTrainee.onboarding?.activityLevel || '—'}{' '}
                   {selectedTrainee.onboarding?.activityLevelNote
                     ? `(${selectedTrainee.onboarding.activityLevelNote})`
                     : ''}
+                  </span>
                 </div>
-                <div>
-                  <b>אימוני כוח:</b>{' '}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+                  <span style={{ color: 'var(--text-2)', flex: 'none' }}>אימוני כוח</span>
+                  <span style={{ textAlign: 'end', minWidth: 0 }}>
                   {selectedTrainee.onboarding?.strengthWorkoutsPerWeek || '—'}{' '}
                   {selectedTrainee.onboarding?.strengthWorkoutsNote
                     ? `(${selectedTrainee.onboarding.strengthWorkoutsNote})`
                     : ''}
+                  </span>
                 </div>
-                <div>
-                  <b>הליכה בשבוע:</b>{' '}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+                  <span style={{ color: 'var(--text-2)', flex: 'none' }}>הליכה בשבוע</span>
+                  <span style={{ textAlign: 'end', minWidth: 0 }}>
                   {selectedTrainee.onboarding?.walkingSessionsPerWeek || '—'}{' '}
                   {selectedTrainee.onboarding?.walkingSessionsNote
                     ? `(${selectedTrainee.onboarding.walkingSessionsNote})`
                     : ''}
+                  </span>
                 </div>
-                <div>
-                  <b>שעות שינה:</b>{' '}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+                  <span style={{ color: 'var(--text-2)', flex: 'none' }}>שעות שינה</span>
+                  <span style={{ textAlign: 'end', minWidth: 0 }}>
                   {selectedTrainee.onboarding?.sleepHours || '—'}
+                  </span>
                 </div>
               </div>
 
               <div
                 style={{
                   background: 'var(--surface-2)',
-                  padding: 12,
-                  borderRadius: 18,
-                  fontSize: 13,
+                  padding: 16,
+                  borderRadius: 22,
+                  fontSize: 14,
                 }}
               >
                 <div
                   style={{
-                    fontWeight: 800,
+                    fontWeight: 700,
+                    fontSize: 15,
                     color: 'var(--text)',
                     marginBottom: 6,
                   }}
@@ -3576,45 +3587,54 @@ export function CoachDashboardView({
               <div
                 style={{
                   background: 'var(--surface-2)',
-                  padding: 12,
-                  borderRadius: 18,
-                  fontSize: 13,
+                  padding: 16,
+                  borderRadius: 22,
+                  fontSize: 14,
                 }}
               >
                 <div
                   style={{
-                    fontWeight: 800,
-                    color: 'var(--warn-text)',
+                    fontWeight: 700,
+                    fontSize: 15,
+                    color: 'var(--text)',
                     marginBottom: 6,
                   }}
                 >
                   העדפות תזונה ואוכל חשוב
                 </div>
-                <div>
-                  <b>סגנון:</b>{' '}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+                  <span style={{ color: 'var(--text-2)', flex: 'none' }}>סגנון</span>
+                  <span style={{ textAlign: 'end', minWidth: 0 }}>
                   {(
                     selectedTrainee.onboarding?.dietaryPreferences || []
                   ).join(', ') || '—'}{' '}
                   {selectedTrainee.onboarding?.dietaryPreferencesNote || ''}
+                  </span>
                 </div>
-                <div>
-                  <b>לא מוותר על:</b>{' '}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+                  <span style={{ color: 'var(--text-2)', flex: 'none' }}>לא מוותר על</span>
+                  <span style={{ textAlign: 'end', minWidth: 0 }}>
                   {(
                     selectedTrainee.onboarding?.favoriteMustHaveFoods || []
                   ).join(', ') || '—'}{' '}
                   {selectedTrainee.onboarding?.favoriteMustHaveFoodsNote || ''}
+                  </span>
                 </div>
-                <div>
-                  <b>אלרגיות / לא אוכל:</b>{' '}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+                  <span style={{ color: 'var(--text-2)', flex: 'none' }}>אלרגיות / לא אוכל</span>
+                  <span style={{ textAlign: 'end', minWidth: 0 }}>
                   {(
                     selectedTrainee.onboarding?.dislikedOrAllergies || []
                   ).join(', ') || '—'}{' '}
                   {selectedTrainee.onboarding?.dislikedOrAllergiesNote || ''}
+                  </span>
                 </div>
                 {selectedTrainee.onboarding?.scheduleAndNotes && (
-                  <div>
-                    <b>הערות למאמן:</b>{' '}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+                    <span style={{ color: 'var(--text-2)', flex: 'none' }}>הערות למאמן</span>
+                    <span style={{ textAlign: 'end', minWidth: 0 }}>
                     {selectedTrainee.onboarding.scheduleAndNotes}
+                    </span>
                   </div>
                 )}
               </div>
@@ -3971,7 +3991,8 @@ export function CoachDashboardView({
                 marginBottom: 14,
               }}
             >
-              <Checkbox
+              <Switch
+                color="orange"
                 label="הפעל למתאמן זה תפריט נפרד ליום אימון וליום מנוחה (אם כבוי – למתאמן יוצג תפריט יומי אחיד ללא מתג אימון/מנוחה)"
                 checked={Boolean(selectedTrainee.enableWorkoutRestSplit)}
                 onChange={(e) => {
@@ -5741,7 +5762,7 @@ export function CoachDashboardView({
                     }}
                   >
                     בווב/PWA מתבצע Hard Refresh אוטומטי בעליית גרסה. באנדרואיד, כל
-                    גרסה ש־<span dir="ltr">versionCode &lt;=</span> לסף החסימה תינעל
+                    גרסה ש־<bdi dir="ltr">versionCode ≤</bdi> לסף החסימה תינעל
                     הרמטית עד להתקנת ה-APK החדש.
                   </div>
                 </div>
@@ -5757,7 +5778,7 @@ export function CoachDashboardView({
                   }}
                   dir="ltr"
                 >
-                  Web Build: {CLIENT_WEB_BUILD_ID || 'dev'}
+                  Web Build: <bdi dir="ltr">{CLIENT_WEB_BUILD_ID || 'dev'}</bdi>
                 </div>
               </div>
 
@@ -5795,7 +5816,7 @@ export function CoachDashboardView({
                   }}
                 >
                   <NumberInput
-                    label="חסום אפליקציית אנדרואיד עד וכולל (versionCode <=)"
+                    label={<>חסום אפליקציית אנדרואיד עד וכולל (<bdi dir="ltr">versionCode ≤</bdi>)</>}
                     description="0 = ללא חסימה. למשל 10002 יחסום גרסאות 10002 ומטה"
                     min={0}
                     max={99999999}
@@ -5813,7 +5834,7 @@ export function CoachDashboardView({
                   />
                   <TextInput
                     dir="ltr"
-                    label="versionCode אחרון (אופציונלי)"
+                    label={<><bdi dir="ltr">versionCode</bdi> אחרון (אופציונלי)</>}
                     placeholder="למשל 10003"
                     value={policyLatestCode}
                     onChange={(e) =>
@@ -5828,8 +5849,8 @@ export function CoachDashboardView({
                   <TextInput
                     dir="ltr"
                     label="כתובת הורדת קובץ ה-APK (שמור אצלכם בשרת או Storage)"
-                    description="ניתן להשאיר ריק לזיהוי אוטומטי מקובץ public/downloads/spot-fitness-release.apk או מ-GitHub Releases"
-                    placeholder="/downloads/spot-fitness-release.apk או https://..."
+                    description={<>ניתן להשאיר ריק לזיהוי אוטומטי מקובץ <bdi dir="ltr">public/downloads/spot-fitness-release.apk</bdi> או מ-<bdi dir="ltr">GitHub Releases</bdi></>}
+                    placeholder="https://… או /downloads/spot-fitness-release.apk"
                     value={policyApkUrl}
                     onChange={(e) => setPolicyApkUrl(e.currentTarget.value)}
                   />
@@ -5853,7 +5874,7 @@ export function CoachDashboardView({
                         cursor: 'pointer',
                       }}
                     >
-                      הגדר נתיב שרת מקומי (/downloads/spot-fitness-release.apk)
+                      הגדר נתיב שרת מקומי (<bdi dir="ltr">/downloads/spot-fitness-release.apk</bdi>)
                     </button>
                     <button
                       type="button"
@@ -5865,7 +5886,7 @@ export function CoachDashboardView({
                         cursor: 'pointer',
                       }}
                     >
-                      זיהוי אוטומטי / GitHub Releases
+                      זיהוי אוטומטי (<bdi dir="ltr">GitHub Releases</bdi>)
                     </button>
                   </div>
                 </div>
