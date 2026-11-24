@@ -273,7 +273,7 @@ export function CoachAlertSettingsModal({
       key: 'meals',
       label: 'ארוחות',
       desc: 'תיעוד ידני או בסיום פענוח AI',
-      icon: <Utensils size={14} color="var(--accent-volt)" />,
+      icon: <Utensils size={14} color="currentColor" />,
     },
     {
       key: 'weight',
@@ -285,7 +285,7 @@ export function CoachAlertSettingsModal({
       key: 'workouts',
       label: 'אימונים ואירובי',
       desc: 'סימון ביצוע אימון או אירובי',
-      icon: <Dumbbell size={14} color="var(--accent-volt)" />,
+      icon: <Dumbbell size={14} color="currentColor" />,
     },
     {
       key: 'water',
@@ -301,7 +301,7 @@ export function CoachAlertSettingsModal({
       onClose={() => !saving && onClose()}
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <BellRing size={18} color="var(--accent-volt)" />
+          <BellRing size={18} color="currentColor" />
           <span style={{ fontWeight: 900, fontSize: 16 }}>
             התראות מאמן בזמן אמת (על הזנות מתאמנים)
           </span>
@@ -342,7 +342,7 @@ export function CoachAlertSettingsModal({
                 gap: 6,
               }}
             >
-              <Globe size={14} color="var(--accent-volt)" />
+              <Globe size={14} color="currentColor" />
               <span>
                 המכשיר שלך לקבלת ההתראות (
                 {webStatus?.deviceLabel || 'דפדפן'}):
@@ -379,15 +379,15 @@ export function CoachAlertSettingsModal({
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Smartphone size={13} color="var(--accent-volt)" />
+                <Smartphone size={13} color="currentColor" />
                 <span>
                   באייפון יש להוסיף למסך הבית כדי שמאמן יקבל התראות פוש:
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Share size={12} color="var(--accent-volt)" />
+                <Share size={12} color="currentColor" />
                 <span>1. לחץ על שתף בספארי &larr;</span>
-                <PlusSquare size={12} color="var(--accent-volt)" />
+                <PlusSquare size={12} color="currentColor" />
                 <span>2. הוסף למסך הבית &larr; פתח מהאייקון ואשר כאן.</span>
               </div>
             </div>
@@ -435,7 +435,7 @@ export function CoachAlertSettingsModal({
                     gap: 6,
                   }}
                 >
-                  <Send size={13} color="var(--accent-volt)" />
+                  <Send size={13} color="currentColor" />
                   <span>שלח התראת בדיקה אליי</span>
                 </button>
               )}
@@ -583,7 +583,7 @@ export function CoachAlertSettingsModal({
                   gap: 5,
                 }}
               >
-                <Users size={13} color="var(--accent-volt)" />
+                <Users size={13} color="currentColor" />
                 <span>קבוצות במעקב (כולל אוטומטית כל מתאמן חדש בקבוצה):</span>
               </span>
               <button

@@ -728,7 +728,7 @@ export function TraineeOnboardingWizard({
                   gap: 6,
                 }}
               >
-                <Dumbbell size={14} color="var(--accent-volt)" />
+                <Dumbbell size={14} color="currentColor" />
                 <span>כמה אימוני כוח בשבוע?</span>
               </div>
               <div

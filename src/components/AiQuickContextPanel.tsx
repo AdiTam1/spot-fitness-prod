@@ -224,7 +224,7 @@ export function AiQuickContextPanel({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 800 }}>
-          <SlidersHorizontal size={12} color="var(--accent-volt)" />
+          <SlidersHorizontal size={12} color="currentColor" />
           <span>דיוק מהיר (הכל ברירת מחדל: ללא)</span>
         </div>
 
@@ -244,7 +244,7 @@ export function AiQuickContextPanel({
               borderColor: 'rgba(214, 125, 9, 0.3)',
             }}
           >
-            <Ruler size={11} color="var(--accent-volt)" />
+            <Ruler size={11} color="currentColor" />
             <span>הכלים והיחידות שלי ({customServingTools.length})</span>
           </button>
 

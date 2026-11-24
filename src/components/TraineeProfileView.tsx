@@ -23,6 +23,10 @@ import {
   Sliders,
 } from 'lucide-react';
 import { Switch } from '@mantine/core';
+import { Pencil, Palette } from 'lucide-react';
+import { Chip } from './ui/Chip';
+import { GlassButton } from './ui/GlassButton';
+import { ThemeToggle } from './ui/ThemeToggle';
 import {
   MealCardShortcutId,
   TraineeProfile,
@@ -69,6 +73,7 @@ export function TraineeProfileView({
   onUpdateMealShortcuts,
 }: TraineeProfileViewProps) {
   const [nameInput, setNameInput] = useState(trainee.name);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [savingName, setSavingName] = useState(false);
   const [nameMessage, setNameMessage] = useState<{
     ok: boolean;
@@ -397,115 +402,133 @@ export function TraineeProfileView({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* 1. כרטיס זהות ושינוי שם משתמש */}
-      <div className="pro-card-elevated" style={{ padding: 18 }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            marginBottom: 14,
-          }}
-        >
+      {/* 1. Identity header (rename behind the pencil button) */}
+      <section aria-label="פרטי משתמש" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '4px 0 2px' }}>
           <div
+            aria-hidden
             style={{
-              width: 48,
-              height: 48,
-              borderRadius: '50%',
-              background: 'var(--accent-volt)',
-              color: 'var(--on-accent)',
-              display: 'grid',
-              placeItems: 'center',
-              fontSize: 20,
-              fontWeight: 900,
-              flexShrink: 0,
+              width: 64,
+              height: 64,
+              borderRadius: 999,
+              background: 'var(--surface-3)',
+              color: 'var(--text)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 22,
+              fontWeight: 700,
+              flex: 'none',
             }}
           >
-            {trainee.name.charAt(0) || 'מ'}
+            {trainee.avatar || trainee.name.charAt(0) || 'מ'}
           </div>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 17, fontWeight: 900 }}>{trainee.name}</div>
-            <div
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+            <span
               style={{
-                fontSize: 12,
-                color: 'var(--text-secondary)',
+                fontSize: 24,
+                fontWeight: 700,
+                lineHeight: 1.2,
+                whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
               }}
             >
-              {trainee.email || 'מתאמן SPOT'} • מטרה: {trainee.goal || 'מעקב תזונה'}
+              {trainee.name}
+            </span>
+            <span
+              style={{
+                fontSize: 13,
+                color: 'var(--text-secondary)',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {trainee.email || 'מתאמן SPOT'} · {trainee.goal || 'מעקב תזונה'}
+            </span>
+          </div>
+          {!isCoachPreview && (
+            <GlassButton
+              label="שינוי שם משתמש"
+              aria-expanded={renameOpen}
+              onClick={() => setRenameOpen((v) => !v)}
+            >
+              <Pencil size={18} />
+            </GlassButton>
+          )}
+        </div>
+
+        {renameOpen && (
+          <div className="pro-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              שם תצוגה באפליקציה ובהתראות
+            </span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                type="text"
+                value={nameInput}
+                maxLength={60}
+                disabled={isCoachPreview || savingName}
+                onChange={(e) => setNameInput(e.target.value)}
+                placeholder="הקלד שם חדש..."
+                aria-label="שם משתמש"
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  height: 44,
+                  background: 'var(--bg-surface-2)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 14,
+                  padding: '0 14px',
+                  color: 'var(--text-primary)',
+                  fontSize: 14,
+                  fontFamily: 'inherit',
+                }}
+              />
+              <button
+                type="button"
+                disabled={isCoachPreview || savingName}
+                onClick={handleSaveName}
+                className="btn-volt"
+                style={{
+                  height: 44,
+                  padding: '0 16px',
+                  fontSize: 14,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {savingName ? <Loader2 size={15} className="spot-spinner" /> : <Check size={15} />}
+                <span>שמור</span>
+              </button>
             </div>
           </div>
-        </div>
-
-        <div
-          style={{
-            fontSize: 12,
-            fontWeight: 700,
-            color: 'var(--text-secondary)',
-            marginBottom: 6,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-          }}
-        >
-          <User size={13} color="var(--accent-volt)" />
-          <span>שינוי שם משתמש (שם תצוגה באפליקציה ובהתראות)</span>
-        </div>
-
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            type="text"
-            value={nameInput}
-            maxLength={60}
-            disabled={isCoachPreview || savingName}
-            onChange={(e) => setNameInput(e.target.value)}
-            placeholder="הקלד שם חדש..."
-            style={{
-              flex: 1,
-              background: 'var(--bg-surface-2)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 10,
-              padding: '9px 12px',
-              color: 'var(--text-primary)',
-              fontSize: 13,
-            }}
-          />
-          <button
-            type="button"
-            disabled={isCoachPreview || savingName}
-            onClick={handleSaveName}
-            className="btn-volt"
-            style={{
-              padding: '9px 14px',
-              fontSize: 12,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              cursor: 'pointer',
-            }}
-          >
-            {savingName ? (
-              <Loader2 size={14} className="spot-spinner" />
-            ) : (
-              <Check size={14} />
-            )}
-            <span>שמור שם</span>
-          </button>
-        </div>
+        )}
         {nameMessage && (
           <div
             style={{
-              marginTop: 7,
-              fontSize: 11.5,
-              fontWeight: 700,
-              color: nameMessage.ok ? '#4ade80' : '#fca5a5',
+              fontSize: 12,
+              fontWeight: 600,
+              color: nameMessage.ok ? 'var(--status-ok)' : 'var(--status-danger)',
             }}
           >
             {nameMessage.text}
           </div>
         )}
-      </div>
+      </section>
+
+      {/* Appearance: system / dark / light */}
+      <section className="pro-card" aria-label="מראה" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Palette size={18} />
+          <span style={{ fontSize: 15, fontWeight: 600 }}>מראה</span>
+        </div>
+        <ThemeToggle />
+      </section>
 
       {/* 2. מיני-דשבורד סטטיסטיקות (7 ימים אחרונים) */}
       <div className="pro-card" style={{ padding: 16 }}>
@@ -549,7 +572,7 @@ export function TraineeProfileView({
                 marginBottom: 4,
               }}
             >
-              <Flame size={13} color="var(--accent-volt)" />
+              <Flame size={13} color="currentColor" />
               <span>ממוצע קלורי וחלבון</span>
             </div>
             <div className="num-mono" style={{ fontSize: 16, fontWeight: 900 }}>
@@ -666,7 +689,7 @@ export function TraineeProfileView({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
             {isCurrentPlatformPushActive ? (
-              <Bell size={16} color="var(--accent-volt)" />
+              <Bell size={16} color="currentColor" />
             ) : (
               <BellOff size={16} color="var(--text-secondary)" />
             )}
@@ -788,7 +811,7 @@ export function TraineeProfileView({
                       cursor: 'pointer',
                     }}
                   >
-                    <Send size={13} color="var(--accent-volt)" />
+                    <Send size={13} color="currentColor" />
                     <span>שלח התראת בדיקה</span>
                   </button>
                 )}
@@ -857,19 +880,19 @@ export function TraineeProfileView({
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Share size={13} color="var(--accent-volt)" style={{ flexShrink: 0 }} />
+                <Share size={13} color="currentColor" style={{ flexShrink: 0 }} />
                 <span>
                   1. לחץ/י על כפתור <strong>השיתוף (Share)</strong> בסרגל Safari.
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <PlusSquare size={13} color="var(--accent-volt)" style={{ flexShrink: 0 }} />
+                <PlusSquare size={13} color="currentColor" style={{ flexShrink: 0 }} />
                 <span>
                   2. גלול/י ובחר/י <strong>הוסף למסך הבית (Add to Home Screen)</strong>.
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Bell size={13} color="var(--accent-volt)" style={{ flexShrink: 0 }} />
+                <Bell size={13} color="currentColor" style={{ flexShrink: 0 }} />
                 <span>
                   3. פתח/י את אייקון <strong>SPOT</strong> ממסך הבית וחזור/י לכאן לאישור התראות.
                 </span>
@@ -894,7 +917,7 @@ export function TraineeProfileView({
                 gap: 6,
               }}
             >
-              <Globe size={13} color="var(--accent-volt)" />
+              <Globe size={13} color="currentColor" />
               <span>סביבה מזוהה: {webStatus.deviceLabel}</span>
             </div>
 
@@ -982,7 +1005,7 @@ export function TraineeProfileView({
                       cursor: 'pointer',
                     }}
                   >
-                    <Send size={13} color="var(--accent-volt)" />
+                    <Send size={13} color="currentColor" />
                     <span>שלח התראת בדיקה</span>
                   </button>
                 )}
@@ -1017,7 +1040,7 @@ export function TraineeProfileView({
             }}
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Smartphone size={14} color="var(--accent-volt)" />
+              <Smartphone size={14} color="currentColor" />
               <span>
                 {isCoachPreview
                   ? 'תצוגת מתאמן: הגדרת התראות זמינה במכשיר האישי של המתאמן.'
@@ -1115,7 +1138,7 @@ export function TraineeProfileView({
                 gap: 6,
               }}
             >
-              <Sliders size={15} color="var(--accent-volt)" />
+              <Sliders size={15} color="currentColor" />
               <span>קיצורי דרך בכרטיס הארוחה</span>
             </span>
             <span
@@ -1138,61 +1161,27 @@ export function TraineeProfileView({
           >
             הכפתור <strong>&quot;+ הוסף / ערוך&quot;</strong> מופיע תמיד בשורה הראשונה. בחר עד 2 קיצורי דרך נוספים שיופיעו לצדו:
           </div>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))',
-              gap: 7,
-            }}
-          >
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {ALL_MEAL_SHORTCUT_OPTIONS.map((opt) => {
               const current = trainee.mealCardShortcuts ?? DEFAULT_MEAL_CARD_SHORTCUTS;
               const active = current.includes(opt.id);
-              const atLimit = current.length >= 2 && !active;
               return (
-                <button
+                <Chip
                   key={opt.id}
-                  type="button"
-                  disabled={atLimit}
+                  selected={active}
+                  title={opt.description}
                   onClick={() => {
+                    // When two are already active, picking a third replaces the oldest one.
                     const next = active
                       ? current.filter((x) => x !== opt.id)
-                      : [...current, opt.id].slice(0, 2);
+                      : current.length >= 2
+                      ? [current[current.length - 1], opt.id]
+                      : [...current, opt.id];
                     void onUpdateMealShortcuts(trainee.id, next);
                   }}
-                  style={{
-                    textAlign: 'right',
-                    padding: '9px 11px',
-                    borderRadius: 12,
-                    border: active ? '1px solid var(--sel-bg)'
-                      : '1px solid var(--border-subtle)',
-                    background: active ? 'var(--sel-bg)'
-                      : 'var(--bg-surface-2)',
-                    color: active ? '#ffffff' : 'var(--text-secondary)',
-                    opacity: atLimit ? 0.45 : 1,
-                    cursor: atLimit ? 'not-allowed' : 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 3,
-                  }}
                 >
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      fontSize: 12,
-                      fontWeight: 800,
-                      color: active ? 'var(--sel-text)' : 'var(--text-primary)',
-                    }}
-                  >
-                    <span>{opt.label}</span>
-                    {active && <Check size={13} color="var(--accent-volt)" />}
-                  </div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.35 }}>
-                    {opt.description}
-                  </div>
-                </button>
+                  {opt.label}
+                </Chip>
               );
             })}
           </div>
@@ -1219,7 +1208,7 @@ export function TraineeProfileView({
               gap: 6,
             }}
           >
-            <Utensils size={15} color="var(--accent-volt)" />
+            <Utensils size={15} color="currentColor" />
             <span>הארוחות שלי ({loggedMealsList.length})</span>
           </span>
           <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>

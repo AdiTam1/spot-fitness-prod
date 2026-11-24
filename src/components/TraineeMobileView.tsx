@@ -566,6 +566,9 @@ export function TraineeMobileView({
         </div>
       )}
 
+      {/* Journal & metrics share the date header + week strip; profile has its own header */}
+      {mobileSection !== 'profile' && (
+        <>
       {/* Header: avatar, date + greeting, questionnaire shortcut */}
       {(() => {
         const now = new Date();
@@ -577,6 +580,19 @@ export function TraineeMobileView({
         const weekdayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
         const dateLabel = `יום ${weekdayNames[dateObj.getDay()]}, ${sd} ב${HEBREW_MONTH_NAMES[(sm || 1) - 1]}`;
         const firstName = (trainee.name || '').trim().split(/\s+/)[0] || trainee.name;
+        if (mobileSection === 'metrics') {
+          return (
+            <header style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{dateLabel}</span>
+                <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, lineHeight: 1.15 }}>מדדים</h1>
+              </div>
+              <GlassButton label="מדידת היקפים מודרכת" onClick={() => setMeasurementModalOpen(true)}>
+                <Ruler size={20} />
+              </GlassButton>
+            </header>
+          );
+        }
         return (
           <header
             style={{
@@ -821,6 +837,9 @@ export function TraineeMobileView({
           })}
         </nav>
       </div>
+
+        </>
+      )}
 
       <AnimatePresence mode="wait">
         {mobileSection === 'journal' ? (
@@ -1163,7 +1182,7 @@ export function TraineeMobileView({
                         <CompactMiniRing
                           current={workoutsThisWeek}
                           target={actTargets.weeklyWorkoutsTarget}
-                          color="var(--accent-volt)"
+                          color="currentColor"
                         />
                         <Dumbbell
                           size={14}
@@ -1310,7 +1329,7 @@ export function TraineeMobileView({
                           fontWeight: 800,
                         }}
                       >
-                        <Dumbbell size={14} color="var(--accent-volt)" />
+                        <Dumbbell size={14} color="currentColor" />
                         <span>אימון היום (בחר סוג אימון שביצעת):</span>
                       </div>
                       <span
@@ -1750,7 +1769,7 @@ export function TraineeMobileView({
                           : 'var(--text-primary)',
                     }}
                   >
-                    <Bookmark size={12} color="var(--accent-volt)" />
+                    <Bookmark size={12} color="currentColor" />
                     <span>הארוחות והכלים שלי</span>
                     {(trainee.savedMeals?.length || 0) > 0 && (
                       <span
@@ -2141,7 +2160,7 @@ export function TraineeMobileView({
                       >
                         <MessageSquare
                           size={15}
-                          color="var(--accent-volt)"
+                          color="currentColor"
                           style={{ marginTop: 2, flexShrink: 0 }}
                         />
                         <div style={{ fontSize: 12 }}>
@@ -2311,7 +2330,7 @@ export function TraineeMobileView({
                       justifyContent: 'center',
                     }}
                   >
-                    <Ruler size={18} color="var(--accent-volt)" />
+                    <Ruler size={18} color="currentColor" />
                   </div>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 800 }}>
@@ -2414,13 +2433,13 @@ export function TraineeMobileView({
                       width: 36,
                       height: 36,
                       borderRadius: 10,
-                      background: 'rgba(56, 189, 248, 0.12)',
+                      background: 'var(--surface-2)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    <Droplets size={18} color="#38bdf8" />
+                    <Droplets size={18} color="var(--text)" />
                   </div>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 800 }}>
@@ -2433,7 +2452,7 @@ export function TraineeMobileView({
                 </div>
                 <div
                   className="num-mono"
-                  style={{ fontSize: 20, fontWeight: 800, color: '#38bdf8' }}
+                  style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}
                 >
                   {dailyLog.waterCups} / {dailyLog.waterGoal}
                 </div>
@@ -2460,15 +2479,12 @@ export function TraineeMobileView({
                         }
                       }}
                       style={{
-                        height: 38,
-                        borderRadius: 10,
-                        border: filled
-                          ? '1px solid rgba(56, 189, 248, 0.5)'
-                          : '1px solid var(--border-subtle)',
-                        background: filled
-                          ? 'rgba(56, 189, 248, 0.18)'
-                          : 'var(--bg-surface-2)',
-                        color: filled ? '#38bdf8' : 'var(--text-muted)',
+                        height: 44,
+                        borderRadius: 14,
+                        border: filled ? '1px solid var(--accent)' : '1px solid var(--border-subtle)',
+                        background: filled ? 'var(--accent)' : 'var(--bg-surface-2)',
+                        color: filled ? 'var(--on-accent)' : 'var(--text-muted)',
+                        fontFamily: 'var(--font-num)',
                         fontWeight: 700,
                         fontSize: 12,
                         opacity: isBlockedDay ? 0.45 : 1,
@@ -2504,7 +2520,7 @@ export function TraineeMobileView({
                       justifyContent: 'center',
                     }}
                   >
-                    <Scale size={18} color="var(--accent-volt)" />
+                    <Scale size={18} color="currentColor" />
                   </div>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 800 }}>
@@ -3123,7 +3139,7 @@ export function TraineeMobileView({
         }}
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Clock size={15} color="var(--accent-volt)" />
+            <Clock size={15} color="currentColor" />
             <span style={{ fontWeight: 800, fontSize: 14 }}>
               שעת ארוחה — {timeEditSlot?.name}
             </span>

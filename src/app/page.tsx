@@ -2653,11 +2653,11 @@ export default function HomePage() {
               }}
             >
               {currentUser.role === 'admin' ? (
-                <Crown size={13} color="var(--accent-volt)" style={{ flexShrink: 0 }} />
+                <Crown size={13} color="currentColor" style={{ flexShrink: 0 }} />
               ) : currentUser.role === 'coach' ? (
                 <ShieldCheck size={13} color="#38bdf8" style={{ flexShrink: 0 }} />
               ) : (
-                <User size={13} color="var(--accent-volt)" style={{ flexShrink: 0 }} />
+                <User size={13} color="currentColor" style={{ flexShrink: 0 }} />
               )}
               <span
                 style={{
@@ -3090,7 +3090,7 @@ export default function HomePage() {
                 fontSize: 16,
               }}
             >
-              <Bell size={18} color="var(--accent-volt)" />
+              <Bell size={18} color="currentColor" />
               <span>הפעלת התראות חכמות באנדרואיד</span>
             </span>
           }
@@ -3206,7 +3206,7 @@ export default function HomePage() {
                 fontSize: 16,
               }}
             >
-              <Bell size={18} color="var(--accent-volt)" />
+              <Bell size={18} color="currentColor" />
               <span>הפעלת התראות SPOT במכשיר זה</span>
             </span>
           }

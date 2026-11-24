@@ -191,7 +191,7 @@ export function BackgroundAiSyncBanner({
                   }}
                 />
               ) : isOk ? (
-                <Sparkles size={16} color="var(--accent-volt)" style={{ flexShrink: 0 }} />
+                <Sparkles size={16} color="currentColor" style={{ flexShrink: 0 }} />
               ) : (
                 <AlertTriangle size={16} color="#f87171" style={{ flexShrink: 0 }} />
               )}

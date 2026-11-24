@@ -1499,7 +1499,7 @@ export function AddMealDrawer({
                       borderColor: 'rgba(214, 125, 9, 0.4)',
                     }}
                   >
-                    <Camera size={13} color="var(--accent-volt)" />
+                    <Camera size={13} color="currentColor" />
                     <span>מצלמה בלייב</span>
                     <input
                       type="file"
@@ -2243,7 +2243,7 @@ export function AddMealDrawer({
                         marginBottom: 4,
                       }}
                     >
-                      <Brain size={14} color="var(--accent-volt)" />
+                      <Brain size={14} color="currentColor" />
                       <span>משהו בהצעות לא מתאים לך?</span>
                     </div>
                     <div
@@ -2372,7 +2372,7 @@ export function AddMealDrawer({
                       cursor: 'pointer',
                     }}
                   >
-                    <Barcode size={13} color="var(--accent-volt)" />
+                    <Barcode size={13} color="currentColor" />
                     <span>ברקוד</span>
                   </button>
                 </div>
@@ -2804,9 +2804,9 @@ export function AddMealDrawer({
                       }}
                     >
                       {photoMode === 'nutrition-label' ? (
-                        <FileText size={32} color="var(--accent-volt)" />
+                        <FileText size={32} color="currentColor" />
                       ) : (
-                        <Camera size={32} color="var(--accent-volt)" />
+                        <Camera size={32} color="currentColor" />
                       )}
                       <div style={{ fontSize: 14, fontWeight: 700 }}>
                         {photoMode === 'nutrition-label'
@@ -2877,7 +2877,7 @@ export function AddMealDrawer({
                           borderColor: 'rgba(214, 125, 9, 0.35)',
                         }}
                       >
-                        <Camera size={14} color="var(--accent-volt)" />
+                        <Camera size={14} color="currentColor" />
                         <span>
                           {photoItems.length === 0 ? 'צלם עכשיו במצלמה' : 'צלם זווית נוספת'}
                         </span>
@@ -3011,7 +3011,7 @@ export function AddMealDrawer({
                       </>
                     ) : (
                       <>
-                        <Mic size={14} color="var(--accent-volt)" />
+                        <Mic size={14} color="currentColor" />
                         <span>🎙️ הקלט ארוחה בקול</span>
                       </>
                     )}

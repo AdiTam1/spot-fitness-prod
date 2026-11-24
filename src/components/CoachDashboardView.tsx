@@ -1260,7 +1260,7 @@ export function CoachDashboardView({
               cursor: 'pointer',
             }}
           >
-            <FolderPlus size={15} color="var(--accent-volt)" />
+            <FolderPlus size={15} color="currentColor" />
             <span>+ קבוצה חדשה</span>
           </button>
 
@@ -2030,7 +2030,7 @@ export function CoachDashboardView({
                               alignItems: 'center',
                             }}
                           >
-                            <Share2 size={13} color="var(--accent-volt)" />
+                            <Share2 size={13} color="currentColor" />
                           </button>
                         )}
                       </div>
@@ -2469,7 +2469,7 @@ export function CoachDashboardView({
                                 >
                                   <Share2
                                     size={13}
-                                    color="var(--accent-volt)"
+                                    color="currentColor"
                                   />
                                   <span>שיתוף</span>
                                 </button>
@@ -5093,7 +5093,7 @@ export function CoachDashboardView({
                               >
                                 <Share2
                                   size={13}
-                                  color="var(--accent-volt)"
+                                  color="currentColor"
                                 />
                                 <span>שתף מאמנים</span>
                               </button>
@@ -5646,7 +5646,7 @@ export function CoachDashboardView({
                       gap: 8,
                     }}
                   >
-                    <Smartphone size={18} color="var(--accent-volt)" />
+                    <Smartphone size={18} color="currentColor" />
                     <span>בקרת גרסאות, Web Hard Refresh ועדכוני APK לאנדרואיד</span>
                   </div>
                   <div

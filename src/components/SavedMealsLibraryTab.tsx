@@ -454,7 +454,7 @@ export function SavedMealsLibraryTab({
             flexShrink: 0,
           }}
         >
-          <Ruler size={13} color="var(--accent-volt)" />
+          <Ruler size={13} color="currentColor" />
           <span>כלים ויחידות</span>
         </button>
       </div>

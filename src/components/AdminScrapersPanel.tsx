@@ -221,7 +221,7 @@ export function AdminScrapersPanel({
         >
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Globe size={20} color="var(--accent-volt)" />
+              <Globe size={20} color="currentColor" />
               <h2 style={{ fontSize: 18, fontWeight: 900, margin: 0 }}>
                 סופרים ישראליים, חנויות טבע וניטור אוטומטי ({results.length || 12} מקורות)
               </h2>
@@ -286,7 +286,7 @@ export function AdminScrapersPanel({
               {busyAction === 'sync_catalog' ? (
                 <Loader2 size={15} className="spot-spinner" />
               ) : (
-                <Database size={15} color="var(--accent-volt)" />
+                <Database size={15} color="currentColor" />
               )}
               <span>
                 {busyAction === 'sync_catalog'
@@ -452,7 +452,7 @@ export function AdminScrapersPanel({
       >
         <div style={{ minWidth: 260, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <Database size={16} color="var(--accent-volt)" />
+            <Database size={16} color="currentColor" />
             <strong style={{ fontSize: 13.5 }}>
               טבלת SQL מאונדקסת (<code dir="ltr">food_catalog_items</code>) — שופרסל, ברקוד ושמירת חיפושים
             </strong>
@@ -523,7 +523,7 @@ export function AdminScrapersPanel({
             {busyAction === 'backfill_meta' ? (
               <Loader2 size={14} className="spot-spinner" />
             ) : (
-              <CheckCircle2 size={14} color="var(--accent-volt)" />
+              <CheckCircle2 size={14} color="currentColor" />
             )}
             <span>
               {busyAction === 'backfill_meta'
@@ -551,7 +551,7 @@ export function AdminScrapersPanel({
             {busyAction === 'sync_off' ? (
               <Loader2 size={14} className="spot-spinner" />
             ) : (
-              <Database size={14} color="var(--accent-volt)" />
+              <Database size={14} color="currentColor" />
             )}
             <span>
               {busyAction === 'sync_off'

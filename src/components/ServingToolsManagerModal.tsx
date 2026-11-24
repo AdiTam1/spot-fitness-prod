@@ -290,7 +290,7 @@ export function ServingToolsManagerModal({
       overlayProps={{ backgroundOpacity: 0.78, blur: 5 }}
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Ruler size={16} color="var(--accent-volt)" />
+          <Ruler size={16} color="currentColor" />
           <span style={{ fontWeight: 800, fontSize: 15 }}>
             ניהול כלים ויחידות מידה אישיות
           </span>
@@ -557,7 +557,7 @@ export function ServingToolsManagerModal({
                       cursor: 'pointer',
                     }}
                   >
-                    <Camera size={13} color="var(--accent-volt)" />
+                    <Camera size={13} color="currentColor" />
                     <span>צלם עכשיו</span>
                     <input
                       type="file"

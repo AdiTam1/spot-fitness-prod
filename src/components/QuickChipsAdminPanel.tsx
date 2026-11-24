@@ -107,7 +107,7 @@ export function QuickChipsAdminPanel({
             color: '#7dd3fc',
           }}
         >
-          <Sparkles size={14} color="var(--accent-volt)" />
+          <Sparkles size={14} color="currentColor" />
           <span>{title}</span>
         </div>
         <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>

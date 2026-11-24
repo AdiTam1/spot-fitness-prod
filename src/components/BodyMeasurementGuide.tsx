@@ -501,7 +501,7 @@ export function BodyMeasurementGuide({
             >
               <Info
                 size={14}
-                color="var(--accent-volt)"
+                color="currentColor"
                 style={{ flexShrink: 0 }}
               />
               <span>{zoneInfo.tip}</span>

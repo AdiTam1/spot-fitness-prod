@@ -800,7 +800,7 @@ export function CoachOnboardingWizard({
                   marginBottom: 4,
                 }}
               >
-                <CalendarRange size={14} color="var(--accent-volt)" />
+                <CalendarRange size={14} color="currentColor" />
                 <span>טווח תאריכים פעילים לניווט (ברירת מחדל למתאמן חדש):</span>
               </div>
               <div
@@ -890,7 +890,7 @@ export function CoachOnboardingWizard({
                     fontWeight: 800,
                   }}
                 >
-                  <Heart size={14} color="var(--accent-volt)" />
+                  <Heart size={14} color="currentColor" />
                   <span>
                     אוכל אהוב כברירת מחדל ({defaultFavoriteFoodIds.length})
                   </span>

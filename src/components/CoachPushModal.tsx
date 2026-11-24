@@ -153,7 +153,7 @@ export function CoachPushModal({
       onClose={() => !sending && onClose()}
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Bell size={17} color="var(--accent-volt)" />
+          <Bell size={17} color="currentColor" />
           <span style={{ fontWeight: 900, fontSize: 15 }}>
             שליחת פוש אישי אל {trainee.name}
           </span>

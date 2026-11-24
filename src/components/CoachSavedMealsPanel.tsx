@@ -145,7 +145,7 @@ export function CoachSavedMealsPanel({
               borderColor: 'rgba(214, 125, 9, 0.35)',
             }}
           >
-            <Ruler size={13} color="var(--accent-volt)" />
+            <Ruler size={13} color="currentColor" />
             <span>
               ניהול כלים ויחידות למתאמן ({(trainee.customServingTools || []).length} כלים ·{' '}
               {(trainee.customFoodUnits || []).length} יחידות)

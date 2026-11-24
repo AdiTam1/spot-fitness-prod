@@ -133,7 +133,7 @@ export function BarcodeScannerModal({
       overlayProps={{ backgroundOpacity: 0.82, blur: 6 }}
       title={
         <Group gap="xs">
-          <Barcode size={20} color="var(--accent-volt)" />
+          <Barcode size={20} color="currentColor" />
           <Text fw={700}>סריקת ברקוד מוצר (OpenFoodFacts + מאגר ישראלי)</Text>
         </Group>
       }
@@ -153,7 +153,7 @@ export function BarcodeScannerModal({
         >
           {!cameraActive ? (
             <Stack align="center" gap="xs">
-              <Camera size={34} color="var(--accent-volt)" />
+              <Camera size={34} color="currentColor" />
               <Text size="sm" c="dimmed">
                 כוון את מצלמת הטלפון לברקוד שעל אריזת המוצר לטעינה אוטומטית של הקלוריות והמאקרו
               </Text>
