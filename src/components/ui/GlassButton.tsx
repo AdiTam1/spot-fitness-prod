@@ -43,12 +43,13 @@ export const GlassButton = React.forwardRef<HTMLButtonElement, GlassButtonProps>
             aria-hidden
             style={{
               position: 'absolute',
-              top: size * 0.2,
-              left: size * 0.22,
-              width: 8,
-              height: 8,
+              top: 6,
+              left: 7,
+              width: 9,
+              height: 9,
               borderRadius: 99,
               background: 'var(--accent)',
+              boxShadow: '0 0 0 2px var(--bg)',
             }}
           />
         )}

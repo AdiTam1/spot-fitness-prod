@@ -43,11 +43,11 @@ export function GlassDock<T extends string = string>({
           aria-label={ariaLabel}
           style={{
             flex: 1,
-            height: 66,
+            height: 62,
             borderRadius: 999,
             display: 'grid',
             gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`,
-            padding: 6,
+            padding: 5,
             gap: 2,
           }}
         >

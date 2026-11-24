@@ -348,7 +348,7 @@ a:focus-visible {
 .spot-header-row {
   max-width: 1180px;
   margin: 0 auto;
-  min-height: 48px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -360,34 +360,46 @@ a:focus-visible {
   align-items: center;
   gap: 8px;
   flex: none;
+  min-width: 0;
+}
+
+.spot-header-brand-badge {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex: none;
 }
 
 .spot-header-brand img {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
   object-fit: cover;
 }
 
 .spot-header-wordmark {
   font-weight: 800;
-  font-size: 16px;
-  letter-spacing: -0.04em;
+  font-size: 17px;
+  letter-spacing: 0.04em;
 }
 
 .spot-header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
 .spot-header-user {
-  height: 36px;
+  height: 40px;
   padding: 0 12px;
   border-radius: 999px;
-  background: var(--card);
-  border: 1px solid var(--line);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -419,8 +431,8 @@ a:focus-visible {
 }
 
 .spot-header-btn {
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
@@ -439,21 +451,36 @@ a:focus-visible {
   padding: 0 14px;
 }
 
-/* Narrow phones: drop the name chip's text before anything gets clipped. */
+/* Narrow phones: keep brand visible while trimming chip text cleanly. */
 @media (max-width: 400px) {
   .spot-header-user {
-    max-width: 112px;
+    max-width: 132px;
     padding: 0 10px;
+  }
+}
+
+@media (max-width: 340px) {
+  .spot-header-user {
+    max-width: 96px;
   }
   .spot-header-wordmark {
     display: none;
   }
 }
 
-@media (max-width: 340px) {
-  .spot-header-user {
-    display: none;
-  }
+.spot-sticky-cal-bar {
+  position: fixed;
+  top: calc(var(--sa-top) + 68px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 32px);
+  max-width: 440px;
+  z-index: 75;
+  pointer-events: auto;
+}
+
+:root[data-spot-android-app='1'] .spot-sticky-cal-bar {
+  top: calc(var(--sa-top) + 60px);
 }
 
 /* ---------- Floating dock (trainee + coach) ---------- */

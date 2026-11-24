@@ -2645,8 +2645,10 @@ export default function HomePage() {
       <header className="spot-sticky-header">
         <div className="spot-header-row">
           <div className="spot-header-brand">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/app-logo.png" alt="SPOT" width={32} height={32} />
+            <span className="spot-header-brand-badge">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/app-logo.png" alt="SPOT" width={38} height={38} />
+            </span>
             <span className="num-mono spot-header-wordmark">SPOT</span>
           </div>
 
@@ -2658,7 +2660,7 @@ export default function HomePage() {
               </span>
             )}
 
-            <span className="spot-header-user" title={currentUser.name}>
+            <span className="glass spot-header-user" title={currentUser.name}>
               {currentUser.role === 'admin' ? (
                 <Crown size={14} style={{ flexShrink: 0 }} />
               ) : currentUser.role === 'coach' ? (

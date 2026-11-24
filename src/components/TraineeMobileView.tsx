@@ -7,12 +7,7 @@ import {
   Camera,
   Plus,
   Sparkles,
-  Droplets,
-  Scale,
-  Dumbbell,
-  Moon,
   Activity,
-  Utensils,
   User,
   MessageSquare,
   Ruler,
@@ -35,6 +30,7 @@ import {
   Clock,
   Ban,
   Lock,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   AiContextParams,
@@ -81,8 +77,6 @@ import { GlassButton } from './ui/GlassButton';
 import { GlassDock } from './ui/GlassDock';
 import { TimeWheel } from './ui/TimeWheel';
 import { ProgressRing } from './ui/ProgressRing';
-import { SegmentedPill } from './ui/SegmentedPill';
-import { SectionHeader } from './ui/Card';
 
 function findTraineeMealSlotById(trainee: TraineeProfile, mealSlotId: string) {
   const allSlots = [
@@ -220,14 +214,14 @@ function CompactMiniRing({
   current,
   target,
   color,
-  size = 44,
+  size = 48,
 }: {
   current: number;
   target: number;
   color: string;
   size?: number;
 }) {
-  const r = (size - 6) / 2;
+  const r = (size - 8) / 2;
   const c = 2 * Math.PI * r;
   const ratio = Math.min(1, Math.max(0, current / Math.max(1, target)));
   const dash = c * ratio;
@@ -239,7 +233,7 @@ function CompactMiniRing({
         r={r}
         fill="none"
         stroke="var(--surface-3)"
-        strokeWidth={4.5}
+        strokeWidth={4}
       />
       <circle
         cx={size / 2}
@@ -247,7 +241,7 @@ function CompactMiniRing({
         r={r}
         fill="none"
         stroke={color}
-        strokeWidth={4.5}
+        strokeWidth={4}
         strokeLinecap="round"
         strokeDasharray={`${dash} ${c}`}
         transform={`rotate(-90 ${size / 2} ${size / 2})`}
@@ -299,6 +293,13 @@ export function TraineeMobileView({
   >('journal');
   const [editingOnboarding, setEditingOnboarding] = useState(false);
   const [measurementModalOpen, setMeasurementModalOpen] = useState(false);
+  const [measureAlertOpen, setMeasureAlertOpen] = useState(false);
+  const [weekStripOpen, setWeekStripOpen] = useState(false);
+  const [journalSubTab, setJournalSubTab] = useState<'meals' | 'activity'>('meals');
+  const [expandedMealIds, setExpandedMealIds] = useState<Record<string, boolean>>({});
+  const [stepsModalOpen, setStepsModalOpen] = useState(false);
+  const [showStickyCalBar, setShowStickyCalBar] = useState(false);
+  const calorieCardRef = useRef<HTMLElement | null>(null);
 
   const [activeMealSlot, setActiveMealSlot] = useState<MealTemplateSlot | null>(
     null
@@ -408,6 +409,26 @@ export function TraineeMobileView({
   useEffect(() => {
     setCustomSleepOpen(false);
   }, [selectedDate, trainee.id]);
+
+  useEffect(() => {
+    if (mobileSection !== 'journal') {
+      setShowStickyCalBar(false);
+      return;
+    }
+    const el = calorieCardRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        const pastTop = !entry.isIntersecting && entry.boundingClientRect.bottom < 85;
+        setShowStickyCalBar(pastTop);
+      },
+      { root: null, rootMargin: '-72px 0px 0px 0px', threshold: 0 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [mobileSection, selectedDate, journalSubTab]);
 
   // אם המתאמן מתחבר בפעם הראשונה וטרם השלים Onboarding -> מציג את אשף ה-Onboarding
   if (
@@ -573,6 +594,23 @@ export function TraineeMobileView({
 
   const latestMeasurement =
     trainee.measurementsHistory?.[trainee.measurementsHistory.length - 1];
+  const needsInitialMeasurements =
+    !trainee.onboarding?.measurementsCompleted && !latestMeasurement;
+  const loggedMealsCount = activeTemplate.meals.filter(
+    (m) => (dailyLog.meals[m.id]?.items?.length || 0) > 0
+  ).length;
+  const findAdjacentActiveDate = (dir: -1 | 1): string | null => {
+    for (let step = 1; step <= 90; step++) {
+      const cand = addDaysIso(selectedDate, dir * step);
+      if (isDateActiveForTrainee(cand, trainee, todayIso)) return cand;
+    }
+    return null;
+  };
+  const prevActiveDate = findAdjacentActiveDate(-1);
+  const nextActiveDate = findAdjacentActiveDate(1);
+  const stickyCalPct = isObservationDay
+    ? Math.min(100, Math.round((dailyConsumed.calories / 2200) * 100))
+    : Math.min(100, Math.round((dailyConsumed.calories / Math.max(1, dailyTarget.calories)) * 100));
 
   return (
     <div
@@ -580,8 +618,58 @@ export function TraineeMobileView({
         maxWidth: 460,
         margin: '0 auto',
         paddingBottom: 'calc(104px + var(--sa-bottom))',
+        position: 'relative',
       }}
     >
+      {mobileSection === 'journal' && showStickyCalBar && (
+        <div className="spot-sticky-cal-bar">
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              background: 'var(--card)',
+              border: '1px solid var(--line)',
+              borderRadius: 20,
+              padding: '12px 14px',
+              boxShadow: 'var(--glass-shadow)',
+            }}
+          >
+            <span className="num-mono" style={{ fontSize: 22, fontWeight: 700, lineHeight: 1 }}>
+              {isObservationDay
+                ? dailyConsumed.calories.toLocaleString()
+                : Math.abs(remainingCalories).toLocaleString()}
+            </span>
+            <span style={{ fontSize: 13, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>
+              {isObservationDay
+                ? 'קק״ל ביום תשקיף'
+                : remainingCalories >= 0
+                ? 'קק״ל נותרו'
+                : 'קק״ל מעל היעד'}
+            </span>
+            <div style={{ flex: 1, height: 6, borderRadius: 9, background: 'var(--surface-3)', overflow: 'hidden', minWidth: 36 }}>
+              <div
+                style={{
+                  width: `${stickyCalPct}%`,
+                  height: '100%',
+                  background: isObservationDay
+                    ? 'var(--macro-protein)'
+                    : isOverLimit
+                    ? 'var(--status-warn)'
+                    : 'var(--accent)',
+                  borderRadius: 9,
+                  transition: 'width 0.3s ease',
+                }}
+              />
+            </div>
+            {!isObservationDay && (
+              <span className="num-mono" style={{ fontSize: 12, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>
+                {dailyConsumed.calories.toLocaleString()}/{dailyTarget.calories.toLocaleString()}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
       {isCoachPreview && onExitCoachPreview && (
         <div
           role="status"
@@ -614,70 +702,21 @@ export function TraineeMobileView({
         </div>
       )}
 
-      {/* תזכורת להשלמת מדידת היקפים אם המתאמן דילג עליה ב-Onboarding */}
-      {!trainee.onboarding?.measurementsCompleted && !latestMeasurement && (
-        <button
-          type="button"
-          onClick={() => setMeasurementModalOpen(true)}
-          style={{
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            padding: '12px 14px',
-            borderRadius: 24,
-            background: 'var(--card)',
-            border: '1px solid var(--line)',
-            boxShadow: 'var(--card-shadow)',
-            marginBottom: 14,
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-            color: 'var(--text)',
-            textAlign: 'start',
+      {(weekStripOpen || measureAlertOpen) && (
+        <div
+          aria-hidden="true"
+          onClick={() => {
+            setWeekStripOpen(false);
+            setMeasureAlertOpen(false);
           }}
-        >
-          <span
-            aria-hidden
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 16,
-              background: 'var(--surface-2)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flex: 'none',
-            }}
-          >
-            <Ruler size={20} />
-          </span>
-          <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ fontSize: 15, fontWeight: 600 }}>מדידת היקפים ראשונית</span>
-            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>טרם הושלמה · הדרכה מונפשת</span>
-          </span>
-          <span
-            style={{
-              height: 36,
-              padding: '0 14px',
-              borderRadius: 999,
-              background: 'var(--btn-primary)',
-              color: 'var(--btn-primary-text)',
-              fontSize: 14,
-              fontWeight: 700,
-              display: 'inline-flex',
-              alignItems: 'center',
-              flex: 'none',
-            }}
-          >
-            השלם
-          </span>
-        </button>
+          style={{ position: 'fixed', inset: 0, zIndex: 3 }}
+        />
       )}
 
-      {/* Journal & metrics share the date header + week strip; profile has its own header */}
+      {/* Journal & metrics share the date bar + collapsible week drawer; profile has its own header */}
       {mobileSection !== 'profile' && (
         <>
-      {/* Header: avatar, date + greeting, questionnaire shortcut */}
+      {/* Header: avatar + greeting + measurement alert popover (01 / 02) */}
       {(() => {
         const now = new Date();
         const hour = now.getHours();
@@ -686,11 +725,11 @@ export function TraineeMobileView({
         const [sy, sm, sd] = selectedDate.split('-').map(Number);
         const dateObj = new Date(sy, (sm || 1) - 1, sd || 1);
         const weekdayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
-        const dateLabel = `יום ${weekdayNames[dateObj.getDay()]}, ${sd} ב${HEBREW_MONTH_NAMES[(sm || 1) - 1]}`;
+        const dateLabel = `יום ${weekdayNames[dateObj.getDay()]}, ${sd} ב${HEBREW_MONTH_NAMES[(sm || 1) - 1]} ${sy}`;
         const firstName = (trainee.name || '').trim().split(/\s+/)[0] || trainee.name;
         if (mobileSection === 'metrics') {
           return (
-            <header style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+            <header style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{dateLabel}</span>
                 <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, lineHeight: 1.15 }}>מדדים</h1>
@@ -704,15 +743,17 @@ export function TraineeMobileView({
         return (
           <header
             style={{
+              position: 'relative',
+              zIndex: measureAlertOpen ? 12 : 5,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: 12,
-              marginBottom: 16,
+              marginBottom: 18,
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-              <div
+              <span
                 aria-hidden
                 style={{
                   width: 44,
@@ -724,7 +765,7 @@ export function TraineeMobileView({
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontWeight: 700,
-                  fontSize: 15,
+                  fontSize: 16,
                   flex: 'none',
                 }}
               >
@@ -735,219 +776,462 @@ export function TraineeMobileView({
                     .map((w) => Array.from(w)[0] || '')
                     .join('')
                     .slice(0, 2)}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{dateLabel}</span>
-                <span
-                  style={{
-                    fontSize: 22,
-                    fontWeight: 700,
-                    lineHeight: 1.2,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
+              </span>
+              <h1
+                style={{
+                  margin: 0,
+                  fontSize: 24,
+                  fontWeight: 700,
+                  lineHeight: 1.15,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {greeting}, {firstName}
+              </h1>
+            </div>
+
+            {needsInitialMeasurements && (
+              <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
+                <GlassButton
+                  label="התראה: מדידת היקפים לא הושלמה"
+                  size={40}
+                  dot
+                  aria-expanded={measureAlertOpen}
+                  onClick={() => {
+                    setWeekStripOpen(false);
+                    setMeasureAlertOpen((v) => !v);
                   }}
                 >
-                  {greeting}, {firstName}
-                </span>
+                  <AlertTriangle size={18} />
+                </GlassButton>
               </div>
-            </div>
+            )}
+
+            {needsInitialMeasurements && measureAlertOpen && (
+              <div
+                role="dialog"
+                aria-label="מדידת היקפים ראשונית"
+                className="glass"
+                style={{
+                  position: 'absolute',
+                  top: 52,
+                  left: 0,
+                  zIndex: 15,
+                  width: 270,
+                  maxWidth: 'calc(100vw - 32px)',
+                  borderRadius: 20,
+                  padding: 14,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 700 }}>
+                  <Ruler size={17} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                  מדידת היקפים ראשונית
+                </span>
+                <span style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.45 }}>
+                  טרם השלמת את המדידה. יש הדרכה מונפשת שלוקחת כ-3 דקות.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMeasureAlertOpen(false);
+                    setMeasurementModalOpen(true);
+                  }}
+                  style={{
+                    height: 40,
+                    borderRadius: 999,
+                    border: 'none',
+                    background: 'var(--btn-primary)',
+                    color: 'var(--btn-primary-text)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    fontFamily: 'inherit',
+                    cursor: 'pointer',
+                  }}
+                >
+                  השלם עכשיו
+                </button>
+              </div>
+            )}
           </header>
         );
       })()}
 
-      {/* Workout / rest day switch (only when the coach enabled the split) */}
-      {Boolean(trainee.enableWorkoutRestSplit) && (
-        <SegmentedPill
-          ariaLabel="סוג יום"
-          value={dailyLog.dayType === 'rest' ? 'rest' : 'workout'}
-          onChange={(v) => !isBlockedDay && onUpdateDayType(trainee.id, selectedDate, v as DayType)}
-          options={[
-            { value: 'workout', label: 'יום אימון', icon: <Dumbbell size={15} />, disabled: isBlockedDay },
-            { value: 'rest', label: 'יום מנוחה', icon: <Moon size={15} />, disabled: isBlockedDay },
-          ]}
-          style={{ marginBottom: 14 }}
-        />
-      )}
+      {/* Date row + collapsible glass week strip (01 / 02) */}
+      <section
+        aria-label="בחירת יום"
+        style={{
+          position: 'relative',
+          zIndex: 4,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          marginTop: mobileSection === 'journal' ? -6 : 0,
+          marginBottom: 16,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 36, gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+            <button
+              type="button"
+              aria-label="יום קודם"
+              disabled={!prevActiveDate}
+              onClick={() => {
+                if (prevActiveDate) setSelectedDate(prevActiveDate);
+              }}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 999,
+                border: 'none',
+                background: 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--text-2)',
+                cursor: prevActiveDate ? 'pointer' : 'not-allowed',
+                opacity: prevActiveDate ? 1 : 0.35,
+                flex: 'none',
+              }}
+            >
+              <ChevronRight size={17} />
+            </button>
+            <button
+              type="button"
+              aria-expanded={weekStripOpen}
+              aria-label="הצג את ימי השבוע"
+              onClick={() => {
+                setMeasureAlertOpen(false);
+                setWeekStripOpen((v) => !v);
+              }}
+              style={{
+                height: 36,
+                padding: '0 4px',
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--text)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                fontSize: 15,
+                fontWeight: 600,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                minWidth: 0,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              <span>
+                {(() => {
+                  const [sy, sm, sd] = selectedDate.split('-').map(Number);
+                  const dt = new Date(sy, (sm || 1) - 1, sd || 1);
+                  const wNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+                  return `יום ${wNames[dt.getDay()]}, ${sd} ב${HEBREW_MONTH_NAMES[(sm || 1) - 1]} ${sy}`;
+                })()}
+              </span>
+              <ChevronDown
+                size={14}
+                style={{
+                  color: 'var(--text-2)',
+                  transform: weekStripOpen ? 'rotate(180deg)' : 'none',
+                  transition: 'transform 0.18s ease',
+                  flexShrink: 0,
+                }}
+              />
+            </button>
+            <button
+              type="button"
+              aria-label="יום הבא"
+              disabled={!nextActiveDate}
+              onClick={() => {
+                if (nextActiveDate) setSelectedDate(nextActiveDate);
+              }}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 999,
+                border: 'none',
+                background: 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--text-2)',
+                cursor: nextActiveDate ? 'pointer' : 'not-allowed',
+                opacity: nextActiveDate ? 1 : 0.35,
+                flex: 'none',
+              }}
+            >
+              <ChevronLeft size={17} />
+            </button>
+          </div>
 
-      {/* Week strip: month pill (opens calendar), week navigation, 7 day tiles */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <button
-            type="button"
-            className="glass"
-            aria-label="בחירת תאריך מלוח שנה"
+          <GlassButton
+            label="פתח לוח שנה חודשי"
+            size={36}
             onClick={() => {
+              setWeekStripOpen(false);
               const [y, m] = selectedDate.split('-').map(Number);
               if (y && m) setCalendarCursor({ year: y, month: m - 1 });
               setCalendarModalOpen(true);
             }}
+          >
+            <CalendarDays size={16} />
+          </GlassButton>
+        </div>
+
+        {weekStripOpen && (
+          <div
+            className="glass"
             style={{
-              height: 44,
-              padding: '0 12px 0 14px',
-              borderRadius: 999,
+              borderRadius: 22,
+              padding: '8px 6px 10px',
               display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              fontFamily: 'inherit',
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: 'pointer',
+              flexDirection: 'column',
+              gap: 6,
             }}
           >
-            <CalendarDays size={17} />
-            <span>
-              {(() => {
-                const [y, m] = selectedDate.split('-').map(Number);
-                return `${HEBREW_MONTH_NAMES[(m || 1) - 1]} ${y}`;
-              })()}
-            </span>
-            <ChevronDown size={14} />
-          </button>
+            <nav
+              aria-label="ימי השבוע"
+              style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}
+            >
+              {weekDays.map((d) => {
+                const isSelected = d.iso === selectedDate;
+                const isActive = isDateActiveForTrainee(d.iso, trainee, todayIso);
+                const isObs =
+                  (trainee.observationDates || []).includes(d.iso) ||
+                  Boolean(trainee.logs[d.iso]?.isObservationDay);
+                const isBlockedCell = isDayBlockedForTrainee(d.iso, trainee);
+                const hasLog =
+                  trainee.logs[d.iso] && Object.keys(trainee.logs[d.iso].meals || {}).length > 0;
+                const circleBg = isSelected
+                  ? isBlockedCell
+                    ? 'var(--status-danger)'
+                    : 'var(--text)'
+                  : 'transparent';
+                const circleColor = isSelected
+                  ? isBlockedCell
+                    ? '#ffffff'
+                    : 'var(--bg)'
+                  : isBlockedCell
+                  ? 'var(--status-danger)'
+                  : isActive
+                  ? 'var(--text)'
+                  : 'var(--text-3)';
+                const circleRing = isSelected
+                  ? 'inset 0 0 0 1.5px transparent'
+                  : d.isToday
+                  ? 'inset 0 0 0 1.5px var(--text-2)'
+                  : isObs
+                  ? 'inset 0 0 0 1.5px var(--macro-protein)'
+                  : 'inset 0 0 0 1.5px transparent';
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {selectedDate !== todayIso && (
+                return (
+                  <button
+                    key={d.iso}
+                    type="button"
+                    disabled={!isActive}
+                    aria-pressed={isSelected}
+                    aria-label={`${d.dayLetter} ${d.dayNumber}${d.isToday ? ', היום' : ''}${
+                      isObs ? ', יום תשקיף' : ''
+                    }${isBlockedCell ? ', חסום' : ''}`}
+                    onClick={() => {
+                      if (isActive) setSelectedDate(d.iso);
+                    }}
+                    style={{
+                      height: 60,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 3,
+                      border: 'none',
+                      background: 'transparent',
+                      padding: 0,
+                      fontFamily: 'inherit',
+                      cursor: isActive ? 'pointer' : 'not-allowed',
+                      opacity: isActive ? 1 : 0.45,
+                    }}
+                  >
+                    <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{d.dayLetter}</span>
+                    <span
+                      className="num-mono"
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 999,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 16,
+                        fontWeight: isSelected || d.isToday ? 700 : 500,
+                        background: circleBg,
+                        color: circleColor,
+                        boxShadow: circleRing,
+                        textDecoration: isBlockedCell ? 'line-through' : 'none',
+                        position: 'relative',
+                      }}
+                    >
+                      {d.dayNumber}
+                      {hasLog && (
+                        <span
+                          aria-hidden
+                          style={{
+                            position: 'absolute',
+                            bottom: 3,
+                            width: 4,
+                            height: 4,
+                            borderRadius: 9,
+                            background: isSelected ? 'var(--accent)' : 'var(--accent)',
+                          }}
+                        />
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+            </nav>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 8px' }}>
               <button
                 type="button"
-                className="glass"
+                aria-label="שבוע קודם"
+                disabled={!canPrevWeek}
+                onClick={() => {
+                  const candidates = getWeekDaysAroundDate(prevWeekAnchor, todayIso).filter((d) =>
+                    isDateActiveForTrainee(d.iso, trainee, todayIso)
+                  );
+                  if (candidates.length > 0) {
+                    setSelectedDate(candidates[candidates.length - 1].iso);
+                  }
+                }}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 999,
+                  border: 'none',
+                  background: 'transparent',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--text-2)',
+                  cursor: canPrevWeek ? 'pointer' : 'not-allowed',
+                  opacity: canPrevWeek ? 1 : 0.35,
+                }}
+              >
+                <ChevronRight size={16} />
+              </button>
+              <button
+                type="button"
+                disabled={selectedDate === todayIso}
                 onClick={() => setSelectedDate(todayIso)}
                 style={{
-                  height: 44,
+                  height: 32,
                   padding: '0 14px',
                   borderRadius: 999,
-                  fontFamily: 'inherit',
-                  fontSize: 13,
+                  border: 'none',
+                  background: 'var(--surface-2)',
+                  color: 'var(--text)',
+                  fontSize: 12,
                   fontWeight: 600,
-                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  cursor: selectedDate === todayIso ? 'default' : 'pointer',
+                  opacity: selectedDate === todayIso ? 0.5 : 1,
                 }}
               >
                 חזור להיום
               </button>
-            )}
-            <GlassButton
-              label="שבוע קודם"
-              size={44}
-              disabled={!canPrevWeek}
-              onClick={() => {
-                const candidates = getWeekDaysAroundDate(prevWeekAnchor, todayIso).filter((d) =>
-                  isDateActiveForTrainee(d.iso, trainee, todayIso)
-                );
-                if (candidates.length > 0) {
-                  setSelectedDate(candidates[candidates.length - 1].iso);
-                }
-              }}
-            >
-              <ChevronRight size={18} />
-            </GlassButton>
-            <GlassButton
-              label="שבוע הבא"
-              size={44}
-              disabled={!canNextWeek}
-              onClick={() => {
-                const candidates = getWeekDaysAroundDate(nextWeekAnchor, todayIso).filter((d) =>
-                  isDateActiveForTrainee(d.iso, trainee, todayIso)
-                );
-                if (candidates.length > 0) {
-                  setSelectedDate(candidates[0].iso);
-                }
-              }}
-            >
-              <ChevronLeft size={18} />
-            </GlassButton>
-          </div>
-        </div>
-
-        <nav
-          aria-label="ימי השבוע"
-          style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 6 }}
-        >
-          {weekDays.map((d) => {
-            const isSelected = d.iso === selectedDate;
-            const isActive = isDateActiveForTrainee(d.iso, trainee, todayIso);
-            const isObs =
-              (trainee.observationDates || []).includes(d.iso) ||
-              Boolean(trainee.logs[d.iso]?.isObservationDay);
-            const isBlockedCell = isDayBlockedForTrainee(d.iso, trainee);
-            const hasLog =
-              trainee.logs[d.iso] && Object.keys(trainee.logs[d.iso].meals || {}).length > 0;
-            const bg = isSelected
-              ? isBlockedCell
-                ? 'var(--status-danger)'
-                : 'var(--accent)'
-              : 'var(--card)';
-            const fg = isSelected
-              ? 'var(--on-accent)'
-              : isBlockedCell
-              ? 'var(--status-danger)'
-              : isActive
-              ? 'var(--text)'
-              : 'var(--text-3)';
-            return (
               <button
-                key={d.iso}
                 type="button"
-                disabled={!isActive}
-                aria-pressed={isSelected}
-                aria-label={`${d.dayLetter} ${d.dayNumber}${d.isToday ? ', היום' : ''}${
-                  isObs ? ', יום תשקיף' : ''
-                }${isBlockedCell ? ', חסום' : ''}`}
+                aria-label="שבוע הבא"
+                disabled={!canNextWeek}
                 onClick={() => {
-                  if (isActive) setSelectedDate(d.iso);
+                  const candidates = getWeekDaysAroundDate(nextWeekAnchor, todayIso).filter((d) =>
+                    isDateActiveForTrainee(d.iso, trainee, todayIso)
+                  );
+                  if (candidates.length > 0) {
+                    setSelectedDate(candidates[0].iso);
+                  }
                 }}
                 style={{
-                  height: 64,
-                  borderRadius: 18,
+                  width: 36,
+                  height: 36,
+                  borderRadius: 999,
+                  border: 'none',
+                  background: 'transparent',
                   display: 'flex',
-                  flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 2,
-                  padding: 0,
-                  fontFamily: 'inherit',
-                  background: bg,
-                  color: fg,
-                  border: `1.5px ${isObs && !isSelected ? 'dashed' : 'solid'} ${
-                    isSelected
-                      ? 'transparent'
-                      : d.isToday
-                      ? 'var(--text)'
-                      : isObs
-                      ? 'var(--macro-protein)'
-                      : 'var(--line)'
-                  }`,
-                  opacity: isActive ? 1 : 0.45,
-                  cursor: isActive ? 'pointer' : 'not-allowed',
-                  transition: 'background-color .15s ease',
+                  color: 'var(--text-2)',
+                  cursor: canNextWeek ? 'pointer' : 'not-allowed',
+                  opacity: canNextWeek ? 1 : 0.35,
                 }}
               >
-                <span style={{ fontSize: 12, opacity: 0.75 }}>{d.dayLetter}</span>
-                <span
-                  className="num-mono"
+                <ChevronLeft size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Workout / rest day switch (kept outside the journal tabs so it stays accessible from both Meals & Activity) */}
+      {Boolean(trainee.enableWorkoutRestSplit) && (
+        <div
+          role="radiogroup"
+          aria-label="סוג יום"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 14,
+          }}
+        >
+          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>סוג היום</span>
+          <span style={{ display: 'flex', padding: 3, borderRadius: 999, background: 'var(--surface-2)' }}>
+            {(
+              [
+                { id: 'workout' as DayType, label: 'יום אימון' },
+                { id: 'rest' as DayType, label: 'מנוחה' },
+              ] as const
+            ).map((opt) => {
+              const on = (dailyLog.dayType === 'rest' ? 'rest' : 'workout') === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  disabled={isBlockedDay}
+                  onClick={() => !isBlockedDay && onUpdateDayType(trainee.id, selectedDate, opt.id)}
                   style={{
-                    fontSize: 17,
-                    fontWeight: 600,
-                    textDecoration: isBlockedCell ? 'line-through' : 'none',
+                    height: 36,
+                    padding: '0 14px',
+                    borderRadius: 999,
+                    border: 'none',
+                    background: on ? 'var(--btn-primary)' : 'transparent',
+                    color: on ? 'var(--btn-primary-text)' : 'var(--text-2)',
+                    fontSize: 13,
+                    fontWeight: on ? 700 : 500,
+                    fontFamily: 'inherit',
+                    cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                    opacity: isBlockedDay ? 0.45 : 1,
                   }}
                 >
-                  {d.dayNumber}
-                </span>
-                <span
-                  style={{
-                    width: 4,
-                    height: 4,
-                    borderRadius: 9,
-                    background: hasLog
-                      ? isSelected
-                        ? 'var(--on-accent)'
-                        : 'var(--accent)'
-                      : 'transparent',
-                  }}
-                />
-              </button>
-            );
-          })}
-        </nav>
-      </div>
+                  {opt.label}
+                </button>
+              );
+            })}
+          </span>
+        </div>
+      )}
 
         </>
       )}
@@ -1029,15 +1313,16 @@ export function TraineeMobileView({
               </div>
             )}
 
-            {/* Calorie ring + macros */}
+            {/* Calorie ring + macros (01) */}
             <section
-              aria-label="סיכום יומי"
+              ref={calorieCardRef}
+              aria-label="סיכום קלורי"
               style={{
                 background: 'var(--card)',
                 border: `1px solid ${isObservationDay ? 'var(--surface-2)' : 'var(--line)'}`,
                 borderRadius: 28,
                 padding: 20,
-                marginBottom: 20,
+                marginBottom: 18,
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 20,
@@ -1068,7 +1353,7 @@ export function TraineeMobileView({
                   </span>
                   <span
                     style={{
-                      fontSize: 13,
+                      fontSize: 12,
                       marginTop: 4,
                       color: isObservationDay
                         ? 'var(--macro-protein)'
@@ -1092,7 +1377,7 @@ export function TraineeMobileView({
                       label: isObservationDay ? 'מצב יום' : 'יעד יומי',
                       value: isObservationDay ? 'תשקיף' : dailyTarget.calories.toLocaleString(),
                     },
-                    { label: 'ארוחות', value: String(activeTemplate.meals.length) },
+                    { label: 'ארוחות', value: `${loggedMealsCount}/${activeTemplate.meals.length}` },
                   ].map((row, idx) => (
                     <React.Fragment key={row.label}>
                       {idx > 0 && <div style={{ height: 1, background: 'var(--line)' }} />}
@@ -1146,33 +1431,34 @@ export function TraineeMobileView({
               </div>
             </section>
 
-            {/* Quick add: the four fastest ways to log a meal */}
+            {/* Quick add: 4 compact 54x54 glass buttons (01) */}
             {!isBlockedDay && activeTemplate.meals.length > 0 && (() => {
               const quickSlot = pickDefaultMealSlot();
               if (!quickSlot) return null;
-              const items: { id: string; label: string; icon: React.ReactNode; tab: string }[] = [
-                { id: 'photo', label: 'צילום AI', icon: <Camera size={26} strokeWidth={1.8} />, tab: 'ai-photo' },
-                { id: 'text', label: 'במילים', icon: <Mic size={26} strokeWidth={1.8} />, tab: 'ai-text' },
-                { id: 'barcode', label: 'ברקוד', icon: <Barcode size={26} strokeWidth={1.8} />, tab: 'barcode' },
-                { id: 'saved', label: 'שמורות', icon: <Bookmark size={26} strokeWidth={1.8} />, tab: 'saved-meals' },
+              const quickItems: { id: string; label: string; icon: React.ReactNode; tab: string }[] = [
+                { id: 'photo', label: 'צילום AI', icon: <Camera size={22} strokeWidth={1.8} />, tab: 'ai-photo' },
+                { id: 'text', label: 'במילים', icon: <Mic size={22} strokeWidth={1.8} />, tab: 'ai-text' },
+                { id: 'barcode', label: 'ברקוד', icon: <Barcode size={22} strokeWidth={1.8} />, tab: 'barcode' },
+                { id: 'saved', label: 'שמורות', icon: <Bookmark size={22} strokeWidth={1.8} />, tab: 'saved-meals' },
               ];
               return (
-                <section aria-label="הוספה מהירה" style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
-                  <SectionHeader
-                    title="הוספה מהירה"
-                    meta={`${quickSlot.name}${selectedDate === todayIso ? ' · עכשיו' : ''}`}
-                  />
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10 }}>
-                    {items.map((it) => (
+                <section aria-label="הוספה מהירה" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                    הוספה מהירה · {quickSlot.name}
+                  </span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {quickItems.map((it) => (
                       <button
                         key={it.id}
                         type="button"
                         onClick={() => openMealDrawer(quickSlot, it.tab)}
                         style={{
+                          flex: 1,
+                          minWidth: 0,
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
-                          gap: 8,
+                          gap: 6,
                           background: 'transparent',
                           border: 'none',
                           padding: 0,
@@ -1184,9 +1470,9 @@ export function TraineeMobileView({
                         <span
                           className="glass"
                           style={{
-                            width: 64,
-                            height: 64,
-                            borderRadius: 22,
+                            width: 54,
+                            height: 54,
+                            borderRadius: 18,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -1194,7 +1480,7 @@ export function TraineeMobileView({
                         >
                           {it.icon}
                         </span>
-                        <span style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap' }}>{it.label}</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>{it.label}</span>
                       </button>
                     ))}
                   </div>
@@ -1202,8 +1488,56 @@ export function TraineeMobileView({
               );
             })()}
 
-            {/* Daily activity (design: JournalActivity) */}
-            {(() => {
+            {/* Segmented switch: Meals vs Activity (01 / 03 / 04) */}
+            <div
+              role="tablist"
+              aria-label="תצוגת יומן"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                gap: 4,
+                padding: 4,
+                borderRadius: 999,
+                background: 'var(--surface-2)',
+                marginBottom: 18,
+              }}
+            >
+              {(
+                [
+                  { id: 'meals' as const, label: `ארוחות · ${activeTemplate.meals.length}` },
+                  { id: 'activity' as const, label: 'פעילות' },
+                ] as const
+              ).map((tab) => {
+                const selected = journalSubTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => setJournalSubTab(tab.id)}
+                    style={{
+                      height: 40,
+                      borderRadius: 999,
+                      border: 'none',
+                      fontFamily: 'inherit',
+                      fontSize: 14,
+                      fontWeight: selected ? 700 : 500,
+                      background: selected ? 'var(--card)' : 'transparent',
+                      color: selected ? 'var(--text)' : 'var(--text-2)',
+                      boxShadow: selected ? '0 1px 4px rgba(0,0,0,.12)' : 'none',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.16s ease, color 0.16s ease',
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Activity Tab (04): weekly orange rings + unified card + Steps Modal trigger */}
+            {journalSubTab === 'activity' && (() => {
               const actTargets = trainee.activityTargets || {
                 weeklyWorkoutsTarget: 4,
                 workoutTypes: ['אימון כוח A', 'אימון כוח B', 'Full Body'],
@@ -1228,40 +1562,12 @@ export function TraineeMobileView({
               const rings: { key: string; label: string; value: string; current: number; target: number }[] = [
                 { key: 'w', label: 'אימונים', value: `${workoutsThisWeek}/${actTargets.weeklyWorkoutsTarget}`, current: workoutsThisWeek, target: actTargets.weeklyWorkoutsTarget },
                 { key: 'c', label: 'הליכה / ריצה', value: `${cardioThisWeek}/${actTargets.weeklyCardioTarget}`, current: cardioThisWeek, target: actTargets.weeklyCardioTarget },
-                ...(hasSyncedSteps
-                  ? [{ key: 's', label: 'צעדים', value: `${Math.min(99, Math.round((currentSteps / Math.max(1, dailyStepsTarget)) * 100))}%`, current: currentSteps, target: dailyStepsTarget }]
+                ...(hasSyncedSteps || currentSteps > 0
+                  ? [{ key: 's', label: 'צעדים', value: `${Math.min(100, Math.round((currentSteps / Math.max(1, dailyStepsTarget)) * 100))}%`, current: currentSteps, target: dailyStepsTarget }]
                   : []),
                 { key: 'z', label: 'שינה', value: `${sleepDaysMet}/7`, current: sleepDaysMet, target: 7 },
               ];
 
-              const section: React.CSSProperties = {
-                background: 'var(--card)',
-                border: '1px solid var(--line)',
-                borderRadius: 24,
-                padding: 16,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 12,
-                boxShadow: 'var(--card-shadow)',
-              };
-              const head: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 };
-              const optStyle = (on: boolean, radius: number): React.CSSProperties => ({
-                minHeight: 44,
-                padding: '0 14px',
-                borderRadius: radius,
-                fontFamily: 'inherit',
-                fontSize: 14,
-                fontWeight: on ? 700 : 500,
-                cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                opacity: isBlockedDay ? 0.45 : 1,
-                border: `1px solid ${on ? 'var(--sel-border)' : 'var(--line-2)'}`,
-                background: on ? 'var(--sel-bg)' : 'transparent',
-                color: on ? 'var(--sel-text)' : 'var(--text)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-              });
               const workoutTypes = actTargets.workoutTypes.length > 0 ? actTargets.workoutTypes : ['אימון כוח A', 'אימון כוח B', 'Full Body'];
               const cardioOptions = [
                 { label: `הליכה (${actTargets.cardioTargetMinutes} דק׳)`, mode: 'walk' as const, mins: actTargets.cardioTargetMinutes },
@@ -1275,8 +1581,15 @@ export function TraineeMobileView({
                 const next = Math.min(14, Math.max(0, Math.round((base + delta) * 2) / 2));
                 onUpdateDailyActivity(trainee.id, selectedDate, { sleepHours: next });
               };
+              const stepsSubtitle =
+                currentSteps > 0
+                  ? `${currentSteps.toLocaleString()} / ${dailyStepsTarget.toLocaleString()} צעדים`
+                  : hasSyncedSteps
+                  ? 'סנכרון צעדים'
+                  : 'חבר מד צעדים';
+
               return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 18 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                   <section
                     aria-label="ביצוע שבועי"
                     style={{ display: 'grid', gridTemplateColumns: `repeat(${rings.length}, minmax(0, 1fr))`, gap: 8 }}
@@ -1288,7 +1601,7 @@ export function TraineeMobileView({
                           background: 'var(--card)',
                           border: '1px solid var(--line)',
                           borderRadius: 20,
-                          padding: '12px 4px',
+                          padding: '12px 6px',
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
@@ -1296,9 +1609,9 @@ export function TraineeMobileView({
                           boxShadow: 'var(--card-shadow)',
                         }}
                       >
-                        <div style={{ position: 'relative', width: 44, height: 44, display: 'grid', placeItems: 'center' }}>
-                          <CompactMiniRing current={r.current} target={r.target} color="var(--text)" />
-                          <bdi dir="ltr" className="num-mono ltr-num" style={{ position: 'absolute', fontSize: 12, fontWeight: 700 }}>
+                        <div style={{ position: 'relative', width: 48, height: 48, display: 'grid', placeItems: 'center' }}>
+                          <CompactMiniRing current={r.current} target={r.target} color="var(--accent)" size={48} />
+                          <bdi dir="ltr" className="num-mono ltr-num" style={{ position: 'absolute', fontSize: 13, fontWeight: 700 }}>
                             {r.value}
                           </bdi>
                         </div>
@@ -1307,746 +1620,671 @@ export function TraineeMobileView({
                     ))}
                   </section>
 
-                  {hasSyncedSteps && (
-                    <DailyStepsCard
-                      selectedDate={selectedDate}
-                      todayIso={todayIso}
-                      steps={dailyLog.steps ?? 0}
-                      stepsSource={dailyLog.stepsSource}
-                      stepsSyncedAt={dailyLog.stepsSyncedAt}
-                      dailyStepsTarget={dailyStepsTarget}
-                      isCoachPreview={isCoachPreview}
-                      isBlockedDay={isBlockedDay}
-                      onSaveManualSteps={async (steps) => {
-                        await onUpdateDailyActivity(trainee.id, selectedDate, {
-                          steps,
-                          stepsSource: 'manual',
-                          stepsSyncedAt: new Date().toISOString(),
-                        });
-                      }}
-                      onSyncNativeStepsNow={onSyncNativeStepsNow}
-                    />
-                  )}
-
-                  <section aria-label="אימון היום" style={section}>
-                    <div style={head}>
-                      <span style={{ fontSize: 15, fontWeight: 600 }}>אימון היום</span>
-                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
-                        השבוע: <bdi dir="ltr" className="num-mono ltr-num" style={{ color: 'var(--text)', fontWeight: 600 }}>{workoutsThisWeek}</bdi> אימונים
-                      </span>
-                    </div>
-                    <div role="radiogroup" aria-label="סוג אימון" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {workoutTypes.map((wType) => {
-                        const isSelected = Boolean(todayWorkout?.completed && todayWorkout.workoutType === wType);
-                        return (
-                          <button
-                            key={wType}
-                            type="button"
-                            role="radio"
-                            aria-checked={isSelected}
-                            disabled={isBlockedDay}
-                            style={optStyle(isSelected, 999)}
-                            onClick={() => {
-                              if (isBlockedDay) return;
-                              const nextCompleted = !isSelected;
-                              onUpdateDailyActivity(trainee.id, selectedDate, {
-                                workoutLog: isSelected
-                                  ? { completed: false }
-                                  : { completed: true, workoutType: wType, durationMinutes: 50 },
-                              });
-                              if (nextCompleted && Boolean(trainee.enableWorkoutRestSplit)) {
-                                onUpdateDayType(trainee.id, selectedDate, 'workout');
-                              }
-                            }}
-                          >
-                            {isSelected && <Check size={15} strokeWidth={2.8} />}
-                            {wType}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </section>
-
-                  <section aria-label="הליכה או ריצה" style={section}>
-                    <div style={head}>
-                      <span style={{ fontSize: 15, fontWeight: 600 }}>הליכה / ריצה</span>
-                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
-                        יעד: <bdi dir="ltr" className="num-mono ltr-num" style={{ color: 'var(--text)', fontWeight: 600 }}>{actTargets.cardioTargetMinutes}</bdi> דק׳ · השבוע{' '}
-                        <bdi dir="ltr" className="ltr-num">{cardioThisWeek}/{actTargets.weeklyCardioTarget}</bdi>
-                      </span>
-                    </div>
-                    <div role="radiogroup" aria-label="סוג פעילות אירובית" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-                      {cardioOptions.map((cOpt) => {
-                        const isSelected = Boolean(todayCardio?.completed && todayCardio.label === cOpt.label);
-                        return (
-                          <button
-                            key={cOpt.label}
-                            type="button"
-                            role="radio"
-                            aria-checked={isSelected}
-                            disabled={isBlockedDay}
-                            style={optStyle(isSelected, 14)}
-                            onClick={() => {
-                              if (isBlockedDay) return;
-                              onUpdateDailyActivity(trainee.id, selectedDate, {
-                                cardioLog: isSelected
-                                  ? { completed: false }
-                                  : { completed: true, mode: cOpt.mode, label: cOpt.label, durationMinutes: cOpt.mins },
-                              });
-                            }}
-                          >
-                            {isSelected && <Check size={15} strokeWidth={2.8} />}
-                            {cOpt.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </section>
-
-                  <section
-                    aria-label="שינה"
-                    style={{ ...section, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px' }}
+                  <div
+                    style={{
+                      background: 'var(--card)',
+                      border: '1px solid var(--line)',
+                      borderRadius: 24,
+                      padding: '6px 16px',
+                      boxShadow: 'var(--card-shadow)',
+                    }}
                   >
-                    <span style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span style={{ fontSize: 15, fontWeight: 600 }}>שינה</span>
-                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
-                        כמה שעות ישנת הלילה? (יעד <bdi dir="ltr" className="ltr-num">{actTargets.dailySleepTargetHours}</bdi>)
+                    {/* אימון היום */}
+                    <div style={{ padding: '12px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 15, fontWeight: 600 }}>אימון היום</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-2)' }}>
+                          השבוע: <bdi dir="ltr" className="num-mono ltr-num">{workoutsThisWeek}</bdi> אימונים
+                        </span>
+                      </div>
+                      <div role="radiogroup" aria-label="סוג אימון" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {workoutTypes.map((wType) => {
+                          const isSelected = Boolean(todayWorkout?.completed && todayWorkout.workoutType === wType);
+                          return (
+                            <button
+                              key={wType}
+                              type="button"
+                              role="radio"
+                              aria-checked={isSelected}
+                              disabled={isBlockedDay}
+                              style={{
+                                height: 38,
+                                padding: '0 12px',
+                                borderRadius: 999,
+                                fontFamily: 'inherit',
+                                fontSize: 13,
+                                fontWeight: isSelected ? 700 : 400,
+                                cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                                opacity: isBlockedDay ? 0.45 : 1,
+                                border: isSelected ? 'none' : '1px solid var(--line-2)',
+                                background: isSelected ? 'var(--btn-primary)' : 'transparent',
+                                color: isSelected ? 'var(--btn-primary-text)' : 'var(--text)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 5,
+                              }}
+                              onClick={() => {
+                                if (isBlockedDay) return;
+                                const nextCompleted = !isSelected;
+                                onUpdateDailyActivity(trainee.id, selectedDate, {
+                                  workoutLog: isSelected
+                                    ? { completed: false }
+                                    : { completed: true, workoutType: wType, durationMinutes: 50 },
+                                });
+                                if (nextCompleted && Boolean(trainee.enableWorkoutRestSplit)) {
+                                  onUpdateDayType(trainee.id, selectedDate, 'workout');
+                                }
+                              }}
+                            >
+                              {isSelected && <Check size={14} strokeWidth={2.6} />}
+                              {wType}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* הליכה / ריצה */}
+                    <div style={{ padding: '12px 0', borderTop: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 15, fontWeight: 600 }}>הליכה / ריצה</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-2)' }}>
+                          יעד <bdi dir="ltr" className="num-mono ltr-num">{actTargets.cardioTargetMinutes}</bdi> דק׳ · השבוע{' '}
+                          <bdi dir="ltr" className="num-mono ltr-num">{cardioThisWeek}/{actTargets.weeklyCardioTarget}</bdi>
+                        </span>
+                      </div>
+                      <div role="radiogroup" aria-label="סוג פעילות אירובית" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+                        {cardioOptions.map((cOpt) => {
+                          const isSelected = Boolean(todayCardio?.completed && todayCardio.label === cOpt.label);
+                          return (
+                            <button
+                              key={cOpt.label}
+                              type="button"
+                              role="radio"
+                              aria-checked={isSelected}
+                              disabled={isBlockedDay}
+                              style={{
+                                height: 40,
+                                padding: '0 10px',
+                                borderRadius: 14,
+                                fontFamily: 'inherit',
+                                fontSize: 13,
+                                fontWeight: isSelected ? 700 : 400,
+                                cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                                opacity: isBlockedDay ? 0.45 : 1,
+                                border: isSelected ? 'none' : '1px solid var(--line-2)',
+                                background: isSelected ? 'var(--btn-primary)' : 'transparent',
+                                color: isSelected ? 'var(--btn-primary-text)' : 'var(--text)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 5,
+                              }}
+                              onClick={() => {
+                                if (isBlockedDay) return;
+                                onUpdateDailyActivity(trainee.id, selectedDate, {
+                                  cardioLog: isSelected
+                                    ? { completed: false }
+                                    : { completed: true, mode: cOpt.mode, label: cOpt.label, durationMinutes: cOpt.mins },
+                                });
+                              }}
+                            >
+                              {isSelected && <Check size={14} strokeWidth={2.6} />}
+                              {cOpt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* שינה */}
+                    <div style={{ padding: '10px 0', borderTop: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <span style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontSize: 15, fontWeight: 600 }}>שינה</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-2)' }}>
+                          כמה שעות ישנת? (יעד <bdi dir="ltr" className="num-mono ltr-num">{actTargets.dailySleepTargetHours}</bdi>)
+                        </span>
                       </span>
-                    </span>
-                    <span
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 2, padding: 3, borderRadius: 999, background: 'var(--surface-2)', flex: 'none' }}
+                      <span
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 2, padding: 3, borderRadius: 999, background: 'var(--surface-2)', flex: 'none' }}
+                      >
+                        <button
+                          type="button"
+                          aria-label="פחות שעות שינה"
+                          disabled={isBlockedDay}
+                          onClick={() => stepSleep(-0.5)}
+                          style={{ width: 36, height: 36, borderRadius: 999, border: 0, background: 'transparent', color: 'var(--text-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isBlockedDay ? 'not-allowed' : 'pointer', opacity: isBlockedDay ? 0.45 : 1 }}
+                        >
+                          <Minus size={14} strokeWidth={2.4} />
+                        </button>
+                        <bdi dir="ltr" className="num-mono ltr-num" style={{ minWidth: 44, textAlign: 'center', fontSize: 15, fontWeight: 700 }}>
+                          {todaySleep ?? '—'}
+                        </bdi>
+                        <button
+                          type="button"
+                          aria-label="יותר שעות שינה"
+                          disabled={isBlockedDay}
+                          onClick={() => stepSleep(0.5)}
+                          style={{ width: 36, height: 36, borderRadius: 999, border: 0, background: 'transparent', color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isBlockedDay ? 'not-allowed' : 'pointer', opacity: isBlockedDay ? 0.45 : 1 }}
+                        >
+                          <Plus size={14} strokeWidth={2.4} />
+                        </button>
+                      </span>
+                    </div>
+
+                    {/* מד צעדים (לחיצה פותחת מודאל מלא עם Health Connect, סנכרון ועריכה ידנית) */}
+                    <button
+                      type="button"
+                      onClick={() => setStepsModalOpen(true)}
+                      style={{
+                        width: '100%',
+                        padding: '14px 0',
+                        borderTop: '1px solid var(--line)',
+                        borderBottom: 'none',
+                        borderInline: 'none',
+                        background: 'transparent',
+                        color: 'var(--text)',
+                        fontFamily: 'inherit',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: 'pointer',
+                      }}
                     >
-                      <button
-                        type="button"
-                        aria-label="פחות שעות שינה"
-                        disabled={isBlockedDay}
-                        onClick={() => stepSleep(-0.5)}
-                        style={{ width: 44, height: 44, borderRadius: 999, border: 0, background: 'transparent', color: 'var(--text-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: isBlockedDay ? 0.45 : 1 }}
-                      >
-                        <Minus size={18} strokeWidth={2.2} />
-                      </button>
-                      <bdi dir="ltr" className="num-mono ltr-num" style={{ minWidth: 54, textAlign: 'center', fontSize: 18, fontWeight: 700 }}>
-                        {todaySleep ?? '—'}
-                      </bdi>
-                      <button
-                        type="button"
-                        aria-label="יותר שעות שינה"
-                        disabled={isBlockedDay}
-                        onClick={() => stepSleep(0.5)}
-                        style={{ width: 44, height: 44, borderRadius: 999, border: 0, background: 'transparent', color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: isBlockedDay ? 0.45 : 1 }}
-                      >
-                        <Plus size={18} strokeWidth={2.2} />
-                      </button>
-                    </span>
-                  </section>
+                      <span style={{ fontSize: 15, fontWeight: 600 }}>מד צעדים</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-2)' }}>
+                        <span>{stepsSubtitle}</span>
+                        <ChevronLeft size={14} />
+                      </span>
+                    </button>
+                  </div>
                 </div>
               );
             })()}
 
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: 12,
-                padding: '0 4px',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 15, fontWeight: 800 }}>
-                  ציר זמן ארוחות
-                </span>
-                <span
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    padding: '2px 8px',
-                    borderRadius: 999,
-                    background: 'var(--surface-2)',
-                    color: isObservationDay
-                      ? '#38bdf8'
-                      : 'var(--text-secondary)',
-                  }}
-                >
-                  {isObservationDay
-                    ? 'יום תשקיף (תיעוד חופשי)'
-                    : activeTemplate.name}
-                </span>
-              </div>
-
-              {activeTemplate.meals.length > 0 && (() => {
-                const answeredCount = (trainee.savedMeals || []).filter(
-                  (m) => m.coachQuestion?.status === 'answered'
-                ).length;
-                return (
-                  <button
-                    type="button"
-                    onClick={() => openMealDrawer(activeTemplate.meals[0], 'saved-meals')}
-                    className="btn-surface"
-                    style={{
-                      minHeight: 40, padding: '0 14px',
-                      borderRadius: 999,
-                      fontSize: 13,
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 5,
-                      cursor: 'pointer',
-                      borderColor:
-                        answeredCount > 0
-                          ? 'var(--surface-2)'
-                          : 'var(--line)',
-                      color:
-                        answeredCount > 0
-                          ? 'var(--accent-volt)'
-                          : 'var(--text-primary)',
-                    }}
-                  >
-                    <Bookmark size={12} color="currentColor" />
-                    <span>הארוחות והכלים שלי</span>
-                    {(trainee.savedMeals?.length || 0) > 0 && (
-                      <span
-                        className="num-mono"
-                        style={{
-                          fontSize: 13,
-                          padding: '1px 5px',
-                          borderRadius: 999,
-                          background: 'var(--surface-2)',
-                          color: 'var(--accent-volt)',
-                        }}
-                      >
-                        {trainee.savedMeals?.length}
-                      </span>
-                    )}
-                  </button>
-                );
-              })()}
-            </div>
-
-            {/* רשימת כרטיסי הארוחות */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {activeTemplate.meals.map((slot, idx) => {
-                const entry = dailyLog.meals[slot.id];
-                const loggedItems = entry?.items || [];
-                const mealMacros = sumMacros(loggedItems.map((i) => i.macros));
-                const hasItems = loggedItems.length > 0;
-
-                const mealPct = Math.min(
-                  100,
-                  Math.round(
-                    (mealMacros.calories / Math.max(1, slot.targets.calories)) *
-                      100
-                  )
-                );
-
-                return (
-                  <div
-                    key={slot.id}
-                    className="pro-card"
-                    onClick={(e) => {
-                      if (!hasItems || isBlockedDay) return;
-                      if (
-                        (e.target as HTMLElement).closest(
-                          'button, input, a, select, label'
-                        )
-                      ) {
-                        return;
-                      }
-                      openMealDrawer(slot, 'meal-items');
-                    }}
-                    style={{
-                      padding: 16,
-                      borderRadius: 24,
-                      cursor: hasItems && !isBlockedDay ? 'pointer' : 'default',
-                      borderColor:
-                        hasItems && isObservationDay
-                          ? 'var(--surface-2)'
-                          : 'var(--line)',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        marginBottom: 12,
-                      }}
-                    >
-                      <div
-                        style={{ display: 'flex', alignItems: 'center', gap: 12 }}
-                      >
-                        <div
+            {/* Meals Tab (01 / 03): Timeline header + compact meal cards with expandable full item list */}
+            {journalSubTab === 'meals' && (
+              <div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>ציר זמן ארוחות</h2>
+                    {activeTemplate.meals.length > 0 && (() => {
+                      const answeredCount = (trainee.savedMeals || []).filter(
+                        (m) => m.coachQuestion?.status === 'answered'
+                      ).length;
+                      const savedCount = trainee.savedMeals?.length || 0;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => openMealDrawer(activeTemplate.meals[0], 'saved-meals')}
                           style={{
-                            position: 'relative',
-                            width: 38,
-                            height: 38,
-                            display: 'flex',
+                            height: 34,
+                            padding: '0 12px',
+                            borderRadius: 999,
+                            border: answeredCount > 0 ? '1px solid var(--accent-soft)' : 'none',
+                            background: 'var(--surface-2)',
+                            color: answeredCount > 0 ? 'var(--accent-volt)' : 'var(--text)',
+                            display: 'inline-flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <svg
-                            width="38"
-                            height="38"
-                            viewBox="0 0 38 38"
-                            style={{ transform: 'rotate(-90deg)' }}
-                          >
-                            <circle
-                              cx="19"
-                              cy="19"
-                              r="15"
-                              fill="none"
-                              stroke="var(--surface-3)"
-                              strokeWidth="3.2"
-                            />
-                            <circle
-                              cx="19"
-                              cy="19"
-                              r="15"
-                              fill="none"
-                              stroke={
-                                hasItems
-                                  ? isObservationDay
-                                    ? '#38bdf8'
-                                    : 'var(--accent-volt)'
-                                  : 'transparent'
-                              }
-                              strokeWidth="3.2"
-                              strokeDasharray={`${(mealPct / 100) * 94.2} 94.2`}
-                              strokeLinecap="round"
-                            />
-                          </svg>
-                          <span
-                            className="num-mono"
-                            style={{
-                              position: 'absolute',
-                              fontSize: 13,
-                              fontWeight: 800,
-                              color: hasItems
-                                ? isObservationDay
-                                  ? '#38bdf8'
-                                  : 'var(--accent-volt)'
-                                : 'var(--text-muted)',
-                            }}
-                          >
-                            0{idx + 1}
-                          </span>
-                        </div>
-
-                        <div>
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 8,
-                            }}
-                          >
-                            <span style={{ fontSize: 16, fontWeight: 800 }}>
-                              {slot.name}
-                            </span>
-                            {(entry?.mealTime || slot.timeHint || onUpdateMealTime) && (
-                              <button
-                                type="button"
-                                disabled={isBlockedDay || !onUpdateMealTime}
-                                title={
-                                  isBlockedDay
-                                    ? 'יום חסום להזנה'
-                                    : 'שינוי שעת הארוחה'
-                                }
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (isBlockedDay || !onUpdateMealTime) return;
-                                  const baseTime =
-                                    entry?.mealTime || slot.timeHint || '12:00';
-                                  const timeMatch = baseTime.match(
-                                    /^(\d{1,2}):(\d{2})$/
-                                  );
-                                  setDraftMealTime(
-                                    timeMatch
-                                      ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`
-                                      : '12:00'
-                                  );
-                                  setTimeEditSlot(slot);
-                                }}
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: 4,
-                                  padding: '2px 8px',
-                                  borderRadius: 999,
-                                  border: '1px solid var(--line)',
-                                  background: 'var(--surface-2)',
-                                  color: entry?.mealTime
-                                    ? 'var(--text)'
-                                    : 'var(--text-secondary)',
-                                  minHeight: 26,
-                                  fontSize: 13,
-                                  fontWeight: 700,
-                                  opacity: isBlockedDay ? 0.5 : 1,
-                                  cursor:
-                                    isBlockedDay || !onUpdateMealTime
-                                      ? 'default'
-                                      : 'pointer',
-                                }}
-                              >
-                                <Clock size={10} />
-                                <span dir="ltr" className="num-mono">
-                                  {entry?.mealTime || slot.timeHint || 'שעה'}
-                                </span>
-                              </button>
-                            )}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 13,
-                              color: 'var(--text-2)',
-                              display: 'flex',
-                              gap: 10,
-                              marginTop: 3,
-                            }}
-                          >
-                            <span style={{ color: 'var(--macro-protein)' }}>
-                              ח׳{' '}
-                              <span dir="ltr" className="num-mono">
-                                {mealMacros.protein}
-                                {!isObservationDay && `/${slot.targets.protein}`}g
-                              </span>
-                            </span>
-                            <span style={{ color: 'var(--macro-carbs)' }}>
-                              פ׳{' '}
-                              <span dir="ltr" className="num-mono">
-                                {mealMacros.carbs}
-                                {!isObservationDay && `/${slot.targets.carbs}`}g
-                              </span>
-                            </span>
-                            <span style={{ color: 'var(--macro-fat)' }}>
-                              ש׳{' '}
-                              <span dir="ltr" className="num-mono">
-                                {mealMacros.fat}
-                                {!isObservationDay && `/${slot.targets.fat}`}g
-                              </span>
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ textAlign: 'left' }}>
-                        <div
-                          className="num-mono"
-                          dir="ltr"
-                          style={{
-                            fontSize: 16,
-                            fontWeight: 800,
-                            color: hasItems
-                              ? 'var(--text-primary)'
-                              : 'var(--text-muted)',
+                            gap: 6,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            fontFamily: 'inherit',
+                            cursor: 'pointer',
                             whiteSpace: 'nowrap',
                           }}
                         >
-                          {mealMacros.calories}
-                          {!isObservationDay && (
-                            <span
-                              style={{
-                                fontSize: 13,
-                                fontWeight: 500,
-                                color: 'var(--text-2)',
-                              }}
-                            >
-                              {' '}
-                              / {slot.targets.calories}
-                            </span>
-                          )}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 13,
-                            color: 'var(--text-3)',
-                          }}
-                        >
-                          קק״ל
-                        </div>
-                      </div>
-                    </div>
+                          <Bookmark size={14} />
+                          <span>
+                            הארוחות והכלים שלי{savedCount > 0 ? <> · <span className="num-mono">{savedCount}</span></> : null}
+                          </span>
+                        </button>
+                      );
+                    })()}
+                  </div>
+                  <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                    {isObservationDay
+                      ? 'יום תשקיף (תיעוד חופשי ללא יעד קלורי)'
+                      : `תפריט: ${activeTemplate.name} · ${dailyTarget.calories.toLocaleString()} קל׳`}
+                  </span>
+                </div>
 
-                    {hasItems && (
-                      <div
+                {/* רשימת כרטיסי הארוחות */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {activeTemplate.meals.map((slot, idx) => {
+                    const entry = dailyLog.meals[slot.id];
+                    const loggedItems = entry?.items || [];
+                    const mealMacros = sumMacros(loggedItems.map((i) => i.macros));
+                    const hasItems = loggedItems.length > 0;
+                    const photoThumb = entry?.photoDataUrl || entry?.photoDataUrls?.[0];
+                    const isExpanded = Boolean(expandedMealIds[slot.id]);
+                    const itemSummaryText = hasItems
+                      ? `${loggedItems.length} ${loggedItems.length === 1 ? 'פריט' : 'פריטים'} · ${loggedItems.map((it) => it.name).join(', ')}`
+                      : 'טרם הוזנו פריטים';
+                    const slotMacrosList = [
+                      { k: 'ח׳', v: mealMacros.protein, t: slot.targets.protein, c: 'var(--macro-protein)' },
+                      { k: 'פ׳', v: mealMacros.carbs, t: slot.targets.carbs, c: 'var(--macro-carbs)' },
+                      { k: 'ש׳', v: mealMacros.fat, t: slot.targets.fat, c: 'var(--macro-fat)' },
+                    ];
+
+                    return (
+                      <article
+                        key={slot.id}
+                        className="pro-card"
+                        onClick={(e) => {
+                          if (!hasItems || isBlockedDay) return;
+                          if (
+                            (e.target as HTMLElement).closest(
+                              'button, input, a, select, label'
+                            )
+                          ) {
+                            return;
+                          }
+                          openMealDrawer(slot, 'meal-items');
+                        }}
                         style={{
-                          background: 'var(--surface-2)',
-                          borderRadius: 16,
-                          minHeight: 40, padding: '0 14px',
-                          marginBottom: 12,
-                          border: '1px solid var(--fill-1)',
+                          padding: 14,
+                          borderRadius: 24,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 12,
+                          cursor: hasItems && !isBlockedDay ? 'pointer' : 'default',
+                          borderColor:
+                            hasItems && isObservationDay
+                              ? 'var(--surface-2)'
+                              : 'var(--line)',
                         }}
                       >
-                        {entry?.photoDataUrl && (
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 10,
-                              paddingBottom: 8,
-                              marginBottom: 8,
-                              borderBottom: '1px solid var(--line)',
-                            }}
-                          >
+                        {/* Row 1: Photo/Placeholder + Title & Summary + Calories */}
+                        <button
+                          type="button"
+                          disabled={isBlockedDay}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openMealDrawer(slot, hasItems ? 'meal-items' : 'hub');
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: 0,
+                            border: 'none',
+                            background: 'transparent',
+                            color: 'inherit',
+                            fontFamily: 'inherit',
+                            textAlign: 'start',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                            cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {photoThumb ? (
+                            // eslint-disable-next-line @next/next/no-img-element
                             <img
-                              src={entry.photoDataUrl}
-                              alt={slot.name}
+                              src={photoThumb}
+                              alt={`תמונת ${slot.name}`}
                               style={{
-                                width: 46,
-                                height: 46,
-                                borderRadius: 10,
+                                width: 58,
+                                height: 58,
+                                borderRadius: 16,
                                 objectFit: 'cover',
+                                flex: 'none',
+                                display: 'block',
                               }}
                             />
-                            <div style={{ flex: 1 }}>
-                              <div
+                          ) : (
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                width: 58,
+                                height: 58,
+                                borderRadius: 16,
+                                background: 'var(--surface-2)',
+                                border: '1px solid var(--line-2)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: 'var(--text-3)',
+                                flex: 'none',
+                              }}
+                            >
+                              <Camera size={22} strokeWidth={1.8} />
+                            </span>
+                          )}
+                          <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span className="num-mono" style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                                {String(idx + 1).padStart(2, '0')}
+                              </span>
+                              <span
                                 style={{
-                                  fontSize: 13,
+                                  fontSize: 16,
                                   fontWeight: 700,
-                                  color: 'var(--accent-volt)',
-                                }}
-                              >
-                                פוענח מצילום AI
-                              </div>
-                              {entry.photoNote && (
-                                <div
-                                  style={{
-                                    fontSize: 13,
-                                    color: 'var(--text-2)',
-                                  }}
-                                >
-                                  {entry.photoNote}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {loggedItems.map((item, i) => (
-                          <div
-                            key={item.id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (!isBlockedDay) openMealDrawer(slot, 'meal-items');
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              padding: '7px 0',
-                              cursor: isBlockedDay ? 'default' : 'pointer',
-                              borderBottom:
-                                i < loggedItems.length - 1
-                                  ? '1px solid var(--fill-1)'
-                                  : 'none',
-                            }}
-                          >
-                            <div style={{ minWidth: 0, paddingLeft: 8 }}>
-                              <div
-                                style={{
-                                  fontSize: 13,
-                                  fontWeight: 600,
-                                  color: 'var(--text-primary)',
                                   whiteSpace: 'nowrap',
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis',
                                 }}
                               >
-                                {item.name}
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: 13,
-                                  color: 'var(--text-3)',
-                                }}
-                              >
-                                {item.unitLabel} · ח׳ {item.macros.protein}g · פ׳{' '}
-                                {item.macros.carbs}g · ש׳ {item.macros.fat}g
-                              </div>
-                            </div>
-
-                            <div
-                              className="num-mono"
+                                {slot.name}
+                              </span>
+                            </span>
+                            <span
                               style={{
-                                fontSize: 13,
-                                fontWeight: 700,
-                                color: 'var(--text-primary)',
+                                fontSize: 12,
+                                color: 'var(--text-2)',
                                 whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
                               }}
                             >
-                              {item.macros.calories}{' '}
-                              <span
+                              {itemSummaryText}
+                            </span>
+                          </span>
+                          <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flex: 'none' }}>
+                            <span className="num-mono" style={{ fontSize: 20, fontWeight: 700, lineHeight: 1 }}>
+                              {mealMacros.calories}
+                            </span>
+                            <span className="num-mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                              {!isObservationDay ? `/ ${slot.targets.calories} קק״ל` : 'קק״ל'}
+                            </span>
+                          </span>
+                        </button>
+
+                        {/* Row 2: 3-column macro progress bars */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+                          {slotMacrosList.map((mc) => {
+                            const barPct = isObservationDay
+                              ? Math.min(100, Math.round((mc.v / 50) * 100))
+                              : Math.min(100, Math.round((mc.v / Math.max(1, mc.t)) * 100));
+                            return (
+                              <div key={mc.k} style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                <span style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-2)' }}>
+                                  <span>{mc.k}</span>
+                                  <span dir="ltr" className="num-mono">
+                                    <span style={{ color: 'var(--text)', fontWeight: 600 }}>{mc.v}</span>
+                                    {!isObservationDay ? `/${mc.t}g` : 'g'}
+                                  </span>
+                                </span>
+                                <div style={{ height: 4, borderRadius: 9, background: 'var(--surface-3)', overflow: 'hidden' }}>
+                                  <div
+                                    style={{
+                                      width: `${barPct}%`,
+                                      height: '100%',
+                                      borderRadius: 9,
+                                      background: mc.c,
+                                      transition: 'width 0.35s ease',
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Optional expandable full item list (User choice A2) */}
+                        {hasItems && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <button
+                              type="button"
+                              aria-expanded={isExpanded}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedMealIds((prev) => ({
+                                  ...prev,
+                                  [slot.id]: !prev[slot.id],
+                                }));
+                              }}
+                              style={{
+                                width: '100%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '6px 10px',
+                                borderRadius: 12,
+                                background: 'var(--surface-2)',
+                                border: '1px solid var(--fill-1)',
+                                color: 'var(--text-2)',
+                                fontSize: 12,
+                                fontWeight: 600,
+                                fontFamily: 'inherit',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <span>
+                                {isExpanded ? 'הסתר פירוט פריטים' : `פירוט פריטים (${loggedItems.length})`}
+                              </span>
+                              <ChevronDown
+                                size={14}
                                 style={{
-                                  fontSize: 13,
-                                  color: 'var(--text-3)',
-                                  fontWeight: 500,
+                                  transform: isExpanded ? 'rotate(180deg)' : 'none',
+                                  transition: 'transform 0.18s ease',
+                                }}
+                              />
+                            </button>
+
+                            {isExpanded && (
+                              <div
+                                style={{
+                                  background: 'var(--surface-2)',
+                                  borderRadius: 14,
+                                  padding: '4px 12px',
+                                  border: '1px solid var(--fill-1)',
                                 }}
                               >
-                                קק״ל
+                                {entry?.photoNote && (
+                                  <div
+                                    style={{
+                                      padding: '6px 0',
+                                      borderBottom: '1px solid var(--line)',
+                                      fontSize: 12,
+                                      color: 'var(--text-2)',
+                                    }}
+                                  >
+                                    {entry.photoNote}
+                                  </div>
+                                )}
+                                {loggedItems.map((item, i) => (
+                                  <div
+                                    key={item.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (!isBlockedDay) openMealDrawer(slot, 'meal-items');
+                                    }}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      gap: 8,
+                                      padding: '7px 0',
+                                      cursor: isBlockedDay ? 'default' : 'pointer',
+                                      borderBottom: i < loggedItems.length - 1 ? '1px solid var(--line)' : 'none',
+                                    }}
+                                  >
+                                    <div style={{ minWidth: 0 }}>
+                                      <div
+                                        style={{
+                                          fontSize: 13,
+                                          fontWeight: 600,
+                                          color: 'var(--text)',
+                                          whiteSpace: 'nowrap',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis',
+                                        }}
+                                      >
+                                        {item.name}
+                                      </div>
+                                      <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                                        {item.unitLabel} · ח׳ {item.macros.protein}g · פ׳ {item.macros.carbs}g · ש׳ {item.macros.fat}g
+                                      </div>
+                                    </div>
+                                    <div
+                                      className="num-mono"
+                                      style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}
+                                    >
+                                      {item.macros.calories}{' '}
+                                      <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 500 }}>קק״ל</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {entry?.coachFeedback && (
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                              gap: 10,
+                              padding: '10px 12px',
+                              borderRadius: 14,
+                              background: 'var(--fill-1)',
+                              border: '1px solid var(--line-2)',
+                            }}
+                          >
+                            <MessageSquare
+                              size={15}
+                              color="currentColor"
+                              style={{ marginTop: 2, flexShrink: 0 }}
+                            />
+                            <div style={{ fontSize: 12 }}>
+                              <span
+                                style={{
+                                  fontWeight: 700,
+                                  color: 'var(--accent-volt)',
+                                  marginLeft: 6,
+                                }}
+                              >
+                                {entry.coachFeedbackAuthor
+                                  ? `${entry.coachFeedbackAuthor}:`
+                                  : 'הערת מאמן:'}
+                              </span>
+                              <span style={{ color: 'var(--text-primary)' }}>
+                                {entry.coachFeedback}
                               </span>
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        )}
 
-                    {entry?.coachFeedback && (
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'flex-start',
-                          gap: 10,
-                          padding: '10px 12px',
-                          borderRadius: 12,
-                          background: 'var(--fill-1)',
-                          border: '1px solid var(--line-2)',
-                          marginBottom: 12,
-                        }}
-                      >
-                        <MessageSquare
-                          size={15}
-                          color="currentColor"
-                          style={{ marginTop: 2, flexShrink: 0 }}
-                        />
-                        <div style={{ fontSize: 12 }}>
-                          <span
-                            style={{
-                              fontWeight: 700,
-                              color: 'var(--accent-volt)',
-                              marginLeft: 6,
-                            }}
-                          >
-                            {entry.coachFeedbackAuthor
-                              ? `${entry.coachFeedbackAuthor}:`
-                              : 'הערת מאמן:'}
-                          </span>
-                          <span style={{ color: 'var(--text-primary)' }}>
-                            {entry.coachFeedback}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        flexWrap: 'nowrap',
-                        gap: 6,
-                      }}
-                    >
-                      {(trainee.mealCardShortcuts ?? DEFAULT_MEAL_CARD_SHORTCUTS)
-                        .slice(0, 2)
-                        .map((scId) => {
-                          const meta = ALL_MEAL_SHORTCUT_OPTIONS.find(
-                            (o) => o.id === scId
-                          );
-                          if (!meta) return null;
-                          const renderIcon = () => {
-                            switch (scId) {
-                              case 'ai-recommend':
-                                return (
-                                  <Lightbulb
-                                    size={13}
-                                    color="var(--accent-orange-bright)"
-                                  />
-                                );
-                              case 'saved-meals':
-                                return (
-                                  <Bookmark
-                                    size={13}
-                                    color="var(--text-secondary)"
-                                  />
-                                );
-                              case 'ai-photo':
-                                return (
-                                  <Camera
-                                    size={13}
-                                    color="var(--accent-orange-bright)"
-                                  />
-                                );
-                              case 'ai-text':
-                                return (
-                                  <Sparkles
-                                    size={13}
-                                    color="var(--accent-orange-bright)"
-                                  />
-                                );
-                              case 'barcode':
-                                return (
-                                  <Barcode
-                                    size={13}
-                                    color="var(--text-secondary)"
-                                  />
-                                );
-                              case 'favorites':
-                                return (
-                                  <Heart
-                                    size={13}
-                                    color="var(--text-secondary)"
-                                  />
-                                );
-                            }
-                          };
-                          return (
+                        {/* Row 3: Time pill + 2 circular glass shortcuts + הצג / הזן ארוחה */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          {(entry?.mealTime || slot.timeHint || onUpdateMealTime) && (
                             <button
-                              key={scId}
                               type="button"
-                              disabled={isBlockedDay}
-                              title={isBlockedDay ? 'יום חסום להזנה' : meta.description}
-                              onClick={() => openMealDrawer(slot, scId)}
-                              className="btn-surface"
+                              disabled={isBlockedDay || !onUpdateMealTime}
+                              aria-label={`שינוי שעת ${slot.name}`}
+                              title={isBlockedDay ? 'יום חסום להזנה' : 'שינוי שעת הארוחה'}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (isBlockedDay || !onUpdateMealTime) return;
+                                const baseTime = entry?.mealTime || slot.timeHint || '12:00';
+                                const timeMatch = baseTime.match(/^(\d{1,2}):(\d{2})$/);
+                                setDraftMealTime(
+                                  timeMatch
+                                    ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`
+                                    : '12:00'
+                                );
+                                setTimeEditSlot(slot);
+                              }}
                               style={{
-                                padding: '9px 10px',
+                                height: 36,
+                                padding: '0 10px',
+                                borderRadius: 999,
+                                border: 'none',
+                                background: 'var(--surface-2)',
+                                color: 'var(--text)',
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: 4,
-                                fontSize: 13,
-                                fontWeight: 700,
-                                whiteSpace: 'nowrap',
-                                flexShrink: 0,
-                                opacity: isBlockedDay ? 0.45 : 1,
-                                cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                                gap: 5,
+                                fontSize: 12,
+                                fontFamily: 'inherit',
+                                opacity: isBlockedDay ? 0.5 : 1,
+                                cursor: isBlockedDay || !onUpdateMealTime ? 'default' : 'pointer',
                               }}
                             >
-                              {renderIcon()}
-                              <span>{meta.shortLabel}</span>
+                              <Clock size={14} />
+                              <span dir="ltr" className="num-mono">
+                                {entry?.mealTime || slot.timeHint || 'שעה'}
+                              </span>
                             </button>
-                          );
-                        })}
+                          )}
 
-                      <button
-                        type="button"
-                        disabled={isBlockedDay}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openMealDrawer(slot, hasItems ? 'meal-items' : 'hub');
-                        }}
-                        className={hasItems ? 'btn-surface' : 'btn-volt'}
-                        style={{
-                          flex: '1 1 auto',
-                          minWidth: 0,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 5,
-                          padding: '9px 10px',
-                          fontSize: 13,
-                          fontWeight: hasItems ? 700 : undefined,
-                          whiteSpace: 'nowrap',
-                          opacity: isBlockedDay ? 0.45 : 1,
-                          cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                        }}
-                      >
-                        {!hasItems && <Plus size={14} style={{ flexShrink: 0 }} />}
-                        <span>{hasItems ? 'פתח' : 'הזן ארוחה'}</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                          <span style={{ flex: 1 }} />
+
+                          {(trainee.mealCardShortcuts ?? DEFAULT_MEAL_CARD_SHORTCUTS)
+                            .slice(0, 2)
+                            .map((scId) => {
+                              const meta = ALL_MEAL_SHORTCUT_OPTIONS.find((o) => o.id === scId);
+                              if (!meta) return null;
+                              const renderIcon = () => {
+                                switch (scId) {
+                                  case 'ai-recommend':
+                                    return <Lightbulb size={16} />;
+                                  case 'saved-meals':
+                                    return <Bookmark size={16} />;
+                                  case 'ai-photo':
+                                    return <Camera size={16} />;
+                                  case 'ai-text':
+                                    return <Sparkles size={16} />;
+                                  case 'barcode':
+                                    return <Barcode size={16} />;
+                                  case 'favorites':
+                                    return <Heart size={16} />;
+                                }
+                              };
+                              return (
+                                <GlassButton
+                                  key={scId}
+                                  label={meta.shortLabel}
+                                  title={isBlockedDay ? 'יום חסום להזנה' : meta.description}
+                                  size={36}
+                                  disabled={isBlockedDay}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openMealDrawer(slot, scId);
+                                  }}
+                                >
+                                  {renderIcon()}
+                                </GlassButton>
+                              );
+                            })}
+
+                          <button
+                            type="button"
+                            disabled={isBlockedDay}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openMealDrawer(slot, hasItems ? 'meal-items' : 'hub');
+                            }}
+                            style={{
+                              height: 36,
+                              padding: '0 14px',
+                              borderRadius: 999,
+                              border: 'none',
+                              background: hasItems ? 'var(--surface-2)' : 'var(--btn-primary)',
+                              color: hasItems ? 'var(--text)' : 'var(--btn-primary-text)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 5,
+                              fontSize: 13,
+                              fontWeight: 700,
+                              fontFamily: 'inherit',
+                              whiteSpace: 'nowrap',
+                              opacity: isBlockedDay ? 0.45 : 1,
+                              cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            {!hasItems && <Plus size={14} strokeWidth={2.6} style={{ flexShrink: 0 }} />}
+                            <span>{hasItems ? 'הצג' : 'הזן ארוחה'}</span>
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </motion.div>
         ) : mobileSection === 'metrics' ? (
           /* טאב מדדים, מים, משקל גוף והיקפים */
@@ -2680,6 +2918,41 @@ export function TraineeMobileView({
               setSavingMeasurements(false);
             }
           }}
+        />
+      </Modal>
+
+      {/* מודאל מד צעדים מלא */}
+      <Modal
+        opened={stepsModalOpen}
+        onClose={() => setStepsModalOpen(false)}
+        title={
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: 16 }}>
+            <Footprints size={18} />
+            <span>מד צעדים יומי</span>
+          </span>
+        }
+        centered
+        radius="lg"
+        size="md"
+        overlayProps={{ backgroundOpacity: 0.72, blur: 4 }}
+      >
+        <DailyStepsCard
+          selectedDate={selectedDate}
+          todayIso={todayIso}
+          steps={dailyLog.steps ?? 0}
+          stepsSource={dailyLog.stepsSource}
+          stepsSyncedAt={dailyLog.stepsSyncedAt}
+          dailyStepsTarget={(trainee.activityTargets?.dailyStepsTarget) ?? 8000}
+          isCoachPreview={isCoachPreview}
+          isBlockedDay={isBlockedDay}
+          onSaveManualSteps={async (steps) => {
+            await onUpdateDailyActivity(trainee.id, selectedDate, {
+              steps,
+              stepsSource: 'manual',
+              stepsSyncedAt: new Date().toISOString(),
+            });
+          }}
+          onSyncNativeStepsNow={onSyncNativeStepsNow}
         />
       </Modal>
 
