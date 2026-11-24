@@ -60,7 +60,9 @@
 
   --bg: #f2f2f4;
   --card: #ffffff;
-  --surface-2: #f2f2f4;
+  /* Objects (buttons, fields, chips, inner panels) are white in light mode; only the page itself is #f2f2f4. */
+  --surface-2: #ffffff;
+  --shadow-raise: 0 1px 2px rgba(0, 0, 0, 0.06), 0 6px 14px -4px rgba(0, 0, 0, 0.12), 0 14px 28px -10px rgba(0, 0, 0, 0.12);
   --surface-3: #e5e5e8;
   --line: rgba(0, 0, 0, 0.06);
   --line-2: rgba(0, 0, 0, 0.1);
@@ -78,7 +80,7 @@
   --glass-hi: rgba(255, 255, 255, 1);
   --glass-shadow: 0 14px 34px -12px rgba(0, 0, 0, 0.22);
   --scrim: rgba(20, 20, 22, 0.28);
-  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 22px -8px rgba(0, 0, 0, 0.14);
   --sheet-shadow: 0 -20px 50px -20px rgba(0, 0, 0, 0.18);
 
   /* Darker orange for orange *text* on light surfaces (contrast). */
@@ -269,7 +271,7 @@ a:focus-visible {
   color: var(--text) !important;
   border: 1px solid var(--line) !important;
   border-radius: 999px !important;
-  box-shadow: 1px 6px 7px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-raise, 1px 6px 7px rgba(0, 0, 0, 0.04));
   font-size: 14px !important;
   font-weight: 600 !important;
   transition: background-color 0.15s ease, border-color 0.15s ease !important;
@@ -1027,4 +1029,32 @@ a.glass {
     background: transparent !important;
     padding: 0 !important;
   }
+}
+
+/* ---------- Light mode: white objects lift off the #f2f2f4 page with a stronger shadow ---------- */
+:root[data-mantine-color-scheme='light'] [style*='background: var(--surface-2)'],
+:root[data-mantine-color-scheme='light'] [style*='background: var(--bg-surface-2)'],
+:root[data-mantine-color-scheme='light'] [style*='background-color: var(--surface-2)'],
+:root[data-mantine-color-scheme='light'] .mantine-Input-input,
+:root[data-mantine-color-scheme='light'] .mantine-Select-dropdown,
+:root[data-mantine-color-scheme='light'] .mantine-Popover-dropdown {
+  box-shadow: var(--shadow-raise);
+}
+:root[data-mantine-color-scheme='light'] .btn-surface:hover {
+  box-shadow: var(--shadow-raise);
+  background: #ffffff !important;
+  border-color: var(--line-2) !important;
+}
+:root[data-mantine-color-scheme='light'] .pro-card,
+:root[data-mantine-color-scheme='light'] .pro-card-elevated {
+  box-shadow: var(--card-shadow);
+}
+
+/* Light: outlined "transparent" chips / pill fields would show the #f2f2f4 page through them. Make them white. */
+:root[data-mantine-color-scheme='light'] button[style*='background: transparent'][style*='solid'],
+:root[data-mantine-color-scheme='light'] label[style*='background: transparent'][style*='solid'],
+:root[data-mantine-color-scheme='light'] input[style*='background: transparent'][style*='solid'],
+:root[data-mantine-color-scheme='light'] textarea[style*='background: transparent'][style*='solid'] {
+  background: #ffffff !important;
+  box-shadow: var(--shadow-raise);
 }
