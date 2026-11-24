@@ -547,8 +547,10 @@ input, textarea, select {
     padding: 0 !important;
   }
   .mantine-Modal-content:not([data-full-screen]) {
+    flex: 0 0 100% !important;
     width: 100% !important;
-    max-width: none !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
     margin: 0 !important;
     max-height: calc(100dvh - 52px - env(safe-area-inset-top, 0px)) !important;
     border-radius: var(--radius-sheet) var(--radius-sheet) 0 0 !important;
