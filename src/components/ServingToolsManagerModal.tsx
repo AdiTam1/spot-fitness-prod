@@ -364,7 +364,7 @@ export function ServingToolsManagerModal({
               borderRadius: 10,
               background: 'rgba(239, 68, 68, 0.14)',
               border: '1px solid rgba(239, 68, 68, 0.35)',
-              color: '#fca5a5',
+              color: 'var(--danger-text)',
               fontSize: 12,
               fontWeight: 600,
             }}
@@ -416,7 +416,7 @@ export function ServingToolsManagerModal({
               <div
                 style={{
                   background: 'var(--bg-surface-2)',
-                  border: '1px solid rgba(214, 125, 9, 0.28)',
+                  border: '1px solid var(--line-2)',
                   borderRadius: 14,
                   padding: 12,
                   display: 'flex',
@@ -436,7 +436,7 @@ export function ServingToolsManagerModal({
                     padding: '8px 10px',
                   }}
                 >
-                  <b style={{ color: '#7dd3fc' }}>
+                  <b style={{ color: 'var(--info-text)' }}>
                     כללי צילום לדיוק הגבוה ביותר (מבוסס מחקר Vision AI):
                   </b>
                   <br />
@@ -608,11 +608,11 @@ export function ServingToolsManagerModal({
                       fontWeight: 600,
                       background: aiResultNote.isError
                         ? 'rgba(239, 68, 68, 0.14)'
-                        : 'rgba(214, 125, 9, 0.1)',
+                        : 'var(--fill-1)',
                       border: aiResultNote.isError
                         ? '1px solid rgba(239, 68, 68, 0.35)'
-                        : '1px solid rgba(214, 125, 9, 0.3)',
-                      color: aiResultNote.isError ? '#fca5a5' : 'var(--accent-volt)',
+                        : '1px solid var(--line-2)',
+                      color: aiResultNote.isError ? 'var(--danger-text)' : 'var(--accent-volt)',
                     }}
                   >
                     {aiResultNote.msg}
@@ -746,7 +746,7 @@ export function ServingToolsManagerModal({
                             fontSize: 9,
                             padding: '1px 6px',
                             borderRadius: 999,
-                            background: 'rgba(214, 125, 9, 0.14)',
+                            background: 'var(--surface-2)',
                             color: 'var(--accent-volt)',
                           }}
                         >
@@ -780,7 +780,7 @@ export function ServingToolsManagerModal({
                       cursor: 'pointer',
                     }}
                   >
-                    <Trash2 size={12} color="#f87171" />
+                    <Trash2 size={12} color="var(--danger-text)" />
                   </button>
                 </div>
               ))}
@@ -882,7 +882,7 @@ export function ServingToolsManagerModal({
                       cursor: 'pointer',
                     }}
                   >
-                    <Trash2 size={12} color="#f87171" />
+                    <Trash2 size={12} color="var(--danger-text)" />
                   </button>
                 </div>
               ))}

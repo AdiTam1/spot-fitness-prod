@@ -54,7 +54,7 @@ function getSourceBadge(source?: StepsSyncSource): {
     case 'health-connect':
       return {
         label: 'שעון / Health Connect',
-        color: '#4ade80',
+        color: 'var(--ok-text)',
         bg: 'rgba(34, 197, 94, 0.14)',
       };
     case 'play-services-local':
@@ -67,7 +67,7 @@ function getSourceBadge(source?: StepsSyncSource): {
       return {
         label: 'חיישן מכשיר',
         color: '#d67d09',
-        bg: 'rgba(214, 125, 9, 0.14)',
+        bg: 'var(--surface-2)',
       };
     case 'manual':
       return {
@@ -227,7 +227,7 @@ export function DailyStepsCard({
             fontSize: 11,
             fontWeight: 800,
             color:
-              steps >= dailyStepsTarget ? '#4ade80' : 'var(--text-secondary)',
+              steps >= dailyStepsTarget ? 'var(--ok-text)' : 'var(--text-secondary)',
           }}
         >
           {steps.toLocaleString()} / {dailyStepsTarget.toLocaleString()} ({pct}%)
@@ -377,7 +377,7 @@ export function DailyStepsCard({
                 background: 'rgba(245, 158, 11, 0.1)',
                 border: '1px solid rgba(245, 158, 11, 0.3)',
                 fontSize: 10.5,
-                color: '#fcd34d',
+                color: 'var(--warn-text)',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 6,

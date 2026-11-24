@@ -2350,7 +2350,7 @@ export default function HomePage() {
             height: 72,
             borderRadius: 20,
             objectFit: 'cover',
-            boxShadow: '0 10px 28px rgba(214, 125, 9, 0.35)',
+            boxShadow: 'none',
           }}
         />
         <Loader2 size={22} className="spot-spinner" color="var(--accent-volt)" />
@@ -2364,8 +2364,8 @@ export default function HomePage() {
         {pendingWebUpdateBuildId && (
           <div
             style={{
-              background: 'rgba(214, 125, 9, 0.16)',
-              borderBottom: '1px solid rgba(214, 125, 9, 0.4)',
+              background: 'var(--surface-2)',
+              borderBottom: '1px solid var(--line-2)',
               color: 'var(--accent-volt)',
               padding: '8px 14px',
               fontSize: 12,
@@ -2474,8 +2474,8 @@ export default function HomePage() {
       {pendingWebUpdateBuildId && (
         <div
           style={{
-            background: 'rgba(214, 125, 9, 0.18)',
-            borderBottom: '1px solid rgba(214, 125, 9, 0.45)',
+            background: 'var(--surface-2)',
+            borderBottom: '1px solid var(--line-2)',
             color: 'var(--accent-volt)',
             padding: '8px 14px',
             fontSize: 12,
@@ -2542,7 +2542,7 @@ export default function HomePage() {
           style={{
             background: 'rgba(239, 68, 68, 0.16)',
             borderBottom: '1px solid rgba(239, 68, 68, 0.4)',
-            color: '#fca5a5',
+            color: 'var(--danger-text)',
             padding: '8px 16px',
             fontSize: 12,
             fontWeight: 700,
@@ -2560,7 +2560,7 @@ export default function HomePage() {
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#fca5a5',
+              color: 'var(--danger-text)',
               cursor: 'pointer',
               fontWeight: 800,
               marginRight: 8,
@@ -2624,8 +2624,8 @@ export default function HomePage() {
                   gap: 4,
                   padding: '4px 8px',
                   borderRadius: 999,
-                  background: 'rgba(214, 125, 9, 0.14)',
-                  border: '1px solid rgba(214, 125, 9, 0.38)',
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--line-2)',
                   color: 'var(--accent-orange-bright)',
                   fontSize: 11,
                   fontWeight: 700,
@@ -2685,9 +2685,9 @@ export default function HomePage() {
                     height: 30,
                     padding: '0 9px',
                     borderRadius: 999,
-                    border: '1px solid rgba(214, 125, 9, 0.5)',
-                    background: 'rgba(214, 125, 9, 0.16)',
-                    color: '#ffb84d',
+                    border: '1px solid var(--line-2)',
+                    background: 'var(--surface-2)',
+                    color: 'var(--warn-text)',
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 4,
@@ -2767,8 +2767,8 @@ export default function HomePage() {
         !dismissedUpdateBanner && (
           <div
             style={{
-              background: 'rgba(214, 125, 9, 0.14)',
-              borderBottom: '1px solid rgba(214, 125, 9, 0.35)',
+              background: 'var(--surface-2)',
+              borderBottom: '1px solid var(--line-2)',
               color: 'var(--accent-volt)',
               padding: '8px 16px',
               fontSize: 12,

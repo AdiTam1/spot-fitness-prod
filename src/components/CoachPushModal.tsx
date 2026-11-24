@@ -181,7 +181,7 @@ export function CoachPushModal({
               hasDevice && coachAlertsEnabled
                 ? '1px solid rgba(34, 197, 94, 0.35)'
                 : '1px solid rgba(245, 158, 11, 0.35)',
-            color: hasDevice && coachAlertsEnabled ? '#4ade80' : '#fcd34d',
+            color: hasDevice && coachAlertsEnabled ? 'var(--ok-text)' : 'var(--warn-text)',
           }}
         >
           {hasDevice && coachAlertsEnabled ? (
@@ -298,7 +298,7 @@ export function CoachPushModal({
               gap: 6,
               fontSize: 12,
               fontWeight: 700,
-              color: feedback.ok ? '#4ade80' : '#fca5a5',
+              color: feedback.ok ? 'var(--ok-text)' : 'var(--danger-text)',
             }}
           >
             {feedback.ok ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}

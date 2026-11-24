@@ -241,7 +241,7 @@ export function AiQuickContextPanel({
               alignItems: 'center',
               gap: 4,
               cursor: 'pointer',
-              borderColor: 'rgba(214, 125, 9, 0.3)',
+              borderColor: 'var(--line-2)',
             }}
           >
             <Ruler size={11} color="currentColor" />
@@ -292,7 +292,7 @@ export function AiQuickContextPanel({
                     : '1px solid rgba(56, 189, 248, 0.3)',
                   background: active ? 'var(--sel-bg)'
                     : 'rgba(56, 189, 248, 0.08)',
-                  color: active ? 'var(--sel-text)' : '#7dd3fc',
+                  color: active ? 'var(--sel-text)' : 'var(--info-text)',
                 }}
               >
                 {tool.name}
@@ -346,7 +346,7 @@ export function AiQuickContextPanel({
               fontSize: 10,
               fontWeight: 700,
               cursor: 'pointer',
-              border: '1px dashed rgba(214, 125, 9, 0.4)',
+              border: '1px dashed var(--line-2)',
               background: 'transparent',
               color: 'var(--accent-volt)',
               display: 'flex',

@@ -419,7 +419,7 @@ export function SavedMealsLibraryTab({
               flexShrink: 0,
               color:
                 voiceState === 'listening'
-                  ? '#f87171'
+                  ? 'var(--danger-text)'
                   : voiceState === 'transcribing'
                   ? 'var(--accent-orange-bright)'
                   : 'var(--text-secondary)',
@@ -449,7 +449,7 @@ export function SavedMealsLibraryTab({
             alignItems: 'center',
             gap: 4,
             cursor: 'pointer',
-            borderColor: 'rgba(214, 125, 9, 0.35)',
+            borderColor: 'var(--line-2)',
             whiteSpace: 'nowrap',
             flexShrink: 0,
           }}
@@ -506,11 +506,11 @@ export function SavedMealsLibraryTab({
             fontWeight: 600,
             background: feedbackBanner.isError
               ? 'rgba(239, 68, 68, 0.14)'
-              : 'rgba(214, 125, 9, 0.1)',
+              : 'var(--fill-1)',
             border: feedbackBanner.isError
               ? '1px solid rgba(239, 68, 68, 0.35)'
-              : '1px solid rgba(214, 125, 9, 0.3)',
-            color: feedbackBanner.isError ? '#fca5a5' : 'var(--accent-volt)',
+              : '1px solid var(--line-2)',
+            color: feedbackBanner.isError ? 'var(--danger-text)' : 'var(--accent-volt)',
           }}
         >
           {feedbackBanner.msg}
@@ -770,7 +770,7 @@ export function SavedMealsLibraryTab({
                     style={{
                       background: 'var(--bg-surface-2)',
                       border: preset.isPinned
-                        ? '1px solid rgba(214, 125, 9, 0.45)'
+                        ? '1px solid var(--line-2)'
                         : '1px solid var(--border-subtle)',
                       borderRadius: 16,
                       padding: 12,
@@ -821,8 +821,8 @@ export function SavedMealsLibraryTab({
                                 fontWeight: 800,
                                 background: preset.isAiFallback
                                   ? 'rgba(245, 158, 11, 0.16)'
-                                  : 'rgba(214, 125, 9, 0.12)',
-                                color: preset.isAiFallback ? '#fbbf24' : 'var(--accent-volt)',
+                                  : 'var(--surface-2)',
+                                color: preset.isAiFallback ? 'var(--warn-text)' : 'var(--accent-volt)',
                               }}
                             >
                               {preset.isAiFallback
@@ -917,7 +917,7 @@ export function SavedMealsLibraryTab({
                           cursor: 'pointer',
                         }}
                       >
-                        <Trash2 size={12} color="#f87171" />
+                        <Trash2 size={12} color="var(--danger-text)" />
                       </button>
                     </div>
                   </div>
@@ -935,11 +935,11 @@ export function SavedMealsLibraryTab({
                         borderRadius: 10,
                         background:
                           preset.coachQuestion.status === 'answered'
-                            ? 'rgba(214, 125, 9, 0.08)'
+                            ? 'var(--fill-1)'
                             : 'rgba(56, 189, 248, 0.08)',
                         border:
                           preset.coachQuestion.status === 'answered'
-                            ? '1px solid rgba(214, 125, 9, 0.25)'
+                            ? '1px solid var(--line-2)'
                             : '1px solid rgba(56, 189, 248, 0.25)',
                         fontSize: 11,
                       }}
@@ -953,7 +953,7 @@ export function SavedMealsLibraryTab({
                           {preset.coachQuestion.reply}
                         </div>
                       ) : (
-                        <div style={{ marginTop: 3, color: '#7dd3fc', fontSize: 10 }}>
+                        <div style={{ marginTop: 3, color: 'var(--info-text)', fontSize: 10 }}>
                           ממתין למענה המאמן...
                         </div>
                       )}
@@ -995,7 +995,7 @@ export function SavedMealsLibraryTab({
                         alignItems: 'center',
                         gap: 4,
                         cursor: 'pointer',
-                        borderColor: 'rgba(214, 125, 9, 0.35)',
+                        borderColor: 'var(--line-2)',
                         color: 'var(--accent-volt)',
                       }}
                     >
@@ -1036,7 +1036,7 @@ export function SavedMealsLibraryTab({
                         alignItems: 'center',
                         gap: 4,
                         cursor: 'pointer',
-                        color: '#4ade80',
+                        color: 'var(--ok-text)',
                       }}
                     >
                       <Share2 size={12} />
@@ -1050,8 +1050,8 @@ export function SavedMealsLibraryTab({
                       style={{
                         padding: 10,
                         borderRadius: 10,
-                        background: 'rgba(214, 125, 9, 0.06)',
-                        border: '1px solid rgba(214, 125, 9, 0.25)',
+                        background: 'var(--fill-1)',
+                        border: '1px solid var(--line-2)',
                         display: 'flex',
                         flexDirection: 'column',
                         gap: 8,

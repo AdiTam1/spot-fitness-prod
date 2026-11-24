@@ -123,7 +123,7 @@ export function AndroidForceUpdateGate({
           alignItems: 'center',
           textAlign: 'center',
           gap: 16,
-          border: '1px solid rgba(214, 125, 9, 0.45)',
+          border: '1px solid var(--line-2)',
           boxShadow: '0 24px 60px rgba(0, 0, 0, 0.72)',
         }}
       >
@@ -136,7 +136,7 @@ export function AndroidForceUpdateGate({
               height: 68,
               borderRadius: 19,
               objectFit: 'cover',
-              boxShadow: '0 10px 28px rgba(214, 125, 9, 0.36)',
+              boxShadow: 'none',
             }}
           />
           <div
@@ -148,7 +148,7 @@ export function AndroidForceUpdateGate({
               height: 28,
               borderRadius: '50%',
               background: 'var(--card)',
-              border: '2px solid rgba(214, 125, 9, 0.7)',
+              border: '2px solid var(--line-2)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -194,7 +194,7 @@ export function AndroidForceUpdateGate({
             </div>
             <div
               className="num-mono"
-              style={{ fontSize: 14, fontWeight: 800, color: '#f87171', marginTop: 2 }}
+              style={{ fontSize: 14, fontWeight: 800, color: 'var(--danger-text)', marginTop: 2 }}
               dir="ltr"
             >
               v{info.localVersionName} (#{info.localVersionCode})
@@ -285,7 +285,7 @@ export function AndroidForceUpdateGate({
               borderRadius: 12,
               background: 'rgba(245, 158, 11, 0.14)',
               border: '1px solid rgba(245, 158, 11, 0.4)',
-              color: '#fbbf24',
+              color: 'var(--warn-text)',
               fontSize: 12.5,
               fontWeight: 700,
               lineHeight: 1.5,
@@ -304,7 +304,7 @@ export function AndroidForceUpdateGate({
               borderRadius: 12,
               background: 'rgba(239, 68, 68, 0.14)',
               border: '1px solid rgba(239, 68, 68, 0.35)',
-              color: '#f87171',
+              color: 'var(--danger-text)',
               fontSize: 12,
               fontWeight: 700,
               display: 'flex',
@@ -334,7 +334,7 @@ export function AndroidForceUpdateGate({
             alignItems: 'center',
             justifyContent: 'center',
             gap: 8,
-            boxShadow: '0 8px 24px rgba(214, 125, 9, 0.38)',
+            boxShadow: 'none',
           }}
         >
           {downloading ? (

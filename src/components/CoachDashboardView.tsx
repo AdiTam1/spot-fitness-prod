@@ -1003,9 +1003,9 @@ export function CoachDashboardView({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <UserCheck size={18} color="#fbbf24" />
+            <UserCheck size={18} color="var(--warn-text)" />
             <div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: '#fbbf24' }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--warn-text)' }}>
                 מתאמנים הממתינים לאישור ושיוך למאמן ({pendingTrainees.length})
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
@@ -1213,7 +1213,7 @@ export function CoachDashboardView({
               fontSize: 12,
               cursor: 'pointer',
               borderColor: coachAlertsDeviceReady
-                ? 'rgba(214, 125, 9, 0.45)'
+                ? 'var(--surface-2)'
                 : undefined,
             }}
           >
@@ -1811,8 +1811,8 @@ export function CoachDashboardView({
                               width: 38,
                               height: 38,
                               borderRadius: '50%',
-                              background: 'rgba(214, 125, 9, 0.16)',
-                              border: '1px solid rgba(214, 125, 9, 0.42)',
+                              background: 'var(--surface-2)',
+                              border: '1px solid var(--line-2)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
@@ -1918,7 +1918,7 @@ export function CoachDashboardView({
                               borderRadius: 999,
                               background: 'rgba(56, 189, 248, 0.16)',
                               border: '1px solid rgba(56, 189, 248, 0.35)',
-                              color: '#7dd3fc',
+                              color: 'var(--info-text)',
                               fontSize: 10,
                               fontWeight: 800,
                               display: 'inline-flex',
@@ -2183,7 +2183,7 @@ export function CoachDashboardView({
                                         borderRadius: 999,
                                         background: 'rgba(56, 189, 248, 0.16)',
                                         border: '1px solid rgba(56, 189, 248, 0.35)',
-                                        color: '#7dd3fc',
+                                        color: 'var(--info-text)',
                                         fontSize: 10,
                                         fontWeight: 700,
                                         display: 'inline-flex',
@@ -2365,7 +2365,7 @@ export function CoachDashboardView({
                                         ? '1px solid var(--accent-volt)'
                                         : '1px solid var(--border-subtle)',
                                       background: t.countObservationInStats
-                                        ? 'rgba(214, 125, 9, 0.14)'
+                                        ? 'var(--surface-2)'
                                         : 'var(--bg-surface-2)',
                                       color: t.countObservationInStats
                                         ? 'var(--accent-volt)'
@@ -2635,7 +2635,7 @@ export function CoachDashboardView({
                     alignItems: 'center',
                     gap: 6,
                     color: 'var(--accent-volt)',
-                    borderColor: 'rgba(214, 125, 9, 0.35)',
+                    borderColor: 'var(--line-2)',
                     alignSelf: 'center',
                   }}
                 >
@@ -2674,7 +2674,7 @@ export function CoachDashboardView({
                     background: 'var(--bg-surface-2)',
                     padding: 14,
                     borderRadius: 14,
-                    border: '1px solid rgba(214, 125, 9, 0.25)',
+                    border: '1px solid var(--line-2)',
                     marginBottom: 14,
                   }}
                 >
@@ -2712,7 +2712,7 @@ export function CoachDashboardView({
                         style={{
                           padding: '3px 9px',
                           borderRadius: 999,
-                          background: 'rgba(214, 125, 9, 0.12)',
+                          background: 'var(--surface-2)',
                           color: 'var(--accent-volt)',
                           fontWeight: 800,
                         }}
@@ -2738,7 +2738,7 @@ export function CoachDashboardView({
                         style={{
                           padding: '3px 9px',
                           borderRadius: 999,
-                          background: 'rgba(214, 125, 9, 0.14)',
+                          background: 'var(--surface-2)',
                           color: 'var(--accent-orange-bright)',
                           fontWeight: 800,
                         }}
@@ -2752,7 +2752,7 @@ export function CoachDashboardView({
                           padding: '3px 9px',
                           borderRadius: 999,
                           background: 'rgba(34, 197, 94, 0.15)',
-                          color: '#4ade80',
+                          color: 'var(--ok-text)',
                           fontWeight: 800,
                         }}
                       >
@@ -3326,7 +3326,7 @@ export function CoachDashboardView({
                         gap: 6,
                         fontSize: 12.5,
                         fontWeight: 800,
-                        color: '#f87171',
+                        color: 'var(--danger-text)',
                       }}
                     >
                       <Ban size={14} />
@@ -3364,7 +3364,7 @@ export function CoachDashboardView({
                           ? '#ef4444'
                           : undefined,
                         color: (selectedTrainee.blockedDates || []).includes(today)
-                          ? '#f87171'
+                          ? 'var(--danger-text)'
                           : undefined,
                       }}
                     >
@@ -3494,7 +3494,7 @@ export function CoachDashboardView({
                           fontWeight: 700,
                           background: 'rgba(239, 68, 68, 0.14)',
                           border: '1px solid rgba(239, 68, 68, 0.38)',
-                          color: '#fca5a5',
+                          color: 'var(--danger-text)',
                           cursor: 'pointer',
                         }}
                       >
@@ -3625,7 +3625,7 @@ export function CoachDashboardView({
                 <div
                   style={{
                     fontWeight: 800,
-                    color: '#ffb800',
+                    color: 'var(--warn-text)',
                     marginBottom: 6,
                   }}
                 >
@@ -3675,7 +3675,7 @@ export function CoachDashboardView({
                   background: 'var(--bg-surface-2)',
                   padding: 14,
                   borderRadius: 14,
-                  border: '1px solid rgba(214, 125, 9, 0.28)',
+                  border: '1px solid var(--line-2)',
                 }}
               >
                 <div
@@ -3747,8 +3747,8 @@ export function CoachDashboardView({
                               gap: 6,
                               padding: '4px 10px',
                               borderRadius: 999,
-                              background: 'rgba(214, 125, 9, 0.1)',
-                              border: '1px solid rgba(214, 125, 9, 0.3)',
+                              background: 'var(--fill-1)',
+                              border: '1px solid var(--line-2)',
                               fontSize: 11,
                               color: 'var(--accent-volt)',
                               fontWeight: 700,
@@ -5056,7 +5056,7 @@ export function CoachDashboardView({
                                 padding: '4px 10px',
                                 borderRadius: 999,
                                 background: 'rgba(245, 158, 11, 0.14)',
-                                color: '#fbbf24',
+                                color: 'var(--warn-text)',
                                 fontSize: 11,
                                 fontWeight: 700,
                               }}
@@ -5170,7 +5170,7 @@ export function CoachDashboardView({
                                         alignItems: 'center',
                                         gap: 4,
                                         cursor: 'pointer',
-                                        color: '#fbbf24',
+                                        color: 'var(--warn-text)',
                                         borderColor: 'rgba(245, 158, 11, 0.3)',
                                       }}
                                     >
@@ -5202,7 +5202,7 @@ export function CoachDashboardView({
                                       alignItems: 'center',
                                       gap: 4,
                                       cursor: 'pointer',
-                                      color: '#f87171',
+                                      color: 'var(--danger-text)',
                                       borderColor: 'rgba(239, 68, 68, 0.3)',
                                     }}
                                   >
@@ -5443,7 +5443,7 @@ export function CoachDashboardView({
                               style={{
                                 padding: '3px 10px',
                                 borderRadius: 8,
-                                background: 'rgba(214, 125, 9, 0.12)',
+                                background: 'var(--surface-2)',
                                 color: 'var(--accent-volt)',
                                 fontSize: 12,
                                 fontWeight: 800,
@@ -5510,7 +5510,7 @@ export function CoachDashboardView({
                                         display: 'inline-flex',
                                         alignItems: 'center',
                                         gap: 4,
-                                        color: '#fbbf24',
+                                        color: 'var(--warn-text)',
                                         borderColor: 'rgba(245, 158, 11, 0.3)',
                                       }}
                                     >
@@ -5544,7 +5544,7 @@ export function CoachDashboardView({
                                       display: 'inline-flex',
                                       alignItems: 'center',
                                       gap: 4,
-                                      color: '#f87171',
+                                      color: 'var(--danger-text)',
                                       borderColor: 'rgba(239, 68, 68, 0.3)',
                                     }}
                                   >
@@ -6277,7 +6277,7 @@ export function CoachDashboardView({
                 padding: '8px 12px',
                 borderRadius: 10,
                 background: 'rgba(239, 68, 68, 0.14)',
-                color: '#f87171',
+                color: 'var(--danger-text)',
                 fontSize: 12,
                 fontWeight: 700,
               }}

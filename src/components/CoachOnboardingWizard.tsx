@@ -375,7 +375,7 @@ export function CoachOnboardingWizard({
                     border: 'none',
                     background: active ? 'var(--accent-volt)'
                       : done
-                      ? 'rgba(214, 125, 9, 0.45)'
+                      ? 'var(--surface-2)'
                       : 'var(--bg-surface-3)',
                     cursor: 'pointer',
                     padding: 0,
@@ -651,7 +651,7 @@ export function CoachOnboardingWizard({
                       ? '1px solid var(--accent-volt)'
                       : '1px solid var(--border-subtle)',
                     background: !defaultCountObservationInStats
-                      ? 'rgba(214, 125, 9, 0.14)'
+                      ? 'var(--surface-2)'
                       : 'var(--bg-surface-1)',
                     color: !defaultCountObservationInStats
                       ? 'var(--accent-volt)'
@@ -673,7 +673,7 @@ export function CoachOnboardingWizard({
                       ? '1px solid var(--accent-volt)'
                       : '1px solid var(--border-subtle)',
                     background: defaultCountObservationInStats
-                      ? 'rgba(214, 125, 9, 0.14)'
+                      ? 'var(--surface-2)'
                       : 'var(--bg-surface-1)',
                     color: defaultCountObservationInStats
                       ? 'var(--accent-volt)'

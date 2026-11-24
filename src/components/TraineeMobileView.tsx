@@ -503,8 +503,8 @@ export function TraineeMobileView({
             justifyContent: 'space-between',
             padding: '10px 14px',
             borderRadius: 14,
-            background: 'rgba(214, 125, 9, 0.12)',
-            border: '1px solid rgba(214, 125, 9, 0.35)',
+            background: 'var(--surface-2)',
+            border: '1px solid var(--line-2)',
             marginBottom: 14,
           }}
         >
@@ -864,9 +864,9 @@ export function TraineeMobileView({
                   gap: 10,
                 }}
               >
-                <Ban size={18} color="#f87171" style={{ flexShrink: 0 }} />
+                <Ban size={18} color="var(--danger-text)" style={{ flexShrink: 0 }} />
                 <div style={{ fontSize: 12 }}>
-                  <div style={{ fontWeight: 800, color: '#f87171' }}>
+                  <div style={{ fontWeight: 800, color: 'var(--danger-text)' }}>
                     יום חסום להזנה
                   </div>
                   <div style={{ color: 'var(--text-secondary)' }}>
@@ -904,7 +904,7 @@ export function TraineeMobileView({
                         marginTop: 3,
                         fontSize: 11,
                         fontWeight: 700,
-                        color: '#7dd3fc',
+                        color: 'var(--info-text)',
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: 4,
@@ -1169,7 +1169,7 @@ export function TraineeMobileView({
                         padding: '10px 8px',
                         border:
                           remainingWorkouts === 0
-                            ? '1px solid rgba(214, 125, 9, 0.42)'
+                            ? '1px solid var(--line-2)'
                             : '1px solid var(--border-subtle)',
                         display: 'flex',
                         flexDirection: 'column',
@@ -1207,7 +1207,7 @@ export function TraineeMobileView({
                         padding: '10px 8px',
                         border:
                           remainingCardio === 0
-                            ? '1px solid rgba(214, 125, 9, 0.42)'
+                            ? '1px solid var(--line-2)'
                             : '1px solid var(--border-subtle)',
                         display: 'flex',
                         flexDirection: 'column',
@@ -1246,7 +1246,7 @@ export function TraineeMobileView({
                           padding: '10px 8px',
                           border:
                             remainingSteps === 0
-                              ? '1px solid rgba(214, 125, 9, 0.42)'
+                              ? '1px solid var(--line-2)'
                               : '1px solid var(--border-subtle)',
                           display: 'flex',
                           flexDirection: 'column',
@@ -1308,7 +1308,7 @@ export function TraineeMobileView({
                       padding: '10px 12px',
                       borderRadius: 12,
                       border: todayWorkout?.completed
-                        ? '1px solid rgba(214, 125, 9, 0.35)'
+                        ? '1px solid var(--line-2)'
                         : '1px solid var(--border-subtle)',
                     }}
                   >
@@ -1413,7 +1413,7 @@ export function TraineeMobileView({
                       padding: '10px 12px',
                       borderRadius: 12,
                       border: todayCardio?.completed
-                        ? '1px solid rgba(214, 125, 9, 0.4)'
+                        ? '1px solid var(--line-2)'
                         : '1px solid var(--border-subtle)',
                     }}
                   >
@@ -1529,7 +1529,7 @@ export function TraineeMobileView({
                       padding: '10px 12px',
                       borderRadius: 12,
                       border: todaySleep
-                        ? '1px solid rgba(214, 125, 9, 0.4)'
+                        ? '1px solid var(--line-2)'
                         : '1px solid var(--border-subtle)',
                     }}
                   >
@@ -1682,7 +1682,7 @@ export function TraineeMobileView({
                             flex: 1,
                             minWidth: 0,
                             background: 'var(--bg-surface-1)',
-                            border: '1px solid rgba(214, 125, 9, 0.45)',
+                            border: '1px solid var(--line-2)',
                             borderRadius: 8,
                             padding: '6px 10px',
                             color: 'var(--text-primary)',
@@ -1761,7 +1761,7 @@ export function TraineeMobileView({
                       cursor: 'pointer',
                       borderColor:
                         answeredCount > 0
-                          ? 'rgba(214, 125, 9, 0.45)'
+                          ? 'var(--surface-2)'
                           : 'var(--border-subtle)',
                       color:
                         answeredCount > 0
@@ -1778,7 +1778,7 @@ export function TraineeMobileView({
                           fontSize: 10,
                           padding: '1px 5px',
                           borderRadius: 999,
-                          background: 'rgba(214, 125, 9, 0.14)',
+                          background: 'var(--surface-2)',
                           color: 'var(--accent-volt)',
                         }}
                       >
@@ -2153,8 +2153,8 @@ export function TraineeMobileView({
                           gap: 10,
                           padding: '10px 12px',
                           borderRadius: 12,
-                          background: 'rgba(214, 125, 9, 0.07)',
-                          border: '1px solid rgba(214, 125, 9, 0.22)',
+                          background: 'var(--fill-1)',
+                          border: '1px solid var(--line-2)',
                           marginBottom: 12,
                         }}
                       >
@@ -2324,7 +2324,7 @@ export function TraineeMobileView({
                       width: 36,
                       height: 36,
                       borderRadius: 10,
-                      background: 'rgba(214, 125, 9, 0.12)',
+                      background: 'var(--surface-2)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -2514,7 +2514,7 @@ export function TraineeMobileView({
                       width: 36,
                       height: 36,
                       borderRadius: 10,
-                      background: 'rgba(214, 125, 9, 0.12)',
+                      background: 'var(--surface-2)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -2651,7 +2651,7 @@ export function TraineeMobileView({
                     marginTop: 8,
                     fontSize: 11,
                     fontWeight: 700,
-                    color: weightFeedback.isError ? '#f87171' : '#4ade80',
+                    color: weightFeedback.isError ? 'var(--danger-text)' : 'var(--ok-text)',
                   }}
                 >
                   {weightFeedback.msg}
@@ -2770,7 +2770,7 @@ export function TraineeMobileView({
                     fontWeight: 700,
                     cursor: 'pointer',
                     color: 'var(--accent-volt)',
-                    borderColor: 'rgba(214, 125, 9, 0.35)',
+                    borderColor: 'var(--line-2)',
                   }}
                 >
                   <Share2 size={13} />
@@ -2784,8 +2784,8 @@ export function TraineeMobileView({
                     marginBottom: 12,
                     padding: '8px 12px',
                     borderRadius: 10,
-                    background: 'rgba(214, 125, 9, 0.12)',
-                    border: '1px solid rgba(214, 125, 9, 0.35)',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--line-2)',
                     color: 'var(--accent-volt)',
                     fontSize: 11,
                     fontWeight: 700,
@@ -2803,7 +2803,7 @@ export function TraineeMobileView({
                     borderRadius: 10,
                     background: 'rgba(239, 68, 68, 0.12)',
                     border: '1px solid rgba(239, 68, 68, 0.35)',
-                    color: '#f87171',
+                    color: 'var(--danger-text)',
                     fontSize: 11,
                     fontWeight: 700,
                   }}
@@ -2951,7 +2951,7 @@ export function TraineeMobileView({
                   <div
                     style={{
                       fontSize: 11,
-                      color: '#4ade80',
+                      color: 'var(--ok-text)',
                       fontWeight: 700,
                       textAlign: 'center',
                     }}
@@ -3166,7 +3166,7 @@ export function TraineeMobileView({
               overflow: 'hidden',
               borderRadius: 12,
               background: 'var(--bg-surface-2)',
-              border: '1px solid rgba(214, 125, 9, 0.45)',
+              border: '1px solid var(--line-2)',
               padding: '8px 12px',
               display: 'flex',
               alignItems: 'center',

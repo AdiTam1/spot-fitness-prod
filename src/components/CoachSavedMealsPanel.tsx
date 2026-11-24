@@ -142,7 +142,7 @@ export function CoachSavedMealsPanel({
               alignItems: 'center',
               gap: 6,
               cursor: 'pointer',
-              borderColor: 'rgba(214, 125, 9, 0.35)',
+              borderColor: 'var(--line-2)',
             }}
           >
             <Ruler size={13} color="currentColor" />
@@ -163,8 +163,8 @@ export function CoachSavedMealsPanel({
             fontWeight: 700,
             background: banner.isError
               ? 'rgba(239, 68, 68, 0.14)'
-              : 'rgba(214, 125, 9, 0.1)',
-            color: banner.isError ? '#f87171' : 'var(--accent-volt)',
+              : 'var(--fill-1)',
+            color: banner.isError ? 'var(--danger-text)' : 'var(--accent-volt)',
           }}
         >
           {banner.msg}
@@ -227,8 +227,8 @@ export function CoachSavedMealsPanel({
                             fontWeight: 800,
                             background: m.isAiFallback
                               ? 'rgba(245, 158, 11, 0.16)'
-                              : 'rgba(214, 125, 9, 0.12)',
-                            color: m.isAiFallback ? '#fbbf24' : 'var(--accent-volt)',
+                              : 'var(--surface-2)',
+                            color: m.isAiFallback ? 'var(--warn-text)' : 'var(--accent-volt)',
                           }}
                         >
                           {m.isAiFallback
@@ -243,7 +243,7 @@ export function CoachSavedMealsPanel({
                             padding: '1px 7px',
                             borderRadius: 999,
                             background: 'rgba(56, 189, 248, 0.2)',
-                            color: '#7dd3fc',
+                            color: 'var(--info-text)',
                             fontWeight: 800,
                           }}
                         >
@@ -281,7 +281,7 @@ export function CoachSavedMealsPanel({
                         <Check size={11} style={{ marginLeft: 4 }} />
                         <b>תשובה שנשלחה ({q.repliedBy || 'מאמן'}):</b> {q.reply}
                         {q.recommendedPromoted && (
-                          <span style={{ marginRight: 6, color: '#fbbf24' }}>
+                          <span style={{ marginRight: 6, color: 'var(--warn-text)' }}>
                             <Star size={10} style={{ marginLeft: 2 }} />
                             קודם להמלצת תפריט
                           </span>

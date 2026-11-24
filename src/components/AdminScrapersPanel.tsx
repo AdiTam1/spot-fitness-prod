@@ -280,7 +280,7 @@ export function AdminScrapersPanel({
                 fontSize: 13,
                 fontWeight: 700,
                 cursor: 'pointer',
-                borderColor: 'rgba(214, 125, 9, 0.35)',
+                borderColor: 'var(--line-2)',
               }}
             >
               {busyAction === 'sync_catalog' ? (
@@ -332,7 +332,7 @@ export function AdminScrapersPanel({
               alignItems: 'center',
               gap: 8,
               fontSize: 12.5,
-              color: '#86efac',
+              color: 'var(--ok-text)',
             }}
           >
             <CheckCircle2 size={16} />
@@ -361,7 +361,7 @@ export function AdminScrapersPanel({
           >
             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>סטטוס סקרייפרים</div>
             <div className="num-mono" style={{ fontSize: 20, fontWeight: 900, marginTop: 4 }}>
-              <span style={{ color: '#4ade80' }}>{report?.totalHealthy ?? 0}</span>
+              <span style={{ color: 'var(--ok-text)' }}>{report?.totalHealthy ?? 0}</span>
               <span style={{ color: 'var(--text-muted)', fontSize: 14 }}> / {results.length || 12} תקינים</span>
             </div>
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
@@ -446,7 +446,7 @@ export function AdminScrapersPanel({
           flexWrap: 'wrap',
           gap: 12,
           borderColor: report?.sqlCatalogStats?.available
-            ? 'rgba(214, 125, 9, 0.25)'
+            ? 'var(--surface-2)'
             : 'rgba(250, 204, 21, 0.35)',
         }}
       >
@@ -465,7 +465,7 @@ export function AdminScrapersPanel({
                 background: report?.sqlCatalogStats?.available
                   ? 'rgba(74, 222, 128, 0.14)'
                   : 'rgba(250, 204, 21, 0.14)',
-                color: report?.sqlCatalogStats?.available ? '#4ade80' : '#facc15',
+                color: report?.sqlCatalogStats?.available ? 'var(--ok-text)' : 'var(--warn-text)',
               }}
             >
               {report?.sqlCatalogStats?.available ? 'מחובר ופעיל' : 'ממתין להרצת SQL ב-Supabase'}
@@ -517,7 +517,7 @@ export function AdminScrapersPanel({
               fontSize: 12,
               fontWeight: 700,
               cursor: 'pointer',
-              borderColor: 'rgba(214, 125, 9, 0.35)',
+              borderColor: 'var(--line-2)',
             }}
           >
             {busyAction === 'backfill_meta' ? (
@@ -545,7 +545,7 @@ export function AdminScrapersPanel({
               fontSize: 12,
               fontWeight: 700,
               cursor: 'pointer',
-              borderColor: 'rgba(214, 125, 9, 0.35)',
+              borderColor: 'var(--line-2)',
             }}
           >
             {busyAction === 'sync_off' ? (
@@ -575,10 +575,10 @@ export function AdminScrapersPanel({
           const isSyncingThis = busyAction === `sync:${item.id}`;
           const badgeColor =
             item.status === 'healthy'
-              ? { bg: 'rgba(74, 222, 128, 0.14)', fg: '#4ade80', border: 'rgba(74, 222, 128, 0.4)', label: 'תקין' }
+              ? { bg: 'rgba(74, 222, 128, 0.14)', fg: 'var(--ok-text)', border: 'rgba(74, 222, 128, 0.4)', label: 'תקין' }
               : item.status === 'broken'
                 ? { bg: 'rgba(255, 94, 126, 0.14)', fg: '#ff6b8b', border: 'rgba(255, 94, 126, 0.45)', label: 'נשבר — נדרש עדכון' }
-                : { bg: 'rgba(250, 204, 21, 0.14)', fg: '#facc15', border: 'rgba(250, 204, 21, 0.4)', label: 'ממתין / אזהרה' };
+                : { bg: 'rgba(250, 204, 21, 0.14)', fg: 'var(--warn-text)', border: 'rgba(250, 204, 21, 0.4)', label: 'ממתין / אזהרה' };
 
           return (
             <div
@@ -689,8 +689,8 @@ export function AdminScrapersPanel({
                   style={{
                     padding: '8px 10px',
                     borderRadius: 10,
-                    background: 'rgba(214, 125, 9, 0.05)',
-                    border: '1px solid rgba(214, 125, 9, 0.2)',
+                    background: 'var(--fill-1)',
+                    border: '1px solid var(--line-2)',
                     fontSize: 11.5,
                   }}
                 >
@@ -719,7 +719,7 @@ export function AdminScrapersPanel({
                         ? '1px solid rgba(255, 94, 126, 0.35)'
                         : '1px solid rgba(250, 204, 21, 0.3)',
                     fontSize: 11.5,
-                    color: item.status === 'broken' ? '#ff9db1' : '#fde047',
+                    color: item.status === 'broken' ? '#ff9db1' : 'var(--warn-text)',
                     display: 'flex',
                     gap: 6,
                     alignItems: 'flex-start',
@@ -897,7 +897,7 @@ export function AdminScrapersPanel({
                       : 'ידני'}
                 </strong>{' '}
                 ·{' '}
-                <span style={{ color: '#4ade80' }}>✔ {h.healthy}</span>{' '}
+                <span style={{ color: 'var(--ok-text)' }}>✔ {h.healthy}</span>{' '}
                 {h.broken > 0 && (
                   <span style={{ color: '#ff6b8b' }}>· ✖ {h.broken} שבור</span>
                 )}

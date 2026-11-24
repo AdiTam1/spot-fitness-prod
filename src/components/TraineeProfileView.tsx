@@ -603,7 +603,7 @@ export function TraineeProfileView({
                   marginBottom: 4,
                 }}
               >
-                <Footprints size={13} color="#4ade80" />
+                <Footprints size={13} color="var(--ok-text)" />
                 <span>ממוצע צעדים יומי</span>
               </div>
               <div className="num-mono" style={{ fontSize: 16, fontWeight: 900 }}>
@@ -708,7 +708,7 @@ export function TraineeProfileView({
                 background: isCurrentPlatformPushActive
                   ? 'rgba(34, 197, 94, 0.16)'
                   : 'rgba(245, 158, 11, 0.16)',
-                color: isCurrentPlatformPushActive ? '#4ade80' : '#fcd34d',
+                color: isCurrentPlatformPushActive ? 'var(--ok-text)' : 'var(--warn-text)',
               }}
             >
               {isCurrentPlatformPushActive
@@ -735,7 +735,7 @@ export function TraineeProfileView({
                   borderRadius: 10,
                   padding: '8px 10px',
                   fontSize: 11.5,
-                  color: '#fcd34d',
+                  color: 'var(--warn-text)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
@@ -822,7 +822,7 @@ export function TraineeProfileView({
                 style={{
                   fontSize: 11.5,
                   fontWeight: 700,
-                  color: pushFeedback.ok ? '#4ade80' : '#fca5a5',
+                  color: pushFeedback.ok ? 'var(--ok-text)' : 'var(--danger-text)',
                 }}
               >
                 {pushFeedback.text}
@@ -833,7 +833,7 @@ export function TraineeProfileView({
           <div
             style={{
               background: 'var(--bg-surface-2)',
-              border: '1px solid rgba(214, 125, 9, 0.25)',
+              border: '1px solid var(--line-2)',
               borderRadius: 12,
               padding: 12,
               marginBottom: 14,
@@ -860,7 +860,7 @@ export function TraineeProfileView({
                 style={{
                   fontSize: 11.5,
                   fontWeight: 700,
-                  color: '#fcd34d',
+                  color: 'var(--warn-text)',
                   background: 'rgba(245, 158, 11, 0.12)',
                   padding: '6px 9px',
                   borderRadius: 8,
@@ -929,7 +929,7 @@ export function TraineeProfileView({
                   borderRadius: 10,
                   padding: '8px 10px',
                   fontSize: 11.5,
-                  color: '#fcd34d',
+                  color: 'var(--warn-text)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
@@ -950,7 +950,7 @@ export function TraineeProfileView({
                   borderRadius: 10,
                   padding: '8px 10px',
                   fontSize: 11.5,
-                  color: '#fca5a5',
+                  color: 'var(--danger-text)',
                 }}
               >
                 {webStatus.isIos
@@ -1016,7 +1016,7 @@ export function TraineeProfileView({
                 style={{
                   fontSize: 11.5,
                   fontWeight: 700,
-                  color: pushFeedback.ok ? '#4ade80' : '#fca5a5',
+                  color: pushFeedback.ok ? 'var(--ok-text)' : 'var(--danger-text)',
                 }}
               >
                 {pushFeedback.text}

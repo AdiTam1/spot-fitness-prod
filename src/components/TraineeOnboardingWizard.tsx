@@ -392,7 +392,7 @@ export function TraineeOnboardingWizard({
                     border: 'none',
                     background: active ? 'var(--accent-volt)'
                       : done
-                      ? 'rgba(214, 125, 9, 0.45)'
+                      ? 'var(--surface-2)'
                       : 'var(--bg-surface-3)',
                     cursor: 'pointer',
                     padding: 0,
@@ -1235,12 +1235,12 @@ export function TraineeOnboardingWizard({
                         padding: '5px 10px',
                         borderRadius: 999,
                         border: selected
-                          ? '1px solid #ffb800'
+                          ? '1px solid var(--warn-text)'
                           : '1px solid var(--border-subtle)',
                         background: selected
                           ? 'rgba(255, 184, 0, 0.14)'
                           : 'var(--bg-surface-1)',
-                        color: selected ? '#ffb800' : 'var(--text-secondary)',
+                        color: selected ? 'var(--warn-text)' : 'var(--text-secondary)',
                         fontSize: 11,
                         fontWeight: 700,
                         cursor: 'pointer',

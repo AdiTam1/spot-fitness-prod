@@ -1307,7 +1307,7 @@ export function AddMealDrawer({
                   alignItems: 'center',
                   background: 'var(--bg-surface-2)',
                   border: trimmedQuery
-                    ? '1px solid rgba(214, 125, 9, 0.5)'
+                    ? '1px solid var(--line-2)'
                     : '1px solid var(--border-strong)',
                   borderRadius: 999,
                   padding: '0 10px 0 6px',
@@ -1381,11 +1381,11 @@ export function AddMealDrawer({
                       voiceState === 'listening'
                         ? 'rgba(239, 68, 68, 0.2)'
                         : voiceState === 'transcribing'
-                        ? 'rgba(214, 125, 9, 0.22)'
+                        ? 'var(--surface-2)'
                         : 'transparent',
                     color:
                       voiceState === 'listening'
-                        ? '#f87171'
+                        ? 'var(--danger-text)'
                         : voiceState === 'transcribing'
                         ? 'var(--accent-volt)'
                         : 'var(--text-secondary)',
@@ -1440,9 +1440,7 @@ export function AddMealDrawer({
                     justifyContent: 'center',
                     cursor: 'pointer',
                     flexShrink: 0,
-                    boxShadow: trimmedQuery
-                      ? '0 2px 10px rgba(214, 125, 9, 0.4)'
-                      : 'none',
+                    boxShadow: 'none',
                   }}
                 >
                   {isSlotBgProcessing || aiLoading ? (
@@ -1482,7 +1480,7 @@ export function AddMealDrawer({
                     padding: 6,
                     borderRadius: 14,
                     background: 'var(--bg-surface-2)',
-                    border: '1px solid rgba(214, 125, 9, 0.35)',
+                    border: '1px solid var(--line-2)',
                   }}
                 >
                   <label
@@ -1496,7 +1494,7 @@ export function AddMealDrawer({
                       justifyContent: 'center',
                       gap: 4,
                       cursor: 'pointer',
-                      borderColor: 'rgba(214, 125, 9, 0.4)',
+                      borderColor: 'var(--line-2)',
                     }}
                   >
                     <Camera size={13} color="currentColor" />
@@ -1575,19 +1573,19 @@ export function AddMealDrawer({
                 background:
                   voiceState === 'listening'
                     ? 'rgba(239, 68, 68, 0.14)'
-                    : 'rgba(214, 125, 9, 0.14)',
+                    : 'var(--surface-2)',
                 border:
                   voiceState === 'listening'
                     ? '1px solid rgba(239, 68, 68, 0.42)'
-                    : '1px solid rgba(214, 125, 9, 0.42)',
-                color: voiceState === 'listening' ? '#fca5a5' : 'var(--accent-volt)',
+                    : '1px solid var(--line-2)',
+                color: voiceState === 'listening' ? 'var(--danger-text)' : 'var(--accent-volt)',
                 fontSize: 12,
                 fontWeight: 700,
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
                 {voiceState === 'listening' ? (
-                  <Mic size={14} color="#f87171" style={{ flexShrink: 0 }} />
+                  <Mic size={14} color="var(--danger-text)" style={{ flexShrink: 0 }} />
                 ) : (
                   <Loader2 size={14} className="spot-spinner" style={{ flexShrink: 0 }} />
                 )}
@@ -1656,16 +1654,16 @@ export function AddMealDrawer({
                   ? 'rgba(239, 68, 68, 0.14)'
                   : aiSummary.isFallback
                   ? 'rgba(245, 158, 11, 0.14)'
-                  : 'rgba(214, 125, 9, 0.1)',
+                  : 'var(--fill-1)',
                 border: aiSummary.isError
                   ? '1px solid rgba(239, 68, 68, 0.35)'
                   : aiSummary.isFallback
                   ? '1px solid rgba(245, 158, 11, 0.35)'
-                  : '1px solid rgba(214, 125, 9, 0.3)',
+                  : '1px solid var(--line-2)',
                 color: aiSummary.isError
-                  ? '#f87171'
+                  ? 'var(--danger-text)'
                   : aiSummary.isFallback
-                  ? '#fbbf24'
+                  ? 'var(--warn-text)'
                   : 'var(--accent-volt)',
                 fontSize: 12,
                 fontWeight: 700,
@@ -1932,7 +1930,7 @@ export function AddMealDrawer({
                   key={preset.id}
                   style={{
                     background: 'var(--bg-surface-2)',
-                    border: '1px solid rgba(214, 125, 9, 0.28)',
+                    border: '1px solid var(--line-2)',
                     borderRadius: 12,
                     padding: '9px 12px',
                     display: 'flex',
@@ -2002,7 +2000,7 @@ export function AddMealDrawer({
                   <div
                     style={{
                       background: 'var(--bg-surface-2)',
-                      border: '1px solid rgba(214, 125, 9, 0.25)',
+                      border: '1px solid var(--line-2)',
                       borderRadius: 14,
                       padding: 12,
                     }}
@@ -2148,11 +2146,11 @@ export function AddMealDrawer({
                             borderRadius: 8,
                             background: aiRecDebug.isFallback
                               ? 'rgba(245, 158, 11, 0.14)'
-                              : 'rgba(214, 125, 9, 0.08)',
+                              : 'var(--fill-1)',
                             border: aiRecDebug.isFallback
                               ? '1px solid rgba(245, 158, 11, 0.35)'
-                              : '1px solid rgba(214, 125, 9, 0.25)',
-                            color: aiRecDebug.isFallback ? '#fbbf24' : 'var(--accent-volt)',
+                              : '1px solid var(--line-2)',
+                            color: aiRecDebug.isFallback ? 'var(--warn-text)' : 'var(--accent-volt)',
                           }}
                         >
                           {aiRecDebug.isFallback
@@ -2170,8 +2168,8 @@ export function AddMealDrawer({
                           style={{
                             padding: 12,
                             borderRadius: 12,
-                            background: 'rgba(214, 125, 9, 0.05)',
-                            border: '1px solid rgba(214, 125, 9, 0.25)',
+                            background: 'var(--fill-1)',
+                            border: '1px solid var(--line-2)',
                             display: 'flex',
                             flexDirection: 'column',
                             gap: 6,
@@ -2306,8 +2304,8 @@ export function AddMealDrawer({
                             ? '1px solid rgba(239, 68, 68, 0.35)'
                             : '1px solid rgba(34, 197, 94, 0.35)',
                           color: learnedFeedbackBanner.isError
-                            ? '#f87171'
-                            : '#4ade80',
+                            ? 'var(--danger-text)'
+                            : 'var(--ok-text)',
                           fontSize: 11,
                           fontWeight: 700,
                         }}
@@ -2323,7 +2321,7 @@ export function AddMealDrawer({
                               marginTop: 4,
                               fontSize: 10,
                               color: learnedFeedbackBanner.isFallback
-                                ? '#fbbf24'
+                                ? 'var(--warn-text)'
                                 : 'var(--text-secondary)',
                             }}
                           >
@@ -2595,8 +2593,8 @@ export function AddMealDrawer({
                       justifyContent: 'space-between',
                       padding: '9px 12px',
                       borderRadius: 12,
-                      background: 'rgba(214, 125, 9, 0.14)',
-                      border: '1px solid rgba(214, 125, 9, 0.42)',
+                      background: 'var(--surface-2)',
+                      border: '1px solid var(--line-2)',
                       color: 'var(--text)',
                       fontSize: 12,
                       fontWeight: 800,
@@ -2675,7 +2673,7 @@ export function AddMealDrawer({
                 <div
                   style={{
                     background: 'var(--bg-surface-2)',
-                    border: '1px dashed rgba(214, 125, 9, 0.35)',
+                    border: '1px dashed var(--line-2)',
                     borderRadius: 16,
                     padding: 16,
                     textAlign: 'center',
@@ -2700,7 +2698,7 @@ export function AddMealDrawer({
                               height: photoItems.length === 1 ? 140 : 102,
                               borderRadius: 12,
                               overflow: 'hidden',
-                              border: '1px solid rgba(214, 125, 9, 0.35)',
+                              border: '1px solid var(--line-2)',
                             }}
                           >
                             <img
@@ -2874,7 +2872,7 @@ export function AddMealDrawer({
                           fontSize: 12,
                           cursor: photoUploading ? 'wait' : 'pointer',
                           opacity: photoUploading ? 0.65 : 1,
-                          borderColor: 'rgba(214, 125, 9, 0.35)',
+                          borderColor: 'var(--line-2)',
                         }}
                       >
                         <Camera size={14} color="currentColor" />
@@ -3202,8 +3200,8 @@ export function AddMealDrawer({
                 style={{
                   padding: '12px 14px',
                   borderRadius: 14,
-                  background: 'rgba(214, 125, 9, 0.08)',
-                  border: '1px solid rgba(214, 125, 9, 0.35)',
+                  background: 'var(--fill-1)',
+                  border: '1px solid var(--line-2)',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 8,
@@ -3223,7 +3221,7 @@ export function AddMealDrawer({
                       fontWeight: 800,
                       padding: '2px 8px',
                       borderRadius: 999,
-                      background: 'rgba(214, 125, 9, 0.14)',
+                      background: 'var(--surface-2)',
                       color: 'var(--accent-volt)',
                     }}
                   >
@@ -3243,7 +3241,7 @@ export function AddMealDrawer({
                     fontSize: 11,
                     fontWeight: 700,
                     cursor: 'pointer',
-                    borderColor: 'rgba(214, 125, 9, 0.35)',
+                    borderColor: 'var(--line-2)',
                     color: 'var(--accent-volt)',
                   }}
                 >
@@ -3259,7 +3257,7 @@ export function AddMealDrawer({
                   borderRadius: 12,
                   background: 'rgba(239, 68, 68, 0.14)',
                   border: '1px solid rgba(239, 68, 68, 0.35)',
-                  color: '#f87171',
+                  color: 'var(--danger-text)',
                   fontSize: 12,
                   fontWeight: 700,
                 }}
@@ -3311,7 +3309,7 @@ export function AddMealDrawer({
                           height: 64,
                           borderRadius: 12,
                           objectFit: 'cover',
-                          border: '1px solid rgba(214, 125, 9, 0.45)',
+                          border: '1px solid var(--line-2)',
                           cursor: 'pointer',
                           flexShrink: 0,
                         }}
@@ -3343,7 +3341,7 @@ export function AddMealDrawer({
                           style={{
                             background: 'var(--bg-surface-2)',
                             border: isEditing
-                              ? '1px solid rgba(214, 125, 9, 0.45)'
+                              ? '1px solid var(--line-2)'
                               : '1px solid var(--border-subtle)',
                             borderRadius: 14,
                             padding: '10px 12px',
@@ -3394,12 +3392,12 @@ export function AddMealDrawer({
                                       fontWeight: 800,
                                       background: item.isAiFallback
                                         ? 'rgba(245, 158, 11, 0.16)'
-                                        : 'rgba(214, 125, 9, 0.14)',
+                                        : 'var(--surface-2)',
                                       border: item.isAiFallback
                                         ? '1px solid rgba(245, 158, 11, 0.38)'
-                                        : '1px solid rgba(214, 125, 9, 0.32)',
+                                        : '1px solid var(--line-2)',
                                       color: item.isAiFallback
-                                        ? '#fbbf24'
+                                        ? 'var(--warn-text)'
                                         : 'var(--accent-orange-bright)',
                                     }}
                                   >
@@ -3844,8 +3842,8 @@ export function AddMealDrawer({
                         gap: 3,
                         padding: '1px 6px',
                         borderRadius: 999,
-                        background: 'rgba(214, 125, 9, 0.14)',
-                        border: '1px solid rgba(214, 125, 9, 0.32)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--line-2)',
                         color: 'var(--accent-orange-bright)',
                         fontSize: 10,
                         fontWeight: 700,
@@ -3970,7 +3968,7 @@ export function AddMealDrawer({
                           : uOpt.isUser
                           ? 'rgba(56, 189, 248, 0.1)'
                           : 'var(--bg-surface-2)',
-                        color: active ? '#ffffff' : uOpt.isUser ? '#7dd3fc' : 'var(--text-secondary)',
+                        color: active ? '#ffffff' : uOpt.isUser ? 'var(--info-text)' : 'var(--text-secondary)',
                         fontSize: 11.5,
                         fontWeight: 700,
                         cursor: 'pointer',
@@ -3988,8 +3986,8 @@ export function AddMealDrawer({
                     style={{
                       padding: '6px 11px',
                       borderRadius: 999,
-                      border: '1px dashed rgba(214, 125, 9, 0.55)',
-                      background: inlineUnitOpen ? 'rgba(214, 125, 9, 0.16)' : 'transparent',
+                      border: '1px dashed var(--line-2)',
+                      background: inlineUnitOpen ? 'var(--surface-2)' : 'transparent',
                       color: 'var(--accent-orange-bright)',
                       fontSize: 11.5,
                       fontWeight: 800,
@@ -4012,7 +4010,7 @@ export function AddMealDrawer({
                     padding: 10,
                     borderRadius: 12,
                     background: 'var(--bg-surface-2)',
-                    border: '1px solid rgba(214, 125, 9, 0.35)',
+                    border: '1px solid var(--line-2)',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 8,

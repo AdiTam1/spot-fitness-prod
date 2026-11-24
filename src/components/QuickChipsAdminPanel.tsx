@@ -104,7 +104,7 @@ export function QuickChipsAdminPanel({
             gap: 6,
             fontSize: 13,
             fontWeight: 800,
-            color: '#7dd3fc',
+            color: 'var(--info-text)',
           }}
         >
           <Sparkles size={14} color="currentColor" />
@@ -116,7 +116,7 @@ export function QuickChipsAdminPanel({
       </div>
 
       {errMsg && (
-        <div style={{ fontSize: 11, color: '#f87171', fontWeight: 600 }}>{errMsg}</div>
+        <div style={{ fontSize: 11, color: 'var(--danger-text)', fontWeight: 600 }}>{errMsg}</div>
       )}
 
       <div
@@ -198,7 +198,7 @@ export function QuickChipsAdminPanel({
                   alignItems: 'center',
                 }}
               >
-                <Trash2 size={11} color="#f87171" />
+                <Trash2 size={11} color="var(--danger-text)" />
               </button>
             </span>
           ))

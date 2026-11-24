@@ -35,6 +35,12 @@
   --sheet-shadow: 0 -20px 50px -20px rgba(0, 0, 0, 0.6);
 
   --accent-orange-bright: #eb931c;
+
+  /* Semantic text colours (readable on dark surfaces). */
+  --ok-text: #4ade80;
+  --danger-text: #f87171;
+  --warn-text: #fbbf24;
+  --info-text: #7dd3fc;
 }
 
 :root[data-mantine-color-scheme='light'] {
@@ -65,6 +71,12 @@
 
   /* Darker orange for orange *text* on light surfaces (contrast). */
   --accent-orange-bright: #a95f00;
+
+  /* Semantic text colours (AA contrast on white / light-gray surfaces). */
+  --ok-text: #15803d;
+  --danger-text: #b91c1c;
+  --warn-text: #b45309;
+  --info-text: #0369a1;
 }
 
 :root {
@@ -594,4 +606,34 @@ input, textarea, select {
     height: 44px !important;
     min-width: 44px !important;
   }
+}
+
+/* ---------- Selection controls are neutral, never orange ---------- */
+.mantine-Checkbox-input:checked,
+.mantine-Radio-radio:checked {
+  background-color: var(--btn-primary) !important;
+  border-color: var(--btn-primary) !important;
+}
+.mantine-Checkbox-icon,
+.mantine-Radio-icon {
+  color: var(--btn-primary-text) !important;
+}
+.mantine-Chip-label[data-checked] {
+  background-color: var(--btn-primary) !important;
+  color: var(--btn-primary-text) !important;
+  border-color: var(--btn-primary) !important;
+  font-weight: 700;
+}
+.mantine-Chip-label:not([data-checked]) {
+  background-color: transparent !important;
+  border: 1px solid var(--line-2) !important;
+  color: var(--text) !important;
+  opacity: 1 !important;
+}
+.mantine-Chip-checkIcon {
+  color: var(--btn-primary-text) !important;
+}
+.mantine-Select-option[data-checked],
+.mantine-Combobox-option[data-checked] {
+  font-weight: 700;
 }

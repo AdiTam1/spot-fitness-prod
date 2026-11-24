@@ -358,7 +358,7 @@ export function CoachAlertSettingsModal({
                 background: isDeviceReady
                   ? 'rgba(34, 197, 94, 0.16)'
                   : 'rgba(245, 158, 11, 0.16)',
-                color: isDeviceReady ? '#4ade80' : '#fcd34d',
+                color: isDeviceReady ? 'var(--ok-text)' : 'var(--warn-text)',
               }}
             >
               {isDeviceReady
@@ -765,10 +765,10 @@ export function CoachAlertSettingsModal({
                       cursor: 'pointer',
                       background:
                         direct || viaGroup
-                          ? 'rgba(214, 125, 9, 0.06)'
+                          ? 'var(--fill-1)'
                           : 'var(--bg-surface-2)',
                       border: direct
-                        ? '1px solid rgba(214, 125, 9, 0.35)'
+                        ? '1px solid var(--line-2)'
                         : '1px solid var(--border-subtle)',
                     }}
                   >
@@ -776,7 +776,6 @@ export function CoachAlertSettingsModal({
                       <Checkbox
                         checked={direct}
                         onChange={() => {}}
-                        color="orange"
                         size="xs"
                       />
                       <div>
@@ -814,7 +813,7 @@ export function CoachAlertSettingsModal({
               gap: 6,
               fontSize: 12,
               fontWeight: 700,
-              color: feedback.ok ? '#4ade80' : '#fca5a5',
+              color: feedback.ok ? 'var(--ok-text)' : 'var(--danger-text)',
             }}
           >
             {feedback.ok ? (

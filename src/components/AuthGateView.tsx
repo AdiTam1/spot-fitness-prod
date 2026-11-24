@@ -317,7 +317,7 @@ export function AuthGateView({
                   ? '1px solid rgba(239, 68, 68, 0.4)'
                   : '1px solid rgba(245, 158, 11, 0.4)',
               color:
-                sessionNotice.code === 'ACCOUNT_BLOCKED' ? '#f87171' : '#fbbf24',
+                sessionNotice.code === 'ACCOUNT_BLOCKED' ? 'var(--danger-text)' : 'var(--warn-text)',
               fontSize: 12.5,
               fontWeight: 700,
               marginBottom: 12,
@@ -339,7 +339,7 @@ export function AuthGateView({
               borderRadius: 10,
               background: 'rgba(239, 68, 68, 0.12)',
               border: '1px solid rgba(239, 68, 68, 0.35)',
-              color: '#f87171',
+              color: 'var(--danger-text)',
               fontSize: 12,
               fontWeight: 600,
               marginBottom: 12,
@@ -360,7 +360,7 @@ export function AuthGateView({
               borderRadius: 10,
               background: 'rgba(245, 158, 11, 0.12)',
               border: '1px solid rgba(245, 158, 11, 0.35)',
-              color: '#fbbf24',
+              color: 'var(--warn-text)',
               fontSize: 12,
               fontWeight: 600,
               marginBottom: 12,
