@@ -34,6 +34,7 @@ import {
   X,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   SlidersHorizontal,
   Utensils,
   FolderOpen,
@@ -3262,11 +3263,41 @@ export function AddMealDrawer({
                     gap: 14,
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
-                      <bdi className="ltr-num">{items.length}</bdi> מרכיבים · יעד{' '}
-                      <bdi className="ltr-num">{mealSlot.targets.calories}</bdi>
-                    </span>
+                  <div style={{ display: 'flex', flexDirection: heroScreen ? 'row-reverse' : 'row', alignItems: heroScreen ? 'center' : 'baseline', justifyContent: 'space-between' }}>
+                    {heroScreen ? (
+                      <label
+                        className="btn-surface"
+                        style={{
+                          position: 'relative',
+                          height: 44,
+                          padding: '0 14px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        <ChevronDown size={15} />
+                        <span>{mealSlot.name.replace(/^ארוחת\s+/, '')} ·</span>
+                        <bdi dir="ltr" className="num-mono ltr-num">
+                          {mealTime || mealSlot.timeHint || '12:00'}
+                        </bdi>
+                        <input
+                          type="time"
+                          aria-label="שעת הארוחה"
+                          value={mealTime || mealSlot.timeHint || '12:00'}
+                          onChange={(e) => setMealTime(e.target.value)}
+                          dir="ltr"
+                          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
+                        />
+                      </label>
+                    ) : (
+                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                        <bdi className="ltr-num">{items.length}</bdi> מרכיבים · יעד{' '}
+                        <bdi className="ltr-num">{mealSlot.targets.calories}</bdi>
+                      </span>
+                    )}
                     <span>
                       <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 36, fontWeight: 700, lineHeight: 1 }}>
                         {currentTotals.calories}
