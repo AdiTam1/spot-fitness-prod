@@ -79,6 +79,7 @@ import { TraineeProfileView } from './TraineeProfileView';
 import { CalendarSheet } from './journal/CalendarSheet';
 import { GlassButton } from './ui/GlassButton';
 import { GlassDock } from './ui/GlassDock';
+import { TimeWheel } from './ui/TimeWheel';
 import { ProgressRing } from './ui/ProgressRing';
 import { SegmentedPill } from './ui/SegmentedPill';
 import { SectionHeader } from './ui/Card';
@@ -3103,93 +3104,20 @@ export function TraineeMobileView({
             boxSizing: 'border-box',
           }}
         >
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-            ניתן לבחור כל שעה מותאמת אישית לתיעוד הארוחה ביומן:
-          </div>
+          <TimeWheel value={draftMealTime} onChange={setDraftMealTime} />
 
-          <div
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              overflow: 'hidden',
-              borderRadius: 12,
-              background: 'var(--bg-surface-2)',
-              border: '1px solid var(--line-2)',
-              padding: '8px 12px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <input
-              type="time"
-              value={draftMealTime}
-              onChange={(e) => setDraftMealTime(e.target.value)}
-              dir="ltr"
-              style={{
-                width: '100%',
-                maxWidth: '100%',
-                minWidth: 0,
-                boxSizing: 'border-box',
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text)',
-                fontSize: 20,
-                fontWeight: 800,
-                textAlign: 'center',
-                outline: 'none',
-                colorScheme: 'dark',
-                WebkitAppearance: 'none',
-                appearance: 'none',
-              }}
-            />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <button
-              type="button"
-              disabled={savingMealTime}
-              onClick={() => {
-                const parts = draftMealTime.split(':').map(Number);
-                const mins = ((Number.isFinite(parts[0]) ? parts[0] : 12) * 60 + (Number.isFinite(parts[1]) ? parts[1] : 0) - 15 + 1440) % 1440;
-                setDraftMealTime(
-                  `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`
-                );
-              }}
-              className="btn-surface"
-              style={{ padding: '7px 8px', fontSize: 12.5, cursor: 'pointer' }}
-            >
-              -15 דק׳
-            </button>
-            <button
-              type="button"
-              disabled={savingMealTime}
-              onClick={() => {
-                const parts = draftMealTime.split(':').map(Number);
-                const mins = ((Number.isFinite(parts[0]) ? parts[0] : 12) * 60 + (Number.isFinite(parts[1]) ? parts[1] : 0) + 15) % 1440;
-                setDraftMealTime(
-                  `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`
-                );
-              }}
-              className="btn-surface"
-              style={{ padding: '7px 8px', fontSize: 12.5, cursor: 'pointer' }}
-            >
-              +15 דק׳
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
             <button
               type="button"
               disabled={savingMealTime}
               onClick={() => {
                 const now = new Date();
-                const hh = String(now.getHours()).padStart(2, '0');
-                const mm = String(now.getMinutes()).padStart(2, '0');
-                setDraftMealTime(`${hh}:${mm}`);
+                setDraftMealTime(
+                  `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+                );
               }}
-              className="btn-surface"
-              style={{ flex: 1, padding: '8px', fontSize: 12.5, cursor: 'pointer' }}
+              className="glass"
+              style={{ height: 44, padding: '0 18px', borderRadius: 999, fontFamily: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
             >
               עכשיו
             </button>
@@ -3199,14 +3127,12 @@ export function TraineeMobileView({
                 disabled={savingMealTime}
                 onClick={() => {
                   const m = timeEditSlot.timeHint!.match(/^(\d{1,2}):(\d{2})$/);
-                  setDraftMealTime(
-                    m ? `${m[1].padStart(2, '0')}:${m[2]}` : timeEditSlot.timeHint!
-                  );
+                  setDraftMealTime(m ? `${m[1].padStart(2, '0')}:${m[2]}` : timeEditSlot.timeHint!);
                 }}
-                className="btn-surface"
-                style={{ flex: 1, padding: '8px', fontSize: 12.5, cursor: 'pointer' }}
+                className="glass"
+                style={{ height: 44, padding: '0 18px', borderRadius: 999, fontFamily: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
               >
-                תבנית ({timeEditSlot.timeHint})
+                לפי התפריט · <bdi dir="ltr" className="ltr-num">{timeEditSlot.timeHint}</bdi>
               </button>
             )}
           </div>
@@ -3230,12 +3156,12 @@ export function TraineeMobileView({
             }}
             className="btn-volt"
             style={{
-              padding: '10px 14px',
-              fontSize: 13,
+              height: 56,
+              fontSize: 16,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 6,
+              gap: 8,
               cursor: isBlockedDay ? 'not-allowed' : 'pointer',
             }}
           >

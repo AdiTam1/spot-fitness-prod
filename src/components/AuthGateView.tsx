@@ -442,7 +442,7 @@ export function AuthGateView({
             >
               <span>פרטי חשבון</span>
               <span className="num-mono" style={{ color: 'var(--accent-volt)' }}>
-                1 / 2
+                <bdi dir="ltr" className="ltr-num">1 / 2</bdi>
               </span>
             </div>
 
@@ -515,7 +515,7 @@ export function AuthGateView({
             >
               <span>פרטי הצטרפות</span>
               <span className="num-mono" style={{ color: 'var(--accent-volt)' }}>
-                2 / 2
+                <bdi dir="ltr" className="ltr-num">2 / 2</bdi>
               </span>
             </div>
 

@@ -1130,7 +1130,7 @@ export function CoachDashboardView({
               id: 'inspector',
               label: `תוכנית ויומן (${selectedTrainee?.name || 'ללא מתאמן'})${
                 totalPendingMealQuestions > 0
-                  ? ` · 💬 ${totalPendingMealQuestions}`
+                  ? ` · ${totalPendingMealQuestions}`
                   : ''
               }`,
               icon: Sliders,
@@ -1158,7 +1158,7 @@ export function CoachDashboardView({
               id: 'scrapers',
               label: scraperReport
                 ? scraperReport.totalBroken > 0
-                  ? `סקרייפרים (⚠️ ${scraperReport.totalBroken} שבור)`
+                  ? `סקרייפרים (${scraperReport.totalBroken} שבור)`
                   : `סקרייפרים ומאגר (${scraperReport.totalHealthy}/${scraperReport.results.length} תקין)`
                 : scraperLoading
                   ? 'בודק סקרייפרים...'
@@ -3781,7 +3781,7 @@ export function CoachDashboardView({
                         color: 'var(--text)',
                       }}
                     >
-                      📋 צ׳ק-אין שבועי אחרון ודו״ח סיכום
+                      צ׳ק-אין שבועי אחרון ודו״ח סיכום
                     </span>
                     <button
                       type="button"

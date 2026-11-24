@@ -48,7 +48,7 @@ const TOOL_KIND_OPTIONS: { value: ServingToolKind; label: string }[] = [
 const REFERENCE_OBJECT_OPTIONS: { value: ReferenceObjectKind; label: string }[] = [
   {
     value: 'credit-card',
-    label: '⭐ רב-קו / כרטיס מועדון / אשראי הפוך (8.56×5.4 ס"מ — המדויק ביותר)',
+    label: 'רב-קו / כרטיס מועדון / אשראי הפוך (8.56×5.4 ס"מ — המדויק ביותר)',
   },
   { value: 'coin-10', label: 'מטבע 10 ש"ח (קוטר 23 מ"מ)' },
   { value: 'coin-5', label: 'מטבע 5 ש"ח (קוטר 24 מ"מ)' },
@@ -430,13 +430,13 @@ export function ServingToolsManagerModal({
                     fontSize: 12,
                     lineHeight: 1.5,
                     color: 'var(--text-secondary)',
-                    background: 'rgba(56, 189, 248, 0.08)',
-                    border: '1px solid rgba(56, 189, 248, 0.25)',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--line)',
                     borderRadius: 16,
                     padding: '8px 10px',
                   }}
                 >
-                  <b style={{ color: 'var(--info-text)' }}>
+                  <b style={{ color: 'var(--text)' }}>
                     כללי צילום לדיוק הגבוה ביותר (מבוסס מחקר Vision AI):
                   </b>
                   <br />

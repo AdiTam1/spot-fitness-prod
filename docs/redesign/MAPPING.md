@@ -9,11 +9,11 @@
 | 7 | `AiQuickContext` | דיוק מהיר לניתוח AI | `AiQuickContextPanel` | Done | Grouped chips by category, serving tools, personal chip, pinned analyse CTA; verified dark/light |
 | 8 | `QuickLog` | תיאור במילים / קול | `AddMealDrawer` (text/voice tab) | Done | Large borderless field, sample chips, CTA + orange mic FAB; the design's live item preview is not implemented |
 | 9 | `Barcode` | סריקת ברקוד | `BarcodeScannerModal` | Done | Viewfinder + result stage (product, kcal/macros, add / scan another). Per-unit stepper not included (quantity is edited in the meal items step) |
-| 10 | `SavedMeals` | ארוחות שמורות והיסטוריה | `SavedMealsLibraryTab` | Partial | Neutral tints; layout unchanged |
-| 11 | `AiRecommend` | מה לאכול? | `AddMealDrawer` (recommend tab) | Partial | Color rules; layout unchanged |
+| 10 | `SavedMeals` | ארוחות שמורות והיסטוריה | `SavedMealsLibraryTab` | Done | Filter chips 40px in a scrollable row, emoji removed, neutral banners |
+| 11 | `AiRecommend` | מה לאכול? | `AddMealDrawer` (recommend tab) | Partial | Neutral headings/cards, emoji removed; layout still the original blocks |
 | 12 | `MealItems` | מרכיבי הארוחה | `AddMealDrawer` (items step) | Done | Same result stage as PhotoResult |
-| 13 | `MealTime` | שעת ארוחה | `TraineeMobileView` (meal-time sheet) | Partial | Wheel/snap behavior not changed |
-| 14 | `ServingTools` | כלים ויחידות מידה | `ServingToolsManagerModal` | Partial | Modal is now a bottom sheet; layout unchanged |
+| 13 | `MealTime` | שעת ארוחה | `TraineeMobileView` (meal-time sheet) | Done | Snap wheel (hours/minutes, CSS scroll-snap), now / by-menu shortcuts, 56px save. Snapping verified with mouse wheel; touch swipe not verifiable in the headless harness |
+| 14 | `ServingTools` | כלים ויחידות מידה | `ServingToolsManagerModal` | Partial | Sheet + neutral instruction box; dense form kept |
 | 15 | `AiSync` | ניתוח AI ברקע | `BackgroundAiSyncBanner` | Partial | Neutral tints |
 | 16 | `Metrics` | מדדים | `TraineeMobileView` (metrics section) | Partial | Week strip kept (edits past days); card order differs from design |
 | 17 | `CheckIn` | מדדים · צ׳ק-אין שבועי | `TraineeMobileView` (check-in section) | Done | Weekly stats grid, 44px rating tiles, textarea, pinned actions; selection stays gray per color rules (design shows orange) |
@@ -21,7 +21,7 @@
 | 19 | `MeasureGuide` | מדריך מדידת היקפים | `BodyMeasurementGuide` | Partial | Pill zone tabs + neutral palette; per-region cards of the design not built |
 | 20 | `Profile` | פרופיל | `TraineeProfileView` + `ui/ThemeToggle` | Partial | Theme toggle (system/dark/light) present; layout partially restyled |
 | 21 | `AuthLogin` | התחברות | `AuthGateView` | Done | Redesigned earlier on main |
-| 22 | `AuthRegister` | הרשמת מתאמן | `AuthGateView` | Partial | Same view; not re-verified |
+| 22 | `AuthRegister` | הרשמת מתאמן | `AuthGateView` | Partial | Step counter fixed (RTL flip); same view otherwise |
 | 23 | `AuthPending` | ממתין לאישור מאמן | `PendingApprovalView` (new, used by `app/page.tsx`) | Done | "בדוק שוב" re-fetches; paused accounts get their own copy |
 | 24 | `ForceUpdate` | עדכון חובה | `AndroidForceUpdateGate` | Done | Full-screen layout, version cards, pinned actions (verified via temporary preview route, removed) |
 | 25 | `OnboardingPersonal` | שאלון · פרטים אישיים | `TraineeOnboardingWizard` (step 1) | Done | Full-screen layout, 52px inputs |
