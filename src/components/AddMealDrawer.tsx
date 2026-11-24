@@ -32,6 +32,7 @@ import {
   Image as ImageIcon,
   X,
   ChevronRight,
+  ChevronLeft,
   Utensils,
   FolderOpen,
   CalendarDays,
@@ -65,6 +66,8 @@ import {
 } from '@/lib/dateUtils';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { ServingToolsManagerModal } from './ServingToolsManagerModal';
+import { GlassButton } from './ui/GlassButton';
+import { SegmentedPill } from './ui/SegmentedPill';
 import { SavedMealsLibraryTab } from './SavedMealsLibraryTab';
 import { AiQuickContextPanel } from './AiQuickContextPanel';
 import { useAiProgressMessage } from './BackgroundAiSyncBanner';
@@ -98,6 +101,10 @@ interface AddMealDrawerProps {
   opened: boolean;
   onClose: () => void;
   mealSlot: MealTemplateSlot | null;
+  /** All meal slots of the active day — drives the meal-type segmented control on the hub. */
+  mealSlotOptions?: MealTemplateSlot[];
+  /** Switch the drawer to another meal slot (from the hub segmented control). */
+  onChangeMealSlot?: (slot: MealTemplateSlot) => void;
   existingEntry?: LoggedMealEntry;
   favoriteIds: string[];
   onToggleFavorite: (foodId: string) => void;
@@ -176,6 +183,8 @@ export function AddMealDrawer({
   learnedPreferences = [],
   onPreferenceLearned,
   savedMeals = [],
+  mealSlotOptions = [],
+  onChangeMealSlot,
   customServingTools = [],
   customFoodUnits = [],
   recentContextChips = [],
@@ -1136,14 +1145,14 @@ export function AddMealDrawer({
         position="bottom"
         size="93%"
         zIndex={200}
-        overlayProps={{ backgroundOpacity: 0.8, blur: 6 }}
+        overlayProps={{ backgroundOpacity: 0.55, blur: 3 }}
         withCloseButton={false}
         styles={{
           content: {
             maxWidth: 560,
             margin: '0 auto',
-            borderTopLeftRadius: 26,
-            borderTopRightRadius: 26,
+            borderTopLeftRadius: 36,
+            borderTopRightRadius: 36,
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
@@ -1159,179 +1168,135 @@ export function AddMealDrawer({
           },
         }}
       >
-        {/* אזור עליון קבוע (אינו נגלל): כותרת נקייה + חיפוש אוניברסלי + בחירת מצלמה */}
+        {/* Fixed (non-scrolling) top: grabber, title, meal time, search */}
         <div
           style={{
-            padding: '12px 16px 10px',
-            borderBottom: '1px solid var(--border-subtle)',
+            padding: '10px 20px 12px',
+            borderBottom: activeTab === 'hub' && !trimmedQuery ? 'none' : '1px solid var(--border-subtle)',
             background: 'var(--card)',
             display: 'flex',
             flexDirection: 'column',
-            gap: 10,
+            gap: 12,
             flexShrink: 0,
           }}
         >
+          <div className="sheet-grabber" aria-hidden />
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              gap: 8,
+              gap: 10,
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-              <button
-                type="button"
-                aria-label="סגור"
-                onClick={() => {
-                  if (!savingMeal) onClose();
-                }}
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: '50%',
-                  border: '1px solid var(--border-subtle)',
-                  background: 'var(--bg-surface-2)',
-                  color: 'var(--text-primary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                }}
-              >
-                <X size={16} />
-              </button>
-
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
               {(activeTab !== 'hub' || trimmedQuery.length > 0) && (
-                <button
-                  type="button"
+                <GlassButton
+                  label="חזרה"
+                  size={40}
                   onClick={() => {
-                    if (trimmedQuery) {
-                      setSearchQuery('');
-                      setActiveTab('hub');
-                    } else {
-                      setActiveTab('hub');
-                    }
-                  }}
-                  style={{
-                    padding: '5px 10px',
-                    borderRadius: 999,
-                    border: '1px solid var(--border-subtle)',
-                    background: 'var(--bg-surface-2)',
-                    color: 'var(--text-secondary)',
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 3,
-                    cursor: 'pointer',
-                    flexShrink: 0,
+                    if (trimmedQuery) setSearchQuery('');
+                    setActiveTab('hub');
                   }}
                 >
-                  <ChevronRight size={13} />
-                  <span>חזרה</span>
-                </button>
+                  <ChevronRight size={18} />
+                </GlassButton>
               )}
-
-              <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div
+              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                <h2
                   style={{
-                    fontWeight: 900,
-                    fontSize: 15,
+                    margin: 0,
+                    fontSize: activeTab === 'hub' ? 24 : 19,
+                    fontWeight: 700,
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
+                    color: 'var(--text)',
                   }}
                 >
-                  {mealSlot.name}
-                </div>
-                <label
-                  title="שינוי שעת הארוחה"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    padding: '3px 8px',
-                    borderRadius: 999,
-                    background: 'rgba(214, 125, 9, 0.14)',
-                    border: '1px solid rgba(214, 125, 9, 0.38)',
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Clock size={11} color="var(--accent-orange-bright)" />
-                  <input
-                    type="time"
-                    value={mealTime || mealSlot.timeHint || '12:00'}
-                    onChange={(e) => setMealTime(e.target.value)}
-                    dir="ltr"
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      outline: 'none',
-                      color: 'var(--text)',
-                      fontSize: 11,
-                      fontWeight: 800,
-                      width: 58,
-                      cursor: 'pointer',
-                      fontFamily: "'Space Grotesk', 'Heebo', sans-serif",
-                    }}
-                  />
-                </label>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-              {dateInfo && (
+                  {activeTab === 'hub' ? 'מה אכלת?' : mealSlot.name}
+                </h2>
                 <div
                   style={{
-                    display: 'inline-flex',
+                    display: 'flex',
                     alignItems: 'center',
-                    gap: 5,
-                    padding: '4px 9px',
-                    borderRadius: 999,
-                    background: 'var(--bg-surface-2)',
-                    border: '1px solid var(--line)',
-                    fontSize: 10.5,
-                    fontWeight: 700,
-                    color: 'var(--text)',
-                    whiteSpace: 'nowrap',
+                    gap: 6,
+                    fontSize: 13,
+                    color: 'var(--text-2)',
+                    flexWrap: 'wrap',
                   }}
                 >
-                  <CalendarDays size={11} color="var(--accent-orange-bright)" />
-                  <span>{dateInfo.dayTag}</span>
-                  <span
-                    dir="ltr"
-                    className="num-mono"
-                    style={{ color: 'var(--text-secondary)', fontSize: 10, fontWeight: 600 }}
+                  {dateInfo && <span>{dateInfo.dayTag}</span>}
+                  {dateInfo && <span aria-hidden>·</span>}
+                  <label
+                    title="שינוי שעת הארוחה"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 3,
+                      cursor: 'pointer',
+                    }}
                   >
-                    {dateInfo.shortDate}
+                    <Clock size={12} />
+                    <input
+                      type="time"
+                      aria-label="שעת הארוחה"
+                      value={mealTime || mealSlot.timeHint || '12:00'}
+                      onChange={(e) => setMealTime(e.target.value)}
+                      dir="ltr"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        outline: 'none',
+                        color: 'var(--text)',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        width: 'auto',
+                        minWidth: 52,
+                        padding: 0,
+                        cursor: 'pointer',
+                        fontFamily: "'Space Grotesk', 'Heebo', sans-serif",
+                      }}
+                    />
+                  </label>
+                  <span aria-hidden>·</span>
+                  <span>
+                    {activeTab === 'hub' ? `נרשם ל${mealSlot.name}` : 'יעד'}{' '}
+                    {activeTab !== 'hub' && (
+                      <span className="num-mono" dir="ltr" style={{ color: 'var(--text)', fontWeight: 600 }}>
+                        {mealSlot.targets.calories}
+                      </span>
+                    )}
                   </span>
                 </div>
-              )}
-              <div
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '4px 9px',
-                  borderRadius: 999,
-                  background: 'rgba(214, 125, 9, 0.14)',
-                  border: '1px solid rgba(214, 125, 9, 0.35)',
-                  fontSize: 10.5,
-                  fontWeight: 800,
-                  color: 'var(--accent-orange-bright)',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                <span>יעד</span>
-                <span dir="ltr" className="num-mono">
-                  {mealSlot.targets.calories}
-                </span>
               </div>
             </div>
+            <GlassButton
+              label="סגירה"
+              data-autofocus
+              onClick={() => {
+                if (!savingMeal) onClose();
+              }}
+            >
+              <X size={18} strokeWidth={2.2} />
+            </GlassButton>
           </div>
+
+          {/* Meal type — preselected by time, switches the slot being logged */}
+          {activeTab === 'hub' && !trimmedQuery && mealSlotOptions.length > 1 && onChangeMealSlot && (
+            <SegmentedPill
+              ariaLabel="סוג ארוחה"
+              value={mealSlot.id}
+              onChange={(id) => {
+                const next = mealSlotOptions.find((m) => m.id === id);
+                if (next && next.id !== mealSlot.id && !savingMeal) onChangeMealSlot(next);
+              }}
+              options={mealSlotOptions.map((m) => ({
+                value: m.id,
+                label: m.name.replace(/^ארוחת\s+/, '').replace(/\s*\(.*\)\s*$/, ''),
+              }))}
+            />
+          )}
 
           {/* סרגל חיפוש כולל + כפתור כוכבים (AI) ידני בלבד + מצלמה מהחיפוש */}
           {(activeTab === 'hub' || activeTab === 'catalog') && (
@@ -1743,167 +1708,218 @@ export function AddMealDrawer({
             </div>
           )}
 
-          {/* פאנל א׳: מסך פתיחה / בחירת דרך הוספה (2 עמודות בהשראת תמונות 4 ו-14) */}
-          {activeTab === 'hub' && trimmedQuery.length === 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>
-                בחר דרך להוספת ארוחה או הקלד למעלה לחיפוש / AI:
-              </div>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                  gap: 10,
-                }}
-              >
-                {[
-                  {
-                    id: 'ai-photo',
-                    title: 'צילום AI',
-                    subtitle: 'צלחת או תווית ערכים',
-                    bg: 'linear-gradient(142deg, #e08411 0%, #994f04 60%, #572b03 100%)',
-                    Icon: Camera,
-                  },
-                  {
-                    id: 'ai-text',
-                    title: 'טקסט / קול ל-AI',
-                    subtitle: 'תיאור חופשי + תיבול',
-                    bg: 'linear-gradient(142deg, #c1690a 0%, #733905 62%, #3f1d03 100%)',
-                    Icon: Sparkles,
-                  },
-                  {
-                    id: 'saved-meals',
-                    title: 'ארוחות שמורות',
-                    subtitle: `${savedMeals.length} מנות בגלריה`,
-                    bg: 'linear-gradient(142deg, #8b4c0d 0%, #4b2505 64%, #261304 100%)',
-                    Icon: Bookmark,
-                  },
-                  {
-                    id: 'ai-recommend',
-                    title: 'מה לאכול?',
-                    subtitle: 'המלצות AI + המאמן',
-                    bg: 'linear-gradient(142deg, #d07814 0%, #834406 60%, #482203 100%)',
-                    Icon: Lightbulb,
-                  },
-                  {
-                    id: 'barcode-action',
-                    title: 'סריקת ברקוד',
-                    subtitle: 'מוצרים ארוזים בסופר',
-                    bg: 'linear-gradient(142deg, #743f0c 0%, #3d1e05 64%, #1e0f03 100%)',
-                    Icon: Barcode,
-                  },
-                  {
-                    id: 'favorites',
-                    title: 'מועדפים ומאגר',
-                    subtitle: `${favoriteIds.length} מועדפים · אלפי מוצרים`,
-                    bg: 'linear-gradient(142deg, #ad5909 0%, #653104 62%, #351803 100%)',
-                    Icon: Heart,
-                  },
-                ].map((card) => (
-                  <button
-                    key={card.id}
-                    type="button"
-                    onClick={() => {
-                      if (card.id === 'barcode-action') {
-                        setBarcodeModalOpen(true);
-                      } else {
-                        setActiveTab(card.id);
-                      }
-                    }}
+          {/* Hub: big photo tile, 2×2 shortcuts and one-tap saved meals */}
+          {activeTab === 'hub' && trimmedQuery.length === 0 && (() => {
+            const addPreset = (preset: SavedMealPreset) => {
+              const cloned = preset.items.map((it, i) => ({
+                ...it,
+                id: `hub-pre-${Date.now()}-${i}`,
+              }));
+              setItems((prev) => [...prev, ...cloned]);
+              if (preset.photoDataUrl && !photoDataUrl) {
+                setPhotoDataUrl(preset.photoDataUrl);
+              }
+              setAiSummary({ msg: `נוספה המנה "${preset.title}"` });
+            };
+            const topSaved = [...savedMeals]
+              .sort((a, b) => {
+                if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+                if ((a.mealSlotId === mealSlot.id) !== (b.mealSlotId === mealSlot.id)) {
+                  return a.mealSlotId === mealSlot.id ? -1 : 1;
+                }
+                return (b.lastUsedAt || b.updatedAt || '').localeCompare(a.lastUsedAt || a.updatedAt || '');
+              })
+              .slice(0, 3);
+            const tiles: { id: string; title: string; subtitle: string; Icon: typeof Camera }[] = [
+              { id: 'ai-text', title: 'טקסט / קול ל-AI', subtitle: 'תיאור חופשי + תיבול', Icon: Mic },
+              { id: 'barcode-action', title: 'סריקת ברקוד', subtitle: 'מוצרים ארוזים', Icon: Barcode },
+              {
+                id: 'favorites',
+                title: 'מועדפים ומאגר',
+                subtitle: favoriteIds.length > 0 ? `${favoriteIds.length} מועדפים · חיפוש מוצרים` : 'חיפוש מאכלים ומוצרים',
+                Icon: Search,
+              },
+              { id: 'ai-recommend', title: 'מה לאכול?', subtitle: 'המלצות AI + המאמן', Icon: Lightbulb },
+            ];
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('ai-photo')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 16,
+                    padding: 18,
+                    borderRadius: 26,
+                    border: 'none',
+                    background: 'var(--btn-primary)',
+                    color: 'var(--btn-primary-text)',
+                    textAlign: 'right',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  <span
                     style={{
-                      position: 'relative',
-                      overflow: 'hidden',
-                      background: card.bg,
-                      border: '1px solid rgba(255, 200, 128, 0.16)',
-                      borderRadius: 18,
-                      padding: '15px 14px 13px',
-                      minHeight: 108,
+                      width: 60,
+                      height: 60,
+                      borderRadius: 20,
+                      background: 'rgba(128,128,128,.18)',
                       display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'flex-end',
-                      alignItems: 'flex-start',
-                      textAlign: 'right',
-                      cursor: 'pointer',
-                      boxShadow: '0 8px 22px -10px rgba(0,0,0,0.68)',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flex: 'none',
                     }}
                   >
-                    {/* אפקט רקע עדין בסגנון עומק ותאורה + האייקון באזור הריק ללא טקסט */}
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        position: 'absolute',
-                        top: -18,
-                        left: -14,
-                        width: 78,
-                        height: 78,
-                        borderRadius: '50%',
-                        background:
-                          'radial-gradient(circle at 35% 32%, rgba(255, 224, 180, 0.22) 0%, rgba(255, 178, 92, 0.07) 58%, transparent 74%)',
-                        border: '1px solid rgba(255, 224, 180, 0.12)',
-                        pointerEvents: 'none',
+                    <Camera size={28} strokeWidth={1.8} />
+                  </span>
+                  <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                    <span style={{ fontSize: 18, fontWeight: 700 }}>צלם את הצלחת</span>
+                    <span style={{ fontSize: 13, opacity: 0.72 }}>
+                      צלחת או תווית ערכים · ה-AI מזהה מנות וכמויות
+                    </span>
+                  </span>
+                  <ChevronLeft size={22} />
+                </button>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+                  {tiles.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => {
+                        if (t.id === 'barcode-action') setBarcodeModalOpen(true);
+                        else setActiveTab(t.id);
                       }}
-                    />
-                    <span
-                      aria-hidden="true"
                       style={{
-                        position: 'absolute',
-                        top: 10,
-                        left: 66,
-                        width: 15,
-                        height: 15,
-                        borderRadius: '50%',
-                        background:
-                          'radial-gradient(circle at 35% 35%, rgba(255, 232, 198, 0.24) 0%, transparent 74%)',
-                        pointerEvents: 'none',
-                      }}
-                    />
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        position: 'absolute',
-                        top: 10,
-                        left: 12,
-                        pointerEvents: 'none',
-                        transform: 'rotate(-8deg)',
-                        color: 'rgba(255, 240, 218, 0.28)',
+                        minHeight: 86,
+                        padding: 14,
+                        borderRadius: 22,
+                        border: 'none',
+                        background: 'var(--surface-2)',
+                        color: 'var(--text)',
                         display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                        gap: 10,
+                        textAlign: 'right',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
                       }}
                     >
-                      <card.Icon size={46} strokeWidth={1.55} />
-                    </span>
-                    <div
-                      aria-hidden="true"
-                      style={{
-                        position: 'absolute',
-                        inset: 0,
-                        background:
-                          'linear-gradient(to top, rgba(0,0,0,0.22) 0%, transparent 58%)',
-                        pointerEvents: 'none',
-                      }}
-                    />
+                      <t.Icon size={22} strokeWidth={1.8} />
+                      <span style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontSize: 15, fontWeight: 600 }}>{t.title}</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{t.subtitle}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
 
-                    <div style={{ position: 'relative', zIndex: 1, maxWidth: '84%' }}>
-                      <div style={{ fontSize: 14, fontWeight: 900, color: 'var(--text)' }}>
-                        {card.title}
-                      </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ארוחות שמורות</h3>
+                  <button
+                    type="button"
+                    className="glass"
+                    onClick={() => setActiveTab('saved-meals')}
+                    style={{
+                      height: 34,
+                      padding: '0 12px',
+                      borderRadius: 999,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      fontFamily: 'inherit',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Bookmark size={15} />
+                    כל השמורות
+                    {savedMeals.length > 0 && (
+                      <span className="num-mono" style={{ color: 'var(--text-2)' }}>
+                        {savedMeals.length}
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                {topSaved.length === 0 ? (
+                  <div
+                    style={{
+                      padding: '14px 16px',
+                      borderRadius: 20,
+                      border: '1.5px dashed var(--line-2)',
+                      fontSize: 13,
+                      color: 'var(--text-2)',
+                    }}
+                  >
+                    עוד אין ארוחות שמורות. אחרי שמירת ארוחה, סמן ״שמור כמנה״ כדי להוסיף אותה כאן בלחיצה אחת.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {topSaved.map((preset) => (
                       <div
+                        key={preset.id}
                         style={{
-                          fontSize: 10.5,
-                          fontWeight: 600,
-                          color: 'rgba(255, 244, 228, 0.84)',
-                          marginTop: 2,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                          padding: '10px 14px 10px 10px',
+                          borderRadius: 20,
+                          border: '1px solid var(--line)',
                         }}
                       >
-                        {card.subtitle}
+                        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span
+                            style={{
+                              fontSize: 15,
+                              fontWeight: 600,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {preset.title}
+                          </span>
+                          <span
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 10,
+                              fontSize: 12,
+                              color: 'var(--text-2)',
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <span className="num-mono" style={{ color: 'var(--text)', fontWeight: 600 }}>
+                              {Math.round(preset.totalCalories)} קק״ל
+                            </span>
+                            {[
+                              { l: 'ח', v: preset.totalProtein, c: 'var(--macro-protein)' },
+                              { l: 'פ', v: preset.totalCarbs, c: 'var(--macro-carbs)' },
+                              { l: 'ש', v: preset.totalFat, c: 'var(--macro-fat)' },
+                            ].map((m) => (
+                              <span key={m.l} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ width: 6, height: 6, borderRadius: 9, background: m.c }} />
+                                {m.l} <span className="num-mono">{Math.round(m.v)}</span>
+                              </span>
+                            ))}
+                          </span>
+                        </span>
+                        <GlassButton label={`הוסף ${preset.title}`} onClick={() => addPreset(preset)}>
+                          <Plus size={20} strokeWidth={2.2} />
+                        </GlassButton>
                       </div>
-                    </div>
-                  </button>
-                ))}
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* פאנל ב׳: תוצאות חיפוש מאוחדות (ארוחות שמורות תואמות + מאגר מוצרים + כפתור ✨ ל-AI למעלה) */}
           {(activeTab === 'hub' || activeTab === 'catalog') && trimmedQuery.length > 0 && matchedSavedPresets.length > 0 && (
@@ -3629,7 +3645,7 @@ export function AddMealDrawer({
           <div
             style={{
               flexShrink: 0,
-              background: '#0d0f15',
+              background: 'var(--card)',
               borderTop: '1px solid var(--line)',
               padding: '10px 14px calc(10px + env(safe-area-inset-bottom, 0px))',
               display: 'flex',
@@ -3656,10 +3672,7 @@ export function AddMealDrawer({
                 padding: '7px 10px',
                 borderRadius: 14,
                 background: 'var(--bg-surface-2)',
-                border:
-                  items.length > 0
-                    ? '1px solid rgba(214, 125, 9, 0.42)'
-                    : '1px solid var(--border-subtle)',
+                border: '1px solid var(--border-subtle)',
                 cursor: 'pointer',
               }}
             >
@@ -3682,15 +3695,14 @@ export function AddMealDrawer({
                     width: 40,
                     height: 40,
                     borderRadius: 10,
-                    background: 'rgba(214, 125, 9, 0.14)',
-                    border: '1px solid rgba(214, 125, 9, 0.3)',
+                    background: 'var(--surface-3)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexShrink: 0,
                   }}
                 >
-                  <Utensils size={16} color="var(--accent-orange-bright)" />
+                  <Utensils size={16} color="var(--text)" />
                 </div>
               )}
 

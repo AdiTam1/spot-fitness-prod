@@ -207,7 +207,7 @@ export function BodyMeasurementGuide({
             height: compact ? 138 : 200,
             margin: '0 auto',
             borderRadius: 14,
-            background: '#0b0d13',
+            background: 'var(--surface-2)',
             border: '1px solid rgba(214, 125, 9, 0.25)',
             display: 'flex',
             alignItems: 'center',

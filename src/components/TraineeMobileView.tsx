@@ -3058,6 +3058,8 @@ export function TraineeMobileView({
         opened={Boolean(activeMealSlot)}
         onClose={() => setActiveMealSlot(null)}
         mealSlot={activeMealSlot}
+        mealSlotOptions={activeTemplate.meals}
+        onChangeMealSlot={(slot) => setActiveMealSlot(slot)}
         existingEntry={
           activeMealSlot ? dailyLog.meals[activeMealSlot.id] : undefined
         }
