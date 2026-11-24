@@ -124,7 +124,7 @@ export function CoachSavedMealsPanel({
               ספריית ארוחות, שאלות מתאמן וכלים מוגדרים ({sortedMeals.length})
             </span>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
             הגדר למתאמן צלחות/יחידות מידה אישיות וענה לשאלות שלו על ארוחות שמורות.
           </div>
         </div>
@@ -136,7 +136,7 @@ export function CoachSavedMealsPanel({
             className="btn-surface"
             style={{
               padding: '7px 12px',
-              fontSize: 11,
+              fontSize: 12,
               fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
@@ -159,7 +159,7 @@ export function CoachSavedMealsPanel({
           style={{
             padding: '7px 10px',
             borderRadius: 10,
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: 700,
             background: banner.isError
               ? 'rgba(239, 68, 68, 0.14)'
@@ -172,7 +172,7 @@ export function CoachSavedMealsPanel({
       )}
 
       {sortedMeals.length === 0 ? (
-        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
           למתאמן זה עדיין אין ארוחות שמורות או שאלות פתוחות בספריית הארוחות.
         </div>
       ) : (
@@ -214,14 +214,14 @@ export function CoachSavedMealsPanel({
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 13, fontWeight: 800 }}>{m.title}</span>
                       {m.useCount > 0 && (
-                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                           נבחר {m.useCount}×
                         </span>
                       )}
                       {(m.isAiFallback !== undefined || m.aiEngine) && (
                         <span
                           style={{
-                            fontSize: 9,
+                            fontSize: 12,
                             padding: '1px 6px',
                             borderRadius: 999,
                             fontWeight: 800,
@@ -239,7 +239,7 @@ export function CoachSavedMealsPanel({
                       {isPending && (
                         <span
                           style={{
-                            fontSize: 9,
+                            fontSize: 12,
                             padding: '1px 7px',
                             borderRadius: 999,
                             background: 'rgba(56, 189, 248, 0.2)',
@@ -251,14 +251,14 @@ export function CoachSavedMealsPanel({
                         </span>
                       )}
                     </div>
-                    <div className="num-mono" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                    <div className="num-mono" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                       <b>{Math.round(m.totalCalories)} קק״ל</b> · ח׳ {m.totalProtein}g · פ׳{' '}
                       {m.totalCarbs}g · ש׳ {m.totalFat}g
                     </div>
                   </div>
                 </div>
 
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                   {m.items.map((it) => `${it.name} (${it.unitLabel})`).join(' · ')}
                 </div>
 
@@ -269,7 +269,7 @@ export function CoachSavedMealsPanel({
                       borderRadius: 10,
                       background: 'rgba(56, 189, 248, 0.08)',
                       border: '1px solid rgba(56, 189, 248, 0.25)',
-                      fontSize: 11,
+                      fontSize: 12,
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontWeight: 700 }}>
@@ -324,7 +324,7 @@ export function CoachSavedMealsPanel({
                         className="btn-volt"
                         style={{
                           padding: '6px 12px',
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: 800,
                           display: 'inline-flex',
                           alignItems: 'center',

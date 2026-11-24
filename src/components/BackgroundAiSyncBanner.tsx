@@ -116,7 +116,7 @@ export function BackgroundAiSyncBanner({
               <span
                 className="num-mono"
                 style={{
-                  fontSize: 10,
+                  fontSize: 12,
                   padding: '2px 7px',
                   borderRadius: 999,
                   background: 'var(--surface-2)',
@@ -130,7 +130,7 @@ export function BackgroundAiSyncBanner({
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginTop: 3 }}>
               {ticker.currentStepText}
             </div>
-            <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 3 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
               אפשר להמשיך באפליקציה או לסגור בינתיים — הפריטים יסתנכרנו אוטומטית ליומן שלך.
             </div>
           </div>
@@ -207,7 +207,7 @@ export function BackgroundAiSyncBanner({
                     ? `הושלם וסונכרן ל${job.mealSlotName}! (${job.itemsCount || 1} מרכיבים)`
                     : `פענוח ה-AI ל${job.mealSlotName} נכשל`}
                 </div>
-                <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                   {isOk
                     ? job.mode === 'photo'
                       ? 'לחץ לפתיחת הפענוח והתמונה'
@@ -231,7 +231,7 @@ export function BackgroundAiSyncBanner({
                   className="btn-volt"
                   style={{
                     padding: '5px 10px',
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: 800,
                     display: 'inline-flex',
                     alignItems: 'center',

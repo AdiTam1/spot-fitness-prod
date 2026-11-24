@@ -492,7 +492,7 @@ export function BodyMeasurementGuide({
                 borderRadius: 10,
                 background: 'var(--fill-1)',
                 border: '1px solid var(--line-2)',
-                fontSize: 11,
+                fontSize: 12,
                 color: 'var(--text-secondary)',
                 display: 'flex',
                 alignItems: 'center',

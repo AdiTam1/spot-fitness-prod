@@ -427,7 +427,7 @@ export function ServingToolsManagerModal({
                 {/* מדריך צילום מדעי לדיוק מירבי */}
                 <div
                   style={{
-                    fontSize: 11,
+                    fontSize: 12,
                     lineHeight: 1.5,
                     color: 'var(--text-secondary)',
                     background: 'rgba(56, 189, 248, 0.08)',
@@ -503,7 +503,7 @@ export function ServingToolsManagerModal({
                             bottom: 2,
                             left: 2,
                             right: 2,
-                            fontSize: 9,
+                            fontSize: 12,
                             textAlign: 'center',
                             background: 'rgba(0,0,0,0.72)',
                             color: 'var(--accent-volt)',
@@ -525,7 +525,7 @@ export function ServingToolsManagerModal({
                       flex: 1,
                       minWidth: 120,
                       padding: '7px 10px',
-                      fontSize: 11,
+                      fontSize: 12,
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -549,7 +549,7 @@ export function ServingToolsManagerModal({
                       flex: 1,
                       minWidth: 120,
                       padding: '7px 10px',
-                      fontSize: 11,
+                      fontSize: 12,
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -604,7 +604,7 @@ export function ServingToolsManagerModal({
                     style={{
                       padding: '8px 10px',
                       borderRadius: 10,
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: 600,
                       background: aiResultNote.isError
                         ? 'rgba(239, 68, 68, 0.14)'
@@ -617,7 +617,7 @@ export function ServingToolsManagerModal({
                   >
                     {aiResultNote.msg}
                     {aiResultNote.engine && (
-                      <div style={{ fontSize: 10, opacity: 0.85, marginTop: 3 }}>
+                      <div style={{ fontSize: 12, opacity: 0.85, marginTop: 3 }}>
                         {aiResultNote.isFallback
                           ? `לא AI · Fallback (${aiResultNote.engine})`
                           : `✨ AI · ${aiResultNote.engine}`}
@@ -743,7 +743,7 @@ export function ServingToolsManagerModal({
                       {tool.measuredByAi && (
                         <span
                           style={{
-                            fontSize: 9,
+                            fontSize: 12,
                             padding: '1px 6px',
                             borderRadius: 999,
                             background: 'var(--surface-2)',
@@ -754,7 +754,7 @@ export function ServingToolsManagerModal({
                         </span>
                       )}
                     </div>
-                    <div className="num-mono" style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+                    <div className="num-mono" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                       {[
                         tool.diameterCm ? `קוטר ${tool.diameterCm} ס״מ` : '',
                         tool.depthCm ? `עומק ${tool.depthCm} ס״מ` : '',
@@ -788,7 +788,7 @@ export function ServingToolsManagerModal({
           </>
         ) : (
           <>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
               יחידות המידה שתגדיר כאן יופיעו אוטומטית בבחירת היחידות של מאגר המזון ובפענוח ה-AI.
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr 0.7fr', gap: 8 }}>
@@ -862,7 +862,7 @@ export function ServingToolsManagerModal({
                       </span>
                     </div>
                     {u.foodNameKeyword && (
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                         מותאם ל: {u.foodNameKeyword}
                       </div>
                     )}

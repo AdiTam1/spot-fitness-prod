@@ -209,7 +209,7 @@ export function DailyStepsCard({
           <span>מד צעדים יומי</span>
           <span
             style={{
-              fontSize: 10,
+              fontSize: 12,
               fontWeight: 700,
               padding: '2px 7px',
               borderRadius: 999,
@@ -224,7 +224,7 @@ export function DailyStepsCard({
         <span
           className="num-mono"
           style={{
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: 800,
             color:
               steps >= dailyStepsTarget ? 'var(--ok-text)' : 'var(--text-secondary)',
@@ -261,7 +261,7 @@ export function DailyStepsCard({
       {syncTimeLabel && (
         <div
           style={{
-            fontSize: 10,
+            fontSize: 12,
             color: 'var(--text-muted)',
             marginBottom: 8,
           }}
@@ -284,7 +284,7 @@ export function DailyStepsCard({
                   flex: 1,
                   minWidth: 160,
                   padding: '8px 10px',
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: 800,
                   display: 'flex',
                   alignItems: 'center',
@@ -315,7 +315,7 @@ export function DailyStepsCard({
               className="btn-surface"
               style={{
                 padding: '8px 10px',
-                fontSize: 11,
+                fontSize: 12,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 5,
@@ -341,7 +341,7 @@ export function DailyStepsCard({
                   borderRadius: 9,
                   background: 'var(--surface-2)',
                   border: '1px solid var(--line)',
-                  fontSize: 10.5,
+                  fontSize: 12.5,
                   color: 'var(--text-secondary)',
                 }}
               >
@@ -376,7 +376,7 @@ export function DailyStepsCard({
                 borderRadius: 9,
                 background: 'rgba(245, 158, 11, 0.1)',
                 border: '1px solid rgba(245, 158, 11, 0.3)',
-                fontSize: 10.5,
+                fontSize: 12.5,
                 color: 'var(--warn-text)',
                 display: 'flex',
                 flexDirection: 'column',
@@ -403,7 +403,7 @@ export function DailyStepsCard({
                     border: 'none',
                     borderRadius: 7,
                     padding: '5px 9px',
-                    fontSize: 10.5,
+                    fontSize: 12.5,
                     fontWeight: 800,
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -419,7 +419,7 @@ export function DailyStepsCard({
                   className="btn-surface"
                   style={{
                     padding: '5px 9px',
-                    fontSize: 10.5,
+                    fontSize: 12.5,
                     cursor: 'pointer',
                   }}
                 >
@@ -439,7 +439,7 @@ export function DailyStepsCard({
               className="btn-surface"
               style={{
                 padding: '6px 10px',
-                fontSize: 11,
+                fontSize: 12,
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 5,
@@ -490,7 +490,7 @@ export function DailyStepsCard({
             className="btn-volt"
             style={{
               padding: '7px 12px',
-              fontSize: 11.5,
+              fontSize: 12.5,
               display: 'inline-flex',
               alignItems: 'center',
               gap: 4,
