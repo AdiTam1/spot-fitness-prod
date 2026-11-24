@@ -50,6 +50,7 @@ import {
   WeeklyCheckInEntry,
 } from '@/types/nutrition';
 import { TraineeMobileView } from '@/components/TraineeMobileView';
+import { PendingApprovalView } from '@/components/PendingApprovalView';
 import { CoachDashboardView } from '@/components/CoachDashboardView';
 import { AuthGateView } from '@/components/AuthGateView';
 import { CoachOnboardingWizard } from '@/components/CoachOnboardingWizard';
@@ -2416,49 +2417,13 @@ export default function HomePage() {
     (!loggedInTraineeProfile || loggedInTraineeProfile.status !== 'active')
   ) {
     return (
-      <div
-        style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 20,
-        }}
-      >
-        <div
-          className="pro-card"
-          style={{ maxWidth: 400, padding: 24, textAlign: 'center' }}
-        >
-          <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 8 }}>
-            החשבון ממתין לאישור או הושהה
-          </div>
-          <div
-            style={{
-              fontSize: 13,
-              color: 'var(--text-secondary)',
-              marginBottom: 16,
-            }}
-          >
-            אנא פנה למאמן שלך להפעלת החשבון במערכת.
-          </div>
-          <button
-            disabled={loggingOut}
-            onClick={handleLogout}
-            className="btn-volt"
-            style={{
-              padding: '9px 20px',
-              fontSize: 13,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            {loggingOut && <Loader2 size={14} className="spot-spinner" />}
-            <span>{loggingOut ? 'מתנתק...' : 'התנתק'}</span>
-          </button>
-        </div>
-      </div>
+      <PendingApprovalView
+        name={currentUser.name}
+        paused={loggedInTraineeProfile?.status === 'paused'}
+        loggingOut={loggingOut}
+        onRecheck={() => fetchAuthorizedData({ force: true })}
+        onLogout={handleLogout}
+      />
     );
   }
 

@@ -670,7 +670,15 @@ export function TraineeProfileView({
             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
               {stats.weightDelta === null
                 ? `יעד: ${trainee.targetWeight} ק״ג`
-                : `${stats.weightDelta > 0 ? '+' : ''}${stats.weightDelta} ק״ג מתחילת המעקב`}
+                : (
+                    <>
+                      {/* Signed value stays LTR so the sign never jumps to the other side. */}
+                      <bdi dir="ltr" className="ltr-num">
+                        {`${stats.weightDelta > 0 ? '+' : ''}${stats.weightDelta}`}
+                      </bdi>{' '}
+                      ק״ג מתחילת המעקב
+                    </>
+                  )}
             </div>
           </div>
         </div>
