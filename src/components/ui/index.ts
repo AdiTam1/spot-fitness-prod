@@ -1,6 +1,7 @@
 export { Card, SectionHeader } from './Card';
 export { Chip } from './Chip';
 export { GlassButton } from './GlassButton';
+export { InteractionLayer } from './InteractionLayer';
 export { GlassDock, type DockTab } from './GlassDock';
 export { ProgressRing } from './ProgressRing';
 export { SegmentedPill, type SegmentedPillOption } from './SegmentedPill';

@@ -2,6 +2,7 @@
 
 import { Capacitor, PluginListenerHandle, registerPlugin } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
+import { setBackLocked } from '@/lib/backGuard';
 import { StepsSyncSource } from '@/types/nutrition';
 
 export type HealthConnectAvailabilityStatus =
@@ -326,10 +327,12 @@ export async function downloadAndInstallAndroidApk(
 
 export function blockAndroidBackButtonWhileLocked(locked: boolean): () => void {
   if (!isNativeAndroidApp() || !locked) return () => {};
+  setBackLocked(true);
   const handlePromise = CapacitorApp.addListener('backButton', () => {
     // חסום לחלוטין בזמן ששער העדכון המחייב פעיל — לא מאפשר חזרה אחורה לתוך האפליקציה
   });
   return () => {
+    setBackLocked(false);
     void handlePromise.then((h) => h.remove()).catch(() => {});
   };
 }

@@ -418,6 +418,16 @@ a:focus-visible {
   border-radius: 9px;
   background: var(--surface-3);
   margin: 0 auto;
+  position: relative;
+  touch-action: none;
+  cursor: grab;
+}
+
+/* Invisible 44px-tall drag zone around the grabber. */
+.sheet-grabber::after {
+  content: '';
+  position: absolute;
+  inset: -20px -60px;
 }
 
 /* ---------- Scrollbar ---------- */
@@ -449,5 +459,137 @@ a:focus-visible {
   /* Room for the floating coach dock. */
   .coach-dashboard-root {
     padding-bottom: 120px;
+  }
+}
+
+
+/* ============================================================
+   Interaction layer — press feedback, touch behaviour, sheets
+   ============================================================ */
+
+/* No 300ms tap delay / double-tap zoom on any interactive element. */
+:where(button, a, [role='button'], [role='tab'], [role='radio'], [role='switch'], label, summary, input, select, textarea) {
+  touch-action: manipulation;
+}
+
+/* Pressed state: quick scale + slightly darker fill. Specificity is kept at 0
+   (:where) so any component-specific transition/transform still wins. */
+:where(button, a[href], [role='button'], [role='tab'], [role='radio']) {
+  transition: transform 0.12s ease, background-color 0.15s ease, opacity 0.15s ease,
+    border-color 0.15s ease, color 0.15s ease;
+}
+
+:where(button, a[href], [role='button'], [role='tab'], [role='radio']):not(:disabled):not([aria-disabled='true']):not([data-disabled]):active {
+  transform: scale(0.97);
+}
+
+/* Disabled controls are clearly muted and inert. */
+:where(button:disabled, [aria-disabled='true'], [data-disabled='true']) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+:where(button:disabled, [aria-disabled='true']) {
+  pointer-events: none;
+}
+
+/* Keyboard focus ring on every focusable control (not only buttons/links). */
+:where([role='button'], [role='tab'], [role='radio'], [role='switch'], input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Horizontal scrollers: momentum, no vertical jitter, no scroll chaining. */
+.h-scroll,
+[data-h-scroll] {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
+  scrollbar-width: none;
+}
+.h-scroll::-webkit-scrollbar,
+[data-h-scroll]::-webkit-scrollbar {
+  display: none;
+}
+
+/* Numbers, times and signed values stay left-to-right inside RTL text. */
+.ltr-num,
+bdi {
+  unicode-bidi: isolate;
+}
+.ltr-num {
+  direction: ltr;
+  display: inline-block;
+}
+
+/* Inputs keep their text visible above the keyboard (scrolled into view by the
+   InteractionLayer); give them room when scrolled. */
+input, textarea, select {
+  scroll-margin-bottom: 140px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- Modals become bottom sheets on phones ---------- */
+@media (max-width: 768px) {
+  .mantine-Modal-inner {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+  .mantine-Modal-content:not([data-full-screen]) {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    max-height: calc(100dvh - 52px - env(safe-area-inset-top, 0px)) !important;
+    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0 !important;
+    border-bottom: none !important;
+    box-shadow: var(--sheet-shadow) !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    /* The drag handle is drawn by ::before; it also acts as the drag zone. */
+    position: relative;
+  }
+  .mantine-Modal-content:not([data-full-screen])::before {
+    content: '';
+    position: absolute;
+    top: 10px;
+    inset-inline-start: 50%;
+    width: 40px;
+    height: 5px;
+    margin-inline-start: -20px;
+    border-radius: 9px;
+    background: var(--surface-3);
+    pointer-events: none;
+    z-index: 2;
+  }
+  /* Centered 160x44 drag zone (touch-action: none so the browser never steals the gesture). */
+  .mantine-Modal-content:not([data-full-screen])::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    inset-inline-start: 50%;
+    width: 160px;
+    height: 44px;
+    margin-inline-start: -80px;
+    touch-action: none;
+    z-index: 2;
+  }
+  .mantine-Modal-content:not([data-full-screen]) .mantine-Modal-header {
+    padding-top: 26px;
+  }
+  .mantine-Modal-close,
+  .mantine-Drawer-close {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
   }
 }

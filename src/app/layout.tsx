@@ -10,6 +10,7 @@ import {
   createTheme,
 } from '@mantine/core';
 import { ThemeMetaSync } from '@/components/ui/ThemeMetaSync';
+import { InteractionLayer } from '@/components/ui/InteractionLayer';
 import { Notifications } from '@mantine/notifications';
 import type { Metadata, Viewport } from 'next';
 
@@ -94,6 +95,8 @@ const theme = createTheme({
     Button: { defaultProps: { radius: 'xl' } },
     Badge: { defaultProps: { radius: 'xl' } },
     SegmentedControl: { defaultProps: { radius: 'xl' } },
+    // Overlays slide up like native bottom sheets (Modals are restyled as sheets on phones).
+    Modal: { defaultProps: { transitionProps: { transition: 'slide-up', duration: 220 } } },
   },
 });
 
@@ -116,6 +119,7 @@ export default function RootLayout({
             defaultColorScheme="auto"
           >
             <ThemeMetaSync />
+            <InteractionLayer />
             <Notifications position="top-center" zIndex={300} />
             {children}
           </MantineProvider>
