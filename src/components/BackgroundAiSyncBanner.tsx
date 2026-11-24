@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Check, Sparkles, X, AlertTriangle } from 'lucide-react';
+import { Check, Sparkles, X, AlertTriangle, Minimize2 } from 'lucide-react';
 import { PendingAiMealJob } from '@/types/nutrition';
 import { isAiJobActivelyProcessing } from '@/lib/aiJobs';
 
@@ -64,6 +64,11 @@ export function BackgroundAiSyncBanner({
   onOpenJobMeal,
 }: BackgroundAiSyncBannerProps) {
   const activeProcessing = jobs.find((j) => isAiJobActivelyProcessing(j));
+  const [collapsed, setCollapsed] = useState(false);
+  const activeId = activeProcessing?.id;
+  useEffect(() => {
+    setCollapsed(false);
+  }, [activeId]);
   const finishedJobs = jobs.filter((j) => j.status !== 'processing' && !j.acknowledged);
   const ticker = useAiProgressMessage(Boolean(activeProcessing), activeProcessing?.startedAt);
   const isLiveOnDevice = Boolean(
@@ -195,7 +200,46 @@ export function BackgroundAiSyncBanner({
       )}
 
       {/* In-progress job: glass card above the dock (design: AiSync) */}
-      {activeProcessing && (
+      {activeProcessing && collapsed && (
+        <button
+          type="button"
+          aria-label={`פענוח AI ברקע ${pct}%. לחץ להרחבה`}
+          onClick={() => setCollapsed(false)}
+          className="glass"
+          style={{
+            position: 'fixed',
+            bottom: 'calc(var(--sa-bottom, 0px) + 100px)',
+            left: 14,
+            zIndex: 150,
+            width: 56,
+            height: 56,
+            padding: 0,
+            borderRadius: 999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            color: 'var(--text)',
+          }}
+        >
+          <svg width="56" height="56" viewBox="0 0 56 56" aria-hidden style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}>
+            <circle cx="28" cy="28" r="26" fill="none" stroke="var(--surface-3)" strokeWidth="3" />
+            <circle
+              cx="28"
+              cy="28"
+              r="26"
+              fill="none"
+              stroke="var(--accent)"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeDasharray={`${(pct / 100) * 163.4} 163.4`}
+              style={{ transition: 'stroke-dasharray .8s ease' }}
+            />
+          </svg>
+          <Sparkles size={22} color="currentColor" />
+        </button>
+      )}
+      {activeProcessing && !collapsed && (
         <div
           className="glass"
           role="status"
@@ -245,6 +289,26 @@ export function BackgroundAiSyncBanner({
               <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 13, color: 'var(--text-2)' }}>
                 {pct}%
               </bdi>
+              <button
+                type="button"
+                aria-label="מזער"
+                onClick={() => setCollapsed(true)}
+                className="hit-44"
+                style={{
+                  width: 32,
+                  height: 32,
+                  border: 0,
+                  borderRadius: 999,
+                  background: 'transparent',
+                  color: 'var(--text-2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                }}
+              >
+                <Minimize2 size={16} />
+              </button>
             </span>
           </div>
           <div style={{ height: 4, borderRadius: 9, background: 'var(--surface-3)', overflow: 'hidden' }}>
