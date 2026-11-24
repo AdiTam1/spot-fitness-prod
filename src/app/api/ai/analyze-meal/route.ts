@@ -27,11 +27,13 @@ import {
   updateServerDbState,
 } from '@/lib/serverStore';
 import {
+  CallGeminiOptions,
   GEMINI_VISION_MODELS,
   GeminiContentPart,
   callGeminiJson,
   cleanGeminiKey,
 } from '@/lib/geminiClient';
+import { normalizePendingAiJobs } from '@/lib/aiJobs';
 import {
   sendUnifiedPushToTrainee,
   shouldNotifyUnifiedAiCompletion,
@@ -250,9 +252,15 @@ function extractValidatedImages(
 
 async function callGeminiStructured(
   apiKey: string,
-  parts: GeminiPart[]
-): Promise<{ parsed: Record<string, unknown> | null; modelName?: string; errorMsg?: string }> {
-  return callGeminiJson(apiKey, parts, GEMINI_VISION_MODELS);
+  parts: GeminiPart[],
+  options?: CallGeminiOptions
+): Promise<{
+  parsed: Record<string, unknown> | null;
+  modelName?: string;
+  errorMsg?: string;
+  cancelled?: boolean;
+}> {
+  return callGeminiJson(apiKey, parts, GEMINI_VISION_MODELS, options);
 }
 
 function formatContextParamsPrompt(ctx?: AiContextParams): string {
@@ -555,6 +563,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      const startNowIso = new Date().toISOString();
       authorizedBgJob = {
         id: sanitizeText(backgroundJob.jobId, 60),
         targetTraineeId: backgroundJob.traineeId,
@@ -564,15 +573,26 @@ export async function POST(request: NextRequest) {
         mode: backgroundJob.mode === 'text' ? 'text' : 'photo',
         summaryHint: sanitizeText(backgroundJob.summaryHint || textPrompt || '', 80) || undefined,
         status: 'processing',
-        startedAt: new Date().toISOString(),
+        startedAt: startNowIso,
+        lastHeartbeatAt: startNowIso,
+        stageText: hasRealImage
+          ? 'המשימה נרשמה בשרת — מכין תמונות למודל ה-AI...'
+          : 'המשימה נרשמה בשרת — פונה למודל ה-AI...',
         acknowledged: false,
       };
 
+      let wasPreCancelled = false;
       await updateServerDbState((prev) => ({
         ...prev,
         trainees: prev.trainees.map((t) => {
           if (t.id !== authorizedBgJob!.targetTraineeId) return t;
-          const prevJobs = (t.pendingAiJobs || []).filter(
+          const cleaned = normalizePendingAiJobs(t.pendingAiJobs).jobs;
+          const existingSelf = cleaned.find((j) => j.id === authorizedBgJob!.id);
+          if (existingSelf?.acknowledged) {
+            wasPreCancelled = true;
+            return { ...t, pendingAiJobs: cleaned };
+          }
+          const prevJobs = cleaned.filter(
             (j) => j.id !== authorizedBgJob!.id && !j.acknowledged
           );
           return {
@@ -581,7 +601,45 @@ export async function POST(request: NextRequest) {
           };
         }),
       }));
+
+      if (wasPreCancelled) {
+        return NextResponse.json({ cancelled: true, items: [] });
+      }
     }
+
+    const checkBgJobCancelled = async (): Promise<boolean> => {
+      if (!authorizedBgJob) return false;
+      try {
+        const latest = await getSingleTraineeFromServer(authorizedBgJob.targetTraineeId);
+        const match = latest?.pendingAiJobs?.find((j) => j.id === authorizedBgJob!.id);
+        return Boolean(match && match.acknowledged);
+      } catch {
+        return false;
+      }
+    };
+
+    const updateBgJobStage = async (stageText: string): Promise<void> => {
+      if (!authorizedBgJob) return;
+      const hbIso = new Date().toISOString();
+      await updateServerDbState((prev) => ({
+        ...prev,
+        trainees: prev.trainees.map((t) => {
+          if (t.id !== authorizedBgJob!.targetTraineeId) return t;
+          const target = (t.pendingAiJobs || []).find((j) => j.id === authorizedBgJob!.id);
+          if (!target || target.status !== 'processing' || target.acknowledged) {
+            return t;
+          }
+          return {
+            ...t,
+            pendingAiJobs: (t.pendingAiJobs || []).map((j) =>
+              j.id === authorizedBgJob!.id
+                ? { ...j, lastHeartbeatAt: hbIso, stageText }
+                : j
+            ),
+          };
+        }),
+      })).catch(() => {});
+    };
 
     const syncAnalyzeResultToServer = async (params: {
       items?: LoggedFoodItem[];
@@ -615,6 +673,8 @@ export async function POST(request: NextRequest) {
       const finishedJob: PendingAiMealJob = {
         ...authorizedBgJob,
         status: succeeded ? 'completed' : 'failed',
+        lastHeartbeatAt: nowIso,
+        stageText: succeeded ? 'הושלם וסונכרן ליומן' : 'הפענוח נכשל',
         completedAt: nowIso,
         engine: params.engine,
         isAiFallback: params.isAiFallback,
@@ -626,13 +686,20 @@ export async function POST(request: NextRequest) {
         acknowledged: false,
       };
 
+      let cancelledBeforeSave = false;
       const updatedState = await updateServerDbState((prev) => ({
         ...prev,
         trainees: prev.trainees.map((t) => {
           if (t.id !== authorizedBgJob!.targetTraineeId) return t;
-          const nextJobs = (t.pendingAiJobs || []).some((j) => j.id === finishedJob.id)
-            ? (t.pendingAiJobs || []).map((j) => (j.id === finishedJob.id ? finishedJob : j))
-            : [finishedJob, ...(t.pendingAiJobs || [])].slice(0, 12);
+          const cleaned = normalizePendingAiJobs(t.pendingAiJobs).jobs;
+          const existingSelf = cleaned.find((j) => j.id === finishedJob.id);
+          if (existingSelf?.acknowledged) {
+            cancelledBeforeSave = true;
+            return { ...t, pendingAiJobs: cleaned };
+          }
+          const nextJobs = existingSelf
+            ? cleaned.map((j) => (j.id === finishedJob.id ? finishedJob : j))
+            : [finishedJob, ...cleaned].slice(0, 12);
 
           if (!succeeded) {
             return { ...t, pendingAiJobs: nextJobs };
@@ -690,7 +757,7 @@ export async function POST(request: NextRequest) {
       }));
 
       // פוש אוטומטי למתאמן (רק ביציאה) + התראה למאמנים עוקבים (ברגע השמירה)
-      if (succeeded) {
+      if (succeeded && !cancelledBeforeSave) {
         const latestTrainee = updatedState.trainees.find(
           (t) => t.id === authorizedBgJob!.targetTraineeId
         );
@@ -775,7 +842,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      return finishedJob;
+      return cancelledBeforeSave ? undefined : finishedJob;
     };
 
     // הגנת waitUntil: ממשיכה להריץ את הפענוח, השמירה והפוש ב-Vercel גם אם המשתמש סגר את האפליקציה
@@ -1006,7 +1073,16 @@ ${contextBlock ? `\nנתוני הקשר מעודכנים מהמשתמש:\n${cont
         parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
       });
 
-      const res = await callGeminiStructured(apiKey, parts);
+      const res = await callGeminiStructured(apiKey, parts, {
+        perAttemptTimeoutMs: 32_000,
+        totalBudgetMs: 95_000,
+        shouldCancel: checkBgJobCancelled,
+        onAttemptModel: (m) =>
+          updateBgJobStage(`מפענח מרכיבים וכמויות מול מודל ${m}...`),
+      });
+      if (res.cancelled) {
+        return NextResponse.json({ cancelled: true, items: [] });
+      }
       if (res.parsed && Array.isArray(res.parsed.items) && res.parsed.items.length > 0) {
         const items = mapRawGeminiItems(
           res.parsed.items as Record<string, unknown>[],
@@ -1125,7 +1201,21 @@ ${contextBlock ? `\nנתוני הקשר מעודכנים מהמשתמש:\n${cont
     );
     };
 
-    const workPromise = executeAnalyzePipeline();
+    const workPromise = (async () => {
+      try {
+        return await executeAnalyzePipeline();
+      } catch (pipelineErr) {
+        console.error('Execute analyze pipeline error:', pipelineErr);
+        const failedJob = await syncAnalyzeResultToServer({
+          items: [],
+          errorMsg: 'הפענוח הופסק עקב שגיאת שרת זמנית — ניתן לנסות שוב.',
+        }).catch(() => undefined);
+        return NextResponse.json(
+          { error: 'שגיאה בפענוח הארוחה', syncedJob: failedJob },
+          { status: 500 }
+        );
+      }
+    })();
     try {
       waitUntil(workPromise.then(() => undefined).catch(() => undefined));
     } catch {

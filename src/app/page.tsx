@@ -55,6 +55,11 @@ import { CoachDashboardView } from '@/components/CoachDashboardView';
 import { AuthGateView } from '@/components/AuthGateView';
 import { CoachOnboardingWizard } from '@/components/CoachOnboardingWizard';
 import { BackgroundAiSyncBanner } from '@/components/BackgroundAiSyncBanner';
+import {
+  AI_JOB_STALE_TIMEOUT_MS,
+  isAiJobActivelyProcessing,
+  normalizePendingAiJobs,
+} from '@/lib/aiJobs';
 import { AndroidForceUpdateGate } from '@/components/AndroidForceUpdateGate';
 import {
   AppUpdateInfo,
@@ -144,6 +149,10 @@ export default function HomePage() {
   const [optionalApkDownloading, setOptionalApkDownloading] = useState(false);
   const [dismissedUpdateBanner, setDismissedUpdateBanner] = useState(false);
   const [localBgJobs, setLocalBgJobs] = useState<PendingAiMealJob[]>([]);
+  const [liveBgJobIds, setLiveBgJobIds] = useState<string[]>([]);
+  const bgJobAbortControllersRef = useRef<Map<string, AbortController>>(
+    new Map()
+  );
   const [externalOpenMealRequest, setExternalOpenMealRequest] = useState<{
     traineeId: string;
     date: string;
@@ -200,6 +209,9 @@ export default function HomePage() {
       setCoachDirectory([]);
       setCoachPreviewTraineeId(null);
       setCoachPushSettings(null);
+      bgJobAbortControllersRef.current.forEach((ctrl) => ctrl.abort());
+      bgJobAbortControllersRef.current.clear();
+      setLiveBgJobIds([]);
       setLocalBgJobs([]);
       setPushPromptOpen(false);
       setWebPushPromptOpen(false);
@@ -1461,24 +1473,41 @@ export default function HomePage() {
     }
   }, [localBgJobs, currentUser]);
 
-  // פולינג עדין כל 6 שניות כל עוד יש משימת AI שמוגדרת כ-processing ב-DB או ברקע המקומי
+  // פולינג עדין כל 6 שניות כל עוד יש משימת AI פעילה שטרם פג תוקפה (מונע פולינג אינסופי על משימות יתומות)
   useEffect(() => {
     if (!currentUser) return;
     const hasServerProcessing = trainees.some((t) =>
-      (t.pendingAiJobs || []).some((j) => j.status === 'processing')
+      (t.pendingAiJobs || []).some((j) => isAiJobActivelyProcessing(j))
     );
-    const hasLocalProcessing = localBgJobs.some((j) => j.status === 'processing');
+    const hasLocalProcessing = localBgJobs.some((j) =>
+      isAiJobActivelyProcessing(j)
+    );
     if (!hasServerProcessing && !hasLocalProcessing) return;
 
     const timer = setInterval(() => {
+      setLocalBgJobs((prev) => {
+        const res = normalizePendingAiJobs(prev);
+        return res.changed ? res.jobs : prev;
+      });
+      setTrainees((prev) => {
+        let anyChanged = false;
+        const next = prev.map((t) => {
+          const res = normalizePendingAiJobs(t.pendingAiJobs);
+          if (!res.changed) return t;
+          anyChanged = true;
+          return { ...t, pendingAiJobs: res.jobs };
+        });
+        return anyChanged ? next : prev;
+      });
       void fetchAuthorizedData();
     }, 6000);
     return () => clearInterval(timer);
   }, [currentUser, trainees, localBgJobs, fetchAuthorizedData]);
 
-  // סנכרון אוטומטי של localBgJobs כשהשרת כבר סיים ועדכן pendingAiJobs ב-DB
+  // סנכרון אוטומטי של localBgJobs כשהשרת כבר סיים ועדכן pendingAiJobs ב-DB או פג תוקף
   useEffect(() => {
     if (localBgJobs.length === 0) return;
+    const nowMs = Date.now();
     setLocalBgJobs((prev) =>
       prev.filter((lj) => {
         const owner = trainees.find((t) => t.id === lj.targetTraineeId);
@@ -1486,7 +1515,7 @@ export default function HomePage() {
         if (serverJob && serverJob.status !== 'processing') return false;
         if (
           lj.status === 'processing' &&
-          Date.now() - new Date(lj.startedAt).getTime() > 6 * 60 * 1000
+          nowMs - Date.parse(lj.startedAt) > AI_JOB_STALE_TIMEOUT_MS
         ) {
           return false;
         }
@@ -1503,7 +1532,7 @@ export default function HomePage() {
         merged.unshift(lj);
       }
     }
-    return merged;
+    return normalizePendingAiJobs(merged).jobs;
   };
 
   const handleStartBackgroundAiAnalysis = async (payload: {
@@ -1518,6 +1547,7 @@ export default function HomePage() {
     contextParams?: AiContextParams;
   }): Promise<{ jobId: string }> => {
     const jobId = `aijob-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const nowIso = new Date().toISOString();
     const startedJob: PendingAiMealJob = {
       id: jobId,
       targetTraineeId: payload.traineeId,
@@ -1527,10 +1557,18 @@ export default function HomePage() {
       mode: payload.mode,
       summaryHint: payload.textPrompt?.slice(0, 70),
       status: 'processing',
-      startedAt: new Date().toISOString(),
+      startedAt: nowIso,
+      lastHeartbeatAt: nowIso,
+      stageText:
+        payload.mode === 'photo'
+          ? 'מעלה תמונות ומפעיל פענוח בשרת...'
+          : 'שולח תיאור ארוחה למודל ה-AI...',
       acknowledged: false,
     };
 
+    const abortController = new AbortController();
+    bgJobAbortControllersRef.current.set(jobId, abortController);
+    setLiveBgJobIds((prev) => [jobId, ...prev.filter((id) => id !== jobId)]);
     setLocalBgJobs((prev) => [startedJob, ...prev.slice(0, 5)]);
 
     void (async () => {
@@ -1538,6 +1576,7 @@ export default function HomePage() {
         const res = await fetch('/api/ai/analyze-meal', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: abortController.signal,
           body: JSON.stringify({
             mode: 'analyze',
             imageDataUrl: payload.imageDataUrl,
@@ -1555,7 +1594,12 @@ export default function HomePage() {
             },
           }),
         });
+        if (abortController.signal.aborted) return;
         const data = await res.json().catch(() => ({}));
+        if (data?.cancelled) {
+          setLocalBgJobs((prev) => prev.filter((j) => j.id !== jobId));
+          return;
+        }
         if (res.ok && Array.isArray(data.items) && data.items.length > 0) {
           setLocalBgJobs((prev) =>
             prev.map((j) =>
@@ -1564,6 +1608,8 @@ export default function HomePage() {
                     ...j,
                     status: 'completed',
                     completedAt: new Date().toISOString(),
+                    lastHeartbeatAt: new Date().toISOString(),
+                    stageText: 'הושלם וסונכרן ליומן',
                     itemsCount: data.items.length,
                     engine: data.engine,
                     isAiFallback: Boolean(data.isAiFallback),
@@ -1582,6 +1628,8 @@ export default function HomePage() {
                     ...j,
                     status: 'failed',
                     completedAt: new Date().toISOString(),
+                    lastHeartbeatAt: new Date().toISOString(),
+                    stageText: 'הפענוח נכשל',
                     errorMsg: data.error || 'פענוח ה-AI נכשל — ניתן לנסות שוב',
                   }
                 : j
@@ -1590,16 +1638,24 @@ export default function HomePage() {
           await fetchAuthorizedData();
         }
       } catch {
+        if (abortController.signal.aborted) {
+          setLocalBgJobs((prev) => prev.filter((j) => j.id !== jobId));
+          return;
+        }
         setLocalBgJobs((prev) =>
           prev.map((j) =>
             j.id === jobId
               ? {
                   ...j,
+                  stageText: 'החיבור מהדפדפן נקטע — ממתין לתשובת השרת (אפשר לבטל)',
                   summaryHint: 'מחכה לסנכרון חוזר מהשרת...',
                 }
               : j
           )
         );
+      } finally {
+        bgJobAbortControllersRef.current.delete(jobId);
+        setLiveBgJobIds((prev) => prev.filter((id) => id !== jobId));
       }
     })();
 
@@ -1612,7 +1668,8 @@ export default function HomePage() {
       traineeId ||
       traineesRef.current.find((t) =>
         (t.pendingAiJobs || []).some((j) => j.id === jobId)
-      )?.id;
+      )?.id ||
+      currentUserRef.current?.id;
     if (!targetId) return;
 
     setTrainees((prev) =>
@@ -1629,6 +1686,41 @@ export default function HomePage() {
       action: 'ack-ai-jobs',
       traineeId: targetId,
       jobId,
+    });
+  };
+
+  const handleCancelAiJob = async (jobId: string, traineeId?: string) => {
+    const controller = bgJobAbortControllersRef.current.get(jobId);
+    if (controller) {
+      controller.abort();
+      bgJobAbortControllersRef.current.delete(jobId);
+    }
+    setLiveBgJobIds((prev) => prev.filter((id) => id !== jobId));
+    setLocalBgJobs((prev) => prev.filter((j) => j.id !== jobId));
+
+    const targetId =
+      traineeId ||
+      traineesRef.current.find((t) =>
+        (t.pendingAiJobs || []).some((j) => j.id === jobId)
+      )?.id ||
+      currentUserRef.current?.id;
+    if (!targetId) return;
+
+    setTrainees((prev) =>
+      prev.map((t) =>
+        t.id === targetId
+          ? {
+              ...t,
+              pendingAiJobs: (t.pendingAiJobs || []).filter((j) => j.id !== jobId),
+            }
+          : t
+      )
+    );
+    await postDataAction({
+      action: 'ack-ai-jobs',
+      traineeId: targetId,
+      jobId,
+      cancelProcessing: true,
     });
   };
 
@@ -2902,8 +2994,12 @@ export default function HomePage() {
       {loggedInTraineeProfile && (
         <BackgroundAiSyncBanner
           jobs={mergeTraineeBgJobs(loggedInTraineeProfile)}
+          liveJobIds={liveBgJobIds}
           onAcknowledgeJob={(jobId) =>
             void handleAcknowledgeAiJob(jobId, loggedInTraineeProfile.id)
+          }
+          onCancelJob={(jobId) =>
+            void handleCancelAiJob(jobId, loggedInTraineeProfile.id)
           }
           onOpenJobMeal={(job) => {
             setExternalOpenMealRequest({

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Check, Loader2, Sparkles, X, AlertTriangle, ExternalLink } from 'lucide-react';
 import { PendingAiMealJob } from '@/types/nutrition';
+import { isAiJobActivelyProcessing } from '@/lib/aiJobs';
 
 export const AI_PROGRESS_STAGES: string[] = [
   'מעבד ומחדד את התמונה...',
@@ -26,17 +27,17 @@ export function useAiProgressMessage(active: boolean, startedAtIso?: string) {
     }
     const timer = setInterval(() => {
       setTick((t) => t + 1);
-    }, 3000);
+    }, 1000);
     return () => clearInterval(timer);
   }, [active]);
 
   const elapsedSec =
     active && startedAtIso
       ? Math.max(0, Math.floor((Date.now() - new Date(startedAtIso).getTime()) / 1000))
-      : tick * 3;
+      : tick;
   const mins = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
   const secs = String(elapsedSec % 60).padStart(2, '0');
-  const stageIdx = tick % AI_PROGRESS_STAGES.length;
+  const stageIdx = Math.floor(tick / 4) % AI_PROGRESS_STAGES.length;
 
   return {
     currentStepText: AI_PROGRESS_STAGES[stageIdx],
@@ -49,18 +50,33 @@ export function useAiProgressMessage(active: boolean, startedAtIso?: string) {
 
 interface BackgroundAiSyncBannerProps {
   jobs: PendingAiMealJob[];
+  liveJobIds?: string[];
   onAcknowledgeJob: (jobId: string) => void;
+  onCancelJob?: (jobId: string) => void;
   onOpenJobMeal?: (job: PendingAiMealJob) => void;
 }
 
 export function BackgroundAiSyncBanner({
   jobs,
+  liveJobIds = [],
   onAcknowledgeJob,
+  onCancelJob,
   onOpenJobMeal,
 }: BackgroundAiSyncBannerProps) {
-  const activeProcessing = jobs.find((j) => j.status === 'processing');
+  const activeProcessing = jobs.find((j) => isAiJobActivelyProcessing(j));
   const finishedJobs = jobs.filter((j) => j.status !== 'processing' && !j.acknowledged);
   const ticker = useAiProgressMessage(Boolean(activeProcessing), activeProcessing?.startedAt);
+  const isLiveOnDevice = Boolean(
+    activeProcessing && liveJobIds.includes(activeProcessing.id)
+  );
+  const lastHbAgeSec =
+    activeProcessing?.lastHeartbeatAt &&
+    Number.isFinite(Date.parse(activeProcessing.lastHeartbeatAt))
+      ? Math.max(
+          0,
+          Math.floor((Date.now() - Date.parse(activeProcessing.lastHeartbeatAt)) / 1000)
+        )
+      : null;
 
   if (!activeProcessing && finishedJobs.length === 0) return null;
 
@@ -108,30 +124,94 @@ export function BackgroundAiSyncBanner({
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 gap: 8,
+                flexWrap: 'wrap',
               }}
             >
-              <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--accent-volt)' }}>
-                AI מנתח ברקע ({activeProcessing.mealSlotName})
-              </span>
-              <span
-                className="num-mono"
-                style={{
-                  fontSize: 12,
-                  padding: '2px 7px',
-                  borderRadius: 999,
-                  background: 'var(--surface-2)',
-                  color: 'var(--accent-volt)',
-                  fontWeight: 800,
-                }}
-              >
-                {ticker.formattedElapsed}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--accent-volt)' }}>
+                  AI מנתח ברקע ({activeProcessing.mealSlotName})
+                </span>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: '2px 7px',
+                    borderRadius: 999,
+                    background: isLiveOnDevice
+                      ? 'rgba(34, 197, 94, 0.14)'
+                      : ticker.elapsedSec >= 90
+                      ? 'rgba(245, 158, 11, 0.14)'
+                      : 'var(--surface-2)',
+                    color: isLiveOnDevice
+                      ? 'var(--ok-text)'
+                      : ticker.elapsedSec >= 90
+                      ? 'var(--warn-text)'
+                      : 'var(--text-secondary)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {isLiveOnDevice ? '● פעיל במכשיר' : 'ממתין לשרת'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                <span
+                  className="num-mono"
+                  style={{
+                    fontSize: 12,
+                    padding: '2px 7px',
+                    borderRadius: 999,
+                    background: 'var(--surface-2)',
+                    color: 'var(--accent-volt)',
+                    fontWeight: 800,
+                  }}
+                >
+                  {ticker.formattedElapsed}
+                </span>
+                {onCancelJob && (
+                  <button
+                    type="button"
+                    title="בטל פענוח זה"
+                    aria-label="בטל פענוח"
+                    onClick={() => onCancelJob(activeProcessing.id)}
+                    style={{
+                      padding: '3px 9px',
+                      minHeight: 26,
+                      borderRadius: 999,
+                      border: '1px solid rgba(239, 68, 68, 0.45)',
+                      background: 'rgba(239, 68, 68, 0.12)',
+                      color: 'var(--danger-text)',
+                      fontSize: 11,
+                      fontWeight: 800,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 3,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <X size={12} />
+                    <span>בטל</span>
+                  </button>
+                )}
+              </div>
             </div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginTop: 3 }}>
-              {ticker.currentStepText}
+
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginTop: 4 }}>
+              {activeProcessing.stageText ||
+                (isLiveOnDevice
+                  ? ticker.currentStepText
+                  : 'הפענוח ממשיך ברקע בשרת — ממתין לעדכון...')}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
-              אפשר להמשיך באפליקציה או לסגור בינתיים — הפריטים יסתנכרנו אוטומטית ליומן שלך.
+            <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 3 }}>
+              {lastHbAgeSec !== null && !isLiveOnDevice
+                ? `עדכון שרת אחרון לפני ${lastHbAgeSec} שנ׳ · `
+                : ''}
+              {!isLiveOnDevice && ticker.elapsedSec >= 90
+                ? 'לוקח זמן מהרגיל או שהחיבור התנתק — אפשר להמתין עוד רגע או ללחוץ ביטול ולנסות שוב.'
+                : 'אפשר להמשיך באפליקציה או לבטל בכל רגע — הפריטים יסתנכרנו אוטומטית בסיום.'}
             </div>
           </div>
         </div>

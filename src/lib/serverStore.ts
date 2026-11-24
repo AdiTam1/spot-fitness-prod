@@ -15,6 +15,7 @@ import {
   TraineeWebPushSubscriptionEntry,
 } from '@/types/nutrition';
 import { hashPassword } from '@/lib/serverAuth';
+import { normalizePendingAiJobs } from '@/lib/aiJobs';
 import {
   deleteCoachFromSupabase,
   deleteGroupFromSupabase,
@@ -593,6 +594,7 @@ export function sanitizeTraineeForClient(
   return {
     ...trainee,
     password: '',
+    pendingAiJobs: normalizePendingAiJobs(trainee.pendingAiJobs).jobs,
     fcmTokens: redactFcmTokens(trainee.fcmTokens),
     webPushSubscriptions: redactWebPushSubscriptions(
       trainee.webPushSubscriptions

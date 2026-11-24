@@ -39,6 +39,7 @@ import {
   notifySubscribedCoachesForEvents,
 } from '@/lib/coachAlertEngine';
 import { DEFAULT_TEMPLATES, getTodayIso } from '@/data/israeliFoodCatalog';
+import { normalizePendingAiJobs } from '@/lib/aiJobs';
 import { diagnoseSupabaseError } from '@/lib/supabase';
 import {
   AccountStatus,
@@ -447,6 +448,22 @@ export async function GET(request: NextRequest) {
         { status: 403, headers: { 'Cache-Control': 'no-store, max-age=0' } }
       );
       return clearSessionCookie(res);
+    }
+
+    const normalizedJobsRes = normalizePendingAiJobs(myProfile.pendingAiJobs);
+    if (normalizedJobsRes.changed) {
+      const cleanJobs = normalizedJobsRes.jobs;
+      const healTask = updateServerDbState((prev) => ({
+        ...prev,
+        trainees: prev.trainees.map((t) =>
+          t.id === myProfile.id ? { ...t, pendingAiJobs: cleanJobs } : t
+        ),
+      })).catch(() => {});
+      try {
+        waitUntil(healTask);
+      } catch {
+        // מחוץ ל-Vercel waitUntil אינו פעיל
+      }
     }
 
     const chipsCtx = await getQuickChipsContextForTrainee(myProfile.groupId);
@@ -924,11 +941,53 @@ export async function POST(request: NextRequest) {
 
       const jobId = body.jobId ? sanitizeText(body.jobId, 60) : '';
       const clearAllFinished = Boolean(body.clearAllFinished);
-      const nextJobs = (targetTrainee.pendingAiJobs || []).filter((j) => {
-        if (clearAllFinished && j.status !== 'processing') return false;
-        if (jobId && j.id === jobId) return false;
-        return true;
-      });
+      const cancelProcessing = Boolean(body.cancelProcessing);
+      const nowIso = new Date().toISOString();
+
+      let matchedExisting = false;
+      const baseNormalized = normalizePendingAiJobs(targetTrainee.pendingAiJobs).jobs;
+      let nextJobs = baseNormalized
+        .map((j) => {
+          if (jobId && j.id === jobId) {
+            matchedExisting = true;
+            if (cancelProcessing || j.status === 'processing') {
+              return {
+                ...j,
+                status: 'failed' as const,
+                completedAt: j.completedAt || nowIso,
+                stageText: 'בוטל ע"י המשתמש',
+                errorMsg: 'בוטל ע"י המשתמש',
+                acknowledged: true,
+              };
+            }
+            return null;
+          }
+          if (clearAllFinished && j.status !== 'processing') {
+            return null;
+          }
+          return j;
+        })
+        .filter((j): j is NonNullable<typeof j> => Boolean(j));
+
+      if (jobId && cancelProcessing && !matchedExisting) {
+        nextJobs = [
+          {
+            id: jobId,
+            targetTraineeId: targetId,
+            date: getTodayIso(),
+            mealSlotId: '',
+            mealSlotName: '',
+            mode: 'photo' as const,
+            status: 'failed' as const,
+            startedAt: nowIso,
+            completedAt: nowIso,
+            stageText: 'בוטל ע"י המשתמש',
+            errorMsg: 'בוטל ע"י המשתמש',
+            acknowledged: true,
+          },
+          ...nextJobs,
+        ].slice(0, 12);
+      }
 
       await updateServerDbState((prev) => ({
         ...prev,
@@ -937,7 +996,13 @@ export async function POST(request: NextRequest) {
         ),
       }));
 
-      return NextResponse.json({ ok: true, pendingAiJobs: nextJobs });
+      return NextResponse.json({
+        ok: true,
+        pendingAiJobs: sanitizeTraineeForClient({
+          ...targetTrainee,
+          pendingAiJobs: nextJobs,
+        }).pendingAiJobs,
+      });
     }
 
     // =========================================================================

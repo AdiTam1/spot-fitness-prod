@@ -447,6 +447,8 @@ export interface PendingAiMealJob {
   photoDataUrls?: string[];
   status: 'processing' | 'completed' | 'failed';
   startedAt: string;
+  lastHeartbeatAt?: string;
+  stageText?: string;
   completedAt?: string;
   engine?: string;
   isAiFallback?: boolean;
