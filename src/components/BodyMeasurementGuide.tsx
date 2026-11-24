@@ -165,7 +165,7 @@ export function BodyMeasurementGuide({
                   padding: compact ? '7px 4px' : '9px 6px',
                   borderRadius: 9,
                   border: 'none',
-                  background: active ? 'var(--accent-volt)' : 'transparent',
+                  background: active ? 'var(--sel-bg)' : 'transparent',
                   color: active ? '#ffffff' : 'var(--text-secondary)',
                   fontSize: compact ? 11 : 12,
                   fontWeight: 800,
@@ -197,7 +197,7 @@ export function BodyMeasurementGuide({
             : 'repeat(auto-fit, minmax(170px, 1fr))',
           gap: compact ? 10 : 16,
           alignItems: 'center',
-          background: 'rgba(255,255,255,0.02)',
+          background: 'var(--fill-1)',
         }}
       >
         {/* איור גוף וקטורי עם הנפשת סרט מדידה חי */}
@@ -229,7 +229,7 @@ export function BodyMeasurementGuide({
               />
               <path
                 d="M32 52 C40 44, 90 44, 98 52 L106 95 L92 95 L88 68 L86 155 L44 155 L42 68 L38 95 L24 95 Z"
-                fill="rgba(255,255,255,0.04)"
+                fill="var(--fill-1)"
                 stroke="#64748b"
                 strokeWidth="2"
               />
@@ -302,7 +302,7 @@ export function BodyMeasurementGuide({
               />
               <path
                 d="M34 50 C42 44, 88 44, 96 50 L88 158 L42 158 Z"
-                fill="rgba(255,255,255,0.04)"
+                fill="var(--fill-1)"
                 stroke="#64748b"
                 strokeWidth="2"
               />
@@ -356,7 +356,7 @@ export function BodyMeasurementGuide({
               {/* כתף וזרוע מכופפת ב-90 מעלות עם כיווץ דו-ראשי */}
               <path
                 d="M25 135 L25 90 C25 75, 42 75, 52 84 C64 70, 82 70, 92 84 L96 42 L110 42 L110 104 L46 104 L46 135 Z"
-                fill="rgba(255,255,255,0.05)"
+                fill="var(--fill-1)"
                 stroke="#64748b"
                 strokeWidth="2"
               />
@@ -407,7 +407,7 @@ export function BodyMeasurementGuide({
               {/* מתאר אגן ורגליים */}
               <path
                 d="M36 28 L94 28 L98 62 L86 156 L72 156 L68 78 L62 78 L58 156 L44 156 L32 62 Z"
-                fill="rgba(255,255,255,0.04)"
+                fill="var(--fill-1)"
                 stroke="#64748b"
                 strokeWidth="2"
               />

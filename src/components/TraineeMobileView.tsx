@@ -226,7 +226,7 @@ function CompactMiniRing({
         cy={size / 2}
         r={r}
         fill="none"
-        stroke="rgba(255,255,255,0.08)"
+        stroke="var(--surface-3)"
         strokeWidth={4.5}
       />
       <circle
@@ -565,7 +565,7 @@ export function TraineeMobileView({
               height: 30,
               borderRadius: '50%',
               background: 'var(--accent-volt)',
-              color: '#ffffff',
+              color: 'var(--on-accent)',
               fontWeight: 800,
               fontSize: 14,
               display: 'flex',
@@ -632,7 +632,7 @@ export function TraineeMobileView({
                     : 'transparent',
                 color:
                   dailyLog.dayType === 'workout'
-                    ? '#ffffff'
+                    ? 'var(--text)'
                     : 'var(--text-secondary)',
                 transition: 'all 0.18s ease',
               }}
@@ -657,7 +657,7 @@ export function TraineeMobileView({
                 cursor: isBlockedDay ? 'not-allowed' : 'pointer',
                 opacity: isBlockedDay ? 0.45 : 1,
                 background:
-                  dailyLog.dayType === 'rest' ? '#ffffff' : 'transparent',
+                  dailyLog.dayType === 'rest' ? 'var(--text)' : 'transparent',
                 color:
                   dailyLog.dayType === 'rest'
                     ? '#08090c'
@@ -876,7 +876,7 @@ export function TraineeMobileView({
                         ? '#f87171'
                         : isObs
                         ? '#38bdf8'
-                        : '#ffffff'
+                        : 'var(--text)'
                       : 'var(--text-primary)',
                   }}
                 >
@@ -1051,7 +1051,7 @@ export function TraineeMobileView({
                   </div>
                   <div
                     className="num-mono"
-                    style={{ fontSize: 22, fontWeight: 800, color: '#ffffff' }}
+                    style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)' }}
                   >
                     {dailyConsumed.calories.toLocaleString()}
                   </div>
@@ -1082,7 +1082,7 @@ export function TraineeMobileView({
                       cy="90"
                       r={radius}
                       fill="none"
-                      stroke="rgba(255, 255, 255, 0.07)"
+                      stroke="var(--surface-3)"
                       strokeWidth="12"
                       strokeDasharray={`${arcLength} ${circumference}`}
                       strokeLinecap="round"
@@ -1131,7 +1131,7 @@ export function TraineeMobileView({
                             fontSize: 32,
                             fontWeight: 800,
                             lineHeight: 1,
-                            color: '#ffffff',
+                            color: 'var(--text)',
                           }}
                         >
                           {dailyConsumed.calories.toLocaleString()}
@@ -1164,7 +1164,7 @@ export function TraineeMobileView({
                             fontSize: 34,
                             fontWeight: 800,
                             lineHeight: 1,
-                            color: isOverLimit ? '#f59e0b' : '#ffffff',
+                            color: isOverLimit ? '#f59e0b' : 'var(--text)',
                           }}
                         >
                           {Math.abs(remainingCalories).toLocaleString()}
@@ -1262,8 +1262,8 @@ export function TraineeMobileView({
                     <div
                       key={m.label}
                       style={{
-                        background: 'rgba(255, 255, 255, 0.025)',
-                        border: '1px solid rgba(255, 255, 255, 0.05)',
+                        background: 'var(--fill-1)',
+                        border: '1px solid var(--fill-1)',
                         borderRadius: 14,
                         padding: '10px 9px',
                         display: 'flex',
@@ -1328,7 +1328,7 @@ export function TraineeMobileView({
                           style={{
                             height: 5,
                             width: '100%',
-                            background: 'rgba(255,255,255,0.07)',
+                            background: 'var(--line)',
                             borderRadius: 999,
                             overflow: 'hidden',
                           }}
@@ -1646,14 +1646,11 @@ export function TraineeMobileView({
                             style={{
                               padding: '5px 10px',
                               borderRadius: 999,
-                              border: isSelected
-                                ? '1px solid var(--accent-volt)'
+                              border: isSelected ? '1px solid var(--sel-bg)'
                                 : '1px solid var(--border-subtle)',
-                              background: isSelected
-                                ? 'rgba(214, 125, 9, 0.16)'
+                              background: isSelected ? 'var(--sel-bg)'
                                 : 'var(--bg-surface-1)',
-                              color: isSelected
-                                ? 'var(--accent-volt)'
+                              color: isSelected ? 'var(--sel-text)'
                                 : 'var(--text-secondary)',
                               fontSize: 11,
                               fontWeight: 700,
@@ -1765,14 +1762,11 @@ export function TraineeMobileView({
                             style={{
                               padding: '5px 10px',
                               borderRadius: 999,
-                              border: isSelected
-                                ? '1px solid var(--accent-volt)'
+                              border: isSelected ? '1px solid var(--sel-bg)'
                                 : '1px solid var(--border-subtle)',
-                              background: isSelected
-                                ? 'rgba(214, 125, 9, 0.16)'
+                              background: isSelected ? 'var(--sel-bg)'
                                 : 'var(--bg-surface-1)',
-                              color: isSelected
-                                ? 'var(--accent-orange-bright)'
+                              color: isSelected ? 'var(--sel-text)'
                                 : 'var(--text-secondary)',
                               fontSize: 11,
                               fontWeight: 700,
@@ -1860,14 +1854,11 @@ export function TraineeMobileView({
                             style={{
                               padding: '6px 2px',
                               borderRadius: 8,
-                              border: isSelected
-                                ? '1px solid var(--accent-volt)'
+                              border: isSelected ? '1px solid var(--sel-bg)'
                                 : '1px solid var(--border-subtle)',
-                              background: isSelected
-                                ? 'rgba(214, 125, 9, 0.16)'
+                              background: isSelected ? 'var(--sel-bg)'
                                 : 'var(--bg-surface-1)',
-                              color: isSelected
-                                ? 'var(--accent-orange-bright)'
+                              color: isSelected ? 'var(--sel-text)'
                                 : 'var(--text-secondary)',
                               fontSize: 11,
                               fontWeight: 800,
@@ -1898,14 +1889,11 @@ export function TraineeMobileView({
                             style={{
                               padding: '6px 2px',
                               borderRadius: 8,
-                              border: isSelected
-                                ? '1px solid var(--accent-volt)'
+                              border: isSelected ? '1px solid var(--sel-bg)'
                                 : '1px solid var(--border-subtle)',
-                              background: isSelected
-                                ? 'rgba(214, 125, 9, 0.16)'
+                              background: isSelected ? 'var(--sel-bg)'
                                 : 'var(--bg-surface-1)',
-                              color: isSelected
-                                ? 'var(--accent-orange-bright)'
+                              color: isSelected ? 'var(--sel-text)'
                                 : 'var(--text-secondary)',
                               fontSize: 11,
                               fontWeight: 800,
@@ -2122,7 +2110,7 @@ export function TraineeMobileView({
                               cy="19"
                               r="15"
                               fill="none"
-                              stroke="rgba(255,255,255,0.08)"
+                              stroke="var(--surface-3)"
                               strokeWidth="3.2"
                             />
                             <circle
@@ -2202,10 +2190,10 @@ export function TraineeMobileView({
                                   borderRadius: 999,
                                   border: entry?.mealTime
                                     ? '1px solid rgba(214, 125, 9, 0.4)'
-                                    : '1px solid rgba(255, 255, 255, 0.08)',
+                                    : '1px solid var(--line)',
                                   background: entry?.mealTime
                                     ? 'rgba(214, 125, 9, 0.14)'
-                                    : 'rgba(255, 255, 255, 0.04)',
+                                    : 'var(--fill-1)',
                                   color: entry?.mealTime
                                     ? 'var(--accent-orange-bright)'
                                     : 'var(--text-secondary)',
@@ -2304,7 +2292,7 @@ export function TraineeMobileView({
                           borderRadius: 14,
                           padding: '8px 12px',
                           marginBottom: 12,
-                          border: '1px solid rgba(255, 255, 255, 0.04)',
+                          border: '1px solid var(--fill-1)',
                         }}
                       >
                         {entry?.photoDataUrl && (
@@ -2315,7 +2303,7 @@ export function TraineeMobileView({
                               gap: 10,
                               paddingBottom: 8,
                               marginBottom: 8,
-                              borderBottom: '1px solid rgba(255,255,255,0.06)',
+                              borderBottom: '1px solid var(--line)',
                             }}
                           >
                             <img
@@ -2366,7 +2354,7 @@ export function TraineeMobileView({
                               cursor: isBlockedDay ? 'default' : 'pointer',
                               borderBottom:
                                 i < loggedItems.length - 1
-                                  ? '1px solid rgba(255, 255, 255, 0.04)'
+                                  ? '1px solid var(--fill-1)'
                                   : 'none',
                             }}
                           >
@@ -3141,16 +3129,13 @@ export function TraineeMobileView({
                             height: 26,
                             borderRadius: 7,
                             border:
-                              row.val === num
-                                ? '1px solid var(--accent-volt)'
+                              row.val === num ? '1px solid var(--sel-bg)'
                                 : '1px solid var(--border-subtle)',
                             background:
-                              row.val === num
-                                ? 'rgba(214, 125, 9, 0.18)'
+                              row.val === num ? 'var(--sel-bg)'
                                 : 'var(--bg-surface-1)',
                             color:
-                              row.val === num
-                                ? 'var(--accent-volt)'
+                              row.val === num ? 'var(--sel-text)'
                                 : 'var(--text-secondary)',
                             fontSize: 12,
                             fontWeight: 800,
@@ -3309,11 +3294,11 @@ export function TraineeMobileView({
                 border: 'none',
                 background:
                   mobileSection === 'journal'
-                    ? 'rgba(255, 255, 255, 0.09)'
+                    ? 'var(--line)'
                     : 'transparent',
                 color:
                   mobileSection === 'journal'
-                    ? '#ffffff'
+                    ? 'var(--text)'
                     : 'var(--text-secondary)',
                 fontSize: 11,
                 fontWeight: 700,
@@ -3337,11 +3322,11 @@ export function TraineeMobileView({
                 border: 'none',
                 background:
                   mobileSection === 'metrics'
-                    ? 'rgba(255, 255, 255, 0.09)'
+                    ? 'var(--line)'
                     : 'transparent',
                 color:
                   mobileSection === 'metrics'
-                    ? '#ffffff'
+                    ? 'var(--text)'
                     : 'var(--text-secondary)',
                 fontSize: 11,
                 fontWeight: 700,
@@ -3365,11 +3350,11 @@ export function TraineeMobileView({
                 border: 'none',
                 background:
                   mobileSection === 'profile'
-                    ? 'rgba(255, 255, 255, 0.09)'
+                    ? 'var(--line)'
                     : 'transparent',
                 color:
                   mobileSection === 'profile'
-                    ? '#ffffff'
+                    ? 'var(--text)'
                     : 'var(--text-secondary)',
                 fontSize: 11,
                 fontWeight: 700,
@@ -3535,8 +3520,7 @@ export function TraineeMobileView({
                       style={{
                         height: 38,
                         borderRadius: 11,
-                        border: isSelected
-                          ? '1px solid var(--accent-volt)'
+                        border: isSelected ? '1px solid var(--sel-bg)'
                           : isBlockedCell
                           ? '1px solid rgba(239, 68, 68, 0.55)'
                           : isToday
@@ -3577,7 +3561,7 @@ export function TraineeMobileView({
                             width: 4,
                             height: 4,
                             borderRadius: '50%',
-                            background: isSelected ? '#ffffff' : 'var(--accent-volt)',
+                            background: isSelected ? 'var(--text)' : 'var(--accent-volt)',
                           }}
                         />
                       )}
@@ -3766,7 +3750,7 @@ export function TraineeMobileView({
                 boxSizing: 'border-box',
                 background: 'transparent',
                 border: 'none',
-                color: '#ffffff',
+                color: 'var(--text)',
                 fontSize: 20,
                 fontWeight: 800,
                 textAlign: 'center',

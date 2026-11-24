@@ -390,8 +390,7 @@ export function TraineeOnboardingWizard({
                     height: 6,
                     borderRadius: 999,
                     border: 'none',
-                    background: active
-                      ? 'var(--accent-volt)'
+                    background: active ? 'var(--accent-volt)'
                       : done
                       ? 'rgba(214, 125, 9, 0.45)'
                       : 'var(--bg-surface-3)',
@@ -444,7 +443,7 @@ export function TraineeOnboardingWizard({
                       borderRadius: 8,
                       border: 'none',
                       background:
-                        gender === g.id ? 'var(--accent-volt)' : 'transparent',
+                        gender === g.id ? 'var(--sel-bg)' : 'transparent',
                       color:
                         gender === g.id ? '#ffffff' : 'var(--text-secondary)',
                       fontSize: 13,
@@ -590,14 +589,11 @@ export function TraineeOnboardingWizard({
                       style={{
                         padding: '5px 10px',
                         borderRadius: 999,
-                        border: selected
-                          ? '1px solid var(--accent-volt)'
+                        border: selected ? '1px solid var(--sel-bg)'
                           : '1px solid var(--border-subtle)',
-                        background: selected
-                          ? 'rgba(214, 125, 9, 0.14)'
+                        background: selected ? 'var(--sel-bg)'
                           : 'var(--bg-surface-1)',
-                        color: selected
-                          ? 'var(--accent-volt)'
+                        color: selected ? 'var(--sel-text)'
                           : 'var(--text-secondary)',
                         fontSize: 11,
                         fontWeight: 700,
@@ -646,14 +642,11 @@ export function TraineeOnboardingWizard({
                       style={{
                         padding: '5px 10px',
                         borderRadius: 999,
-                        border: selected
-                          ? '1px solid var(--accent-volt)'
+                        border: selected ? '1px solid var(--sel-bg)'
                           : '1px solid var(--border-subtle)',
-                        background: selected
-                          ? 'rgba(214, 125, 9, 0.14)'
+                        background: selected ? 'var(--sel-bg)'
                           : 'var(--bg-surface-1)',
-                        color: selected
-                          ? 'var(--accent-volt)'
+                        color: selected ? 'var(--sel-text)'
                           : 'var(--text-secondary)',
                         fontSize: 11,
                         fontWeight: 700,
@@ -756,14 +749,11 @@ export function TraineeOnboardingWizard({
                       style={{
                         padding: '5px 10px',
                         borderRadius: 999,
-                        border: selected
-                          ? '1px solid var(--accent-volt)'
+                        border: selected ? '1px solid var(--sel-bg)'
                           : '1px solid var(--border-subtle)',
-                        background: selected
-                          ? 'rgba(214, 125, 9, 0.14)'
+                        background: selected ? 'var(--sel-bg)'
                           : 'var(--bg-surface-1)',
-                        color: selected
-                          ? 'var(--accent-volt)'
+                        color: selected ? 'var(--sel-text)'
                           : 'var(--text-secondary)',
                         fontSize: 11,
                         fontWeight: 700,
@@ -1018,14 +1008,11 @@ export function TraineeOnboardingWizard({
                       style={{
                         padding: '5px 10px',
                         borderRadius: 999,
-                        border: selected
-                          ? '1px solid var(--accent-volt)'
+                        border: selected ? '1px solid var(--sel-bg)'
                           : '1px solid var(--border-subtle)',
-                        background: selected
-                          ? 'rgba(214, 125, 9, 0.14)'
+                        background: selected ? 'var(--sel-bg)'
                           : 'var(--bg-surface-1)',
-                        color: selected
-                          ? 'var(--accent-volt)'
+                        color: selected ? 'var(--sel-text)'
                           : 'var(--text-secondary)',
                         fontSize: 11,
                         fontWeight: 700,
@@ -1082,14 +1069,11 @@ export function TraineeOnboardingWizard({
                       style={{
                         padding: '5px 10px',
                         borderRadius: 999,
-                        border: selected
-                          ? '1px solid var(--accent-volt)'
+                        border: selected ? '1px solid var(--sel-bg)'
                           : '1px solid var(--border-subtle)',
-                        background: selected
-                          ? 'rgba(214, 125, 9, 0.14)'
+                        background: selected ? 'var(--sel-bg)'
                           : 'var(--bg-surface-1)',
-                        color: selected
-                          ? 'var(--accent-volt)'
+                        color: selected ? 'var(--sel-text)'
                           : 'var(--text-secondary)',
                         fontSize: 11,
                         fontWeight: 700,
@@ -1190,13 +1174,11 @@ export function TraineeOnboardingWizard({
                       style={{
                         padding: '5px 10px',
                         borderRadius: 999,
-                        border: selected
-                          ? '1px solid var(--accent-volt)'
+                        border: selected ? '1px solid var(--sel-bg)'
                           : '1px solid var(--border-subtle)',
-                        background: selected
-                          ? 'rgba(214, 125, 9, 0.14)'
+                        background: selected ? 'var(--sel-bg)'
                           : 'var(--bg-surface-1)',
-                        color: selected ? 'var(--accent-orange-bright)' : 'var(--text-secondary)',
+                        color: selected ? 'var(--sel-text)' : 'var(--text-secondary)',
                         fontSize: 11,
                         fontWeight: 700,
                         cursor: 'pointer',

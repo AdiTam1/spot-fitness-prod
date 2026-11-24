@@ -4,11 +4,13 @@ import './globals.css';
 import React from 'react';
 import {
   ColorSchemeScript,
+  CSSVariablesResolver,
   DirectionProvider,
   MantineColorsTuple,
   MantineProvider,
   createTheme,
 } from '@mantine/core';
+import { ThemeMetaSync } from '@/components/ui/ThemeMetaSync';
 import { Notifications } from '@mantine/notifications';
 import type { Metadata, Viewport } from 'next';
 
@@ -34,7 +36,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#08090c',
+  themeColor: [
+    { media: '(prefers-color-scheme: dark)', color: '#000000' },
+    { media: '(prefers-color-scheme: light)', color: '#f2f2f4' },
+  ],
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -54,15 +59,63 @@ const spotOrange: MantineColorsTuple = [
   '#935000',
 ];
 
+// Neutral (non-navy) gray scale used by Mantine's dark color scheme.
+const neutralDark: MantineColorsTuple = [
+  '#f5f5f5',
+  '#c7c7cc',
+  '#a8a8a8',
+  '#8e8e93',
+  '#5a5a5e',
+  '#3a3a3c',
+  '#2c2c2e',
+  '#1c1c1e',
+  '#111112',
+  '#000000',
+];
+
 const theme = createTheme({
   primaryColor: 'orange',
   primaryShade: { dark: 6, light: 6 },
   colors: {
     orange: spotOrange,
+    dark: neutralDark,
   },
-  defaultRadius: 'md',
+  white: '#ffffff',
+  black: '#0a0a0a',
+  defaultRadius: 'lg',
+  radius: { xs: '8px', sm: '12px', md: '16px', lg: '22px', xl: '28px' },
   fontFamily:
     '"Heebo", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  fontFamilyMonospace: '"Space Grotesk", "Heebo", sans-serif',
+  headings: {
+    fontFamily:
+      '"Heebo", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  },
+  components: {
+    Button: { defaultProps: { radius: 'xl' } },
+    Badge: { defaultProps: { radius: 'xl' } },
+    SegmentedControl: { defaultProps: { radius: 'xl' } },
+  },
+});
+
+// Map Mantine's surface variables onto the app's design tokens so Mantine
+// components (inputs, menus, popovers, switches...) follow both themes.
+const cssVariablesResolver: CSSVariablesResolver = () => ({
+  variables: {},
+  light: {
+    '--mantine-color-body': '#f2f2f4',
+    '--mantine-color-text': '#0a0a0a',
+    '--mantine-color-dimmed': '#6e6e73',
+    '--mantine-color-default': '#ffffff',
+    '--mantine-color-default-border': 'rgba(0, 0, 0, 0.1)',
+  },
+  dark: {
+    '--mantine-color-body': '#000000',
+    '--mantine-color-text': '#f5f5f5',
+    '--mantine-color-dimmed': '#8e8e93',
+    '--mantine-color-default': '#2c2c2e',
+    '--mantine-color-default-border': 'rgba(255, 255, 255, 0.14)',
+  },
 });
 
 export default function RootLayout({
@@ -73,11 +126,17 @@ export default function RootLayout({
   return (
     <html lang="he" dir="rtl" suppressHydrationWarning>
       <head>
-        <ColorSchemeScript defaultColorScheme="dark" />
+        {/* Defaults to the OS preference; the user's toggle is persisted by Mantine in localStorage. */}
+        <ColorSchemeScript defaultColorScheme="auto" />
       </head>
       <body>
         <DirectionProvider initialDirection="rtl">
-          <MantineProvider theme={theme} defaultColorScheme="dark">
+          <MantineProvider
+            theme={theme}
+            defaultColorScheme="auto"
+            cssVariablesResolver={cssVariablesResolver}
+          >
+            <ThemeMetaSync />
             <Notifications position="top-center" zIndex={300} />
             {children}
           </MantineProvider>

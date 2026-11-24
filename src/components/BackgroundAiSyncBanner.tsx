@@ -127,7 +127,7 @@ export function BackgroundAiSyncBanner({
                 {ticker.formattedElapsed}
               </span>
             </div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#fff', marginTop: 3 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginTop: 3 }}>
               {ticker.currentStepText}
             </div>
             <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 3 }}>

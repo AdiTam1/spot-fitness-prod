@@ -288,13 +288,11 @@ export function AiQuickContextPanel({
                   fontSize: 10,
                   fontWeight: 700,
                   cursor: 'pointer',
-                  border: active
-                    ? '1px solid var(--accent-volt)'
+                  border: active ? '1px solid var(--sel-bg)'
                     : '1px solid rgba(56, 189, 248, 0.3)',
-                  background: active
-                    ? 'rgba(214, 125, 9, 0.18)'
+                  background: active ? 'var(--sel-bg)'
                     : 'rgba(56, 189, 248, 0.08)',
-                  color: active ? 'var(--accent-volt)' : '#7dd3fc',
+                  color: active ? 'var(--sel-text)' : '#7dd3fc',
                 }}
               >
                 {tool.name}
@@ -320,13 +318,11 @@ export function AiQuickContextPanel({
                 fontSize: 10,
                 fontWeight: 700,
                 cursor: 'pointer',
-                border: active
-                  ? '1px solid var(--accent-volt)'
+                border: active ? '1px solid var(--sel-bg)'
                   : '1px solid var(--border-subtle)',
-                background: active
-                  ? 'rgba(214, 125, 9, 0.16)'
+                background: active ? 'var(--sel-bg)'
                   : 'var(--bg-surface-1)',
-                color: active ? 'var(--accent-volt)' : 'var(--text-secondary)',
+                color: active ? 'var(--sel-text)' : 'var(--text-secondary)',
               }}
             >
               {active ? '✓ ' : ''}
@@ -411,7 +407,7 @@ export function AiQuickContextPanel({
             gridTemplateColumns: '1fr 1fr',
             gap: 8,
             paddingTop: 6,
-            borderTop: '1px solid rgba(255,255,255,0.06)',
+            borderTop: '1px solid var(--line)',
           }}
         >
           <TextInput

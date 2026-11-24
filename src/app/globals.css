@@ -1,26 +1,83 @@
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap');
 
-:root {
-  --bg-canvas: #08090c;
-  --bg-surface-1: #101218;
-  --bg-surface-2: #161922;
-  --bg-surface-3: #1e222e;
-  --bg-glass: rgba(16, 18, 24, 0.82);
+/* ============================================================
+   Design tokens — Spot Fitness mobile redesign
+   Dark (default) is black / neutral gray. Light is a soft gray canvas.
+   The active scheme is driven by Mantine's `data-mantine-color-scheme`
+   attribute on <html> (persisted in localStorage, defaults to system).
+   ============================================================ */
 
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-strong: rgba(255, 255, 255, 0.12);
-  --border-accent: rgba(214, 125, 9, 0.45);
+:root,
+:root[data-mantine-color-scheme='dark'] {
+  color-scheme: dark;
 
-  --text-primary: #f4f6fb;
-  --text-secondary: #949bb0;
-  --text-muted: #5e6578;
+  --bg: #000000;
+  --card: #1c1c1e;
+  --surface-2: #2c2c2e;
+  --surface-3: #3a3a3c;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-2: rgba(255, 255, 255, 0.14);
+  --fill-1: rgba(255, 255, 255, 0.04);
+  --text: #f5f5f5;
+  --text-2: #a8a8a8;
+  --text-3: #8e8e93;
 
-  /* פלטת צבעים מקצועית — Spot Sport Orange (#d67d09) */
-  --accent-volt: #d67d09;
-  --accent-orange: #d67d09;
+  --btn-primary: #3e3e3f;
+  --btn-primary-hover: #4a4a4c;
+  --btn-primary-text: #ffffff;
+
+  --glass: rgba(44, 44, 46, 0.52);
+  --glass-border: rgba(255, 255, 255, 0.13);
+  --glass-hi: rgba(255, 255, 255, 0.22);
+  --glass-shadow: 0 14px 34px -10px rgba(0, 0, 0, 0.8);
+  --scrim: rgba(0, 0, 0, 0.55);
+  --card-shadow: none;
+  --sheet-shadow: 0 -20px 50px -20px rgba(0, 0, 0, 0.6);
+
   --accent-orange-bright: #eb931c;
-  --accent-volt-soft: rgba(214, 125, 9, 0.14);
-  /* צבעי מאקרו: חלבון כחול · פחמימות ורוד · שומנים כתום */
+}
+
+:root[data-mantine-color-scheme='light'] {
+  color-scheme: light;
+
+  --bg: #f2f2f4;
+  --card: #ffffff;
+  --surface-2: #f2f2f4;
+  --surface-3: #e5e5e8;
+  --line: rgba(0, 0, 0, 0.06);
+  --line-2: rgba(0, 0, 0, 0.1);
+  --fill-1: rgba(0, 0, 0, 0.03);
+  --text: #0a0a0a;
+  --text-2: #5a5a5e;
+  --text-3: #6e6e73;
+
+  --btn-primary: #2c2c2e;
+  --btn-primary-hover: #3a3a3c;
+  --btn-primary-text: #ffffff;
+
+  --glass: rgba(255, 255, 255, 0.62);
+  --glass-border: rgba(255, 255, 255, 0.85);
+  --glass-hi: rgba(255, 255, 255, 1);
+  --glass-shadow: 0 14px 34px -12px rgba(0, 0, 0, 0.22);
+  --scrim: rgba(20, 20, 22, 0.28);
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --sheet-shadow: 0 -20px 50px -20px rgba(0, 0, 0, 0.18);
+
+  /* Darker orange for orange *text* on light surfaces (contrast). */
+  --accent-orange-bright: #a95f00;
+}
+
+:root {
+  /* Accent — progress, data highlights, "active / today". Text on orange is always #0a0a0a. */
+  --accent: #d67d09;
+  --on-accent: #0a0a0a;
+  --accent-soft: rgba(214, 125, 9, 0.14);
+
+  /* Selected state for chips / segmented controls (never orange). */
+  --sel-bg: var(--btn-primary);
+  --sel-text: var(--btn-primary-text);
+
+  /* Macro colours — reserved for nutrition only. */
   --macro-protein: #38bdf8;
   --macro-protein-soft: rgba(56, 189, 248, 0.14);
   --macro-carbs: #ff5e7e;
@@ -31,6 +88,30 @@
   --status-ok: #22c55e;
   --status-warn: #f59e0b;
   --status-danger: #ef4444;
+
+  --radius-card: 24px;
+  --radius-card-lg: 28px;
+  --radius-row: 22px;
+  --radius-sheet: 34px;
+
+  --font-ui: 'Heebo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-num: 'Space Grotesk', 'Heebo', sans-serif;
+
+  /* ---- Legacy aliases (kept so existing components follow the theme) ---- */
+  --bg-canvas: var(--bg);
+  --bg-surface-1: var(--card);
+  --bg-surface-2: var(--surface-2);
+  --bg-surface-3: var(--surface-3);
+  --bg-glass: var(--glass);
+  --border-subtle: var(--line);
+  --border-strong: var(--line-2);
+  --border-accent: rgba(214, 125, 9, 0.45);
+  --text-primary: var(--text);
+  --text-secondary: var(--text-2);
+  --text-muted: var(--text-3);
+  --accent-volt: var(--accent);
+  --accent-orange: var(--accent);
+  --accent-volt-soft: var(--accent-soft);
 }
 
 * {
@@ -42,9 +123,9 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100dvh;
-  background-color: var(--bg-canvas) !important;
-  color: var(--text-primary) !important;
-  font-family: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  background-color: var(--bg) !important;
+  color: var(--text) !important;
+  font-family: var(--font-ui) !important;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
@@ -58,7 +139,7 @@ button,
 
 button:focus-visible,
 a:focus-visible {
-  outline: 2px solid var(--accent-volt) !important;
+  outline: 2px solid var(--accent) !important;
   outline-offset: 2px;
 }
 
@@ -73,68 +154,79 @@ a:focus-visible {
 }
 
 .num-mono {
-  font-family: 'Space Grotesk', 'Heebo', sans-serif;
+  font-family: var(--font-num);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.03em;
 }
 
-/* כרטיס זכוכית ופחם יוקרתי */
+/* ---------- Cards ---------- */
 .pro-card {
-  background: var(--bg-surface-1);
-  border: 1px solid var(--border-subtle);
-  border-radius: 20px;
-  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 8px 24px -8px rgba(0, 0, 0, 0.5);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--card-shadow);
   transition: border-color 0.2s ease, transform 0.2s ease, background-color 0.2s ease;
 }
 
 .pro-card-interactive:hover {
-  border-color: var(--border-strong);
-  background: var(--bg-surface-2);
+  border-color: var(--line-2);
 }
 
 .pro-card-elevated {
-  background: linear-gradient(165deg, #161923 0%, #0e1016 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 24px;
-  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 20px 40px -15px rgba(0, 0, 0, 0.7);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card-lg);
+  box-shadow: var(--card-shadow);
 }
 
-/* כפתור ראשי (Spot Deep Orange) */
+/* ---------- Buttons ---------- */
+/* Primary: neutral filled gray with white text (orange is reserved for progress/active). */
 .btn-volt {
-  background: var(--accent-volt) !important;
-  color: #ffffff !important;
+  background: var(--btn-primary) !important;
+  color: var(--btn-primary-text) !important;
   font-weight: 700 !important;
   border: none !important;
-  border-radius: 12px !important;
-  transition: all 0.18s ease !important;
+  border-radius: 999px !important;
+  min-height: 36px;
+  transition: background-color 0.18s ease, transform 0.18s ease !important;
 }
 
 .btn-volt:hover {
-  background: #eb931c !important;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px -4px rgba(214, 125, 9, 0.45);
+  background: var(--btn-primary-hover) !important;
+}
+
+.btn-volt:active {
+  transform: scale(0.98);
 }
 
 .btn-volt:disabled {
   opacity: 0.45 !important;
   transform: none !important;
-  box-shadow: none !important;
   cursor: not-allowed !important;
   pointer-events: none !important;
 }
 
+/* Accent button — only for the add-meal FAB style actions. */
+.btn-accent {
+  background: var(--accent) !important;
+  color: var(--on-accent) !important;
+  font-weight: 700 !important;
+  border: none !important;
+  border-radius: 999px !important;
+}
+
 .btn-surface {
-  background: var(--bg-surface-2) !important;
-  color: var(--text-primary) !important;
-  border: 1px solid var(--border-subtle) !important;
-  border-radius: 12px !important;
+  background: var(--surface-2) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 999px !important;
   font-weight: 600 !important;
-  transition: all 0.15s ease !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease !important;
 }
 
 .btn-surface:hover {
-  background: var(--bg-surface-3) !important;
-  border-color: var(--border-strong) !important;
+  background: var(--surface-3) !important;
+  border-color: var(--line-2) !important;
 }
 
 .btn-surface:disabled {
@@ -143,15 +235,50 @@ a:focus-visible {
   pointer-events: none !important;
 }
 
-/* כותרת דביקה עם התחשבות מלאה ב-Safe Area של מכשירי Android 15-16 (Edge-to-Edge) */
+/* ---------- Liquid glass (floating controls only) ---------- */
+.glass {
+  position: relative;
+  isolation: isolate;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 var(--glass-hi), inset 0 -1px 1px rgba(255, 255, 255, 0.05),
+    var(--glass-shadow);
+  color: var(--text);
+}
+
+.glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    140deg,
+    rgba(255, 255, 255, 0.2),
+    rgba(255, 255, 255, 0) 42%,
+    rgba(255, 255, 255, 0) 70%,
+    rgba(255, 255, 255, 0.08)
+  );
+  pointer-events: none;
+  z-index: -1;
+}
+
+.glass-tint {
+  background: color-mix(in srgb, var(--accent) 88%, transparent);
+  border-color: rgba(255, 200, 130, 0.55);
+  color: var(--on-accent);
+}
+
+/* Header kept as a translucent bar that follows the theme. */
 .spot-sticky-header {
   position: sticky;
   top: 0;
   z-index: 80;
-  background: rgba(8, 9, 12, 0.85);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border-bottom: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  border-bottom: 1px solid var(--line);
   padding: calc(7px + env(safe-area-inset-top, 0px)) 14px 7px;
 }
 
@@ -161,7 +288,7 @@ a:focus-visible {
   }
 }
 
-/* סרגל תחתון צף למובייל (Floating Glass Dock) */
+/* ---------- Floating dock (trainee + coach) ---------- */
 .mobile-bottom-dock {
   position: fixed;
   bottom: calc(18px + env(safe-area-inset-bottom, 0px));
@@ -170,13 +297,20 @@ a:focus-visible {
   z-index: 90;
   width: calc(100% - 32px);
   max-width: 440px;
-  background: rgba(18, 21, 29, 0.88);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-  padding: 6px 10px;
-  box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mobile-dock-fade {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(120px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, var(--bg), transparent);
+  pointer-events: none;
+  z-index: 89;
 }
 
 @media (max-width: 768px) {
@@ -188,20 +322,21 @@ a:focus-visible {
   }
 }
 
-/* התאמת שדות הקלט של Mantine למראה נקי ויוקרתי */
+/* ---------- Mantine inputs ---------- */
 .mantine-Input-input {
-  background-color: var(--bg-surface-2) !important;
-  border: 1px solid var(--border-subtle) !important;
-  color: var(--text-primary) !important;
-  border-radius: 12px !important;
+  background-color: var(--surface-2) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--text) !important;
+  border-radius: 14px !important;
+  min-height: 44px;
   transition: border-color 0.15s ease !important;
 }
 
 .mantine-Input-input:focus {
-  border-color: var(--accent-volt) !important;
+  border-color: var(--text-2) !important;
 }
 
-/* מניעת חפיפה של כפתור הצגת סיסמה בשדות LTR בתוך ממשק RTL */
+/* Keep the password-reveal button from overlapping LTR inputs in an RTL UI. */
 .mantine-PasswordInput-innerInput {
   padding-left: 40px !important;
   padding-right: 12px !important;
@@ -209,19 +344,62 @@ a:focus-visible {
   text-align: left;
 }
 
+/* ---------- Sheets & modals ---------- */
 .mantine-Drawer-content,
 .mantine-Modal-content {
-  background-color: #101218 !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background-color: var(--card) !important;
+  border: 1px solid var(--line-2) !important;
+  color: var(--text);
+}
+
+.mantine-Drawer-content {
+  box-shadow: var(--sheet-shadow) !important;
+}
+
+/* The app only uses bottom drawers (sheets). */
+.mantine-Drawer-content {
+  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0 !important;
+  border-bottom: none !important;
+}
+
+.mantine-Modal-content {
+  border-radius: 28px !important;
 }
 
 .mantine-Drawer-header,
 .mantine-Modal-header {
-  background-color: #101218 !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background-color: var(--card) !important;
+  border-bottom: 1px solid var(--line);
 }
 
-/* פס גלילה עדין */
+.mantine-Drawer-overlay,
+.mantine-Modal-overlay {
+  background: var(--scrim) !important;
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+
+.mantine-Modal-close,
+.mantine-Drawer-close {
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+  border-radius: 999px !important;
+  background: var(--surface-2) !important;
+  color: var(--text) !important;
+}
+
+/* Grabber shown at the top of bottom sheets. */
+.sheet-grabber {
+  align-self: center;
+  width: 40px;
+  height: 5px;
+  border-radius: 9px;
+  background: var(--surface-3);
+  margin: 0 auto;
+}
+
+/* ---------- Scrollbar ---------- */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -230,9 +408,9 @@ a:focus-visible {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--line-2);
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--text-3);
 }

@@ -1164,7 +1164,7 @@ export function AddMealDrawer({
           style={{
             padding: '12px 16px 10px',
             borderBottom: '1px solid var(--border-subtle)',
-            background: '#101218',
+            background: 'var(--card)',
             display: 'flex',
             flexDirection: 'column',
             gap: 10,
@@ -1270,7 +1270,7 @@ export function AddMealDrawer({
                       background: 'transparent',
                       border: 'none',
                       outline: 'none',
-                      color: '#ffffff',
+                      color: 'var(--text)',
                       fontSize: 11,
                       fontWeight: 800,
                       width: 58,
@@ -1292,10 +1292,10 @@ export function AddMealDrawer({
                     padding: '4px 9px',
                     borderRadius: 999,
                     background: 'var(--bg-surface-2)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    border: '1px solid var(--line)',
                     fontSize: 10.5,
                     fontWeight: 700,
-                    color: '#ffffff',
+                    color: 'var(--text)',
                     whiteSpace: 'nowrap',
                   }}
                 >
@@ -1383,7 +1383,7 @@ export function AddMealDrawer({
                       height: 24,
                       borderRadius: '50%',
                       border: 'none',
-                      background: 'rgba(255,255,255,0.08)',
+                      background: 'var(--line)',
                       color: 'var(--text-secondary)',
                       display: 'flex',
                       alignItems: 'center',
@@ -1469,7 +1469,7 @@ export function AddMealDrawer({
                     background: trimmedQuery
                       ? 'linear-gradient(135deg, #eb931c 0%, #b36206 100%)'
                       : 'var(--bg-surface-3)',
-                    color: trimmedQuery ? '#ffffff' : 'var(--accent-orange-bright)',
+                    color: trimmedQuery ? 'var(--text)' : 'var(--accent-orange-bright)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -1495,7 +1495,7 @@ export function AddMealDrawer({
                     height: 32,
                     borderRadius: '50%',
                     border: 'none',
-                    background: 'var(--accent-volt)',
+                    background: 'var(--btn-primary)',
                     color: '#ffffff',
                     display: 'flex',
                     alignItems: 'center',
@@ -1885,7 +1885,7 @@ export function AddMealDrawer({
                     />
 
                     <div style={{ position: 'relative', zIndex: 1, maxWidth: '84%' }}>
-                      <div style={{ fontSize: 14, fontWeight: 900, color: '#ffffff' }}>
+                      <div style={{ fontSize: 14, fontWeight: 900, color: 'var(--text)' }}>
                         {card.title}
                       </div>
                       <div
@@ -2012,7 +2012,7 @@ export function AddMealDrawer({
                             gap: 8,
                             padding: '8px 10px',
                             borderRadius: 10,
-                            background: 'rgba(255,255,255,0.03)',
+                            background: 'var(--fill-1)',
                             border: '1px solid var(--border-subtle)',
                           }}
                         >
@@ -2107,7 +2107,7 @@ export function AddMealDrawer({
                       style={{
                         fontSize: 11,
                         color: 'var(--text-secondary)',
-                        background: 'rgba(255,255,255,0.03)',
+                        background: 'var(--fill-1)',
                         padding: '6px 10px',
                         borderRadius: 8,
                         marginBottom: 10,
@@ -2400,14 +2400,11 @@ export function AddMealDrawer({
                           padding: '4px 10px',
                           borderRadius: 999,
                           cursor: 'pointer',
-                          border: active
-                            ? '1px solid var(--accent-volt)'
+                          border: active ? '1px solid var(--sel-bg)'
                             : '1px solid var(--border-subtle)',
-                          background: active
-                            ? 'rgba(214, 125, 9, 0.16)'
+                          background: active ? 'var(--sel-bg)'
                             : 'var(--bg-surface-2)',
-                          color: active
-                            ? 'var(--accent-orange-bright)'
+                          color: active ? 'var(--sel-text)'
                             : 'var(--text-secondary)',
                         }}
                       >
@@ -2466,11 +2463,9 @@ export function AddMealDrawer({
                             padding: '10px 12px',
                             borderRadius: 12,
                             cursor: 'pointer',
-                            border: isSelected
-                              ? '1px solid var(--accent-volt)'
+                            border: isSelected ? '1px solid var(--text-3)'
                               : '1px solid var(--border-subtle)',
-                            background: isSelected
-                              ? 'rgba(214, 125, 9, 0.1)'
+                            background: isSelected ? 'var(--surface-3)'
                               : 'var(--bg-surface-2)',
                             display: 'flex',
                             justifyContent: 'space-between',
@@ -2530,7 +2525,7 @@ export function AddMealDrawer({
                                       gap: 2,
                                       padding: '0 5px',
                                       borderRadius: 6,
-                                      background: 'rgba(255,255,255,0.06)',
+                                      background: 'var(--line)',
                                       color: 'var(--text-secondary)',
                                       fontSize: 9.5,
                                     }}
@@ -2586,7 +2581,7 @@ export function AddMealDrawer({
                       borderRadius: 12,
                       background: 'rgba(214, 125, 9, 0.14)',
                       border: '1px solid rgba(214, 125, 9, 0.42)',
-                      color: '#ffffff',
+                      color: 'var(--text)',
                       fontSize: 12,
                       fontWeight: 800,
                       cursor: 'pointer',
@@ -2625,7 +2620,7 @@ export function AddMealDrawer({
                       background:
                         photoMode === 'plate' ? 'var(--accent-volt)' : 'transparent',
                       color:
-                        photoMode === 'plate' ? '#ffffff' : 'var(--text-secondary)',
+                        photoMode === 'plate' ? 'var(--text)' : 'var(--text-secondary)',
                       fontSize: 12,
                       fontWeight: 700,
                       cursor: 'pointer',
@@ -2650,7 +2645,7 @@ export function AddMealDrawer({
                           : 'transparent',
                       color:
                         photoMode === 'nutrition-label'
-                          ? '#ffffff'
+                          ? 'var(--text)'
                           : 'var(--text-secondary)',
                       fontSize: 12,
                       fontWeight: 700,
@@ -3364,7 +3359,7 @@ export function AddMealDrawer({
                                     fontSize: 10,
                                     padding: '1px 7px',
                                     borderRadius: 999,
-                                    background: 'rgba(255,255,255,0.06)',
+                                    background: 'var(--line)',
                                     color: 'var(--text-secondary)',
                                   }}
                                 >
@@ -3635,7 +3630,7 @@ export function AddMealDrawer({
             style={{
               flexShrink: 0,
               background: '#0d0f15',
-              borderTop: '1px solid rgba(255,255,255,0.08)',
+              borderTop: '1px solid var(--line)',
               padding: '10px 14px calc(10px + env(safe-area-inset-bottom, 0px))',
               display: 'flex',
               alignItems: 'center',
@@ -3678,7 +3673,7 @@ export function AddMealDrawer({
                     borderRadius: 10,
                     objectFit: 'cover',
                     flexShrink: 0,
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: '1px solid var(--line-2)',
                   }}
                 />
               ) : (
@@ -3712,7 +3707,7 @@ export function AddMealDrawer({
                     style={{
                       fontSize: 12,
                       fontWeight: 800,
-                      color: '#ffffff',
+                      color: 'var(--text)',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -3744,7 +3739,7 @@ export function AddMealDrawer({
                   }}
                 >
                   <span dir="ltr">
-                    <b style={{ color: '#ffffff' }}>{currentTotals.calories}</b> / {mealSlot.targets.calories}
+                    <b style={{ color: 'var(--text)' }}>{currentTotals.calories}</b> / {mealSlot.targets.calories}
                   </span>{' '}
                   קק״ל · ח׳ {currentTotals.protein} · פ׳ {currentTotals.carbs} · ש׳ {currentTotals.fat}
                 </div>
@@ -3956,13 +3951,11 @@ export function AddMealDrawer({
                       style={{
                         padding: '6px 11px',
                         borderRadius: 999,
-                        border: active
-                          ? '1px solid var(--accent-volt)'
+                        border: active ? '1px solid var(--sel-bg)'
                           : uOpt.isUser
                           ? '1px solid rgba(56, 189, 248, 0.38)'
                           : '1px solid var(--border-subtle)',
-                        background: active
-                          ? 'rgba(214, 125, 9, 0.18)'
+                        background: active ? 'var(--sel-bg)'
                           : uOpt.isUser
                           ? 'rgba(56, 189, 248, 0.1)'
                           : 'var(--bg-surface-2)',

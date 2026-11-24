@@ -2499,7 +2499,7 @@ export default function HomePage() {
               void performHardRefresh(pendingWebUpdateBuildId, { force: true })
             }
             style={{
-              background: 'var(--accent-volt)',
+              background: 'var(--btn-primary)',
               color: '#ffffff',
               border: 'none',
               padding: '3px 12px',
@@ -2519,7 +2519,7 @@ export default function HomePage() {
           role="alert"
           style={{
             background: '#991b1b',
-            color: '#ffffff',
+            color: 'var(--text)',
             padding: '8px 16px',
             fontSize: 12,
             fontWeight: 700,
@@ -2809,7 +2809,7 @@ export default function HomePage() {
                 }
               }}
               style={{
-                background: 'var(--accent-volt)',
+                background: 'var(--btn-primary)',
                 color: '#ffffff',
                 border: 'none',
                 padding: '4px 12px',
@@ -2842,7 +2842,7 @@ export default function HomePage() {
           style={{
             background: 'rgba(56, 189, 248, 0.12)',
             borderBottom: '1px solid rgba(56, 189, 248, 0.35)',
-            color: '#e0f2fe',
+            color: 'var(--text)',
             padding: '9px 14px',
             fontSize: 12,
             fontWeight: 700,
@@ -2879,7 +2879,7 @@ export default function HomePage() {
               }
             }}
             style={{
-              background: 'var(--accent-volt)',
+              background: 'var(--btn-primary)',
               color: '#ffffff',
               border: 'none',
               padding: '3px 10px',

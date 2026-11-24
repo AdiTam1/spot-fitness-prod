@@ -502,11 +502,9 @@ export function CoachAlertSettingsModal({
                   }
                   style={{
                     textAlign: 'right',
-                    background: active
-                      ? 'rgba(214, 125, 9, 0.08)'
+                    background: active ? 'var(--surface-3)'
                       : 'var(--bg-surface-2)',
-                    border: active
-                      ? '1px solid rgba(214, 125, 9, 0.45)'
+                    border: active ? '1px solid var(--text-3)'
                       : '1px solid var(--border-subtle)',
                     borderRadius: 12,
                     padding: '9px 11px',
@@ -546,7 +544,7 @@ export function CoachAlertSettingsModal({
                       width: 18,
                       height: 18,
                       borderRadius: 6,
-                      background: active ? 'var(--accent-volt)' : 'transparent',
+                      background: active ? 'var(--sel-bg)' : 'transparent',
                       border: active
                         ? 'none'
                         : '1px solid var(--border-strong)',
@@ -634,8 +632,7 @@ export function CoachAlertSettingsModal({
                       border: isSelected
                         ? `1px solid ${grp.color || 'var(--accent-volt)'}`
                         : '1px solid var(--border-subtle)',
-                      background: isSelected
-                        ? 'rgba(214, 125, 9, 0.14)'
+                      background: isSelected ? 'var(--sel-bg)'
                         : 'var(--bg-surface-2)',
                       color: isSelected
                         ? 'var(--text-primary)'

@@ -79,7 +79,7 @@ function getSourceBadge(source?: StepsSyncSource): {
       return {
         label: 'טרם סונכרן',
         color: 'var(--text-muted)',
-        bg: 'rgba(255, 255, 255, 0.05)',
+        bg: 'var(--fill-1)',
       };
   }
 }

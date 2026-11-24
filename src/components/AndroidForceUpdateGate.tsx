@@ -103,8 +103,8 @@ export function AndroidForceUpdateGate({
         position: 'fixed',
         inset: 0,
         zIndex: 9999,
-        background: 'radial-gradient(circle at top, #1b1106 0%, #08090c 58%)',
-        color: '#f8fafc',
+        background: 'var(--bg)',
+        color: 'var(--text)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -147,7 +147,7 @@ export function AndroidForceUpdateGate({
               width: 28,
               height: 28,
               borderRadius: '50%',
-              background: '#08090c',
+              background: 'var(--card)',
               border: '2px solid rgba(214, 125, 9, 0.7)',
               display: 'flex',
               alignItems: 'center',
@@ -223,7 +223,7 @@ export function AndroidForceUpdateGate({
           <div
             style={{
               width: '100%',
-              background: 'rgba(255, 255, 255, 0.03)',
+              background: 'var(--fill-1)',
               borderRadius: 12,
               padding: '10px 12px',
               fontSize: 12,
@@ -233,7 +233,7 @@ export function AndroidForceUpdateGate({
               border: '1px solid var(--border-subtle)',
             }}
           >
-            <strong style={{ color: '#f8fafc', display: 'block', marginBottom: 4 }}>
+            <strong style={{ color: 'var(--text)', display: 'block', marginBottom: 4 }}>
               מה חדש בגרסה:
             </strong>
             {info.releaseNotes}

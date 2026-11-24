@@ -1180,14 +1180,11 @@ export function CoachDashboardView({
                     gap: 8,
                     padding: '9px 15px',
                     borderRadius: 12,
-                    border: active
-                      ? '1px solid rgba(214, 125, 9, 0.4)'
+                    border: active ? '1px solid var(--sel-bg)'
                       : '1px solid transparent',
-                    background: active
-                      ? 'rgba(214, 125, 9, 0.1)'
+                    background: active ? 'var(--sel-bg)'
                       : 'transparent',
-                    color: active
-                      ? 'var(--accent-volt)'
+                    color: active ? 'var(--sel-text)'
                       : 'var(--text-secondary)',
                     fontSize: 13,
                     fontWeight: 700,
@@ -1398,9 +1395,9 @@ export function CoachDashboardView({
                         ? `1px solid ${grp.color}`
                         : '1px solid var(--border-subtle)',
                       background: active
-                        ? 'rgba(255, 255, 255, 0.08)'
+                        ? 'var(--line)'
                         : 'var(--bg-surface-2)',
-                      color: active ? '#ffffff' : 'var(--text-secondary)',
+                      color: active ? 'var(--text)' : 'var(--text-secondary)',
                       fontSize: 12,
                       fontWeight: 700,
                       cursor: 'pointer',
@@ -1483,7 +1480,7 @@ export function CoachDashboardView({
               style={{
                 padding: '14px 18px',
                 borderColor: activeGroupObj.color,
-                background: 'rgba(255, 255, 255, 0.02)',
+                background: 'var(--fill-1)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
@@ -1704,7 +1701,7 @@ export function CoachDashboardView({
                   background:
                     rosterViewMode === 'cards' ? 'var(--accent-volt)' : 'transparent',
                   color:
-                    rosterViewMode === 'cards' ? '#ffffff' : 'var(--text-secondary)',
+                    rosterViewMode === 'cards' ? 'var(--text)' : 'var(--text-secondary)',
                   fontSize: 11,
                   fontWeight: 700,
                   cursor: 'pointer',
@@ -1729,7 +1726,7 @@ export function CoachDashboardView({
                   background:
                     rosterViewMode === 'table' ? 'var(--accent-volt)' : 'transparent',
                   color:
-                    rosterViewMode === 'table' ? '#ffffff' : 'var(--text-secondary)',
+                    rosterViewMode === 'table' ? 'var(--text)' : 'var(--text-secondary)',
                   fontSize: 11,
                   fontWeight: 700,
                   cursor: 'pointer',
@@ -1890,7 +1887,7 @@ export function CoachDashboardView({
                               fontWeight: 700,
                               padding: '2px 7px',
                               borderRadius: 999,
-                              background: 'rgba(255,255,255,0.05)',
+                              background: 'var(--fill-1)',
                               color: 'var(--text-secondary)',
                             }}
                           >
@@ -1953,7 +1950,7 @@ export function CoachDashboardView({
                         <div
                           style={{
                             height: 5,
-                            background: 'rgba(255,255,255,0.07)',
+                            background: 'var(--line)',
                             borderRadius: 999,
                             overflow: 'hidden',
                           }}
@@ -2396,7 +2393,7 @@ export function CoachDashboardView({
                             <div
                               style={{
                                 height: 5,
-                                background: 'rgba(255,255,255,0.06)',
+                                background: 'var(--line)',
                                 borderRadius: 999,
                                 overflow: 'hidden',
                               }}
@@ -2601,7 +2598,7 @@ export function CoachDashboardView({
                         style={{
                           fontSize: 14,
                           fontWeight: 800,
-                          color: '#ffffff',
+                          color: 'var(--text)',
                         }}
                       >
                         {obsAvg.loggedCount > 0
@@ -2879,14 +2876,11 @@ export function CoachDashboardView({
                             style={{
                               padding: '5px 10px',
                               borderRadius: 999,
-                              border: active
-                                ? '1px solid var(--accent-volt)'
+                              border: active ? '1px solid var(--sel-bg)'
                                 : '1px solid var(--border-subtle)',
-                              background: active
-                                ? 'rgba(214, 125, 9, 0.14)'
+                              background: active ? 'var(--sel-bg)'
                                 : 'var(--bg-surface-1)',
-                              color: active
-                                ? 'var(--accent-volt)'
+                              color: active ? 'var(--sel-text)'
                                 : 'var(--text-muted)',
                               fontSize: 11,
                               fontWeight: 700,
@@ -3208,7 +3202,7 @@ export function CoachDashboardView({
                 style={{
                   marginTop: 12,
                   paddingTop: 12,
-                  borderTop: '1px solid rgba(255,255,255,0.06)',
+                  borderTop: '1px solid var(--line)',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
@@ -3297,7 +3291,7 @@ export function CoachDashboardView({
                 style={{
                   marginTop: 12,
                   paddingTop: 12,
-                  borderTop: '1px solid rgba(255,255,255,0.06)',
+                  borderTop: '1px solid var(--line)',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 10,
@@ -3943,7 +3937,7 @@ export function CoachDashboardView({
                             style={{
                               padding: '6px 10px',
                               borderRadius: 8,
-                              background: 'rgba(255,255,255,0.04)',
+                              background: 'var(--fill-1)',
                               color: 'var(--text-primary)',
                             }}
                           >
@@ -6188,7 +6182,7 @@ export function CoachDashboardView({
                     border:
                       newGroupColor === sw.value
                         ? '3px solid #ffffff'
-                        : '1px solid rgba(255,255,255,0.2)',
+                        : '1px solid var(--line-2)',
                     cursor: 'pointer',
                   }}
                 />

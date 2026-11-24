@@ -373,8 +373,7 @@ export function CoachOnboardingWizard({
                     height: 6,
                     borderRadius: 999,
                     border: 'none',
-                    background: active
-                      ? 'var(--accent-volt)'
+                    background: active ? 'var(--accent-volt)'
                       : done
                       ? 'rgba(214, 125, 9, 0.45)'
                       : 'var(--bg-surface-3)',
@@ -477,14 +476,11 @@ export function CoachOnboardingWizard({
                       style={{
                         padding: '5px 10px',
                         borderRadius: 999,
-                        border: selected
-                          ? '1px solid var(--accent-volt)'
+                        border: selected ? '1px solid var(--sel-bg)'
                           : '1px solid var(--border-subtle)',
-                        background: selected
-                          ? 'rgba(214, 125, 9, 0.14)'
+                        background: selected ? 'var(--sel-bg)'
                           : 'var(--bg-surface-1)',
-                        color: selected
-                          ? 'var(--accent-volt)'
+                        color: selected ? 'var(--sel-text)'
                           : 'var(--text-secondary)',
                         fontSize: 11,
                         fontWeight: 700,
@@ -595,16 +591,13 @@ export function CoachOnboardingWizard({
                       padding: '8px 4px',
                       borderRadius: 9,
                       border:
-                        defaultObservationDays === opt.days
-                          ? '1px solid var(--accent-volt)'
+                        defaultObservationDays === opt.days ? '1px solid var(--sel-bg)'
                           : '1px solid var(--border-subtle)',
                       background:
-                        defaultObservationDays === opt.days
-                          ? 'rgba(214, 125, 9, 0.14)'
+                        defaultObservationDays === opt.days ? 'var(--sel-bg)'
                           : 'var(--bg-surface-1)',
                       color:
-                        defaultObservationDays === opt.days
-                          ? 'var(--accent-volt)'
+                        defaultObservationDays === opt.days ? 'var(--sel-text)'
                           : 'var(--text-secondary)',
                       fontSize: 11,
                       fontWeight: 800,
@@ -724,16 +717,13 @@ export function CoachOnboardingWizard({
                         padding: '6px 2px',
                         borderRadius: 8,
                         border:
-                          defaultTolerancePercent === pct
-                            ? '1px solid var(--accent-volt)'
+                          defaultTolerancePercent === pct ? '1px solid var(--sel-bg)'
                             : '1px solid var(--border-subtle)',
                         background:
-                          defaultTolerancePercent === pct
-                            ? 'rgba(214, 125, 9, 0.14)'
+                          defaultTolerancePercent === pct ? 'var(--sel-bg)'
                             : 'var(--bg-surface-1)',
                         color:
-                          defaultTolerancePercent === pct
-                            ? 'var(--accent-volt)'
+                          defaultTolerancePercent === pct ? 'var(--sel-text)'
                             : 'var(--text-secondary)',
                         fontSize: 11,
                         fontWeight: 800,
@@ -976,14 +966,11 @@ export function CoachOnboardingWizard({
                           fontSize: 11,
                           fontWeight: 700,
                           cursor: 'pointer',
-                          border: selected
-                            ? '1px solid var(--accent-volt)'
+                          border: selected ? '1px solid var(--sel-bg)'
                             : '1px solid var(--border-subtle)',
-                          background: selected
-                            ? 'rgba(214, 125, 9, 0.16)'
+                          background: selected ? 'var(--sel-bg)'
                             : 'var(--bg-surface-1)',
-                          color: selected
-                            ? 'var(--accent-orange-bright)'
+                          color: selected ? 'var(--sel-text)'
                             : 'var(--text-secondary)',
                         }}
                       >
@@ -1058,8 +1045,7 @@ export function CoachOnboardingWizard({
                         padding: '10px 12px',
                         borderRadius: 10,
                         background: 'var(--bg-surface-1)',
-                        border: checked
-                          ? '1px solid rgba(214, 125, 9, 0.35)'
+                        border: checked ? '1px solid var(--text-3)'
                           : '1px solid var(--border-subtle)',
                       }}
                     >
@@ -1172,14 +1158,11 @@ export function CoachOnboardingWizard({
                       style={{
                         padding: '6px 11px',
                         borderRadius: 999,
-                        border: selected
-                          ? '1px solid var(--accent-volt)'
+                        border: selected ? '1px solid var(--sel-bg)'
                           : '1px solid var(--border-subtle)',
-                        background: selected
-                          ? 'rgba(214, 125, 9, 0.14)'
+                        background: selected ? 'var(--sel-bg)'
                           : 'var(--bg-surface-1)',
-                        color: selected
-                          ? 'var(--accent-volt)'
+                        color: selected ? 'var(--sel-text)'
                           : 'var(--text-secondary)',
                         fontSize: 12,
                         fontWeight: 700,

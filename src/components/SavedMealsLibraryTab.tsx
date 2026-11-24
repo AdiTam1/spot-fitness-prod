@@ -482,16 +482,13 @@ export function SavedMealsLibraryTab({
               fontWeight: 700,
               cursor: 'pointer',
               border:
-                filterMode === f.id
-                  ? '1px solid var(--accent-volt)'
+                filterMode === f.id ? '1px solid var(--sel-bg)'
                   : '1px solid var(--border-subtle)',
               background:
-                filterMode === f.id
-                  ? 'rgba(214, 125, 9, 0.16)'
+                filterMode === f.id ? 'var(--sel-bg)'
                   : 'var(--bg-surface-2)',
               color:
-                filterMode === f.id
-                  ? 'var(--accent-orange-bright)'
+                filterMode === f.id ? 'var(--sel-text)'
                   : 'var(--text-secondary)',
             }}
           >
@@ -670,11 +667,11 @@ export function SavedMealsLibraryTab({
                             width: 34,
                             height: 34,
                             borderRadius: 10,
-                            background: 'rgba(255, 255, 255, 0.2)',
+                            background: 'var(--line-2)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            color: '#ffffff',
+                            color: 'var(--text)',
                           }}
                         >
                           <Utensils size={16} />
@@ -695,7 +692,7 @@ export function SavedMealsLibraryTab({
                           border: 'none',
                           background: 'rgba(255, 255, 255, 0.28)',
                           backdropFilter: 'blur(6px)',
-                          color: '#ffffff',
+                          color: 'var(--text)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -711,7 +708,7 @@ export function SavedMealsLibraryTab({
                         style={{
                           fontSize: 13,
                           fontWeight: 900,
-                          color: '#ffffff',
+                          color: 'var(--text)',
                           lineHeight: 1.25,
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
@@ -808,7 +805,7 @@ export function SavedMealsLibraryTab({
                                 fontSize: 10,
                                 padding: '1px 6px',
                                 borderRadius: 999,
-                                background: 'rgba(255,255,255,0.06)',
+                                background: 'var(--line)',
                                 color: 'var(--text-secondary)',
                               }}
                             >
@@ -835,7 +832,7 @@ export function SavedMealsLibraryTab({
                           )}
                         </div>
                         <div className="num-mono" style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                          <b style={{ color: '#fff' }}>{Math.round(preset.totalCalories)} קק״ל</b> · ח׳ {preset.totalProtein}g · פ׳ {preset.totalCarbs}g · ש׳ {preset.totalFat}g
+                          <b style={{ color: 'var(--text)' }}>{Math.round(preset.totalCalories)} קק״ל</b> · ח׳ {preset.totalProtein}g · פ׳ {preset.totalCarbs}g · ש׳ {preset.totalFat}g
                         </div>
                       </div>
                     </div>

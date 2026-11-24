@@ -413,7 +413,7 @@ export function TraineeProfileView({
               height: 48,
               borderRadius: '50%',
               background: 'var(--accent-volt)',
-              color: '#ffffff',
+              color: 'var(--on-accent)',
               display: 'grid',
               placeItems: 'center',
               fontSize: 20,
@@ -1164,11 +1164,9 @@ export function TraineeProfileView({
                     textAlign: 'right',
                     padding: '9px 11px',
                     borderRadius: 12,
-                    border: active
-                      ? '1px solid var(--accent-volt)'
+                    border: active ? '1px solid var(--sel-bg)'
                       : '1px solid var(--border-subtle)',
-                    background: active
-                      ? 'rgba(214, 125, 9, 0.14)'
+                    background: active ? 'var(--sel-bg)'
                       : 'var(--bg-surface-2)',
                     color: active ? '#ffffff' : 'var(--text-secondary)',
                     opacity: atLimit ? 0.45 : 1,
@@ -1185,7 +1183,7 @@ export function TraineeProfileView({
                       justifyContent: 'space-between',
                       fontSize: 12,
                       fontWeight: 800,
-                      color: active ? 'var(--accent-orange-bright)' : 'var(--text-primary)',
+                      color: active ? 'var(--sel-text)' : 'var(--text-primary)',
                     }}
                   >
                     <span>{opt.label}</span>
