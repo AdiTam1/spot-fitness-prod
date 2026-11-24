@@ -215,7 +215,7 @@ export function AddMealDrawer({
       dataUrl: string;
       sizeKB: number;
       formatLabel: 'WebP' | 'JPEG';
-      angle: 'top-down' | 'side-45' | 'label' | 'other';
+      angle: 'unset' | 'top-down' | 'side-45' | 'label' | 'other';
     }[]
   >([]);
   const [photoSizeKB, setPhotoSizeKB] = useState<number | null>(null);
@@ -384,11 +384,11 @@ export function AddMealDrawer({
         setItems(existingEntry?.items ? [...existingEntry.items] : []);
         setPhotoDataUrl(entryPhotos[0] || existingEntry?.photoDataUrl);
         setPhotoItems(
-          entryPhotos.map((url, idx) => ({
+          entryPhotos.map((url) => ({
             dataUrl: url,
             sizeKB: Math.round((url.length * 3) / 4 / 1024),
             formatLabel: 'WebP' as const,
-            angle: idx === 0 ? ('top-down' as const) : ('side-45' as const),
+            angle: 'unset' as const,
           }))
         );
         setPhotoSizeKB(null);
@@ -439,11 +439,11 @@ export function AddMealDrawer({
             const incomingPhotos = entryPhotos.filter((u) => !prevUrls.has(u));
             if (incomingPhotos.length === 0) return prev;
             const merged = [
-              ...incomingPhotos.map((url, idx) => ({
+              ...incomingPhotos.map((url) => ({
                 dataUrl: url,
                 sizeKB: Math.round((url.length * 3) / 4 / 1024),
                 formatLabel: 'WebP' as const,
-                angle: idx === 0 ? ('top-down' as const) : ('side-45' as const),
+                angle: 'unset' as const,
               })),
               ...prev,
             ].slice(0, 3);
@@ -695,7 +695,7 @@ export function AddMealDrawer({
 
   const handlePhotoUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    preferredAngle?: 'top-down' | 'side-45' | 'label' | 'other',
+    preferredAngle?: 'unset' | 'top-down' | 'side-45' | 'label' | 'other',
     options?: { stayOnTab?: boolean }
   ) => {
     const files = Array.from(e.target.files || []).slice(
@@ -725,7 +725,7 @@ export function AddMealDrawer({
         dataUrl: string;
         sizeKB: number;
         formatLabel: 'WebP' | 'JPEG';
-        angle: 'top-down' | 'side-45' | 'label' | 'other';
+        angle: 'unset' | 'top-down' | 'side-45' | 'label' | 'other';
       }[] = [];
       for (let i = 0; i < files.length; i++) {
         const compressed = await compressMealImage(files[i], 800, 0.72);
@@ -735,10 +735,7 @@ export function AddMealDrawer({
           155000
         );
         const approxKB = Math.max(1, Math.round((thumbUrl.length * 3) / 4 / 1024));
-        const angle =
-          photoMode === 'nutrition-label'
-            ? 'label'
-            : preferredAngle || (photoItems.length + i === 0 ? 'top-down' : 'side-45');
+        const angle = preferredAngle || 'unset';
         newEntries.push({
           dataUrl: thumbUrl,
           sizeKB: approxKB,
@@ -775,7 +772,7 @@ export function AddMealDrawer({
     const activeImages = photoItems.length > 0
       ? photoItems
       : photoDataUrl && !photoDataUrl.endsWith(',DEMO')
-      ? [{ dataUrl: photoDataUrl, angle: 'top-down' as const }]
+      ? [{ dataUrl: photoDataUrl, angle: 'unset' as const }]
       : [];
 
     if (mode === 'photo' && activeImages.length === 0 && !rawPrompt.trim()) {
@@ -787,9 +784,12 @@ export function AddMealDrawer({
         ? `קרא את טבלת הערכים התזונתיים מהתמונה וחלץ את המוצר והערכים שלו למנה/100 גרם: ${rawPrompt}`
         : rawPrompt;
 
+    const selectedAngles = activeImages
+      .map((im) => im.angle)
+      .filter((a): a is 'top-down' | 'side-45' | 'label' | 'other' => a !== 'unset');
     const fullContextParams: AiContextParams = {
       ...contextParams,
-      imageAngles: activeImages.map((im) => im.angle),
+      imageAngles: selectedAngles.length > 0 ? selectedAngles : undefined,
       customUnits: customFoodUnits,
     };
 
@@ -1583,7 +1583,7 @@ export function AddMealDrawer({
                       capture="environment"
                       hidden
                       disabled={photoUploading}
-                      onChange={(e) => void handlePhotoUpload(e, 'top-down')}
+                      onChange={(e) => void handlePhotoUpload(e)}
                     />
                   </label>
                   <label
@@ -1711,13 +1711,56 @@ export function AddMealDrawer({
           )}
         </div>
 
-        {/* גוף הבוטום-שיט המרכזי: גלילה יחידה נקייה ללא גלילה מקוננת */}
         <div
           style={{
+            position: 'relative',
             flex: 1,
             minHeight: 0,
-            overflowY: 'auto',
-            padding: heroScreen ? '0 16px 20px' : '14px 16px 20px',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+        >
+          {heroScreen && (
+            <div
+              style={{
+                position: 'absolute',
+                insetBlockStart: 'calc(var(--sa-top, 0px) + 12px)',
+                insetInline: 16,
+                zIndex: 30,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                pointerEvents: 'none',
+              }}
+            >
+              <GlassButton
+                label="חזרה"
+                size={50}
+                data-autofocus
+                onClick={handleDrawerBack}
+                style={{ pointerEvents: 'auto' }}
+              >
+                <ChevronRight size={22} strokeWidth={2.3} />
+              </GlassButton>
+              <GlassButton
+                label="צלם שוב"
+                size={50}
+                onClick={() => navigateTab('ai-photo')}
+                style={{ pointerEvents: 'auto' }}
+              >
+                <Camera size={21} strokeWidth={2} />
+              </GlassButton>
+            </div>
+          )}
+
+          {/* גוף הבוטום-שיט המרכזי: גלילה יחידה נקייה ללא גלילה מקוננת */}
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: 'auto',
+              padding: heroScreen ? '0 16px 20px' : '14px 16px 20px',
             display: 'flex',
             flexDirection: 'column',
             gap: 14,
@@ -2679,11 +2722,13 @@ export function AddMealDrawer({
                                       ? {
                                           ...x,
                                           angle:
-                                            x.angle === 'top-down'
+                                            x.angle === 'unset' || !x.angle
+                                              ? 'top-down'
+                                              : x.angle === 'top-down'
                                               ? 'side-45'
                                               : x.angle === 'side-45'
                                               ? 'label'
-                                              : 'top-down',
+                                              : 'unset',
                                         }
                                       : x
                                   )
@@ -2706,7 +2751,9 @@ export function AddMealDrawer({
                                 ? 'מלמעלה 90°'
                                 : im.angle === 'side-45'
                                 ? 'מהצד ~45°'
-                                : 'תווית / אחר'}
+                                : im.angle === 'label'
+                                ? 'תווית / אחר'
+                                : 'בחר זווית'}
                             </button>
                           </div>
                         ))}
@@ -2768,7 +2815,7 @@ export function AddMealDrawer({
                           capture="environment"
                           hidden
                           disabled={photoUploading}
-                          onChange={(e) => handlePhotoUpload(e, photoItems.length === 0 ? 'top-down' : 'side-45')}
+                          onChange={(e) => handlePhotoUpload(e)}
                         />
                       </label>
                       <label
@@ -3309,8 +3356,8 @@ export function AddMealDrawer({
                       padding: '8px 14px',
                       borderRadius: 999,
                       border: 'none',
-                      background: 'var(--btn-primary)',
-                      color: 'var(--btn-primary-text)',
+                      background: 'var(--contrast-btn-bg)',
+                      color: 'var(--contrast-btn-text)',
                       fontSize: 13,
                       fontWeight: 700,
                       fontFamily: 'inherit',
@@ -3332,24 +3379,7 @@ export function AddMealDrawer({
                       onClick={() => navigateTab('ai-photo')}
                       style={{ display: 'block', width: '100%', height: 'calc(300px + var(--sa-top, 0px))', objectFit: 'cover', cursor: 'pointer' }}
                     />
-                    <div style={{ position: 'absolute', insetBlockStart: 'calc(var(--sa-top, 0px) + 12px)', insetInline: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <GlassButton
-                        label="חזרה"
-                        data-autofocus
-                        onClick={handleDrawerBack}
-                      >
-                        <ChevronRight size={18} strokeWidth={2.2} />
-                      </GlassButton>
-                      <button
-                        type="button"
-                        className="glass"
-                        onClick={() => navigateTab('ai-photo')}
-                        style={{ height: 44, padding: '0 16px', borderRadius: 999, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
-                      >
-                        <Camera size={15} />
-                        צלם שוב
-                      </button>
-                    </div>
+
                     {allMealPhotos.length > 1 && (
                       <span
                         className="glass"
@@ -3478,8 +3508,8 @@ export function AddMealDrawer({
                         padding: '8px 14px',
                         borderRadius: 999,
                         border: 'none',
-                        background: 'var(--btn-primary)',
-                        color: 'var(--btn-primary-text)',
+                        background: 'var(--contrast-btn-bg)',
+                        color: 'var(--contrast-btn-text)',
                         fontSize: 13,
                         fontWeight: 700,
                         fontFamily: 'inherit',
@@ -3749,7 +3779,7 @@ export function AddMealDrawer({
                           accept="image/*"
                           capture="environment"
                           onChange={(e) =>
-                            handlePhotoUpload(e, 'top-down', { stayOnTab: true })
+                            handlePhotoUpload(e, undefined, { stayOnTab: true })
                           }
                           style={{ display: 'none' }}
                         />
@@ -3778,7 +3808,7 @@ export function AddMealDrawer({
                           type="file"
                           accept="image/*"
                           onChange={(e) =>
-                            handlePhotoUpload(e, 'top-down', { stayOnTab: true })
+                            handlePhotoUpload(e, undefined, { stayOnTab: true })
                           }
                           style={{ display: 'none' }}
                         />
@@ -3828,6 +3858,7 @@ export function AddMealDrawer({
 
               </div>
             )}
+          </div>
         </div>
 
         {activeTab === 'meal-items' && (

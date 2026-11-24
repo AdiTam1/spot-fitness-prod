@@ -44,6 +44,8 @@
   --btn-primary: #3e3e3f;
   --btn-primary-hover: #4a4a4c;
   --btn-primary-text: #ffffff;
+  --contrast-btn-bg: #ffffff;
+  --contrast-btn-text: #0a0a0a;
 
   --glass: rgba(44, 44, 46, 0.52);
   --glass-border: rgba(255, 255, 255, 0.13);
@@ -83,6 +85,8 @@
   --btn-primary: #2c2c2e;
   --btn-primary-hover: #3a3a3c;
   --btn-primary-text: #ffffff;
+  --contrast-btn-bg: #0a0a0a;
+  --contrast-btn-text: #ffffff;
 
   --glass: rgba(255, 255, 255, 0.62);
   --glass-border: rgba(255, 255, 255, 0.85);

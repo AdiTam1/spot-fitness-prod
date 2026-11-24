@@ -716,7 +716,7 @@ export function TraineeMobileView({
       {/* Journal & metrics share the date bar + collapsible week drawer; profile has its own header */}
       {mobileSection !== 'profile' && (
         <>
-      {/* Header: avatar + greeting + measurement alert popover (01 / 02) */}
+      {/* Journal & metrics header + date bar + alert popover + collapsible week drawer */}
       {(() => {
         const now = new Date();
         const hour = now.getHours();
@@ -727,266 +727,205 @@ export function TraineeMobileView({
         const weekdayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
         const dateLabel = `יום ${weekdayNames[dateObj.getDay()]}, ${sd} ב${HEBREW_MONTH_NAMES[(sm || 1) - 1]} ${sy}`;
         const firstName = (trainee.name || '').trim().split(/\s+/)[0] || trainee.name;
-        if (mobileSection === 'metrics') {
-          return (
-            <header style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{dateLabel}</span>
-                <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, lineHeight: 1.15 }}>מדדים</h1>
-              </div>
-              <GlassButton label="מדידת היקפים מודרכת" onClick={() => setMeasurementModalOpen(true)}>
-                <Ruler size={20} />
-              </GlassButton>
-            </header>
-          );
-        }
+
         return (
-          <header
-            style={{
-              position: 'relative',
-              zIndex: measureAlertOpen ? 12 : 5,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 12,
-              marginBottom: 18,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-              <span
-                aria-hidden
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 999,
-                  background: 'var(--surface-3)',
-                  color: 'var(--text)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 700,
-                  fontSize: 16,
-                  flex: 'none',
-                }}
-              >
-                {trainee.avatar ||
-                  (trainee.name || '')
-                    .trim()
-                    .split(/\s+/)
-                    .map((w) => Array.from(w)[0] || '')
-                    .join('')
-                    .slice(0, 2)}
-              </span>
-              <h1
-                style={{
-                  margin: 0,
-                  fontSize: 24,
-                  fontWeight: 700,
-                  lineHeight: 1.15,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {greeting}, {firstName}
-              </h1>
-            </div>
-
-            {needsInitialMeasurements && (
-              <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
-                <GlassButton
-                  label="התראה: מדידת היקפים לא הושלמה"
-                  size={40}
-                  dot
-                  aria-expanded={measureAlertOpen}
-                  onClick={() => {
-                    setWeekStripOpen(false);
-                    setMeasureAlertOpen((v) => !v);
-                  }}
-                >
-                  <AlertTriangle size={18} />
+          <>
+            {mobileSection === 'metrics' && (
+              <header style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{dateLabel}</span>
+                  <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, lineHeight: 1.15 }}>מדדים</h1>
+                </div>
+                <GlassButton label="מדידת היקפים מודרכת" onClick={() => setMeasurementModalOpen(true)}>
+                  <Ruler size={20} />
                 </GlassButton>
-              </div>
+              </header>
             )}
 
-            {needsInitialMeasurements && measureAlertOpen && (
-              <div
-                role="dialog"
-                aria-label="מדידת היקפים ראשונית"
-                className="glass"
-                style={{
-                  position: 'absolute',
-                  top: 52,
-                  left: 0,
-                  zIndex: 15,
-                  width: 270,
-                  maxWidth: 'calc(100vw - 32px)',
-                  borderRadius: 20,
-                  padding: 14,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 10,
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 700 }}>
-                  <Ruler size={17} style={{ color: 'var(--accent)', flexShrink: 0 }} />
-                  מדידת היקפים ראשונית
-                </span>
-                <span style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.45 }}>
-                  טרם השלמת את המדידה. יש הדרכה מונפשת שלוקחת כ-3 דקות.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMeasureAlertOpen(false);
-                    setMeasurementModalOpen(true);
-                  }}
+            {/* Date row + alert & calendar buttons + collapsible glass week strip (01 / 02) */}
+            <section
+              aria-label="בחירת יום"
+              style={{
+                position: 'relative',
+                zIndex: measureAlertOpen ? 12 : 5,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                marginBottom: mobileSection === 'journal' ? 10 : 16,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 38, gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+                  <button
+                    type="button"
+                    aria-label="יום קודם"
+                    disabled={!prevActiveDate}
+                    onClick={() => {
+                      if (prevActiveDate) setSelectedDate(prevActiveDate);
+                    }}
+                    style={{
+                      width: 30,
+                      height: 36,
+                      borderRadius: 999,
+                      border: 'none',
+                      background: 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--text-2)',
+                      cursor: prevActiveDate ? 'pointer' : 'not-allowed',
+                      opacity: prevActiveDate ? 1 : 0.35,
+                      flex: 'none',
+                    }}
+                  >
+                    <ChevronRight size={17} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-expanded={weekStripOpen}
+                    aria-label="הצג את ימי השבוע"
+                    onClick={() => {
+                      setMeasureAlertOpen(false);
+                      setWeekStripOpen((v) => !v);
+                    }}
+                    style={{
+                      height: 36,
+                      padding: '0 4px',
+                      border: 'none',
+                      background: 'transparent',
+                      color: 'var(--text)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      fontSize: 14.5,
+                      fontWeight: 600,
+                      fontFamily: 'inherit',
+                      cursor: 'pointer',
+                      minWidth: 0,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    <span>{dateLabel}</span>
+                    <ChevronDown
+                      size={14}
+                      style={{
+                        color: 'var(--text-2)',
+                        transform: weekStripOpen ? 'rotate(180deg)' : 'none',
+                        transition: 'transform 0.18s ease',
+                        flexShrink: 0,
+                      }}
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="יום הבא"
+                    disabled={!nextActiveDate}
+                    onClick={() => {
+                      if (nextActiveDate) setSelectedDate(nextActiveDate);
+                    }}
+                    style={{
+                      width: 30,
+                      height: 36,
+                      borderRadius: 999,
+                      border: 'none',
+                      background: 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--text-2)',
+                      cursor: nextActiveDate ? 'pointer' : 'not-allowed',
+                      opacity: nextActiveDate ? 1 : 0.35,
+                      flex: 'none',
+                    }}
+                  >
+                    <ChevronLeft size={17} />
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
+                  {mobileSection === 'journal' && needsInitialMeasurements && (
+                    <GlassButton
+                      label="התראה: מדידת היקפים לא הושלמה"
+                      size={38}
+                      dot
+                      aria-expanded={measureAlertOpen}
+                      onClick={() => {
+                        setWeekStripOpen(false);
+                        setMeasureAlertOpen((v) => !v);
+                      }}
+                    >
+                      <AlertTriangle size={17} />
+                    </GlassButton>
+                  )}
+                  <GlassButton
+                    label="פתח לוח שנה חודשי"
+                    size={mobileSection === 'journal' ? 38 : 36}
+                    onClick={() => {
+                      setMeasureAlertOpen(false);
+                      setWeekStripOpen(false);
+                      const [y, m] = selectedDate.split('-').map(Number);
+                      if (y && m) setCalendarCursor({ year: y, month: m - 1 });
+                      setCalendarModalOpen(true);
+                    }}
+                  >
+                    <CalendarDays size={16} />
+                  </GlassButton>
+                </div>
+              </div>
+
+              {mobileSection === 'journal' && needsInitialMeasurements && measureAlertOpen && (
+                <div
+                  role="dialog"
+                  aria-label="מדידת היקפים ראשונית"
+                  className="glass"
                   style={{
-                    height: 40,
-                    borderRadius: 999,
-                    border: 'none',
-                    background: 'var(--btn-primary)',
-                    color: 'var(--btn-primary-text)',
+                    position: 'absolute',
+                    top: 46,
+                    left: 0,
+                    zIndex: 15,
+                    width: 270,
+                    maxWidth: 'calc(100vw - 32px)',
+                    borderRadius: 20,
+                    padding: 14,
                     display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 14,
-                    fontWeight: 700,
-                    fontFamily: 'inherit',
-                    cursor: 'pointer',
+                    flexDirection: 'column',
+                    gap: 10,
                   }}
                 >
-                  השלם עכשיו
-                </button>
-              </div>
-            )}
-          </header>
-        );
-      })()}
-
-      {/* Date row + collapsible glass week strip (01 / 02) */}
-      <section
-        aria-label="בחירת יום"
-        style={{
-          position: 'relative',
-          zIndex: 4,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-          marginTop: mobileSection === 'journal' ? -6 : 0,
-          marginBottom: 16,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 36, gap: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
-            <button
-              type="button"
-              aria-label="יום קודם"
-              disabled={!prevActiveDate}
-              onClick={() => {
-                if (prevActiveDate) setSelectedDate(prevActiveDate);
-              }}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 999,
-                border: 'none',
-                background: 'transparent',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--text-2)',
-                cursor: prevActiveDate ? 'pointer' : 'not-allowed',
-                opacity: prevActiveDate ? 1 : 0.35,
-                flex: 'none',
-              }}
-            >
-              <ChevronRight size={17} />
-            </button>
-            <button
-              type="button"
-              aria-expanded={weekStripOpen}
-              aria-label="הצג את ימי השבוע"
-              onClick={() => {
-                setMeasureAlertOpen(false);
-                setWeekStripOpen((v) => !v);
-              }}
-              style={{
-                height: 36,
-                padding: '0 4px',
-                border: 'none',
-                background: 'transparent',
-                color: 'var(--text)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                fontSize: 15,
-                fontWeight: 600,
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-                minWidth: 0,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
-            >
-              <span>
-                {(() => {
-                  const [sy, sm, sd] = selectedDate.split('-').map(Number);
-                  const dt = new Date(sy, (sm || 1) - 1, sd || 1);
-                  const wNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
-                  return `יום ${wNames[dt.getDay()]}, ${sd} ב${HEBREW_MONTH_NAMES[(sm || 1) - 1]} ${sy}`;
-                })()}
-              </span>
-              <ChevronDown
-                size={14}
-                style={{
-                  color: 'var(--text-2)',
-                  transform: weekStripOpen ? 'rotate(180deg)' : 'none',
-                  transition: 'transform 0.18s ease',
-                  flexShrink: 0,
-                }}
-              />
-            </button>
-            <button
-              type="button"
-              aria-label="יום הבא"
-              disabled={!nextActiveDate}
-              onClick={() => {
-                if (nextActiveDate) setSelectedDate(nextActiveDate);
-              }}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 999,
-                border: 'none',
-                background: 'transparent',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--text-2)',
-                cursor: nextActiveDate ? 'pointer' : 'not-allowed',
-                opacity: nextActiveDate ? 1 : 0.35,
-                flex: 'none',
-              }}
-            >
-              <ChevronLeft size={17} />
-            </button>
-          </div>
-
-          <GlassButton
-            label="פתח לוח שנה חודשי"
-            size={36}
-            onClick={() => {
-              setWeekStripOpen(false);
-              const [y, m] = selectedDate.split('-').map(Number);
-              if (y && m) setCalendarCursor({ year: y, month: m - 1 });
-              setCalendarModalOpen(true);
-            }}
-          >
-            <CalendarDays size={16} />
-          </GlassButton>
-        </div>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 700 }}>
+                    <Ruler size={17} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                    מדידת היקפים ראשונית
+                  </span>
+                  <span style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.45 }}>
+                    טרם השלמת את המדידה. יש הדרכה מונפשת שלוקחת כ-3 דקות.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMeasureAlertOpen(false);
+                      setMeasurementModalOpen(true);
+                    }}
+                    style={{
+                      height: 40,
+                      borderRadius: 999,
+                      border: 'none',
+                      background: 'var(--btn-primary)',
+                      color: 'var(--btn-primary-text)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 14,
+                      fontWeight: 700,
+                      fontFamily: 'inherit',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    השלם עכשיו
+                  </button>
+                </div>
+              )}
 
         {weekStripOpen && (
           <div
@@ -1180,7 +1119,28 @@ export function TraineeMobileView({
             </div>
           </div>
         )}
-      </section>
+            </section>
+
+            {mobileSection === 'journal' && (
+              <header style={{ marginBottom: 18 }}>
+                <h1
+                  style={{
+                    margin: 0,
+                    fontSize: 24,
+                    fontWeight: 700,
+                    lineHeight: 1.15,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {greeting}, {firstName}
+                </h1>
+              </header>
+            )}
+          </>
+        );
+      })()}
 
       {/* Workout / rest day switch (kept outside the journal tabs so it stays accessible from both Meals & Activity) */}
       {Boolean(trainee.enableWorkoutRestSplit) && (
