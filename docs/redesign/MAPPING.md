@@ -2,7 +2,7 @@
 |---|---|---|---|---|---|
 | 1 | `Main` | יומן | `TraineeMobileView` (journal section) + `ui/GlassDock` | Done | Top bar rebuilt: safe-area aware, 44px glass actions, no clipping under the status bar/notch |
 | 2 | `DatePicker` | בחירת תאריך · חודש / שנה | `journal/CalendarSheet` | Done | Month/year picker + "חזור להיום" |
-| 3 | `JournalActivity` | יומן · פעילות וכרטיסי ארוחה | `TraineeMobileView` (activity + meal cards) | Partial | Tokens, color rules, hit areas; card layout not re-verified against design |
+| 3 | `JournalActivity` | יומן · פעילות וכרטיסי ארוחה | `TraineeMobileView` (activity + meal cards) | Done | Weekly ring cards, steps card, workout/cardio choice sections, sleep ± stepper; verified light/dark. Selections are gray (design draws them orange) |
 | 4 | `JournalStates` | יומן · יום חסום / תשקיף / תזכורות | `TraineeMobileView` | Partial | Tokens + color rules; not re-verified |
 | 5 | `AddMeal` | הוספת ארוחה | `AddMealDrawer` (hub) | Done | Keeps existing search bar and draft footer |
 | 6 | `PhotoResult` | ניתוח תמונה AI | `AddMealDrawer` (photo tab) | Done | Capture tab (plate + nutrition-label) rebuilt: segmented mode, photo cards, glass actions, pinned "נתח את הצלחת"; result stage as before. Tested with an uploaded image, not a live AI call |

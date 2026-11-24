@@ -56,6 +56,7 @@
 :root[data-mantine-color-scheme='light'] {
   color-scheme: light;
   --sel-border: var(--btn-primary);
+  --btn-surface-bg: #ffffff;
 
   --bg: #f2f2f4;
   --card: #ffffff;
@@ -98,6 +99,7 @@
 
   /* Selected state for chips / segmented controls (never orange). */
   --sel-bg: var(--btn-primary);
+  --btn-surface-bg: var(--surface-2);
   /* Outline of a selected control: a faint light ring in dark so the gray fill reads on dark cards. */
   --sel-border: rgba(255, 255, 255, 0.34);
   --sel-text: var(--btn-primary-text);
@@ -262,10 +264,13 @@ a:focus-visible {
 }
 
 .btn-surface {
-  background: var(--surface-2) !important;
+  /* Light: pure white (per spec). Dark: the elevated surface so text stays readable. */
+  background: var(--btn-surface-bg) !important;
   color: var(--text) !important;
   border: 1px solid var(--line) !important;
   border-radius: 999px !important;
+  box-shadow: 1px 6px 7px rgba(0, 0, 0, 0.04);
+  font-size: 14px !important;
   font-weight: 600 !important;
   transition: background-color 0.15s ease, border-color 0.15s ease !important;
 }

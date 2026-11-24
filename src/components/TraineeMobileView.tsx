@@ -21,6 +21,7 @@ import {
   Lightbulb,
   Share2,
   Check,
+  Minus,
   Loader2,
   Bookmark,
   CalendarDays,
@@ -1167,7 +1168,7 @@ export function TraineeMobileView({
               );
             })()}
 
-            {/* כותרת ציר זמן הארוחות */}
+            {/* Daily activity (design: JournalActivity) */}
             {(() => {
               const actTargets = trainee.activityTargets || {
                 weeklyWorkoutsTarget: 4,
@@ -1177,185 +1178,101 @@ export function TraineeMobileView({
                 cardioTargetMinutes: 35,
                 dailySleepTargetHours: 7.5,
               };
-
-              // חישוב ביצוע שבועי מתוך 7 הימים בשבוע הנוכחי
-              const workoutsThisWeek = weekDays.filter(
-                (wd) => trainee.logs[wd.iso]?.workoutLog?.completed
-              ).length;
-              const cardioThisWeek = weekDays.filter(
-                (wd) => trainee.logs[wd.iso]?.cardioLog?.completed
+              const workoutsThisWeek = weekDays.filter((wd) => trainee.logs[wd.iso]?.workoutLog?.completed).length;
+              const cardioThisWeek = weekDays.filter((wd) => trainee.logs[wd.iso]?.cardioLog?.completed).length;
+              const sleepDaysMet = weekDays.filter(
+                (wd) => (trainee.logs[wd.iso]?.sleepHours ?? 0) >= actTargets.dailySleepTargetHours
               ).length;
               const todayWorkout = dailyLog.workoutLog;
               const todayCardio = dailyLog.cardioLog;
               const todaySleep = dailyLog.sleepHours;
               const dailyStepsTarget = actTargets.dailyStepsTarget ?? 8000;
               const hasSyncedSteps =
-                isNativeAndroidApp() ||
-                Boolean(dailyLog.stepsSource && dailyLog.stepsSource !== 'manual');
-              const remainingWorkouts = Math.max(
-                0,
-                actTargets.weeklyWorkoutsTarget - workoutsThisWeek
-              );
-              const remainingCardio = Math.max(
-                0,
-                actTargets.weeklyCardioTarget - cardioThisWeek
-              );
+                isNativeAndroidApp() || Boolean(dailyLog.stepsSource && dailyLog.stepsSource !== 'manual');
               const currentSteps = dailyLog.steps ?? 0;
-              const remainingSteps = Math.max(0, dailyStepsTarget - currentSteps);
 
+              const rings: { key: string; label: string; value: string; current: number; target: number }[] = [
+                { key: 'w', label: 'אימונים', value: `${workoutsThisWeek}/${actTargets.weeklyWorkoutsTarget}`, current: workoutsThisWeek, target: actTargets.weeklyWorkoutsTarget },
+                { key: 'c', label: 'הליכה / ריצה', value: `${cardioThisWeek}/${actTargets.weeklyCardioTarget}`, current: cardioThisWeek, target: actTargets.weeklyCardioTarget },
+                ...(hasSyncedSteps
+                  ? [{ key: 's', label: 'צעדים', value: `${Math.min(99, Math.round((currentSteps / Math.max(1, dailyStepsTarget)) * 100))}%`, current: currentSteps, target: dailyStepsTarget }]
+                  : []),
+                { key: 'z', label: 'שינה', value: `${sleepDaysMet}/7`, current: sleepDaysMet, target: 7 },
+              ];
+
+              const section: React.CSSProperties = {
+                background: 'var(--card)',
+                border: '1px solid var(--line)',
+                borderRadius: 24,
+                padding: 16,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12,
+                boxShadow: 'var(--card-shadow)',
+              };
+              const head: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 };
+              const optStyle = (on: boolean, radius: number): React.CSSProperties => ({
+                minHeight: 44,
+                padding: '0 14px',
+                borderRadius: radius,
+                fontFamily: 'inherit',
+                fontSize: 14,
+                fontWeight: on ? 700 : 500,
+                cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                opacity: isBlockedDay ? 0.45 : 1,
+                border: `1px solid ${on ? 'var(--sel-border)' : 'var(--line-2)'}`,
+                background: on ? 'var(--sel-bg)' : 'transparent',
+                color: on ? 'var(--sel-text)' : 'var(--text)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+              });
+              const workoutTypes = actTargets.workoutTypes.length > 0 ? actTargets.workoutTypes : ['אימון כוח A', 'אימון כוח B', 'Full Body'];
+              const cardioOptions = [
+                { label: `הליכה (${actTargets.cardioTargetMinutes} דק׳)`, mode: 'walk' as const, mins: actTargets.cardioTargetMinutes },
+                { label: 'הליכה מהירה (45 דק׳)', mode: 'walk' as const, mins: 45 },
+                { label: 'ריצה (25 דק׳)', mode: 'run' as const, mins: 25 },
+                { label: 'ריצה (40 דק׳)', mode: 'run' as const, mins: 40 },
+              ];
+              const stepSleep = (delta: number) => {
+                if (isBlockedDay) return;
+                const base = todaySleep ?? actTargets.dailySleepTargetHours;
+                const next = Math.min(14, Math.max(0, Math.round((base + delta) * 2) / 2));
+                onUpdateDailyActivity(trainee.id, selectedDate, { sleepHours: next });
+              };
               return (
-                <div
-                  className="pro-card"
-                  style={{
-                    padding: 16,
-                    marginBottom: 18,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 12,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    }}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 18 }}>
+                  <section
+                    aria-label="ביצוע שבועי"
+                    style={{ display: 'grid', gridTemplateColumns: `repeat(${rings.length}, minmax(0, 1fr))`, gap: 8 }}
                   >
-                    <span style={{ fontSize: 14, fontWeight: 800 }}>
-                      {hasSyncedSteps
-                        ? `אימונים, צעדים, הליכה/ריצה ושינה (${selectedDate})`
-                        : `אימונים, הליכה/ריצה ושינה (${selectedDate})`}
-                    </span>
-                  </div>
-
-                  {/* טבעות יעד אינטואיטיביות ("כמו הקלוריות שנותרו") */}
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: hasSyncedSteps
-                        ? 'repeat(3, 1fr)'
-                        : 'repeat(2, 1fr)',
-                      gap: 8,
-                    }}
-                  >
-                    <div
-                      style={{
-                        background: 'var(--surface-2)',
-                        borderRadius: 14,
-                        padding: '10px 8px',
-                        border:
-                          remainingWorkouts === 0
-                            ? '1px solid var(--line-2)'
-                            : '1px solid var(--line)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: 6,
-                        textAlign: 'center',
-                      }}
-                    >
-                      <div style={{ position: 'relative', display: 'grid', placeItems: 'center' }}>
-                        <CompactMiniRing
-                          current={workoutsThisWeek}
-                          target={actTargets.weeklyWorkoutsTarget}
-                          color="currentColor"
-                        />
-                        <Dumbbell
-                          size={14}
-                          color="var(--accent-orange-bright)"
-                          style={{ position: 'absolute' }}
-                        />
-                      </div>
-                      <div className="num-mono" style={{ fontSize: 13, fontWeight: 900 }}>
-                        {remainingWorkouts === 0
-                          ? 'יעד הושלם ✓'
-                          : `נותרו ${remainingWorkouts}`}
-                      </div>
-                      <div style={{ fontSize: 13, color: 'var(--text-3)', fontWeight: 700 }}>
-                        אימונים ({workoutsThisWeek}/{actTargets.weeklyWorkoutsTarget})
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        background: 'var(--surface-2)',
-                        borderRadius: 14,
-                        padding: '10px 8px',
-                        border:
-                          remainingCardio === 0
-                            ? '1px solid var(--line-2)'
-                            : '1px solid var(--line)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: 6,
-                        textAlign: 'center',
-                      }}
-                    >
-                      <div style={{ position: 'relative', display: 'grid', placeItems: 'center' }}>
-                        <CompactMiniRing
-                          current={cardioThisWeek}
-                          target={actTargets.weeklyCardioTarget}
-                          color="#eb931c"
-                        />
-                        <Activity
-                          size={14}
-                          color="var(--accent-orange-bright)"
-                          style={{ position: 'absolute' }}
-                        />
-                      </div>
-                      <div className="num-mono" style={{ fontSize: 13, fontWeight: 900 }}>
-                        {remainingCardio === 0
-                          ? 'יעד הושלם ✓'
-                          : `נותרו ${remainingCardio}`}
-                      </div>
-                      <div style={{ fontSize: 13, color: 'var(--text-3)', fontWeight: 700 }}>
-                        הליכה/ריצה ({cardioThisWeek}/{actTargets.weeklyCardioTarget})
-                      </div>
-                    </div>
-
-                    {hasSyncedSteps && (
+                    {rings.map((r) => (
                       <div
+                        key={r.key}
                         style={{
-                          background: 'var(--surface-2)',
-                          borderRadius: 14,
-                          padding: '10px 8px',
-                          border:
-                            remainingSteps === 0
-                              ? '1px solid var(--line-2)'
-                              : '1px solid var(--line)',
+                          background: 'var(--card)',
+                          border: '1px solid var(--line)',
+                          borderRadius: 20,
+                          padding: '12px 4px',
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
                           gap: 6,
-                          textAlign: 'center',
+                          boxShadow: 'var(--card-shadow)',
                         }}
                       >
-                        <div style={{ position: 'relative', display: 'grid', placeItems: 'center' }}>
-                          <CompactMiniRing
-                            current={currentSteps}
-                            target={dailyStepsTarget}
-                            color="#b36206"
-                          />
-                          <Footprints
-                            size={14}
-                            color="var(--accent-orange-bright)"
-                            style={{ position: 'absolute' }}
-                          />
+                        <div style={{ position: 'relative', width: 44, height: 44, display: 'grid', placeItems: 'center' }}>
+                          <CompactMiniRing current={r.current} target={r.target} color="var(--text)" />
+                          <bdi dir="ltr" className="num-mono ltr-num" style={{ position: 'absolute', fontSize: 12, fontWeight: 700 }}>
+                            {r.value}
+                          </bdi>
                         </div>
-                        <div className="num-mono" style={{ fontSize: 13, fontWeight: 900 }}>
-                          {remainingSteps === 0
-                            ? 'יעד הושלם ✓'
-                            : `נותרו ${remainingSteps.toLocaleString()}`}
-                        </div>
-                        <div style={{ fontSize: 13, color: 'var(--text-3)', fontWeight: 700 }}>
-                          צעדים ({currentSteps.toLocaleString()})
-                        </div>
+                        <span style={{ fontSize: 12, color: 'var(--text-2)', textAlign: 'center' }}>{r.label}</span>
                       </div>
-                    )}
-                  </div>
+                    ))}
+                  </section>
 
-                  {/* 0. מד צעדים יומי מוצג אך ורק כשקיים סנכרון אמיתי (Health Connect / Play Services / חיישן מכשיר) */}
                   {hasSyncedSteps && (
                     <DailyStepsCard
                       selectedDate={selectedDate}
@@ -1377,411 +1294,117 @@ export function TraineeMobileView({
                     />
                   )}
 
-                  {/* 1. אימון יומי + סוג אימון */}
-                  <div
-                    style={{
-                      background: 'var(--surface-2)',
-                      padding: '10px 12px',
-                      borderRadius: 12,
-                      border: todayWorkout?.completed
-                        ? '1px solid var(--line-2)'
-                        : '1px solid var(--line)',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: 8,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          fontSize: 13,
-                          fontWeight: 800,
-                        }}
-                      >
-                        <Dumbbell size={14} color="currentColor" />
-                        <span>אימון היום (בחר סוג אימון שביצעת):</span>
-                      </div>
-                      <span
-                        className="num-mono"
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 800,
-                          color:
-                            workoutsThisWeek >= actTargets.weeklyWorkoutsTarget
-                              ? 'var(--accent-volt)'
-                              : 'var(--text-secondary)',
-                        }}
-                      >
-                        השבוע: {workoutsThisWeek} /{' '}
-                        {actTargets.weeklyWorkoutsTarget} אימונים
+                  <section aria-label="אימון היום" style={section}>
+                    <div style={head}>
+                      <span style={{ fontSize: 15, fontWeight: 600 }}>אימון היום</span>
+                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                        השבוע: <bdi dir="ltr" className="num-mono ltr-num" style={{ color: 'var(--text)', fontWeight: 600 }}>{workoutsThisWeek}</bdi> אימונים
                       </span>
                     </div>
-
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {(actTargets.workoutTypes.length > 0
-                        ? actTargets.workoutTypes
-                        : ['אימון כוח A', 'אימון כוח B', 'Full Body']
-                      ).map((wType) => {
-                        const isSelected =
-                          todayWorkout?.completed &&
-                          todayWorkout.workoutType === wType;
+                    <div role="radiogroup" aria-label="סוג אימון" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {workoutTypes.map((wType) => {
+                        const isSelected = Boolean(todayWorkout?.completed && todayWorkout.workoutType === wType);
                         return (
                           <button
                             key={wType}
                             type="button"
+                            role="radio"
+                            aria-checked={isSelected}
                             disabled={isBlockedDay}
+                            style={optStyle(isSelected, 999)}
                             onClick={() => {
                               if (isBlockedDay) return;
                               const nextCompleted = !isSelected;
                               onUpdateDailyActivity(trainee.id, selectedDate, {
                                 workoutLog: isSelected
                                   ? { completed: false }
-                                  : {
-                                      completed: true,
-                                      workoutType: wType,
-                                      durationMinutes: 50,
-                                    },
+                                  : { completed: true, workoutType: wType, durationMinutes: 50 },
                               });
-                              if (
-                                nextCompleted &&
-                                Boolean(trainee.enableWorkoutRestSplit)
-                              ) {
-                                onUpdateDayType(
-                                  trainee.id,
-                                  selectedDate,
-                                  'workout'
-                                );
+                              if (nextCompleted && Boolean(trainee.enableWorkoutRestSplit)) {
+                                onUpdateDayType(trainee.id, selectedDate, 'workout');
                               }
                             }}
-                            style={{
-                              minHeight: 40, padding: '0 14px',
-                              borderRadius: 999,
-                              border: isSelected ? '1px solid var(--sel-border)'
-                                : '1px solid var(--line)',
-                              background: isSelected ? 'var(--sel-bg)'
-                                : 'var(--card)',
-                              color: isSelected ? 'var(--sel-text)'
-                                : 'var(--text-secondary)',
-                              fontSize: 13,
-                              fontWeight: 700,
-                              opacity: isBlockedDay ? 0.45 : 1,
-                              cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                            }}
                           >
-                            {isSelected ? `✓ ${wType}` : wType}
+                            {isSelected && <Check size={15} strokeWidth={2.8} />}
+                            {wType}
                           </button>
                         );
                       })}
                     </div>
-                  </div>
+                  </section>
 
-                  {/* 2. הליכה / ריצה יומית */}
-                  <div
-                    style={{
-                      background: 'var(--surface-2)',
-                      padding: '10px 12px',
-                      borderRadius: 12,
-                      border: todayCardio?.completed
-                        ? '1px solid var(--line-2)'
-                        : '1px solid var(--line)',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: 8,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          fontSize: 13,
-                          fontWeight: 800,
-                        }}
-                      >
-                        <Activity size={14} color="var(--accent-orange-bright)" />
-                        <span>
-                          הליכה / ריצה היום (יעד: {actTargets.cardioTargetMinutes}{' '}
-                          דק׳):
-                        </span>
-                      </div>
-                      <span
-                        className="num-mono"
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 800,
-                          color:
-                            cardioThisWeek >= actTargets.weeklyCardioTarget
-                              ? 'var(--accent-orange-bright)'
-                              : 'var(--text-secondary)',
-                        }}
-                      >
-                        השבוע: {cardioThisWeek} / {actTargets.weeklyCardioTarget}{' '}
-                        פעמים
+                  <section aria-label="הליכה או ריצה" style={section}>
+                    <div style={head}>
+                      <span style={{ fontSize: 15, fontWeight: 600 }}>הליכה / ריצה</span>
+                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                        יעד: <bdi dir="ltr" className="num-mono ltr-num" style={{ color: 'var(--text)', fontWeight: 600 }}>{actTargets.cardioTargetMinutes}</bdi> דק׳ · השבוע{' '}
+                        <bdi dir="ltr" className="ltr-num">{cardioThisWeek}/{actTargets.weeklyCardioTarget}</bdi>
                       </span>
                     </div>
-
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {[
-                        {
-                          label: `הליכה (${actTargets.cardioTargetMinutes} דק׳)`,
-                          mode: 'walk' as const,
-                          mins: actTargets.cardioTargetMinutes,
-                        },
-                        {
-                          label: 'הליכה מהירה (45 דק׳)',
-                          mode: 'walk' as const,
-                          mins: 45,
-                        },
-                        {
-                          label: 'ריצה (25 דק׳)',
-                          mode: 'run' as const,
-                          mins: 25,
-                        },
-                        {
-                          label: 'ריצה (40 דק׳)',
-                          mode: 'run' as const,
-                          mins: 40,
-                        },
-                      ].map((cOpt) => {
-                        const isSelected =
-                          todayCardio?.completed &&
-                          todayCardio.label === cOpt.label;
+                    <div role="radiogroup" aria-label="סוג פעילות אירובית" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+                      {cardioOptions.map((cOpt) => {
+                        const isSelected = Boolean(todayCardio?.completed && todayCardio.label === cOpt.label);
                         return (
                           <button
                             key={cOpt.label}
                             type="button"
+                            role="radio"
+                            aria-checked={isSelected}
                             disabled={isBlockedDay}
+                            style={optStyle(isSelected, 14)}
                             onClick={() => {
                               if (isBlockedDay) return;
                               onUpdateDailyActivity(trainee.id, selectedDate, {
                                 cardioLog: isSelected
                                   ? { completed: false }
-                                  : {
-                                      completed: true,
-                                      mode: cOpt.mode,
-                                      label: cOpt.label,
-                                      durationMinutes: cOpt.mins,
-                                    },
+                                  : { completed: true, mode: cOpt.mode, label: cOpt.label, durationMinutes: cOpt.mins },
                               });
                             }}
-                            style={{
-                              minHeight: 40, padding: '0 14px',
-                              borderRadius: 999,
-                              border: isSelected ? '1px solid var(--sel-border)'
-                                : '1px solid var(--line)',
-                              background: isSelected ? 'var(--sel-bg)'
-                                : 'var(--card)',
-                              color: isSelected ? 'var(--sel-text)'
-                                : 'var(--text-secondary)',
-                              fontSize: 13,
-                              fontWeight: 700,
-                              cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                              opacity: isBlockedDay ? 0.45 : 1,
-                            }}
                           >
-                            {isSelected ? `✓ ${cOpt.label}` : cOpt.label}
+                            {isSelected && <Check size={15} strokeWidth={2.8} />}
+                            {cOpt.label}
                           </button>
                         );
                       })}
                     </div>
-                  </div>
+                  </section>
 
-                  {/* 3. שעות שינה הלילה */}
-                  <div
-                    style={{
-                      background: 'var(--surface-2)',
-                      padding: '10px 12px',
-                      borderRadius: 12,
-                      border: todaySleep
-                        ? '1px solid var(--line-2)'
-                        : '1px solid var(--line)',
-                    }}
+                  <section
+                    aria-label="שינה"
+                    style={{ ...section, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px' }}
                   >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: 8,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          fontSize: 13,
-                          fontWeight: 800,
-                        }}
-                      >
-                        <Moon size={14} color="var(--accent-orange-bright)" />
-                        <span>כמה שעות ישנת הלילה?</span>
-                      </div>
-                      <span
-                        className="num-mono"
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 800,
-                          color:
-                            (todaySleep || 0) >=
-                            actTargets.dailySleepTargetHours
-                              ? 'var(--accent-orange-bright)'
-                              : 'var(--text-secondary)',
-                        }}
-                      >
-                        {todaySleep ?? 0} / {actTargets.dailySleepTargetHours}{' '}
-                        שעות (יעד)
+                    <span style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontSize: 15, fontWeight: 600 }}>שינה</span>
+                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                        כמה שעות ישנת הלילה? (יעד <bdi dir="ltr" className="ltr-num">{actTargets.dailySleepTargetHours}</bdi>)
                       </span>
-                    </div>
-
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(4, 1fr)',
-                        gap: 6,
-                      }}
+                    </span>
+                    <span
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 2, padding: 3, borderRadius: 999, background: 'var(--surface-2)', flex: 'none' }}
                     >
-                      {[5, 6, 6.5, 7, 7.5, 8, 8.5].map((hrs) => {
-                        const isSelected = todaySleep === hrs;
-                        return (
-                          <button
-                            key={hrs}
-                            type="button"
-                            disabled={isBlockedDay}
-                            onClick={() => {
-                              if (isBlockedDay) return;
-                              setCustomSleepOpen(false);
-                              onUpdateDailyActivity(trainee.id, selectedDate, {
-                                sleepHours: hrs,
-                              });
-                            }}
-                            className="num-mono"
-                            style={{
-                              padding: '6px 2px',
-                              borderRadius: 8,
-                              border: isSelected ? '1px solid var(--sel-border)'
-                                : '1px solid var(--line)',
-                              background: isSelected ? 'var(--sel-bg)'
-                                : 'var(--card)',
-                              color: isSelected ? 'var(--sel-text)'
-                                : 'var(--text-secondary)',
-                              fontSize: 13,
-                              fontWeight: 800,
-                              cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                              opacity: isBlockedDay ? 0.45 : 1,
-                            }}
-                          >
-                            {hrs}h
-                          </button>
-                        );
-                      })}
-                      {(() => {
-                        const isCustomValue =
-                          todaySleep !== undefined &&
-                          ![5, 6, 6.5, 7, 7.5, 8, 8.5].includes(todaySleep);
-                        const isSelected = customSleepOpen || isCustomValue;
-                        return (
-                          <button
-                            type="button"
-                            disabled={isBlockedDay}
-                            onClick={() => {
-                              if (isBlockedDay) return;
-                              setCustomSleepDraft(
-                                todaySleep !== undefined ? String(todaySleep) : '9'
-                              );
-                              setCustomSleepOpen((prev) => !prev);
-                            }}
-                            style={{
-                              padding: '6px 2px',
-                              borderRadius: 8,
-                              border: isSelected ? '1px solid var(--sel-border)'
-                                : '1px solid var(--line)',
-                              background: isSelected ? 'var(--sel-bg)'
-                                : 'var(--card)',
-                              color: isSelected ? 'var(--sel-text)'
-                                : 'var(--text-secondary)',
-                              fontSize: 13,
-                              fontWeight: 800,
-                              cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                              opacity: isBlockedDay ? 0.45 : 1,
-                            }}
-                          >
-                            {isCustomValue ? `${todaySleep}h` : 'אחר'}
-                          </button>
-                        );
-                      })()}
-                    </div>
-
-                    {customSleepOpen && !isBlockedDay && (
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          const parsed = parseFloat(customSleepDraft);
-                          if (!Number.isFinite(parsed) || parsed < 0 || parsed > 24) {
-                            return;
-                          }
-                          const rounded = Math.round(parsed * 10) / 10;
-                          onUpdateDailyActivity(trainee.id, selectedDate, {
-                            sleepHours: rounded,
-                          });
-                          setCustomSleepOpen(false);
-                        }}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          marginTop: 8,
-                        }}
+                      <button
+                        type="button"
+                        aria-label="פחות שעות שינה"
+                        disabled={isBlockedDay}
+                        onClick={() => stepSleep(-0.5)}
+                        style={{ width: 44, height: 44, borderRadius: 999, border: 0, background: 'transparent', color: 'var(--text-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: isBlockedDay ? 0.45 : 1 }}
                       >
-                        <input
-                          type="number"
-                          step="0.5"
-                          min={0}
-                          max={24}
-                          dir="ltr"
-                          value={customSleepDraft}
-                          onChange={(e) => setCustomSleepDraft(e.target.value)}
-                          placeholder="למשל 9 או 4.5"
-                          style={{
-                            flex: 1,
-                            minWidth: 0,
-                            background: 'var(--card)',
-                            border: '1px solid var(--line-2)',
-                            borderRadius: 8,
-                            minHeight: 40, padding: '0 14px',
-                            color: 'var(--text-primary)',
-                            fontSize: 13,
-                            fontWeight: 700,
-                            textAlign: 'center',
-                            outline: 'none',
-                          }}
-                        />
-                        <button
-                          type="submit"
-                          className="btn-volt"
-                          style={{
-                            minHeight: 40, padding: '0 14px',
-                            fontSize: 13,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          שמור שעות
-                        </button>
-                      </form>
-                    )}
-                  </div>
+                        <Minus size={18} strokeWidth={2.2} />
+                      </button>
+                      <bdi dir="ltr" className="num-mono ltr-num" style={{ minWidth: 54, textAlign: 'center', fontSize: 18, fontWeight: 700 }}>
+                        {todaySleep ?? '—'}
+                      </bdi>
+                      <button
+                        type="button"
+                        aria-label="יותר שעות שינה"
+                        disabled={isBlockedDay}
+                        onClick={() => stepSleep(0.5)}
+                        style={{ width: 44, height: 44, borderRadius: 999, border: 0, background: 'transparent', color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: isBlockedDay ? 0.45 : 1 }}
+                      >
+                        <Plus size={18} strokeWidth={2.2} />
+                      </button>
+                    </span>
+                  </section>
                 </div>
               );
             })()}
