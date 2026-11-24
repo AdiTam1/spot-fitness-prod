@@ -1792,274 +1792,183 @@ export function CoachDashboardView({
                     (m) => m.coachQuestion?.status === 'pending'
                   ).length;
 
+                  const iconBtn: React.CSSProperties = {
+                    width: 44,
+                    height: 44,
+                    borderRadius: 999,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    flex: 'none',
+                  };
+                  const pushReady =
+                    (t.fcmTokens?.length || 0) + (t.webPushSubscriptions?.length || 0) > 0;
                   return (
-                    <div
+                    <article
                       key={t.id}
-                      className="pro-card"
                       style={{
-                        padding: 14,
+                        background: 'var(--card)',
+                        border: '1px solid var(--line)',
+                        borderRadius: 28,
+                        padding: 16,
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: 11,
+                        gap: 12,
+                        boxShadow: 'var(--card-shadow)',
                       }}
                     >
-                      {/* כותרת כרטיסיית מתאמן */}
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'flex-start',
-                          gap: 8,
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                          <div
-                            style={{
-                              width: 38,
-                              height: 38,
-                              borderRadius: '50%',
-                              background: 'var(--surface-2)',
-                              border: '1px solid var(--line-2)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontWeight: 900,
-                              fontSize: 15,
-                              color: 'var(--accent-orange-bright)',
-                              flexShrink: 0,
-                            }}
-                          >
-                            {t.avatar}
-                          </div>
-                          <div style={{ minWidth: 0 }}>
-                            <div
-                              style={{
-                                fontSize: 14.5,
-                                fontWeight: 800,
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                              }}
-                            >
-                              {t.name}
-                            </div>
-                            <div
-                              className="num-mono"
-                              style={{
-                                fontSize: 11,
-                                color: 'var(--text-secondary)',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                              }}
-                            >
-                              {t.email}
-                            </div>
-                          </div>
-                        </div>
-
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <span
+                          aria-hidden
                           style={{
-                            padding: '3px 9px',
+                            width: 44,
+                            height: 44,
                             borderRadius: 999,
-                            background: st.statusBg,
-                            color: st.statusColor,
-                            fontSize: 10.5,
-                            fontWeight: 800,
-                            whiteSpace: 'nowrap',
-                            flexShrink: 0,
+                            background: 'var(--surface-3)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 700,
+                            fontSize: 15,
+                            flex: 'none',
                           }}
                         >
-                          {st.label} ({st.loggedMealsCount}/{st.totalMeals})
+                          {t.avatar}
                         </span>
-                      </div>
-
-                      {/* קבוצה + מאמן + שאלות ממתינות */}
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          flexWrap: 'wrap',
-                          gap: 6,
-                        }}
-                      >
-                        <Select
-                          size="xs"
-                          w={140}
-                          placeholder="ללא קבוצה"
-                          value={t.groupId || ''}
-                          onChange={(val) =>
-                            onUpdateTraineeGroup(t.id, val ? val : undefined)
-                          }
-                          data={[
-                            { value: '', label: 'ללא קבוצה' },
-                            ...groups.map((g) => ({
-                              value: g.id,
-                              label: g.name,
-                            })),
-                          ]}
-                        />
-                        {groupObj && (
-                          <span
-                            style={{
-                              fontSize: 10,
-                              fontWeight: 700,
-                              padding: '2px 7px',
-                              borderRadius: 999,
-                              background: 'var(--fill-1)',
-                              color: 'var(--text-secondary)',
-                            }}
-                          >
-                            ראשי: {getCoachNameById(t.primaryCoachId)}
+                        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontSize: 17, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {t.name}
                           </span>
-                        )}
-                        {pendingQ > 0 && (
+                          <span style={{ fontSize: 13, color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {groupObj ? groupObj.name : 'ללא קבוצה'}
+                            {groupObj ? ` · ראשי: ${getCoachNameById(t.primaryCoachId)}` : ''}
+                          </span>
+                        </span>
+                        {pendingQ > 0 ? (
                           <button
                             type="button"
                             onClick={() => {
                               setSelectedTraineeId(t.id);
                               setActiveSection('inspector');
                             }}
+                            aria-label={`${pendingQ} שאלות ממתינות`}
                             style={{
-                              padding: '3px 8px',
+                              height: 28,
+                              padding: '0 10px',
                               borderRadius: 999,
-                              background: 'rgba(56, 189, 248, 0.16)',
-                              border: '1px solid rgba(56, 189, 248, 0.35)',
-                              color: 'var(--info-text)',
-                              fontSize: 10,
-                              fontWeight: 800,
+                              background: 'var(--accent)',
+                              color: 'var(--on-accent)',
+                              border: 'none',
+                              fontFamily: 'inherit',
+                              fontSize: 12,
+                              fontWeight: 700,
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: 4,
                               cursor: 'pointer',
+                              flex: 'none',
                             }}
                           >
-                            <MessageCircle size={10} />
-                            <span>{pendingQ} שאלות</span>
+                            <MessageCircle size={12} />
+                            <bdi className="ltr-num">{pendingQ}</bdi> שאלות
                           </button>
+                        ) : (
+                          <span
+                            style={{
+                              height: 26,
+                              padding: '0 10px',
+                              borderRadius: 999,
+                              background: 'var(--surface-2)',
+                              color: st.statusColor,
+                              fontSize: 12,
+                              fontWeight: 700,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              whiteSpace: 'nowrap',
+                              flex: 'none',
+                            }}
+                          >
+                            {st.label} (<bdi className="ltr-num">{st.loggedMealsCount}/{st.totalMeals}</bdi>)
+                          </span>
                         )}
                       </div>
 
-                      {/* פס ביצוע קלוריות ומאקרו */}
-                      <div
-                        style={{
-                          background: 'var(--bg-surface-2)',
-                          padding: '9px 11px',
-                          borderRadius: 12,
-                          border: '1px solid var(--border-subtle)',
-                        }}
-                      >
-                        <div
-                          className="num-mono"
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            fontSize: 12,
-                            marginBottom: 5,
-                          }}
-                        >
-                          <span style={{ fontWeight: 800 }}>
-                            {st.consumed.calories} / {st.target.calories} קק״ל
-                          </span>
-                          <span style={{ color: 'var(--macro-protein)', fontWeight: 700 }}>
-                            ח׳ {st.consumed.protein}/{st.target.protein}g
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 13, color: 'var(--text-2)' }}>
+                          <span>ביצוע היום</span>
+                          <span>
+                            <bdi dir="ltr" className="num-mono ltr-num" style={{ color: 'var(--text)', fontWeight: 600 }}>
+                              {st.consumed.calories}
+                            </bdi>{' '}
+                            /{' '}
+                            <bdi dir="ltr" className="num-mono ltr-num">{st.target.calories}</bdi> קק״ל ·{' '}
+                            <span style={{ color: 'var(--macro-protein)' }}>
+                              ח׳ <bdi dir="ltr" className="num-mono ltr-num">{st.consumed.protein}</bdi>
+                            </span>
                           </span>
                         </div>
-                        <div
-                          style={{
-                            height: 5,
-                            background: 'var(--line)',
-                            borderRadius: 999,
-                            overflow: 'hidden',
-                          }}
-                        >
-                          <div
-                            style={{
-                              height: '100%',
-                              width: `${calPct}%`,
-                              background: st.statusColor,
-                              borderRadius: 999,
-                            }}
-                          />
+                        <div style={{ height: 6, background: 'var(--surface-3)', borderRadius: 999, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${calPct}%`, background: 'var(--accent)', borderRadius: 999 }} />
                         </div>
                       </div>
 
-                      {/* כפתורי פעולה נוחים למגע במובייל */}
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        <button
-                          onClick={() => {
-                            setSelectedTraineeId(t.id);
-                            setActiveSection('inspector');
-                          }}
-                          className="btn-volt"
-                          style={{
-                            flex: '1 1 110px',
-                            padding: '8px 10px',
-                            fontSize: 12,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          תפריט ויומן
-                        </button>
-                        <button
-                          onClick={() => onPreviewTraineeMobile(t.id)}
-                          className="btn-surface"
-                          style={{
-                            padding: '8px 10px',
-                            fontSize: 12,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
-                          }}
-                        >
-                          <span>מובייל</span>
-                          <ArrowUpLeft size={13} />
-                        </button>
-                        <button
-                          title="שלח פוש אישי למתאמן"
-                          onClick={() => openPushModalForTrainee(t.id)}
-                          className="btn-surface"
-                          style={{
-                            padding: '8px 10px',
-                            fontSize: 12,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
-                            color:
-                              (t.fcmTokens?.length || 0) +
-                                (t.webPushSubscriptions?.length || 0) >
-                              0
-                                ? 'var(--accent-volt)'
-                                : 'var(--text-secondary)',
-                          }}
-                        >
-                          <Bell size={13} />
-                        </button>
+                      <Select
+                        aria-label="קבוצה"
+                        placeholder="ללא קבוצה"
+                        value={t.groupId || ''}
+                        allowDeselect={false}
+                        onChange={(val) => onUpdateTraineeGroup(t.id, val ? val : undefined)}
+                        data={[{ value: '', label: 'ללא קבוצה' }, ...groups.map((g) => ({ value: g.id, label: g.name }))]}
+                      />
+
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         {isOwner && (
                           <button
-                            title="שתף מתאמן עם מאמנים נוספים"
+                            type="button"
+                            className="glass"
+                            aria-label="שתף מתאמן עם מאמנים נוספים"
                             onClick={() => {
                               setSharingModalTrainee(t);
                               setSharingPrimaryId(t.primaryCoachId || 'coach-admin');
                               setSharingCollaboratorIds(t.sharedCoachIds || []);
                             }}
-                            className="btn-surface"
-                            style={{
-                              padding: '8px 10px',
-                              fontSize: 12,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                            }}
+                            style={iconBtn}
                           >
-                            <Share2 size={13} color="currentColor" />
+                            <Share2 size={18} />
                           </button>
                         )}
+                        <button
+                          type="button"
+                          className="glass"
+                          aria-label="תצוגת מובייל של המתאמן"
+                          onClick={() => onPreviewTraineeMobile(t.id)}
+                          style={iconBtn}
+                        >
+                          <ArrowUpLeft size={18} />
+                        </button>
+                        <button
+                          type="button"
+                          className="glass"
+                          aria-label="שלח פוש אישי למתאמן"
+                          onClick={() => openPushModalForTrainee(t.id)}
+                          style={{ ...iconBtn, color: pushReady ? 'var(--text)' : 'var(--text-2)' }}
+                        >
+                          <Bell size={18} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTraineeId(t.id);
+                            setActiveSection('inspector');
+                          }}
+                          className="btn-volt"
+                          style={{ flex: 1, height: 44, fontSize: 15, cursor: 'pointer' }}
+                        >
+                          תפריט ויומן
+                        </button>
                       </div>
-                    </div>
+                    </article>
                   );
                 })
               )}
