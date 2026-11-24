@@ -3251,7 +3251,7 @@ export function AddMealDrawer({
                   </div>
                 )}
                 {allMealPhotos.length > 0 && (
-                  <div aria-hidden style={{ height: 32, margin: '-46px -16px 0', borderRadius: '28px 28px 0 0', background: 'var(--card)', position: 'relative' }} />
+                  <div aria-hidden style={{ height: 42, margin: '-52px -16px 0', borderRadius: '28px 28px 0 0', background: 'var(--card)', position: 'relative', flexShrink: 0 }} />
                 )}
 
                 <div
