@@ -11,12 +11,15 @@ import {
   Select,
   PasswordInput,
   Checkbox,
+  Switch,
 } from '@mantine/core';
 import {
   Users,
   LayoutTemplate,
   Plus,
   Trash2,
+  ChevronDown,
+  MoreHorizontal,
   Check,
   Send,
   Sliders,
@@ -513,6 +516,9 @@ export function CoachDashboardView({
     typeof window !== 'undefined' && window.innerWidth < 768 ? 'cards' : 'table'
   );
   const [rosterViewPinned, setRosterViewPinned] = useState(false);
+  const [openMealIds, setOpenMealIds] = useState<Record<string, boolean>>({});
+  const [accountsFilter, setAccountsFilter] = useState<'all' | 'pending' | 'active' | 'paused'>('all');
+  const [expandedAccountId, setExpandedAccountId] = useState<string | null>(null);
   const [inspTab, setInspTab] = useState<'data' | 'plan' | 'journal'>('data');
   const [tplScope, setTplScope] = useState<'all' | 'system' | 'mine'>('all');
 
@@ -1130,7 +1136,7 @@ export function CoachDashboardView({
               id: 'inspector',
               label: `תוכנית ויומן (${selectedTrainee?.name || 'ללא מתאמן'})${
                 totalPendingMealQuestions > 0
-                  ? ` · 💬 ${totalPendingMealQuestions}`
+                  ? ` · ${totalPendingMealQuestions}`
                   : ''
               }`,
               icon: Sliders,
@@ -1158,7 +1164,7 @@ export function CoachDashboardView({
               id: 'scrapers',
               label: scraperReport
                 ? scraperReport.totalBroken > 0
-                  ? `סקרייפרים (⚠️ ${scraperReport.totalBroken} שבור)`
+                  ? `סקרייפרים (${scraperReport.totalBroken} שבור)`
                   : `סקרייפרים ומאגר (${scraperReport.totalHealthy}/${scraperReport.results.length} תקין)`
                 : scraperLoading
                   ? 'בודק סקרייפרים...'
@@ -1191,7 +1197,7 @@ export function CoachDashboardView({
                     gap: 8,
                     padding: '9px 15px',
                     borderRadius: 18,
-                    border: active ? '1px solid var(--sel-bg)'
+                    border: active ? '1px solid var(--sel-border)'
                       : '1px solid transparent',
                     background: active ? 'var(--sel-bg)'
                       : 'transparent',
@@ -1393,7 +1399,7 @@ export function CoachDashboardView({
                   padding: '6px 12px',
                   borderRadius: 999,
                   border:
-                    selectedGroupFilter === 'all' ? '1px solid var(--sel-bg)'
+                    selectedGroupFilter === 'all' ? '1px solid var(--sel-border)'
                       : '1px solid var(--line-2)',
                   background:
                     selectedGroupFilter === 'all' ? 'var(--sel-bg)'
@@ -1424,7 +1430,7 @@ export function CoachDashboardView({
                       gap: 6,
                       padding: '6px 12px',
                       borderRadius: 999,
-                      border: active ? '1px solid var(--sel-bg)' : '1px solid var(--line-2)',
+                      border: active ? '1px solid var(--sel-border)' : '1px solid var(--line-2)',
                       background: active ? 'var(--sel-bg)' : 'transparent',
                       color: active ? 'var(--sel-text)' : 'var(--text)',
                       fontSize: 13,
@@ -1453,7 +1459,7 @@ export function CoachDashboardView({
                   padding: '6px 12px',
                   borderRadius: 999,
                   border:
-                    selectedGroupFilter === 'unassigned' ? '1px solid var(--sel-bg)'
+                    selectedGroupFilter === 'unassigned' ? '1px solid var(--sel-border)'
                       : '1px solid var(--line-2)',
                   background:
                     selectedGroupFilter === 'unassigned' ? 'var(--sel-bg)'
@@ -2846,7 +2852,7 @@ export function CoachDashboardView({
                             style={{
                               padding: '5px 10px',
                               borderRadius: 999,
-                              border: active ? '1px solid var(--sel-bg)'
+                              border: active ? '1px solid var(--sel-border)'
                                 : '1px solid var(--line)',
                               background: active ? 'var(--sel-bg)'
                                 : 'var(--card)',
@@ -2911,7 +2917,7 @@ export function CoachDashboardView({
                 </div>
               );
             })()}
-            <div
+            <div className="coach-form-block"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -2935,7 +2941,7 @@ export function CoachDashboardView({
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <div className="coach-form-actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button
                   disabled={isBusy('obs-ins-today')}
                   onClick={() =>
@@ -3168,7 +3174,7 @@ export function CoachDashboardView({
               </div>
 
               {/* ניהול טווח תאריכים פעילים לניווט המתאמן (שבועי וחודשי) */}
-              <div
+              <div className="coach-form-block"
                 style={{
                   marginTop: 12,
                   paddingTop: 12,
@@ -3267,7 +3273,7 @@ export function CoachDashboardView({
                   gap: 10,
                 }}
               >
-                <div
+                <div className="coach-form-block"
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -3477,58 +3483,68 @@ export function CoachDashboardView({
               <div
                 style={{
                   background: 'var(--surface-2)',
-                  padding: 12,
-                  borderRadius: 18,
-                  fontSize: 13,
+                  padding: 16,
+                  borderRadius: 22,
+                  fontSize: 14,
                 }}
               >
                 <div
                   style={{
-                    fontWeight: 800,
+                    fontWeight: 700,
+                    fontSize: 15,
                     color: 'var(--text)',
                     marginBottom: 6,
                   }}
                 >
                   אימונים, הליכה ואורח חיים
                 </div>
-                <div>
-                  <b>אורח חיים:</b>{' '}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+                  <span style={{ color: 'var(--text-2)', flex: 'none' }}>אורח חיים</span>
+                  <span style={{ textAlign: 'end', minWidth: 0 }}>
                   {selectedTrainee.onboarding?.activityLevel || '—'}{' '}
                   {selectedTrainee.onboarding?.activityLevelNote
                     ? `(${selectedTrainee.onboarding.activityLevelNote})`
                     : ''}
+                  </span>
                 </div>
-                <div>
-                  <b>אימוני כוח:</b>{' '}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+                  <span style={{ color: 'var(--text-2)', flex: 'none' }}>אימוני כוח</span>
+                  <span style={{ textAlign: 'end', minWidth: 0 }}>
                   {selectedTrainee.onboarding?.strengthWorkoutsPerWeek || '—'}{' '}
                   {selectedTrainee.onboarding?.strengthWorkoutsNote
                     ? `(${selectedTrainee.onboarding.strengthWorkoutsNote})`
                     : ''}
+                  </span>
                 </div>
-                <div>
-                  <b>הליכה בשבוע:</b>{' '}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+                  <span style={{ color: 'var(--text-2)', flex: 'none' }}>הליכה בשבוע</span>
+                  <span style={{ textAlign: 'end', minWidth: 0 }}>
                   {selectedTrainee.onboarding?.walkingSessionsPerWeek || '—'}{' '}
                   {selectedTrainee.onboarding?.walkingSessionsNote
                     ? `(${selectedTrainee.onboarding.walkingSessionsNote})`
                     : ''}
+                  </span>
                 </div>
-                <div>
-                  <b>שעות שינה:</b>{' '}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+                  <span style={{ color: 'var(--text-2)', flex: 'none' }}>שעות שינה</span>
+                  <span style={{ textAlign: 'end', minWidth: 0 }}>
                   {selectedTrainee.onboarding?.sleepHours || '—'}
+                  </span>
                 </div>
               </div>
 
               <div
                 style={{
                   background: 'var(--surface-2)',
-                  padding: 12,
-                  borderRadius: 18,
-                  fontSize: 13,
+                  padding: 16,
+                  borderRadius: 22,
+                  fontSize: 14,
                 }}
               >
                 <div
                   style={{
-                    fontWeight: 800,
+                    fontWeight: 700,
+                    fontSize: 15,
                     color: 'var(--text)',
                     marginBottom: 6,
                   }}
@@ -3576,45 +3592,54 @@ export function CoachDashboardView({
               <div
                 style={{
                   background: 'var(--surface-2)',
-                  padding: 12,
-                  borderRadius: 18,
-                  fontSize: 13,
+                  padding: 16,
+                  borderRadius: 22,
+                  fontSize: 14,
                 }}
               >
                 <div
                   style={{
-                    fontWeight: 800,
-                    color: 'var(--warn-text)',
+                    fontWeight: 700,
+                    fontSize: 15,
+                    color: 'var(--text)',
                     marginBottom: 6,
                   }}
                 >
                   העדפות תזונה ואוכל חשוב
                 </div>
-                <div>
-                  <b>סגנון:</b>{' '}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+                  <span style={{ color: 'var(--text-2)', flex: 'none' }}>סגנון</span>
+                  <span style={{ textAlign: 'end', minWidth: 0 }}>
                   {(
                     selectedTrainee.onboarding?.dietaryPreferences || []
                   ).join(', ') || '—'}{' '}
                   {selectedTrainee.onboarding?.dietaryPreferencesNote || ''}
+                  </span>
                 </div>
-                <div>
-                  <b>לא מוותר על:</b>{' '}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+                  <span style={{ color: 'var(--text-2)', flex: 'none' }}>לא מוותר על</span>
+                  <span style={{ textAlign: 'end', minWidth: 0 }}>
                   {(
                     selectedTrainee.onboarding?.favoriteMustHaveFoods || []
                   ).join(', ') || '—'}{' '}
                   {selectedTrainee.onboarding?.favoriteMustHaveFoodsNote || ''}
+                  </span>
                 </div>
-                <div>
-                  <b>אלרגיות / לא אוכל:</b>{' '}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+                  <span style={{ color: 'var(--text-2)', flex: 'none' }}>אלרגיות / לא אוכל</span>
+                  <span style={{ textAlign: 'end', minWidth: 0 }}>
                   {(
                     selectedTrainee.onboarding?.dislikedOrAllergies || []
                   ).join(', ') || '—'}{' '}
                   {selectedTrainee.onboarding?.dislikedOrAllergiesNote || ''}
+                  </span>
                 </div>
                 {selectedTrainee.onboarding?.scheduleAndNotes && (
-                  <div>
-                    <b>הערות למאמן:</b>{' '}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+                    <span style={{ color: 'var(--text-2)', flex: 'none' }}>הערות למאמן</span>
+                    <span style={{ textAlign: 'end', minWidth: 0 }}>
                     {selectedTrainee.onboarding.scheduleAndNotes}
+                    </span>
                   </div>
                 )}
               </div>
@@ -3781,7 +3806,7 @@ export function CoachDashboardView({
                         color: 'var(--text)',
                       }}
                     >
-                      📋 צ׳ק-אין שבועי אחרון ודו״ח סיכום
+                      צ׳ק-אין שבועי אחרון ודו״ח סיכום
                     </span>
                     <button
                       type="button"
@@ -3971,7 +3996,8 @@ export function CoachDashboardView({
                 marginBottom: 14,
               }}
             >
-              <Checkbox
+              <Switch
+                color="orange"
                 label="הפעל למתאמן זה תפריט נפרד ליום אימון וליום מנוחה (אם כבוי – למתאמן יוצג תפריט יומי אחיד ללא מתג אימון/מנוחה)"
                 checked={Boolean(selectedTrainee.enableWorkoutRestSplit)}
                 onChange={(e) => {
@@ -4584,13 +4610,13 @@ export function CoachDashboardView({
               <div
                 style={{
                   display: 'flex',
-                  gap: 8,
-                  alignItems: 'flex-end',
-                  flexWrap: 'wrap',
+                  flexDirection: 'column',
+                  gap: 10,
                   background: 'var(--surface-2)',
-                  padding: '10px 14px',
-                  borderRadius: 20,
+                  padding: 16,
+                  borderRadius: 22,
                   border: '1px solid var(--line)',
+                  width: '100%',
                 }}
               >
                 <Select
@@ -4603,7 +4629,6 @@ export function CoachDashboardView({
                 <Select
                   size="xs"
                   label="סוג יום"
-                  w={120}
                   value={assignDayType}
                   onChange={(val) => val && setAssignDayType(val as DayType)}
                   data={[
@@ -4630,15 +4655,16 @@ export function CoachDashboardView({
                   }}
                   className="btn-volt"
                   style={{
-                    padding: '7px 14px',
-                    fontSize: 13,
+                    height: 52,
+                    fontSize: 16,
                     cursor: 'pointer',
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: 6,
+                    justifyContent: 'center',
+                    gap: 8,
                   }}
                 >
-                  {isBusy('assign-tpl') && <BusyIcon size={13} />}
+                  {isBusy('assign-tpl') && <BusyIcon size={15} />}
                   <span>
                     {isBusy('assign-tpl') ? 'משייך...' : 'שייך למתאמן'}
                   </span>
@@ -4689,6 +4715,48 @@ export function CoachDashboardView({
                   gap: 8,
                 }}
               >
+                <button
+                  type="button"
+                  aria-expanded={Boolean(openMealIds[meal.id])}
+                  onClick={() => setOpenMealIds((prev) => ({ ...prev, [meal.id]: !prev[meal.id] }))}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 10,
+                    background: 'transparent',
+                    border: 'none',
+                    padding: 0,
+                    minHeight: 44,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    color: 'var(--text)',
+                    textAlign: 'start',
+                  }}
+                >
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                    <span style={{ fontSize: 16, fontWeight: 600 }}>
+                      {meal.name || `ארוחה ${index + 1}`}
+                      {meal.timeHint ? (
+                        <span style={{ color: 'var(--text-2)', fontWeight: 500 }}>
+                          {' · '}
+                          <bdi dir="ltr" className="ltr-num">{meal.timeHint}</bdi>
+                        </span>
+                      ) : null}
+                    </span>
+                    <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                      <bdi dir="ltr" className="num-mono ltr-num">{meal.targets.calories}</bdi> קק״ל · ח׳{' '}
+                      <bdi dir="ltr" className="ltr-num">{meal.targets.protein}</bdi> · פ׳{' '}
+                      <bdi dir="ltr" className="ltr-num">{meal.targets.carbs}</bdi> · ש׳{' '}
+                      <bdi dir="ltr" className="ltr-num">{meal.targets.fat}</bdi>
+                    </span>
+                  </span>
+                  <ChevronDown
+                    size={20}
+                    style={{ flex: 'none', transform: openMealIds[meal.id] ? 'rotate(180deg)' : 'none', transition: 'transform .15s ease' }}
+                  />
+                </button>
+                <div hidden={!openMealIds[meal.id]} style={{ display: openMealIds[meal.id] ? 'flex' : 'none', flexDirection: 'column', gap: 8, paddingTop: 6 }}>
                 <div
                   style={{
                     display: 'grid',
@@ -4792,6 +4860,7 @@ export function CoachDashboardView({
                     )
                   }
                 />
+                </div>
               </div>
             ))}
           </div>
@@ -4996,358 +5065,238 @@ export function CoachDashboardView({
             </div>
           </div>
 
-          <div className="pro-card" style={{ overflow: 'hidden' }}>
-            <div
-              style={{
-                padding: '18px 22px',
-                borderBottom: '1px solid var(--line)',
-              }}
-            >
-              <div style={{ fontSize: 16, fontWeight: 800 }}>
-                ניהול חשבונות מתאמנים, סיסמאות ושיתוף מאמנים
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                רק המאמן הראשי של המתאמן (או המנהל הראשי) יכול להשהות, למחוק או
-                לנהל את רשימת המאמנים השותפים שלו
-              </div>
-            </div>
-
-            <div style={{ overflowX: 'auto' }}>
-              <table
+          {/* Accounts list (design: CoachAccounts) */}
+          {(() => {
+            const counts = {
+              all: trainees.length,
+              pending: trainees.filter((t) => t.status === 'pending').length,
+              active: trainees.filter((t) => t.status === 'active').length,
+              paused: trainees.filter((t) => t.status === 'paused').length,
+            };
+            const shown = trainees.filter((t) => accountsFilter === 'all' || t.status === accountsFilter);
+            const pill = (label: string, tone: 'ok' | 'warn' | 'off'): React.ReactNode => (
+              <span
                 style={{
-                  width: '100%',
-                  borderCollapse: 'collapse',
-                  textAlign: 'right',
+                  height: 26,
+                  padding: '0 10px',
+                  borderRadius: 999,
+                  background: 'var(--surface-2)',
+                  color: tone === 'warn' ? 'var(--warn-text)' : tone === 'ok' ? 'var(--text)' : 'var(--text-2)',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  whiteSpace: 'nowrap',
+                  flex: 'none',
                 }}
               >
-                <thead>
-                  <tr
-                    style={{
-                      borderBottom: '1px solid var(--line)',
-                      color: 'var(--text-muted)',
-                      fontSize: 13,
-                      fontWeight: 700,
-                    }}
-                  >
-                    <th style={{ padding: '14px 20px' }}>שם מתאמן</th>
-                    <th style={{ padding: '14px 12px' }}>אימייל</th>
-                    <th style={{ padding: '14px 12px' }}>מאמן ראשי ושותפים</th>
-                    <th style={{ padding: '14px 12px' }}>סטטוס חשבון</th>
-                    <th style={{ padding: '14px 20px', textAlign: 'left' }}>
-                      ניהול הרשאות
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {trainees.map((t) => {
-                    const isOwner = isOwnerOfTrainee(t);
-                    const liveBadge = formatLiveActivityBadge(t.lastSeenAt);
+                {label}
+              </span>
+            );
+            const act: React.CSSProperties = {
+              height: 44,
+              padding: '0 16px',
+              borderRadius: 999,
+              fontFamily: 'inherit',
+              fontSize: 14,
+              fontWeight: 600,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              cursor: 'pointer',
+            };
+            return (
+              <>
+                <div data-h-scroll style={{ display: 'flex', gap: 8, paddingBottom: 2 }}>
+                  {(
+                    [
+                      ['all', 'הכל'],
+                      ['pending', 'ממתינים'],
+                      ['active', 'פעילים'],
+                      ['paused', 'מושהים'],
+                    ] as const
+                  ).map(([id, label]) => {
+                    const on = accountsFilter === id;
                     return (
-                      <tr
-                        key={t.id}
+                      <button
+                        key={id}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => setAccountsFilter(id)}
                         style={{
-                          borderBottom: '1px solid var(--line)',
+                          flex: 'none',
+                          minHeight: 40,
+                          padding: '0 16px',
+                          borderRadius: 999,
+                          fontFamily: 'inherit',
+                          fontSize: 14,
+                          fontWeight: on ? 700 : 500,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                          border: `1px solid ${on ? 'var(--sel-border)' : 'var(--line-2)'}`,
+                          background: on ? 'var(--sel-bg)' : 'transparent',
+                          color: on ? 'var(--sel-text)' : 'var(--text)',
                         }}
                       >
-                        <td style={{ padding: '14px 20px', fontWeight: 800 }}>
-                          <div>{t.name}</div>
-                          {liveBadge && (
-                            <div
-                              style={{
-                                marginTop: 4,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 5,
-                                fontSize: 12.5,
-                                fontWeight: 700,
-                                color: liveBadge.isOnline
-                                  ? '#22c55e'
-                                  : 'var(--text-muted)',
-                              }}
-                            >
-                              <span
-                                style={{
-                                  width: 6,
-                                  height: 6,
-                                  borderRadius: '50%',
-                                  background: liveBadge.isOnline
-                                    ? '#22c55e'
-                                    : 'var(--text-muted)',
-                                }}
-                              />
-                              <span>{liveBadge.label}</span>
-                            </div>
-                          )}
-                        </td>
-                        <td
-                          className="num-mono"
-                          style={{ padding: '14px 12px', fontSize: 13 }}
-                        >
-                          {t.email}
-                        </td>
-                        <td style={{ padding: '14px 12px', fontSize: 12 }}>
-                          <div>
-                            <b>ראשי:</b> {getCoachNameById(t.primaryCoachId)}
-                          </div>
-                          {(t.sharedCoachIds || []).length > 0 && (
-                            <div style={{ color: 'var(--text-secondary)' }}>
-                              <b>שותפים:</b>{' '}
-                              {t.sharedCoachIds
-                                .map((id) => getCoachNameById(id))
-                                .join(', ')}
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ padding: '14px 12px' }}>
-                          {t.status === 'active' ? (
-                            <span
-                              style={{
-                                padding: '4px 10px',
-                                borderRadius: 999,
-                                background: 'var(--surface-2)',
-                                color: '#22c55e',
-                                fontSize: 13,
-                                fontWeight: 700,
-                              }}
-                            >
-                              פעיל
-                            </span>
-                          ) : t.status === 'pending' ? (
-                            <span
-                              style={{
-                                padding: '4px 10px',
-                                borderRadius: 999,
-                                background: 'var(--surface-2)',
-                                color: 'var(--warn-text)',
-                                fontSize: 13,
-                                fontWeight: 700,
-                              }}
-                            >
-                              ממתין לאישור
-                            </span>
-                          ) : (
-                            <span
-                              style={{
-                                padding: '4px 10px',
-                                borderRadius: 999,
-                                background: 'rgba(239, 68, 68, 0.14)',
-                                color: '#ef4444',
-                                fontSize: 13,
-                                fontWeight: 700,
-                              }}
-                            >
-                              מושהה
-                            </span>
-                          )}
-                        </td>
-                        <td
-                          style={{ padding: '14px 20px', textAlign: 'left' }}
-                        >
-                          {isOwner ? (
-                            <div
-                              style={{
-                                display: 'inline-flex',
-                                gap: 6,
-                                alignItems: 'center',
-                              }}
-                            >
-                              <button
-                                onClick={() => {
-                                  setSharingModalTrainee(t);
-                                  setSharingPrimaryId(
-                                    t.primaryCoachId || 'coach-admin'
-                                  );
-                                  setSharingCollaboratorIds(
-                                    t.sharedCoachIds || []
-                                  );
-                                }}
-                                className="btn-surface"
-                                style={{
-                                  padding: '6px 10px',
-                                  fontSize: 13,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 4,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                <Share2
-                                  size={13}
-                                  color="currentColor"
-                                />
-                                <span>שתף מאמנים</span>
-                              </button>
-
-                              {t.status !== 'active' ? (
-                                <button
-                                  disabled={isBusy(`st-tr-${t.id}`)}
-                                  onClick={() =>
-                                    runBusy(
-                                      `st-tr-${t.id}`,
-                                      () => onUpdateTraineeStatus(t.id, 'active'),
-                                      `הגישה של ${t.name} הופעלה והחסימה הוסרה`
-                                    )
-                                  }
-                                  className="btn-volt"
-                                  style={{
-                                    padding: '6px 10px',
-                                    fontSize: 13,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 4,
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  {isBusy(`st-tr-${t.id}`) ? (
-                                    <BusyIcon size={13} />
-                                  ) : (
-                                    <PlayCircle size={13} />
-                                  )}
-                                  <span>
-                                    {isBusy(`st-tr-${t.id}`)
-                                      ? 'מפעיל...'
-                                      : t.status === 'paused'
-                                      ? 'בטל חסימה'
-                                      : 'הפעל'}
-                                  </span>
-                                </button>
-                              ) : (
-                                <>
-                                  {onForceLogoutTrainee && (
-                                    <button
-                                      title="נתק את המתאמן מכל המכשירים המחוברים בלייב (ללא חסימה)"
-                                      disabled={isBusy(`fl-tr-${t.id}`)}
-                                      onClick={() =>
-                                        runBusy(
-                                          `fl-tr-${t.id}`,
-                                          () => onForceLogoutTrainee(t.id),
-                                          `${t.name} נותק מכל המכשירים מרחוק`
-                                        )
-                                      }
-                                      className="btn-surface"
-                                      style={{
-                                        padding: '6px 10px',
-                                        fontSize: 13,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 4,
-                                        cursor: 'pointer',
-                                        color: 'var(--warn-text)',
-                                        borderColor: 'var(--surface-2)',
-                                      }}
-                                    >
-                                      {isBusy(`fl-tr-${t.id}`) ? (
-                                        <BusyIcon size={13} />
-                                      ) : (
-                                        <LogOut size={13} />
-                                      )}
-                                      <span>
-                                        {isBusy(`fl-tr-${t.id}`) ? 'מנתק...' : 'נתק'}
-                                      </span>
-                                    </button>
-                                  )}
-                                  <button
-                                    title="חסום גישה ונתק מיד מהאפליקציה"
-                                    disabled={isBusy(`st-tr-${t.id}`)}
-                                    onClick={() =>
-                                      runBusy(
-                                        `st-tr-${t.id}`,
-                                        () => onUpdateTraineeStatus(t.id, 'paused'),
-                                        `החשבון של ${t.name} נחסם ונותק מהמכשירים`
-                                      )
-                                    }
-                                    className="btn-surface"
-                                    style={{
-                                      padding: '6px 10px',
-                                      fontSize: 13,
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: 4,
-                                      cursor: 'pointer',
-                                      color: 'var(--danger-text)',
-                                      borderColor: 'rgba(239, 68, 68, 0.3)',
-                                    }}
-                                  >
-                                    {isBusy(`st-tr-${t.id}`) ? (
-                                      <BusyIcon size={13} />
-                                    ) : (
-                                      <PauseCircle size={13} />
-                                    )}
-                                    <span>
-                                      {isBusy(`st-tr-${t.id}`) ? 'חוסם...' : 'חסום'}
-                                    </span>
-                                  </button>
-                                </>
-                              )}
-
-                              <button
-                                onClick={() => {
-                                  setCredModalTrainee(t);
-                                  setEditEmail(t.email);
-                                  setEditPassword('');
-                                }}
-                                className="btn-surface"
-                                style={{
-                                  padding: '6px 10px',
-                                  fontSize: 13,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 4,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                <KeyRound size={13} />
-                                <span>איפוס סיסמה</span>
-                              </button>
-
-                              <button
-                                title="מחק מתאמן לצמיתות"
-                                disabled={isBusy(`del-tr-${t.id}`)}
-                                onClick={() => {
-                                  if (
-                                    !confirmDanger(
-                                      `למחוק לצמיתות את המתאמן "${t.name}" וכל נתוניו? פעולה זו אינה הפיכה.`
-                                    )
-                                  ) {
-                                    return;
-                                  }
-                                  runBusy(
-                                    `del-tr-${t.id}`,
-                                    () => onDeleteTrainee(t.id),
-                                    `המתאמן ${t.name} הוסר`
-                                  );
-                                }}
-                                className="btn-surface"
-                                style={{
-                                  padding: '6px 8px',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                {isBusy(`del-tr-${t.id}`) ? (
-                                  <BusyIcon size={13} />
-                                ) : (
-                                  <Trash2 size={13} color="#ef4444" />
-                                )}
-                              </button>
-                            </div>
-                          ) : (
-                            <span
-                              style={{
-                                fontSize: 13,
-                                color: 'var(--text-muted)',
-                              }}
-                            >
-                              שותף בצוות (ניהול חשבון ע״י המאמן הראשי)
-                            </span>
-                          )}
-                        </td>
-                      </tr>
+                        {label} · <bdi className="ltr-num">{counts[id]}</bdi>
+                      </button>
                     );
                   })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                </div>
+
+                {shown.length === 0 && (
+                  <div style={{ padding: 22, textAlign: 'center', color: 'var(--text-2)', fontSize: 14, border: '1.5px dashed var(--line-2)', borderRadius: 22 }}>
+                    אין חשבונות בקטגוריה זו
+                  </div>
+                )}
+
+                {shown.map((t) => {
+                  const isOwner = isOwnerOfTrainee(t);
+                  const liveBadge = formatLiveActivityBadge(t.lastSeenAt);
+                  const open = expandedAccountId === t.id;
+                  const initials = t.name.trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2);
+                  const shared = (t.sharedCoachIds || []).map((id) => getCoachNameById(id)).join(', ');
+                  return (
+                    <article
+                      key={t.id}
+                      style={{
+                        background: 'var(--card)',
+                        border: '1px solid var(--line)',
+                        borderRadius: 24,
+                        padding: '12px 14px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 10,
+                        boxShadow: 'var(--card-shadow)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span
+                          aria-hidden
+                          style={{ width: 44, height: 44, borderRadius: 999, background: 'var(--surface-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, flex: 'none' }}
+                        >
+                          {t.avatar || initials}
+                        </span>
+                        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                          <span style={{ fontSize: 16, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+                          <span style={{ fontSize: 13, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            ראשי: {getCoachNameById(t.primaryCoachId)}
+                            {shared ? ` · שותפים: ${shared}` : ''}
+                          </span>
+                          {liveBadge && (
+                            <span style={{ fontSize: 12, color: liveBadge.isOnline ? 'var(--ok-text)' : 'var(--text-3)' }}>{liveBadge.label}</span>
+                          )}
+                        </span>
+                        {t.status === 'active' ? pill('פעיל', 'ok') : t.status === 'pending' ? pill('ממתין לאישור', 'warn') : pill('מושהה', 'off')}
+                        {isOwner && (
+                          <button
+                            type="button"
+                            className="glass"
+                            aria-label={open ? 'סגור פעולות' : `פעולות ל${t.name}`}
+                            aria-expanded={open}
+                            onClick={() => setExpandedAccountId(open ? null : t.id)}
+                            style={{ width: 44, height: 44, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flex: 'none' }}
+                          >
+                            <MoreHorizontal size={20} />
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                        <bdi dir="ltr" className="ltr-num">{t.email}</bdi>
+                      </div>
+
+                      {!isOwner && (
+                        <span style={{ fontSize: 13, color: 'var(--text-3)' }}>שותף בצוות (ניהול חשבון ע״י המאמן הראשי)</span>
+                      )}
+
+                      {isOwner && open && (
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 10, borderTop: '1px solid var(--line)' }}>
+                          <button
+                            type="button"
+                            className="glass"
+                            style={act}
+                            onClick={() => {
+                              setSharingModalTrainee(t);
+                              setSharingPrimaryId(t.primaryCoachId || 'coach-admin');
+                              setSharingCollaboratorIds(t.sharedCoachIds || []);
+                            }}
+                          >
+                            <Share2 size={16} />
+                            שתף מאמנים
+                          </button>
+                          {t.status !== 'active' ? (
+                            <button
+                              type="button"
+                              disabled={isBusy(`st-tr-${t.id}`)}
+                              className="btn-volt"
+                              style={act}
+                              onClick={() =>
+                                runBusy(`st-tr-${t.id}`, () => onUpdateTraineeStatus(t.id, 'active'), `הגישה של ${t.name} הופעלה והחסימה הוסרה`)
+                              }
+                            >
+                              {isBusy(`st-tr-${t.id}`) ? <BusyIcon size={15} /> : <PlayCircle size={16} />}
+                              {isBusy(`st-tr-${t.id}`) ? 'מפעיל…' : t.status === 'paused' ? 'בטל חסימה' : 'הפעל'}
+                            </button>
+                          ) : (
+                            <>
+                              {onForceLogoutTrainee && (
+                                <button
+                                  type="button"
+                                  className="glass"
+                                  style={act}
+                                  disabled={isBusy(`fl-tr-${t.id}`)}
+                                  onClick={() => runBusy(`fl-tr-${t.id}`, () => onForceLogoutTrainee(t.id), `${t.name} נותק מכל המכשירים מרחוק`)}
+                                >
+                                  {isBusy(`fl-tr-${t.id}`) ? <BusyIcon size={15} /> : <LogOut size={16} />}
+                                  {isBusy(`fl-tr-${t.id}`) ? 'מנתק…' : 'נתק מכשירים'}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="glass"
+                                style={act}
+                                disabled={isBusy(`st-tr-${t.id}`)}
+                                onClick={() => runBusy(`st-tr-${t.id}`, () => onUpdateTraineeStatus(t.id, 'paused'), `החשבון של ${t.name} נחסם ונותק מהמכשירים`)}
+                              >
+                                {isBusy(`st-tr-${t.id}`) ? <BusyIcon size={15} /> : <PauseCircle size={16} />}
+                                {isBusy(`st-tr-${t.id}`) ? 'חוסם…' : 'חסום'}
+                              </button>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            className="glass"
+                            style={act}
+                            onClick={() => {
+                              setCredModalTrainee(t);
+                              setEditEmail(t.email);
+                              setEditPassword('');
+                            }}
+                          >
+                            <KeyRound size={16} />
+                            איפוס סיסמה
+                          </button>
+                          <button
+                            type="button"
+                            className="glass"
+                            style={{ ...act, color: 'var(--danger-text)' }}
+                            disabled={isBusy(`del-tr-${t.id}`)}
+                            onClick={() => {
+                              if (!confirmDanger(`למחוק לצמיתות את המתאמן "${t.name}" וכל נתוניו? פעולה זו אינה הפיכה.`)) return;
+                              runBusy(`del-tr-${t.id}`, () => onDeleteTrainee(t.id), `המתאמן ${t.name} הוסר`);
+                            }}
+                          >
+                            {isBusy(`del-tr-${t.id}`) ? <BusyIcon size={15} /> : <Trash2 size={16} />}
+                            מחק
+                          </button>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -5741,7 +5690,7 @@ export function CoachDashboardView({
                     }}
                   >
                     בווב/PWA מתבצע Hard Refresh אוטומטי בעליית גרסה. באנדרואיד, כל
-                    גרסה ש־<span dir="ltr">versionCode &lt;=</span> לסף החסימה תינעל
+                    גרסה ש־<bdi dir="ltr">versionCode ≤</bdi> לסף החסימה תינעל
                     הרמטית עד להתקנת ה-APK החדש.
                   </div>
                 </div>
@@ -5757,7 +5706,7 @@ export function CoachDashboardView({
                   }}
                   dir="ltr"
                 >
-                  Web Build: {CLIENT_WEB_BUILD_ID || 'dev'}
+                  Web Build: <bdi dir="ltr">{CLIENT_WEB_BUILD_ID || 'dev'}</bdi>
                 </div>
               </div>
 
@@ -5795,7 +5744,7 @@ export function CoachDashboardView({
                   }}
                 >
                   <NumberInput
-                    label="חסום אפליקציית אנדרואיד עד וכולל (versionCode <=)"
+                    label={<>חסום אפליקציית אנדרואיד עד וכולל (<bdi dir="ltr">versionCode ≤</bdi>)</>}
                     description="0 = ללא חסימה. למשל 10002 יחסום גרסאות 10002 ומטה"
                     min={0}
                     max={99999999}
@@ -5813,7 +5762,7 @@ export function CoachDashboardView({
                   />
                   <TextInput
                     dir="ltr"
-                    label="versionCode אחרון (אופציונלי)"
+                    label={<><bdi dir="ltr">versionCode</bdi> אחרון (אופציונלי)</>}
                     placeholder="למשל 10003"
                     value={policyLatestCode}
                     onChange={(e) =>
@@ -5828,8 +5777,8 @@ export function CoachDashboardView({
                   <TextInput
                     dir="ltr"
                     label="כתובת הורדת קובץ ה-APK (שמור אצלכם בשרת או Storage)"
-                    description="ניתן להשאיר ריק לזיהוי אוטומטי מקובץ public/downloads/spot-fitness-release.apk או מ-GitHub Releases"
-                    placeholder="/downloads/spot-fitness-release.apk או https://..."
+                    description={<>ניתן להשאיר ריק לזיהוי אוטומטי מקובץ <bdi dir="ltr">public/downloads/spot-fitness-release.apk</bdi> או מ-<bdi dir="ltr">GitHub Releases</bdi></>}
+                    placeholder="https://… או /downloads/spot-fitness-release.apk"
                     value={policyApkUrl}
                     onChange={(e) => setPolicyApkUrl(e.currentTarget.value)}
                   />
@@ -5853,7 +5802,7 @@ export function CoachDashboardView({
                         cursor: 'pointer',
                       }}
                     >
-                      הגדר נתיב שרת מקומי (/downloads/spot-fitness-release.apk)
+                      הגדר נתיב שרת מקומי (<bdi dir="ltr">/downloads/spot-fitness-release.apk</bdi>)
                     </button>
                     <button
                       type="button"
@@ -5865,7 +5814,7 @@ export function CoachDashboardView({
                         cursor: 'pointer',
                       }}
                     >
-                      זיהוי אוטומטי / GitHub Releases
+                      זיהוי אוטומטי (<bdi dir="ltr">GitHub Releases</bdi>)
                     </button>
                   </div>
                 </div>

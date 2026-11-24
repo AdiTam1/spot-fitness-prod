@@ -21,6 +21,7 @@ import {
   Lightbulb,
   Share2,
   Check,
+  Minus,
   Loader2,
   Bookmark,
   CalendarDays,
@@ -79,6 +80,7 @@ import { TraineeProfileView } from './TraineeProfileView';
 import { CalendarSheet } from './journal/CalendarSheet';
 import { GlassButton } from './ui/GlassButton';
 import { GlassDock } from './ui/GlassDock';
+import { TimeWheel } from './ui/TimeWheel';
 import { ProgressRing } from './ui/ProgressRing';
 import { SegmentedPill } from './ui/SegmentedPill';
 import { SectionHeader } from './ui/Card';
@@ -551,73 +553,94 @@ export function TraineeMobileView({
     >
       {isCoachPreview && onExitCoachPreview && (
         <div
+          role="status"
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '10px 14px',
-            borderRadius: 14,
-            background: 'var(--surface-2)',
-            border: '1px solid var(--line-2)',
+            flexWrap: 'wrap',
+            gap: 10,
+            padding: '12px 16px',
+            borderRadius: 24,
+            background: 'var(--card)',
+            border: '1px solid var(--line)',
+            boxShadow: 'var(--card-shadow)',
             marginBottom: 14,
           }}
         >
-          <span
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: 'var(--accent-volt)',
-            }}
-          >
-            תצוגת מאמן: צופה באפליקציה של {trainee.name}
+          <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>תצוגת מאמן</span>
+            <span style={{ fontSize: 16, fontWeight: 700 }}>צופה באפליקציה של {trainee.name}</span>
           </span>
           <button
+            type="button"
             onClick={onExitCoachPreview}
             className="btn-volt"
-            style={{
-              padding: '5px 12px',
-              fontSize: 12,
-              cursor: 'pointer',
-            }}
+            style={{ height: 44, padding: '0 18px', fontSize: 15, cursor: 'pointer', flex: 'none' }}
           >
-            חזרה לדשבורד מאמן
+            חזרה לדשבורד
           </button>
         </div>
       )}
 
       {/* תזכורת להשלמת מדידת היקפים אם המתאמן דילג עליה ב-Onboarding */}
       {!trainee.onboarding?.measurementsCompleted && !latestMeasurement && (
-        <div
+        <button
+          type="button"
           onClick={() => setMeasurementModalOpen(true)}
           style={{
+            width: '100%',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '10px 14px',
-            borderRadius: 14,
-            background: 'var(--surface-2)',
-            border: '1px solid var(--line-2)',
-            marginBottom: 12,
+            gap: 12,
+            padding: '12px 14px',
+            borderRadius: 24,
+            background: 'var(--card)',
+            border: '1px solid var(--line)',
+            boxShadow: 'var(--card-shadow)',
+            marginBottom: 14,
             cursor: 'pointer',
+            fontFamily: 'inherit',
+            color: 'var(--text)',
+            textAlign: 'start',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Ruler size={16} color="var(--text-2)" />
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#38bdf8' }}>
-              טרם השלמת מדידת היקפים ראשונית – לחץ להדרכה מונפשת
-            </span>
-          </div>
           <span
+            aria-hidden
             style={{
-              fontSize: 12,
-              fontWeight: 800,
-              color: '#38bdf8',
-              textDecoration: 'underline',
+              width: 44,
+              height: 44,
+              borderRadius: 16,
+              background: 'var(--surface-2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flex: 'none',
             }}
           >
-            השלם כעת
+            <Ruler size={20} />
           </span>
-        </div>
+          <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 15, fontWeight: 600 }}>מדידת היקפים ראשונית</span>
+            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>טרם הושלמה · הדרכה מונפשת</span>
+          </span>
+          <span
+            style={{
+              height: 36,
+              padding: '0 14px',
+              borderRadius: 999,
+              background: 'var(--btn-primary)',
+              color: 'var(--btn-primary-text)',
+              fontSize: 14,
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              flex: 'none',
+            }}
+          >
+            השלם
+          </span>
+        </button>
       )}
 
       {/* Journal & metrics share the date header + week strip; profile has its own header */}
@@ -674,7 +697,13 @@ export function TraineeMobileView({
                   flex: 'none',
                 }}
               >
-                {trainee.avatar}
+                {trainee.avatar ||
+                  (trainee.name || '')
+                    .trim()
+                    .split(/\s+/)
+                    .map((w) => Array.from(w)[0] || '')
+                    .join('')
+                    .slice(0, 2)}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                 <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{dateLabel}</span>
@@ -923,7 +952,7 @@ export function TraineeMobileView({
                   <div style={{ fontWeight: 800, color: 'var(--danger-text)' }}>
                     יום חסום להזנה
                   </div>
-                  <div style={{ color: 'var(--text-secondary)' }}>
+                  <div style={{ color: 'var(--text-2)' }}>
                     היום הנבחר מוגדר כיום חסום — לא ניתן להזין או לערוך ארוחות, פעילות, מים או מדדים.
                   </div>
                 </div>
@@ -949,14 +978,14 @@ export function TraineeMobileView({
                   <div style={{ fontWeight: 800, color: '#38bdf8' }}>
                     יום תשקיף (ללא מטרת יעד קלורי)
                   </div>
-                  <div style={{ color: 'var(--text-secondary)' }}>
+                  <div style={{ color: 'var(--text-2)' }}>
                     תיעוד חופשי ללא חישוב חריגה מהיעד.
                   </div>
                   {obsLockedToObservation && (
                     <div
                       style={{
                         marginTop: 3,
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight: 700,
                         color: 'var(--info-text)',
                         display: 'inline-flex',
@@ -1011,7 +1040,7 @@ export function TraineeMobileView({
                   </span>
                   <span
                     style={{
-                      fontSize: 12,
+                      fontSize: 13,
                       marginTop: 4,
                       color: isObservationDay
                         ? 'var(--macro-protein)'
@@ -1095,7 +1124,7 @@ export function TraineeMobileView({
               if (!quickSlot) return null;
               const items: { id: string; label: string; icon: React.ReactNode; tab: string }[] = [
                 { id: 'photo', label: 'צילום AI', icon: <Camera size={26} strokeWidth={1.8} />, tab: 'ai-photo' },
-                { id: 'text', label: 'טקסט / קול', icon: <Mic size={26} strokeWidth={1.8} />, tab: 'ai-text' },
+                { id: 'text', label: 'במילים', icon: <Mic size={26} strokeWidth={1.8} />, tab: 'ai-text' },
                 { id: 'barcode', label: 'ברקוד', icon: <Barcode size={26} strokeWidth={1.8} />, tab: 'barcode' },
                 { id: 'saved', label: 'שמורות', icon: <Bookmark size={26} strokeWidth={1.8} />, tab: 'saved-meals' },
               ];
@@ -1145,7 +1174,7 @@ export function TraineeMobileView({
               );
             })()}
 
-            {/* כותרת ציר זמן הארוחות */}
+            {/* Daily activity (design: JournalActivity) */}
             {(() => {
               const actTargets = trainee.activityTargets || {
                 weeklyWorkoutsTarget: 4,
@@ -1155,185 +1184,101 @@ export function TraineeMobileView({
                 cardioTargetMinutes: 35,
                 dailySleepTargetHours: 7.5,
               };
-
-              // חישוב ביצוע שבועי מתוך 7 הימים בשבוע הנוכחי
-              const workoutsThisWeek = weekDays.filter(
-                (wd) => trainee.logs[wd.iso]?.workoutLog?.completed
-              ).length;
-              const cardioThisWeek = weekDays.filter(
-                (wd) => trainee.logs[wd.iso]?.cardioLog?.completed
+              const workoutsThisWeek = weekDays.filter((wd) => trainee.logs[wd.iso]?.workoutLog?.completed).length;
+              const cardioThisWeek = weekDays.filter((wd) => trainee.logs[wd.iso]?.cardioLog?.completed).length;
+              const sleepDaysMet = weekDays.filter(
+                (wd) => (trainee.logs[wd.iso]?.sleepHours ?? 0) >= actTargets.dailySleepTargetHours
               ).length;
               const todayWorkout = dailyLog.workoutLog;
               const todayCardio = dailyLog.cardioLog;
               const todaySleep = dailyLog.sleepHours;
               const dailyStepsTarget = actTargets.dailyStepsTarget ?? 8000;
               const hasSyncedSteps =
-                isNativeAndroidApp() ||
-                Boolean(dailyLog.stepsSource && dailyLog.stepsSource !== 'manual');
-              const remainingWorkouts = Math.max(
-                0,
-                actTargets.weeklyWorkoutsTarget - workoutsThisWeek
-              );
-              const remainingCardio = Math.max(
-                0,
-                actTargets.weeklyCardioTarget - cardioThisWeek
-              );
+                isNativeAndroidApp() || Boolean(dailyLog.stepsSource && dailyLog.stepsSource !== 'manual');
               const currentSteps = dailyLog.steps ?? 0;
-              const remainingSteps = Math.max(0, dailyStepsTarget - currentSteps);
 
+              const rings: { key: string; label: string; value: string; current: number; target: number }[] = [
+                { key: 'w', label: 'אימונים', value: `${workoutsThisWeek}/${actTargets.weeklyWorkoutsTarget}`, current: workoutsThisWeek, target: actTargets.weeklyWorkoutsTarget },
+                { key: 'c', label: 'הליכה / ריצה', value: `${cardioThisWeek}/${actTargets.weeklyCardioTarget}`, current: cardioThisWeek, target: actTargets.weeklyCardioTarget },
+                ...(hasSyncedSteps
+                  ? [{ key: 's', label: 'צעדים', value: `${Math.min(99, Math.round((currentSteps / Math.max(1, dailyStepsTarget)) * 100))}%`, current: currentSteps, target: dailyStepsTarget }]
+                  : []),
+                { key: 'z', label: 'שינה', value: `${sleepDaysMet}/7`, current: sleepDaysMet, target: 7 },
+              ];
+
+              const section: React.CSSProperties = {
+                background: 'var(--card)',
+                border: '1px solid var(--line)',
+                borderRadius: 24,
+                padding: 16,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12,
+                boxShadow: 'var(--card-shadow)',
+              };
+              const head: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 };
+              const optStyle = (on: boolean, radius: number): React.CSSProperties => ({
+                minHeight: 44,
+                padding: '0 14px',
+                borderRadius: radius,
+                fontFamily: 'inherit',
+                fontSize: 14,
+                fontWeight: on ? 700 : 500,
+                cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                opacity: isBlockedDay ? 0.45 : 1,
+                border: `1px solid ${on ? 'var(--sel-border)' : 'var(--line-2)'}`,
+                background: on ? 'var(--sel-bg)' : 'transparent',
+                color: on ? 'var(--sel-text)' : 'var(--text)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+              });
+              const workoutTypes = actTargets.workoutTypes.length > 0 ? actTargets.workoutTypes : ['אימון כוח A', 'אימון כוח B', 'Full Body'];
+              const cardioOptions = [
+                { label: `הליכה (${actTargets.cardioTargetMinutes} דק׳)`, mode: 'walk' as const, mins: actTargets.cardioTargetMinutes },
+                { label: 'הליכה מהירה (45 דק׳)', mode: 'walk' as const, mins: 45 },
+                { label: 'ריצה (25 דק׳)', mode: 'run' as const, mins: 25 },
+                { label: 'ריצה (40 דק׳)', mode: 'run' as const, mins: 40 },
+              ];
+              const stepSleep = (delta: number) => {
+                if (isBlockedDay) return;
+                const base = todaySleep ?? actTargets.dailySleepTargetHours;
+                const next = Math.min(14, Math.max(0, Math.round((base + delta) * 2) / 2));
+                onUpdateDailyActivity(trainee.id, selectedDate, { sleepHours: next });
+              };
               return (
-                <div
-                  className="pro-card"
-                  style={{
-                    padding: 16,
-                    marginBottom: 18,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 12,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    }}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 18 }}>
+                  <section
+                    aria-label="ביצוע שבועי"
+                    style={{ display: 'grid', gridTemplateColumns: `repeat(${rings.length}, minmax(0, 1fr))`, gap: 8 }}
                   >
-                    <span style={{ fontSize: 14, fontWeight: 800 }}>
-                      {hasSyncedSteps
-                        ? `אימונים, צעדים, הליכה/ריצה ושינה (${selectedDate})`
-                        : `אימונים, הליכה/ריצה ושינה (${selectedDate})`}
-                    </span>
-                  </div>
-
-                  {/* טבעות יעד אינטואיטיביות ("כמו הקלוריות שנותרו") */}
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: hasSyncedSteps
-                        ? 'repeat(3, 1fr)'
-                        : 'repeat(2, 1fr)',
-                      gap: 8,
-                    }}
-                  >
-                    <div
-                      style={{
-                        background: 'var(--bg-surface-2)',
-                        borderRadius: 14,
-                        padding: '10px 8px',
-                        border:
-                          remainingWorkouts === 0
-                            ? '1px solid var(--line-2)'
-                            : '1px solid var(--border-subtle)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: 6,
-                        textAlign: 'center',
-                      }}
-                    >
-                      <div style={{ position: 'relative', display: 'grid', placeItems: 'center' }}>
-                        <CompactMiniRing
-                          current={workoutsThisWeek}
-                          target={actTargets.weeklyWorkoutsTarget}
-                          color="currentColor"
-                        />
-                        <Dumbbell
-                          size={14}
-                          color="var(--accent-orange-bright)"
-                          style={{ position: 'absolute' }}
-                        />
-                      </div>
-                      <div className="num-mono" style={{ fontSize: 13, fontWeight: 900 }}>
-                        {remainingWorkouts === 0
-                          ? 'יעד הושלם ✓'
-                          : `נותרו ${remainingWorkouts}`}
-                      </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 700 }}>
-                        אימונים ({workoutsThisWeek}/{actTargets.weeklyWorkoutsTarget})
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        background: 'var(--bg-surface-2)',
-                        borderRadius: 14,
-                        padding: '10px 8px',
-                        border:
-                          remainingCardio === 0
-                            ? '1px solid var(--line-2)'
-                            : '1px solid var(--border-subtle)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: 6,
-                        textAlign: 'center',
-                      }}
-                    >
-                      <div style={{ position: 'relative', display: 'grid', placeItems: 'center' }}>
-                        <CompactMiniRing
-                          current={cardioThisWeek}
-                          target={actTargets.weeklyCardioTarget}
-                          color="#eb931c"
-                        />
-                        <Activity
-                          size={14}
-                          color="var(--accent-orange-bright)"
-                          style={{ position: 'absolute' }}
-                        />
-                      </div>
-                      <div className="num-mono" style={{ fontSize: 13, fontWeight: 900 }}>
-                        {remainingCardio === 0
-                          ? 'יעד הושלם ✓'
-                          : `נותרו ${remainingCardio}`}
-                      </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 700 }}>
-                        הליכה/ריצה ({cardioThisWeek}/{actTargets.weeklyCardioTarget})
-                      </div>
-                    </div>
-
-                    {hasSyncedSteps && (
+                    {rings.map((r) => (
                       <div
+                        key={r.key}
                         style={{
-                          background: 'var(--bg-surface-2)',
-                          borderRadius: 14,
-                          padding: '10px 8px',
-                          border:
-                            remainingSteps === 0
-                              ? '1px solid var(--line-2)'
-                              : '1px solid var(--border-subtle)',
+                          background: 'var(--card)',
+                          border: '1px solid var(--line)',
+                          borderRadius: 20,
+                          padding: '12px 4px',
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
                           gap: 6,
-                          textAlign: 'center',
+                          boxShadow: 'var(--card-shadow)',
                         }}
                       >
-                        <div style={{ position: 'relative', display: 'grid', placeItems: 'center' }}>
-                          <CompactMiniRing
-                            current={currentSteps}
-                            target={dailyStepsTarget}
-                            color="#b36206"
-                          />
-                          <Footprints
-                            size={14}
-                            color="var(--accent-orange-bright)"
-                            style={{ position: 'absolute' }}
-                          />
+                        <div style={{ position: 'relative', width: 44, height: 44, display: 'grid', placeItems: 'center' }}>
+                          <CompactMiniRing current={r.current} target={r.target} color="var(--text)" />
+                          <bdi dir="ltr" className="num-mono ltr-num" style={{ position: 'absolute', fontSize: 12, fontWeight: 700 }}>
+                            {r.value}
+                          </bdi>
                         </div>
-                        <div className="num-mono" style={{ fontSize: 12, fontWeight: 900 }}>
-                          {remainingSteps === 0
-                            ? 'יעד הושלם ✓'
-                            : `נותרו ${remainingSteps.toLocaleString()}`}
-                        </div>
-                        <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 700 }}>
-                          צעדים ({currentSteps.toLocaleString()})
-                        </div>
+                        <span style={{ fontSize: 12, color: 'var(--text-2)', textAlign: 'center' }}>{r.label}</span>
                       </div>
-                    )}
-                  </div>
+                    ))}
+                  </section>
 
-                  {/* 0. מד צעדים יומי מוצג אך ורק כשקיים סנכרון אמיתי (Health Connect / Play Services / חיישן מכשיר) */}
                   {hasSyncedSteps && (
                     <DailyStepsCard
                       selectedDate={selectedDate}
@@ -1355,411 +1300,117 @@ export function TraineeMobileView({
                     />
                   )}
 
-                  {/* 1. אימון יומי + סוג אימון */}
-                  <div
-                    style={{
-                      background: 'var(--bg-surface-2)',
-                      padding: '10px 12px',
-                      borderRadius: 12,
-                      border: todayWorkout?.completed
-                        ? '1px solid var(--line-2)'
-                        : '1px solid var(--border-subtle)',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: 8,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          fontSize: 12,
-                          fontWeight: 800,
-                        }}
-                      >
-                        <Dumbbell size={14} color="currentColor" />
-                        <span>אימון היום (בחר סוג אימון שביצעת):</span>
-                      </div>
-                      <span
-                        className="num-mono"
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 800,
-                          color:
-                            workoutsThisWeek >= actTargets.weeklyWorkoutsTarget
-                              ? 'var(--accent-volt)'
-                              : 'var(--text-secondary)',
-                        }}
-                      >
-                        השבוע: {workoutsThisWeek} /{' '}
-                        {actTargets.weeklyWorkoutsTarget} אימונים
+                  <section aria-label="אימון היום" style={section}>
+                    <div style={head}>
+                      <span style={{ fontSize: 15, fontWeight: 600 }}>אימון היום</span>
+                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                        השבוע: <bdi dir="ltr" className="num-mono ltr-num" style={{ color: 'var(--text)', fontWeight: 600 }}>{workoutsThisWeek}</bdi> אימונים
                       </span>
                     </div>
-
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {(actTargets.workoutTypes.length > 0
-                        ? actTargets.workoutTypes
-                        : ['אימון כוח A', 'אימון כוח B', 'Full Body']
-                      ).map((wType) => {
-                        const isSelected =
-                          todayWorkout?.completed &&
-                          todayWorkout.workoutType === wType;
+                    <div role="radiogroup" aria-label="סוג אימון" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {workoutTypes.map((wType) => {
+                        const isSelected = Boolean(todayWorkout?.completed && todayWorkout.workoutType === wType);
                         return (
                           <button
                             key={wType}
                             type="button"
+                            role="radio"
+                            aria-checked={isSelected}
                             disabled={isBlockedDay}
+                            style={optStyle(isSelected, 999)}
                             onClick={() => {
                               if (isBlockedDay) return;
                               const nextCompleted = !isSelected;
                               onUpdateDailyActivity(trainee.id, selectedDate, {
                                 workoutLog: isSelected
                                   ? { completed: false }
-                                  : {
-                                      completed: true,
-                                      workoutType: wType,
-                                      durationMinutes: 50,
-                                    },
+                                  : { completed: true, workoutType: wType, durationMinutes: 50 },
                               });
-                              if (
-                                nextCompleted &&
-                                Boolean(trainee.enableWorkoutRestSplit)
-                              ) {
-                                onUpdateDayType(
-                                  trainee.id,
-                                  selectedDate,
-                                  'workout'
-                                );
+                              if (nextCompleted && Boolean(trainee.enableWorkoutRestSplit)) {
+                                onUpdateDayType(trainee.id, selectedDate, 'workout');
                               }
                             }}
-                            style={{
-                              padding: '5px 10px',
-                              borderRadius: 999,
-                              border: isSelected ? '1px solid var(--sel-bg)'
-                                : '1px solid var(--border-subtle)',
-                              background: isSelected ? 'var(--sel-bg)'
-                                : 'var(--bg-surface-1)',
-                              color: isSelected ? 'var(--sel-text)'
-                                : 'var(--text-secondary)',
-                              fontSize: 12,
-                              fontWeight: 700,
-                              opacity: isBlockedDay ? 0.45 : 1,
-                              cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                            }}
                           >
-                            {isSelected ? `✓ ${wType}` : wType}
+                            {isSelected && <Check size={15} strokeWidth={2.8} />}
+                            {wType}
                           </button>
                         );
                       })}
                     </div>
-                  </div>
+                  </section>
 
-                  {/* 2. הליכה / ריצה יומית */}
-                  <div
-                    style={{
-                      background: 'var(--bg-surface-2)',
-                      padding: '10px 12px',
-                      borderRadius: 12,
-                      border: todayCardio?.completed
-                        ? '1px solid var(--line-2)'
-                        : '1px solid var(--border-subtle)',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: 8,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          fontSize: 12,
-                          fontWeight: 800,
-                        }}
-                      >
-                        <Activity size={14} color="var(--accent-orange-bright)" />
-                        <span>
-                          הליכה / ריצה היום (יעד: {actTargets.cardioTargetMinutes}{' '}
-                          דק׳):
-                        </span>
-                      </div>
-                      <span
-                        className="num-mono"
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 800,
-                          color:
-                            cardioThisWeek >= actTargets.weeklyCardioTarget
-                              ? 'var(--accent-orange-bright)'
-                              : 'var(--text-secondary)',
-                        }}
-                      >
-                        השבוע: {cardioThisWeek} / {actTargets.weeklyCardioTarget}{' '}
-                        פעמים
+                  <section aria-label="הליכה או ריצה" style={section}>
+                    <div style={head}>
+                      <span style={{ fontSize: 15, fontWeight: 600 }}>הליכה / ריצה</span>
+                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                        יעד: <bdi dir="ltr" className="num-mono ltr-num" style={{ color: 'var(--text)', fontWeight: 600 }}>{actTargets.cardioTargetMinutes}</bdi> דק׳ · השבוע{' '}
+                        <bdi dir="ltr" className="ltr-num">{cardioThisWeek}/{actTargets.weeklyCardioTarget}</bdi>
                       </span>
                     </div>
-
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {[
-                        {
-                          label: `הליכה (${actTargets.cardioTargetMinutes} דק׳)`,
-                          mode: 'walk' as const,
-                          mins: actTargets.cardioTargetMinutes,
-                        },
-                        {
-                          label: 'הליכה מהירה (45 דק׳)',
-                          mode: 'walk' as const,
-                          mins: 45,
-                        },
-                        {
-                          label: 'ריצה (25 דק׳)',
-                          mode: 'run' as const,
-                          mins: 25,
-                        },
-                        {
-                          label: 'ריצה (40 דק׳)',
-                          mode: 'run' as const,
-                          mins: 40,
-                        },
-                      ].map((cOpt) => {
-                        const isSelected =
-                          todayCardio?.completed &&
-                          todayCardio.label === cOpt.label;
+                    <div role="radiogroup" aria-label="סוג פעילות אירובית" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+                      {cardioOptions.map((cOpt) => {
+                        const isSelected = Boolean(todayCardio?.completed && todayCardio.label === cOpt.label);
                         return (
                           <button
                             key={cOpt.label}
                             type="button"
+                            role="radio"
+                            aria-checked={isSelected}
                             disabled={isBlockedDay}
+                            style={optStyle(isSelected, 14)}
                             onClick={() => {
                               if (isBlockedDay) return;
                               onUpdateDailyActivity(trainee.id, selectedDate, {
                                 cardioLog: isSelected
                                   ? { completed: false }
-                                  : {
-                                      completed: true,
-                                      mode: cOpt.mode,
-                                      label: cOpt.label,
-                                      durationMinutes: cOpt.mins,
-                                    },
+                                  : { completed: true, mode: cOpt.mode, label: cOpt.label, durationMinutes: cOpt.mins },
                               });
                             }}
-                            style={{
-                              padding: '5px 10px',
-                              borderRadius: 999,
-                              border: isSelected ? '1px solid var(--sel-bg)'
-                                : '1px solid var(--border-subtle)',
-                              background: isSelected ? 'var(--sel-bg)'
-                                : 'var(--bg-surface-1)',
-                              color: isSelected ? 'var(--sel-text)'
-                                : 'var(--text-secondary)',
-                              fontSize: 12,
-                              fontWeight: 700,
-                              cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                              opacity: isBlockedDay ? 0.45 : 1,
-                            }}
                           >
-                            {isSelected ? `✓ ${cOpt.label}` : cOpt.label}
+                            {isSelected && <Check size={15} strokeWidth={2.8} />}
+                            {cOpt.label}
                           </button>
                         );
                       })}
                     </div>
-                  </div>
+                  </section>
 
-                  {/* 3. שעות שינה הלילה */}
-                  <div
-                    style={{
-                      background: 'var(--bg-surface-2)',
-                      padding: '10px 12px',
-                      borderRadius: 12,
-                      border: todaySleep
-                        ? '1px solid var(--line-2)'
-                        : '1px solid var(--border-subtle)',
-                    }}
+                  <section
+                    aria-label="שינה"
+                    style={{ ...section, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px' }}
                   >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: 8,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          fontSize: 12,
-                          fontWeight: 800,
-                        }}
-                      >
-                        <Moon size={14} color="var(--accent-orange-bright)" />
-                        <span>כמה שעות ישנת הלילה?</span>
-                      </div>
-                      <span
-                        className="num-mono"
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 800,
-                          color:
-                            (todaySleep || 0) >=
-                            actTargets.dailySleepTargetHours
-                              ? 'var(--accent-orange-bright)'
-                              : 'var(--text-secondary)',
-                        }}
-                      >
-                        {todaySleep ?? 0} / {actTargets.dailySleepTargetHours}{' '}
-                        שעות (יעד)
+                    <span style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontSize: 15, fontWeight: 600 }}>שינה</span>
+                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                        כמה שעות ישנת הלילה? (יעד <bdi dir="ltr" className="ltr-num">{actTargets.dailySleepTargetHours}</bdi>)
                       </span>
-                    </div>
-
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(4, 1fr)',
-                        gap: 6,
-                      }}
+                    </span>
+                    <span
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 2, padding: 3, borderRadius: 999, background: 'var(--surface-2)', flex: 'none' }}
                     >
-                      {[5, 6, 6.5, 7, 7.5, 8, 8.5].map((hrs) => {
-                        const isSelected = todaySleep === hrs;
-                        return (
-                          <button
-                            key={hrs}
-                            type="button"
-                            disabled={isBlockedDay}
-                            onClick={() => {
-                              if (isBlockedDay) return;
-                              setCustomSleepOpen(false);
-                              onUpdateDailyActivity(trainee.id, selectedDate, {
-                                sleepHours: hrs,
-                              });
-                            }}
-                            className="num-mono"
-                            style={{
-                              padding: '6px 2px',
-                              borderRadius: 8,
-                              border: isSelected ? '1px solid var(--sel-bg)'
-                                : '1px solid var(--border-subtle)',
-                              background: isSelected ? 'var(--sel-bg)'
-                                : 'var(--bg-surface-1)',
-                              color: isSelected ? 'var(--sel-text)'
-                                : 'var(--text-secondary)',
-                              fontSize: 12,
-                              fontWeight: 800,
-                              cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                              opacity: isBlockedDay ? 0.45 : 1,
-                            }}
-                          >
-                            {hrs}h
-                          </button>
-                        );
-                      })}
-                      {(() => {
-                        const isCustomValue =
-                          todaySleep !== undefined &&
-                          ![5, 6, 6.5, 7, 7.5, 8, 8.5].includes(todaySleep);
-                        const isSelected = customSleepOpen || isCustomValue;
-                        return (
-                          <button
-                            type="button"
-                            disabled={isBlockedDay}
-                            onClick={() => {
-                              if (isBlockedDay) return;
-                              setCustomSleepDraft(
-                                todaySleep !== undefined ? String(todaySleep) : '9'
-                              );
-                              setCustomSleepOpen((prev) => !prev);
-                            }}
-                            style={{
-                              padding: '6px 2px',
-                              borderRadius: 8,
-                              border: isSelected ? '1px solid var(--sel-bg)'
-                                : '1px solid var(--border-subtle)',
-                              background: isSelected ? 'var(--sel-bg)'
-                                : 'var(--bg-surface-1)',
-                              color: isSelected ? 'var(--sel-text)'
-                                : 'var(--text-secondary)',
-                              fontSize: 12,
-                              fontWeight: 800,
-                              cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                              opacity: isBlockedDay ? 0.45 : 1,
-                            }}
-                          >
-                            {isCustomValue ? `${todaySleep}h` : 'אחר'}
-                          </button>
-                        );
-                      })()}
-                    </div>
-
-                    {customSleepOpen && !isBlockedDay && (
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          const parsed = parseFloat(customSleepDraft);
-                          if (!Number.isFinite(parsed) || parsed < 0 || parsed > 24) {
-                            return;
-                          }
-                          const rounded = Math.round(parsed * 10) / 10;
-                          onUpdateDailyActivity(trainee.id, selectedDate, {
-                            sleepHours: rounded,
-                          });
-                          setCustomSleepOpen(false);
-                        }}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          marginTop: 8,
-                        }}
+                      <button
+                        type="button"
+                        aria-label="פחות שעות שינה"
+                        disabled={isBlockedDay}
+                        onClick={() => stepSleep(-0.5)}
+                        style={{ width: 44, height: 44, borderRadius: 999, border: 0, background: 'transparent', color: 'var(--text-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: isBlockedDay ? 0.45 : 1 }}
                       >
-                        <input
-                          type="number"
-                          step="0.5"
-                          min={0}
-                          max={24}
-                          dir="ltr"
-                          value={customSleepDraft}
-                          onChange={(e) => setCustomSleepDraft(e.target.value)}
-                          placeholder="למשל 9 או 4.5"
-                          style={{
-                            flex: 1,
-                            minWidth: 0,
-                            background: 'var(--bg-surface-1)',
-                            border: '1px solid var(--line-2)',
-                            borderRadius: 8,
-                            padding: '6px 10px',
-                            color: 'var(--text-primary)',
-                            fontSize: 12,
-                            fontWeight: 700,
-                            textAlign: 'center',
-                            outline: 'none',
-                          }}
-                        />
-                        <button
-                          type="submit"
-                          className="btn-volt"
-                          style={{
-                            padding: '6px 12px',
-                            fontSize: 12.5,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          שמור שעות
-                        </button>
-                      </form>
-                    )}
-                  </div>
+                        <Minus size={18} strokeWidth={2.2} />
+                      </button>
+                      <bdi dir="ltr" className="num-mono ltr-num" style={{ minWidth: 54, textAlign: 'center', fontSize: 18, fontWeight: 700 }}>
+                        {todaySleep ?? '—'}
+                      </bdi>
+                      <button
+                        type="button"
+                        aria-label="יותר שעות שינה"
+                        disabled={isBlockedDay}
+                        onClick={() => stepSleep(0.5)}
+                        style={{ width: 44, height: 44, borderRadius: 999, border: 0, background: 'transparent', color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: isBlockedDay ? 0.45 : 1 }}
+                      >
+                        <Plus size={18} strokeWidth={2.2} />
+                      </button>
+                    </span>
+                  </section>
                 </div>
               );
             })()}
@@ -1779,11 +1430,11 @@ export function TraineeMobileView({
                 </span>
                 <span
                   style={{
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: 700,
                     padding: '2px 8px',
                     borderRadius: 999,
-                    background: 'var(--bg-surface-2)',
+                    background: 'var(--surface-2)',
                     color: isObservationDay
                       ? '#38bdf8'
                       : 'var(--text-secondary)',
@@ -1805,9 +1456,9 @@ export function TraineeMobileView({
                     onClick={() => openMealDrawer(activeTemplate.meals[0], 'saved-meals')}
                     className="btn-surface"
                     style={{
-                      padding: '5px 10px',
+                      minHeight: 40, padding: '0 14px',
                       borderRadius: 999,
-                      fontSize: 12,
+                      fontSize: 13,
                       fontWeight: 700,
                       display: 'flex',
                       alignItems: 'center',
@@ -1816,7 +1467,7 @@ export function TraineeMobileView({
                       borderColor:
                         answeredCount > 0
                           ? 'var(--surface-2)'
-                          : 'var(--border-subtle)',
+                          : 'var(--line)',
                       color:
                         answeredCount > 0
                           ? 'var(--accent-volt)'
@@ -1829,7 +1480,7 @@ export function TraineeMobileView({
                       <span
                         className="num-mono"
                         style={{
-                          fontSize: 12,
+                          fontSize: 13,
                           padding: '1px 5px',
                           borderRadius: 999,
                           background: 'var(--surface-2)',
@@ -1870,7 +1521,7 @@ export function TraineeMobileView({
                       borderColor:
                         hasItems && isObservationDay
                           ? 'var(--surface-2)'
-                          : 'var(--border-subtle)',
+                          : 'var(--line)',
                     }}
                   >
                     <div
@@ -1929,7 +1580,7 @@ export function TraineeMobileView({
                             className="num-mono"
                             style={{
                               position: 'absolute',
-                              fontSize: 12,
+                              fontSize: 13,
                               fontWeight: 800,
                               color: hasItems
                                 ? isObservationDay
@@ -1989,7 +1640,7 @@ export function TraineeMobileView({
                                     ? 'var(--text)'
                                     : 'var(--text-secondary)',
                                   minHeight: 26,
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   fontWeight: 700,
                                   opacity: isBlockedDay ? 0.5 : 1,
                                   cursor:
@@ -2007,8 +1658,8 @@ export function TraineeMobileView({
                           </div>
                           <div
                             style={{
-                              fontSize: 12,
-                              color: 'var(--text-secondary)',
+                              fontSize: 13,
+                              color: 'var(--text-2)',
                               display: 'flex',
                               gap: 10,
                               marginTop: 3,
@@ -2056,9 +1707,9 @@ export function TraineeMobileView({
                           {!isObservationDay && (
                             <span
                               style={{
-                                fontSize: 12,
+                                fontSize: 13,
                                 fontWeight: 500,
-                                color: 'var(--text-secondary)',
+                                color: 'var(--text-2)',
                               }}
                             >
                               {' '}
@@ -2068,8 +1719,8 @@ export function TraineeMobileView({
                         </div>
                         <div
                           style={{
-                            fontSize: 12,
-                            color: 'var(--text-muted)',
+                            fontSize: 13,
+                            color: 'var(--text-3)',
                           }}
                         >
                           קק״ל
@@ -2082,7 +1733,7 @@ export function TraineeMobileView({
                         style={{
                           background: 'var(--surface-2)',
                           borderRadius: 16,
-                          padding: '8px 12px',
+                          minHeight: 40, padding: '0 14px',
                           marginBottom: 12,
                           border: '1px solid var(--fill-1)',
                         }}
@@ -2111,7 +1762,7 @@ export function TraineeMobileView({
                             <div style={{ flex: 1 }}>
                               <div
                                 style={{
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   fontWeight: 700,
                                   color: 'var(--accent-volt)',
                                 }}
@@ -2121,8 +1772,8 @@ export function TraineeMobileView({
                               {entry.photoNote && (
                                 <div
                                   style={{
-                                    fontSize: 12,
-                                    color: 'var(--text-secondary)',
+                                    fontSize: 13,
+                                    color: 'var(--text-2)',
                                   }}
                                 >
                                   {entry.photoNote}
@@ -2165,8 +1816,8 @@ export function TraineeMobileView({
                               </div>
                               <div
                                 style={{
-                                  fontSize: 12,
-                                  color: 'var(--text-muted)',
+                                  fontSize: 13,
+                                  color: 'var(--text-3)',
                                 }}
                               >
                                 {item.unitLabel} · ח׳ {item.macros.protein}g · פ׳{' '}
@@ -2186,8 +1837,8 @@ export function TraineeMobileView({
                               {item.macros.calories}{' '}
                               <span
                                 style={{
-                                  fontSize: 12,
-                                  color: 'var(--text-muted)',
+                                  fontSize: 13,
+                                  color: 'var(--text-3)',
                                   fontWeight: 500,
                                 }}
                               >
@@ -2310,7 +1961,7 @@ export function TraineeMobileView({
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: 4,
-                                fontSize: 12.5,
+                                fontSize: 13,
                                 fontWeight: 700,
                                 whiteSpace: 'nowrap',
                                 flexShrink: 0,
@@ -2337,7 +1988,7 @@ export function TraineeMobileView({
                           justifyContent: 'center',
                           gap: 5,
                           padding: '9px 10px',
-                          fontSize: 12.5,
+                          fontSize: 13,
                           whiteSpace: 'nowrap',
                           opacity: isBlockedDay ? 0.45 : 1,
                           cursor: isBlockedDay ? 'not-allowed' : 'pointer',
@@ -2362,275 +2013,68 @@ export function TraineeMobileView({
             transition={{ duration: 0.2 }}
             style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
           >
-            {/* כרטיס היקפי גוף ומדריך מדידה מונפש */}
-            <div className="pro-card" style={{ padding: 18 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 14,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 10,
-                      background: 'var(--surface-2)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Ruler size={18} color="currentColor" />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 800 }}>
-                      מדידת היקפי גוף (חזה, בטן, זרוע, ירך)
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                      כולל מדריך מדידה מונפש שלב-אחר-שלב
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  disabled={isBlockedDay}
-                  onClick={() => {
-                    if (!isBlockedDay) setMeasurementModalOpen(true);
-                  }}
-                  className="btn-volt"
-                  style={{
-                    padding: '7px 14px',
-                    fontSize: 12,
-                    opacity: isBlockedDay ? 0.45 : 1,
-                    cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  {latestMeasurement ? 'עדכן היקפים' : 'הזן היקפים'}
-                </button>
-              </div>
-
-              {latestMeasurement ? (
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(4, 1fr)',
-                    gap: 8,
-                  }}
-                >
-                  {[
-                    { label: 'חזה', val: latestMeasurement.chestCm },
-                    { label: 'בטן (פופיק)', val: latestMeasurement.waistNavelCm },
-                    { label: 'זרוע', val: latestMeasurement.armCm },
-                    { label: 'ירך', val: latestMeasurement.thighCm },
-                  ].map((item) => (
-                    <div
-                      key={item.label}
-                      style={{
-                        background: 'var(--bg-surface-2)',
-                        padding: '10px 6px',
-                        borderRadius: 12,
-                        textAlign: 'center',
-                        border: '1px solid var(--border-subtle)',
-                      }}
-                    >
-                      <div
-                        className="num-mono"
-                        style={{
-                          fontSize: 16,
-                          fontWeight: 800,
-                          color: 'var(--accent-volt)',
-                        }}
-                      >
-                        {item.val ? `${item.val}` : '—'}
+            {/* כרטיס מעקב משקל גוף ומגמה (design: Metrics hero) */}
+            <div className="pro-card" style={{ padding: 18, borderRadius: 28 }}>
+              {(() => {
+                const hist = trainee.weightHistory.slice(-12);
+                const first = trainee.weightHistory[0]?.weight;
+                const delta = first != null ? Math.round((trainee.currentWeight - first) * 10) / 10 : 0;
+                const vals = hist.map((w) => w.weight);
+                const target = trainee.targetWeight;
+                const all = target ? [...vals, target] : vals;
+                const lo = Math.min(...all) - 0.5;
+                const hi = Math.max(...all) + 0.5;
+                const W = 300;
+                const H = 80;
+                const x = (i: number) => (vals.length <= 1 ? W / 2 : (i / (vals.length - 1)) * W);
+                const y = (v: number) => H - ((v - lo) / (hi - lo || 1)) * (H - 8) - 4;
+                const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+                return (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
+                        {Boolean(target) && (
+                          <span style={{ fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 999, background: 'var(--surface-3)', color: 'var(--text-2)' }}>
+                            יעד מאמן: <bdi dir="ltr" className="ltr-num">{target}</bdi> ק״ג
+                          </span>
+                        )}
+                        {trainee.weightHistory.length > 1 && (
+                          <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: 'var(--accent)', color: 'var(--on-accent)' }}>
+                            <bdi dir="ltr" className="ltr-num">{delta > 0 ? '+' : delta < 0 ? '−' : ''}{Math.abs(delta)}</bdi> ק״ג מההתחלה
+                          </span>
+                        )}
                       </div>
-                      <div
-                        style={{ fontSize: 12, color: 'var(--text-secondary)' }}
-                      >
-                        {item.label} (ס״מ)
+                      <div style={{ textAlign: 'start' }}>
+                        <div style={{ fontSize: 13, color: 'var(--text-2)' }}>משקל נוכחי</div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                          <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 44, fontWeight: 700, lineHeight: 1.05 }}>
+                            {trainee.currentWeight}
+                          </bdi>
+                          <span style={{ fontSize: 15, color: 'var(--text-2)' }}>ק״ג</span>
+                        </div>
                       </div>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: 'var(--text-muted)',
-                    textAlign: 'center',
-                    padding: 10,
-                  }}
-                >
-                  טרם הוזנו היקפים. לחץ על &ldquo;הזן היקפים&rdquo; לפתיחת
-                  המדריך המונפש.
-                </div>
-              )}
-            </div>
-
-            {/* כרטיס הידרציה / שתיית מים */}
-            <div className="pro-card" style={{ padding: 18 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 14,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 10,
-                      background: 'var(--surface-2)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Droplets size={18} color="var(--text)" />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 800 }}>
-                      מאזן נוזלים יומי
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                      כל כוס = 250 מ״ל ({dailyLog.waterCups * 0.25} ליטר היום)
-                    </div>
-                  </div>
-                </div>
-                <div
-                  className="num-mono"
-                  style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}
-                >
-                  {dailyLog.waterCups} / {dailyLog.waterGoal}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(6, 1fr)',
-                  gap: 8,
-                  marginBottom: 12,
-                }}
-              >
-                {Array.from({ length: dailyLog.waterGoal }).map((_, i) => {
-                  const filled = i < dailyLog.waterCups;
-                  return (
-                    <button
-                      key={i}
-                      type="button"
-                      disabled={isBlockedDay}
-                      onClick={() => {
-                        if (!isBlockedDay) {
-                          onUpdateWater(trainee.id, selectedDate, i + 1);
-                        }
-                      }}
-                      style={{
-                        height: 44,
-                        borderRadius: 14,
-                        border: filled ? '1px solid var(--accent)' : '1px solid var(--border-subtle)',
-                        background: filled ? 'var(--accent)' : 'var(--bg-surface-2)',
-                        color: filled ? 'var(--on-accent)' : 'var(--text-muted)',
-                        fontFamily: 'var(--font-num)',
-                        fontWeight: 700,
-                        fontSize: 12,
-                        opacity: isBlockedDay ? 0.45 : 1,
-                        cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      {i + 1}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* כרטיס מעקב משקל גוף ומגמה */}
-            <div className="pro-card" style={{ padding: 18 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 14,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 10,
-                      background: 'var(--surface-2)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Scale size={18} color="currentColor" />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 800 }}>
-                      מגמת משקל גוף
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                      יעד מאמן: {trainee.targetWeight} ק״ג
-                    </div>
-                  </div>
-                </div>
-                <div
-                  className="num-mono"
-                  style={{
-                    fontSize: 22,
-                    fontWeight: 800,
-                    color: 'var(--accent-volt)',
-                  }}
-                >
-                  {trainee.currentWeight} ק״ג
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: `repeat(${Math.max(
-                    1,
-                    Math.min(5, trainee.weightHistory.length)
-                  )}, 1fr)`,
-                  gap: 8,
-                  marginBottom: 14,
-                }}
-              >
-                {trainee.weightHistory.slice(-5).map((w, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      background: 'var(--bg-surface-2)',
-                      padding: '8px 6px',
-                      borderRadius: 10,
-                      textAlign: 'center',
-                      border: '1px solid var(--border-subtle)',
-                    }}
-                  >
-                    <div
-                      className="num-mono"
-                      style={{ fontSize: 14, fontWeight: 800 }}
-                    >
-                      {w.weight}
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      {w.date}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    {vals.length > 1 && (
+                      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" aria-hidden style={{ display: 'block', margin: '14px 0', direction: 'ltr', overflow: 'visible' }}>
+                        <defs>
+                          <linearGradient id="wg" x1="0" x2="0" y1="0" y2="1">
+                            <stop offset="0" stopColor="currentColor" stopOpacity="0.28" />
+                            <stop offset="1" stopColor="currentColor" stopOpacity="0" />
+                          </linearGradient>
+                        </defs>
+                        <g style={{ color: 'var(--text)' }}>
+                          <polygon points={`0,${H} ${pts.join(' ')} ${W},${H}`} fill="url(#wg)" />
+                          <polyline points={pts.join(' ')} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                        </g>
+                        {Boolean(target) && (
+                          <line x1="0" x2={W} y1={y(target)} y2={y(target)} stroke="var(--accent)" strokeWidth="1.5" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+                        )}
+                        <circle cx={x(vals.length - 1)} cy={y(vals[vals.length - 1])} r="4" fill="var(--accent)" />
+                      </svg>
+                    )}
+                  </>
+                );
+              })()}
 
               <form
                 onSubmit={async (e) => {
@@ -2666,19 +2110,26 @@ export function TraineeMobileView({
                 <input
                   type="number"
                   step="0.1"
+                  inputMode="decimal"
                   dir="ltr"
+                  aria-label="שקילת היום בק״ג"
+                  placeholder="שקילת היום (ק״ג)"
                   disabled={savingWeight || isBlockedDay}
                   value={weightInput}
                   onChange={(e) => setWeightInput(e.target.value)}
+                  className="num-mono"
                   style={{
                     flex: 1,
-                    background: 'var(--bg-surface-2)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 12,
-                    padding: '10px 14px',
-                    color: 'var(--text-primary)',
-                    fontSize: 14,
-                    fontWeight: 700,
+                    minWidth: 0,
+                    height: 52,
+                    background: 'transparent',
+                    border: '1px solid var(--line-2)',
+                    borderRadius: 999,
+                    padding: '0 18px',
+                    color: 'var(--text)',
+                    fontSize: 18,
+                    fontWeight: 600,
+                    outline: 'none',
                     opacity: isBlockedDay ? 0.5 : 1,
                   }}
                 />
@@ -2686,8 +2137,13 @@ export function TraineeMobileView({
                   type="submit"
                   disabled={savingWeight || isBlockedDay}
                   className="btn-volt"
+                  aria-label="תיעוד שקילה"
                   style={{
-                    padding: '10px 18px',
+                    height: 52,
+                    padding: '0 22px',
+                    fontSize: 16,
+                    whiteSpace: 'nowrap',
+                    flex: 'none',
                     cursor: isBlockedDay ? 'not-allowed' : 'pointer',
                     opacity: isBlockedDay ? 0.45 : 1,
                     display: 'inline-flex',
@@ -2695,20 +2151,182 @@ export function TraineeMobileView({
                     gap: 6,
                   }}
                 >
-                  {savingWeight && <Loader2 size={14} className="spot-spinner" />}
-                  <span>{savingWeight ? 'שומר...' : 'תיעוד שקילה'}</span>
+                  {savingWeight && <Loader2 size={16} className="spot-spinner" />}
+                  <span>{savingWeight ? 'שומר...' : 'תיעוד'}</span>
                 </button>
               </form>
               {weightFeedback && (
                 <div
                   style={{
                     marginTop: 8,
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: 700,
                     color: weightFeedback.isError ? 'var(--danger-text)' : 'var(--ok-text)',
                   }}
                 >
                   {weightFeedback.msg}
+                </div>
+              )}
+            </div>
+
+            {/* כרטיס הידרציה / שתיית מים (design: Metrics) */}
+            <div className="pro-card" style={{ padding: 18, borderRadius: 28 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 'none' }}>
+                  <button
+                    type="button"
+                    aria-label="הוסף כוס מים"
+                    disabled={isBlockedDay}
+                    onClick={() => !isBlockedDay && onUpdateWater(trainee.id, selectedDate, dailyLog.waterCups + 1)}
+                    className="btn-volt hit-44"
+                    style={{ width: 52, height: 52, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, opacity: isBlockedDay ? 0.45 : 1 }}
+                  >
+                    <Plus size={22} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="הורד כוס מים"
+                    disabled={isBlockedDay || dailyLog.waterCups <= 0}
+                    onClick={() => !isBlockedDay && onUpdateWater(trainee.id, selectedDate, Math.max(0, dailyLog.waterCups - 1))}
+                    className="btn-surface hit-44"
+                    style={{ width: 52, height: 52, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isBlockedDay || dailyLog.waterCups <= 0 ? 0.45 : 1 }}
+                  >
+                    <Minus size={22} />
+                  </button>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>מאזן נוזלים</div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+                    <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 40, fontWeight: 700, lineHeight: 1 }}>
+                      {dailyLog.waterCups}
+                    </bdi>
+                    <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                      כוסות · <bdi dir="ltr" className="ltr-num">{dailyLog.waterCups * 0.25}</bdi> ליטר
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 4 }} aria-label={`${dailyLog.waterCups} מתוך ${dailyLog.waterGoal} כוסות`}>
+                    {Array.from({ length: Math.max(dailyLog.waterGoal, dailyLog.waterCups) }).map((_, i) => (
+                      <span
+                        key={i}
+                        style={{ flex: 1, height: 16, borderRadius: 5, background: i < dailyLog.waterCups ? 'var(--accent)' : 'var(--surface-3)' }}
+                      />
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 8 }}>
+                    כל כוס = 250 מ״ל · יעד <bdi dir="ltr" className="ltr-num">{dailyLog.waterGoal}</bdi> כוסות
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* כרטיס היקפי גוף ומדריך מדידה מונפש */}
+            <div className="pro-card" style={{ padding: 18, borderRadius: 28 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 14,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 18,
+                      background: 'var(--surface-2)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ruler size={18} color="currentColor" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 800 }}>
+                      מדידת היקפי גוף (חזה, בטן, זרוע, ירך)
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                      כולל מדריך מדידה מונפש שלב-אחר-שלב
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isBlockedDay}
+                  onClick={() => {
+                    if (!isBlockedDay) setMeasurementModalOpen(true);
+                  }}
+                  className="btn-volt"
+                  style={{
+                    height: 44,
+                    padding: '0 16px',
+                    fontSize: 14,
+                    whiteSpace: 'nowrap',
+                    flex: 'none',
+                    opacity: isBlockedDay ? 0.45 : 1,
+                    cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {latestMeasurement ? 'עדכן היקפים' : 'הזן היקפים'}
+                </button>
+              </div>
+
+              {latestMeasurement ? (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gap: 8,
+                  }}
+                >
+                  {[
+                    { label: 'חזה', val: latestMeasurement.chestCm },
+                    { label: 'בטן (פופיק)', val: latestMeasurement.waistNavelCm },
+                    { label: 'זרוע', val: latestMeasurement.armCm },
+                    { label: 'ירך', val: latestMeasurement.thighCm },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      style={{
+                        background: 'var(--surface-2)',
+                        padding: '10px 6px',
+                        borderRadius: 18,
+                        textAlign: 'center',
+                        border: '1px solid var(--line)',
+                      }}
+                    >
+                      <div
+                        className="num-mono"
+                        style={{
+                          fontSize: 16,
+                          fontWeight: 800,
+                          color: 'var(--accent-volt)',
+                        }}
+                      >
+                        {item.val ? `${item.val}` : '—'}
+                      </div>
+                      <div
+                        style={{ fontSize: 13, color: 'var(--text-2)' }}
+                      >
+                        {item.label} (ס״מ)
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: 'var(--text-3)',
+                    textAlign: 'center',
+                    padding: 10,
+                  }}
+                >
+                  טרם הוזנו היקפים. לחץ על &ldquo;הזן היקפים&rdquo; לפתיחת
+                  המדריך המונפש.
                 </div>
               )}
             </div>
@@ -2735,11 +2353,11 @@ export function TraineeMobileView({
                 }}
               >
                 {buildWeeklySummary().stats.map((s) => (
-                  <div key={s.label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div key={s.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
                     <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 20, fontWeight: 700 }}>
                       {s.value}
                     </bdi>
-                    <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{s.label}</span>
+                    <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{s.label}</span>
                   </div>
                 ))}
               </div>
@@ -2777,8 +2395,8 @@ export function TraineeMobileView({
                             className="num-mono"
                             style={{
                               height: 44,
-                              borderRadius: 14,
-                              border: `1px solid ${on ? 'var(--sel-bg)' : 'var(--line-2)'}`,
+                              borderRadius: 18,
+                              border: `1px solid ${on ? 'var(--sel-border)' : 'var(--line-2)'}`,
                               background: on ? 'var(--sel-bg)' : 'transparent',
                               color: on ? 'var(--sel-text)' : 'var(--text)',
                               fontSize: 16,
@@ -3103,93 +2721,20 @@ export function TraineeMobileView({
             boxSizing: 'border-box',
           }}
         >
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-            ניתן לבחור כל שעה מותאמת אישית לתיעוד הארוחה ביומן:
-          </div>
+          <TimeWheel value={draftMealTime} onChange={setDraftMealTime} />
 
-          <div
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              overflow: 'hidden',
-              borderRadius: 12,
-              background: 'var(--bg-surface-2)',
-              border: '1px solid var(--line-2)',
-              padding: '8px 12px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <input
-              type="time"
-              value={draftMealTime}
-              onChange={(e) => setDraftMealTime(e.target.value)}
-              dir="ltr"
-              style={{
-                width: '100%',
-                maxWidth: '100%',
-                minWidth: 0,
-                boxSizing: 'border-box',
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text)',
-                fontSize: 20,
-                fontWeight: 800,
-                textAlign: 'center',
-                outline: 'none',
-                colorScheme: 'dark',
-                WebkitAppearance: 'none',
-                appearance: 'none',
-              }}
-            />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <button
-              type="button"
-              disabled={savingMealTime}
-              onClick={() => {
-                const parts = draftMealTime.split(':').map(Number);
-                const mins = ((Number.isFinite(parts[0]) ? parts[0] : 12) * 60 + (Number.isFinite(parts[1]) ? parts[1] : 0) - 15 + 1440) % 1440;
-                setDraftMealTime(
-                  `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`
-                );
-              }}
-              className="btn-surface"
-              style={{ padding: '7px 8px', fontSize: 12.5, cursor: 'pointer' }}
-            >
-              -15 דק׳
-            </button>
-            <button
-              type="button"
-              disabled={savingMealTime}
-              onClick={() => {
-                const parts = draftMealTime.split(':').map(Number);
-                const mins = ((Number.isFinite(parts[0]) ? parts[0] : 12) * 60 + (Number.isFinite(parts[1]) ? parts[1] : 0) + 15) % 1440;
-                setDraftMealTime(
-                  `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`
-                );
-              }}
-              className="btn-surface"
-              style={{ padding: '7px 8px', fontSize: 12.5, cursor: 'pointer' }}
-            >
-              +15 דק׳
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
             <button
               type="button"
               disabled={savingMealTime}
               onClick={() => {
                 const now = new Date();
-                const hh = String(now.getHours()).padStart(2, '0');
-                const mm = String(now.getMinutes()).padStart(2, '0');
-                setDraftMealTime(`${hh}:${mm}`);
+                setDraftMealTime(
+                  `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+                );
               }}
-              className="btn-surface"
-              style={{ flex: 1, padding: '8px', fontSize: 12.5, cursor: 'pointer' }}
+              className="glass"
+              style={{ height: 44, padding: '0 18px', borderRadius: 999, fontFamily: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
             >
               עכשיו
             </button>
@@ -3199,14 +2744,12 @@ export function TraineeMobileView({
                 disabled={savingMealTime}
                 onClick={() => {
                   const m = timeEditSlot.timeHint!.match(/^(\d{1,2}):(\d{2})$/);
-                  setDraftMealTime(
-                    m ? `${m[1].padStart(2, '0')}:${m[2]}` : timeEditSlot.timeHint!
-                  );
+                  setDraftMealTime(m ? `${m[1].padStart(2, '0')}:${m[2]}` : timeEditSlot.timeHint!);
                 }}
-                className="btn-surface"
-                style={{ flex: 1, padding: '8px', fontSize: 12.5, cursor: 'pointer' }}
+                className="glass"
+                style={{ height: 44, padding: '0 18px', borderRadius: 999, fontFamily: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
               >
-                תבנית ({timeEditSlot.timeHint})
+                לפי התפריט · <bdi dir="ltr" className="ltr-num">{timeEditSlot.timeHint}</bdi>
               </button>
             )}
           </div>
@@ -3230,12 +2773,12 @@ export function TraineeMobileView({
             }}
             className="btn-volt"
             style={{
-              padding: '10px 14px',
-              fontSize: 13,
+              height: 56,
+              fontSize: 16,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 6,
+              gap: 8,
               cursor: isBlockedDay ? 'not-allowed' : 'pointer',
             }}
           >

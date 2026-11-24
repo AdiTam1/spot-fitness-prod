@@ -321,19 +321,20 @@ export function CoachSavedMealsPanel({
                         onClick={() => handleSendReply(m.id)}
                         className="btn-volt"
                         style={{
-                          padding: '6px 12px',
-                          fontSize: 13,
-                          fontWeight: 800,
+                          height: 48,
+                          padding: '0 20px',
+                          fontSize: 15,
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: 5,
+                          gap: 6,
                           cursor: 'pointer',
+                          flex: 'none',
                         }}
                       >
                         {sendingId === m.id ? (
-                          <Loader2 size={12} className="spot-spinner" />
+                          <Loader2 size={15} className="spot-spinner" />
                         ) : (
-                          <Send size={12} />
+                          <Send size={15} />
                         )}
                         <span>שלח מענה</span>
                       </button>

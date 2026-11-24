@@ -447,14 +447,14 @@ export function AdminScrapersPanel({
           gap: 12,
           borderColor: report?.sqlCatalogStats?.available
             ? 'var(--surface-2)'
-            : 'rgba(250, 204, 21, 0.35)',
+            : 'var(--line-2)',
         }}
       >
         <div style={{ minWidth: 260, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <Database size={16} color="currentColor" />
             <strong style={{ fontSize: 13.5 }}>
-              טבלת SQL מאונדקסת (<code dir="ltr">food_catalog_items</code>) — שופרסל, ברקוד ושמירת חיפושים
+              טבלת SQL מאונדקסת (<bdi dir="ltr"><code>food_catalog_items</code></bdi>) — שופרסל, ברקוד ושמירת חיפושים
             </strong>
             <span
               style={{
@@ -490,16 +490,18 @@ export function AdminScrapersPanel({
               </>
             ) : (
               <>
-                העתק והרץ את <code dir="ltr">supabase/schema.sql</code> ב-SQL Editor של Supabase כדי להפעיל אחסון
+                העתק והרץ את <bdi dir="ltr"><code>supabase/schema.sql</code></bdi> ב-SQL Editor של Supabase כדי להפעיל אחסון
                 לאלפי מוצרי שופרסל, OpenFoodFacts וקאש אוטומטי לחיפושים וברקודים.
               </>
             )}
           </div>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
             להזנה מלאה של אלפי מוצרים (שופרסל, משרד הבריאות 4,624+, Fuder וברקודים):{' '}
-            <code dir="ltr" style={{ color: 'var(--accent-volt)' }}>
-              node --use-system-ca scripts/seed-shufersal.mjs --full
-            </code>
+            <bdi dir="ltr">
+              <code style={{ color: 'var(--text)', background: 'var(--surface-2)', padding: '2px 8px', borderRadius: 8 }}>
+                node --use-system-ca scripts/seed-shufersal.mjs --full
+              </code>
+            </bdi>
           </div>
         </div>
 

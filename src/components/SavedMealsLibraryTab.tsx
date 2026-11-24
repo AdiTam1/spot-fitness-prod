@@ -435,38 +435,16 @@ export function SavedMealsLibraryTab({
           </button>
         </div>
 
-        <button
-          type="button"
-          onClick={onOpenToolsModal}
-          className="btn-surface"
-          title="ניהול כלים ויחידות מדידה"
-          style={{
-            padding: '8px 11px',
-            borderRadius: 999,
-            fontSize: 12,
-            fontWeight: 700,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            cursor: 'pointer',
-            borderColor: 'var(--line-2)',
-            whiteSpace: 'nowrap',
-            flexShrink: 0,
-          }}
-        >
-          <Ruler size={13} color="currentColor" />
-          <span>כלים ויחידות</span>
-        </button>
       </div>
 
       {/* צ׳יפים לסינון */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      <div data-h-scroll style={{ display: 'flex', gap: 6, paddingBottom: 2 }}>
         {[
           { id: 'all', label: `הכל (${savedMeals.length})` },
-          { id: 'pinned', label: '📌 נעוצות / ❤️ מועדפות' },
-          { id: 'popular', label: '🔥 פופולריות' },
-          { id: 'history', label: `🕒 היסטוריה (${historicalMeals.length})` },
-          { id: 'questions', label: '💬 התייעצות מאמן' },
+          { id: 'pinned', label: 'נעוצות / מועדפות' },
+          { id: 'popular', label: 'פופולריות' },
+          { id: 'history', label: `היסטוריה (${historicalMeals.length})` },
+          { id: 'questions', label: 'התייעצות מאמן' },
         ].map((f) => (
           <button
             key={f.id}
@@ -475,21 +453,20 @@ export function SavedMealsLibraryTab({
               setSelectedDetailId(null);
               setFilterMode(f.id as typeof filterMode);
             }}
+            aria-pressed={filterMode === f.id}
             style={{
-              padding: '5px 10px',
+              minHeight: 40,
+              padding: '0 14px',
               borderRadius: 999,
-              fontSize: 12,
-              fontWeight: 700,
+              fontFamily: 'inherit',
+              fontSize: 14,
+              fontWeight: filterMode === f.id ? 700 : 500,
               cursor: 'pointer',
-              border:
-                filterMode === f.id ? '1px solid var(--sel-bg)'
-                  : '1px solid var(--line)',
-              background:
-                filterMode === f.id ? 'var(--sel-bg)'
-                  : 'var(--surface-2)',
-              color:
-                filterMode === f.id ? 'var(--sel-text)'
-                  : 'var(--text-secondary)',
+              flex: 'none',
+              whiteSpace: 'nowrap',
+              border: `1px solid ${filterMode === f.id ? 'var(--sel-border)' : 'var(--line-2)'}`,
+              background: filterMode === f.id ? 'var(--sel-bg)' : 'transparent',
+              color: filterMode === f.id ? 'var(--sel-text)' : 'var(--text)',
             }}
           >
             {f.label}
@@ -510,7 +487,7 @@ export function SavedMealsLibraryTab({
             border: feedbackBanner.isError
               ? '1px solid rgba(239, 68, 68, 0.35)'
               : '1px solid var(--line-2)',
-            color: feedbackBanner.isError ? 'var(--danger-text)' : 'var(--accent-volt)',
+            color: feedbackBanner.isError ? 'var(--danger-text)' : 'var(--text)',
           }}
         >
           {feedbackBanner.msg}
@@ -717,7 +694,7 @@ export function SavedMealsLibraryTab({
                           WebkitBoxOrient: 'vertical',
                         }}
                       >
-                        {preset.isPinned ? '📌 ' : ''}
+                        {preset.isPinned ? 'נעוץ · ' : ''}
                         {preset.title}
                       </div>
                       <div

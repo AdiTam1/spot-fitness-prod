@@ -6,5 +6,6 @@ export { GlassDock, type DockTab } from './GlassDock';
 export { ProgressRing } from './ProgressRing';
 export { SegmentedPill, type SegmentedPillOption } from './SegmentedPill';
 export { Sheet } from './Sheet';
+export { TimeWheel } from './TimeWheel';
 export { ThemeMetaSync } from './ThemeMetaSync';
 export { ThemeToggle } from './ThemeToggle';
