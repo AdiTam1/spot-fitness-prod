@@ -1346,8 +1346,14 @@ export function CoachDashboardView({
       {activeSection === 'roster' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* סרגל סינון קבוצות מתאמנים + סינון לפי מאמן (למנהל ראשי) */}
+          <header style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+              שלום, {currentUser.name.trim().split(/\s+/)[0]}
+            </span>
+            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, lineHeight: 1.2 }}>המתאמנים שלי</h1>
+          </header>
           <div
-            className="pro-card"
+            className="pro-card coach-filter-card"
             style={{
               padding: '12px 18px',
               display: 'flex',
@@ -1358,6 +1364,7 @@ export function CoachDashboardView({
             }}
           >
             <div
+              className="coach-filter-groups"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -1366,6 +1373,7 @@ export function CoachDashboardView({
               }}
             >
               <span
+                className="only-desktop"
                 style={{
                   fontSize: 12,
                   fontWeight: 700,
@@ -1383,10 +1391,10 @@ export function CoachDashboardView({
                   borderRadius: 999,
                   border:
                     selectedGroupFilter === 'all' ? '1px solid var(--sel-bg)'
-                      : '1px solid var(--border-subtle)',
+                      : '1px solid var(--line-2)',
                   background:
                     selectedGroupFilter === 'all' ? 'var(--sel-bg)'
-                      : 'var(--bg-surface-2)',
+                      : 'transparent',
                   color:
                     selectedGroupFilter === 'all' ? 'var(--sel-text)'
                       : 'var(--text-secondary)',
@@ -1415,10 +1423,10 @@ export function CoachDashboardView({
                       borderRadius: 999,
                       border: active
                         ? `1px solid ${grp.color}`
-                        : '1px solid var(--border-subtle)',
+                        : '1px solid var(--line-2)',
                       background: active
                         ? 'var(--line)'
-                        : 'var(--bg-surface-2)',
+                        : 'transparent',
                       color: active ? 'var(--text)' : 'var(--text-secondary)',
                       fontSize: 12,
                       fontWeight: 700,
@@ -1447,10 +1455,10 @@ export function CoachDashboardView({
                   borderRadius: 999,
                   border:
                     selectedGroupFilter === 'unassigned' ? '1px solid var(--sel-bg)'
-                      : '1px solid var(--border-subtle)',
+                      : '1px solid var(--line-2)',
                   background:
                     selectedGroupFilter === 'unassigned' ? 'var(--sel-bg)'
-                      : 'var(--bg-surface-2)',
+                      : 'transparent',
                   color:
                     selectedGroupFilter === 'unassigned' ? 'var(--sel-text)'
                       : 'var(--text-secondary)',
@@ -1698,7 +1706,7 @@ export function CoachDashboardView({
               style={{
                 display: 'inline-flex',
                 background: 'var(--bg-surface-2)',
-                border: '1px solid var(--border-subtle)',
+                border: '1px solid var(--line-2)',
                 borderRadius: 10,
                 padding: 3,
                 gap: 2,
