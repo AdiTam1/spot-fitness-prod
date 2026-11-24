@@ -34,6 +34,7 @@ import {
   X,
   ChevronRight,
   ChevronLeft,
+  SlidersHorizontal,
   Utensils,
   FolderOpen,
   CalendarDays,
@@ -201,6 +202,7 @@ export function AddMealDrawer({
 }: AddMealDrawerProps) {
   useSpotUnsavedEditing('add-meal-drawer', opened);
   const [activeTab, setActiveTab] = useState<string>(initialTab);
+  const isDesignHeader = activeTab === 'ai-recommend' || activeTab === 'saved-meals';
   const [items, setItems] = useState<LoggedFoodItem[]>([]);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | undefined>(
     undefined
@@ -1137,6 +1139,8 @@ export function AddMealDrawer({
     : [];
 
   const dateInfo = formatDrawerDateLabel(selectedDate);
+  const fullScreen = activeTab !== 'hub' && activeTab !== 'catalog';
+  const heroScreen = activeTab === 'meal-items' && allMealPhotos.length > 0;
 
   return (
     <>
@@ -1146,8 +1150,9 @@ export function AddMealDrawer({
           if (!savingMeal) onClose();
         }}
         position="bottom"
-        size="93%"
+        size={fullScreen ? '100%' : '93%'}
         zIndex={200}
+        classNames={{ content: fullScreen ? (heroScreen ? 'add-meal-full add-meal-hero' : 'add-meal-full') : undefined }}
         overlayProps={{ backgroundOpacity: 0.55, blur: 3 }}
         withCloseButton={false}
         styles={{
@@ -1159,7 +1164,7 @@ export function AddMealDrawer({
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            maxHeight: '94dvh',
+            maxHeight: fullScreen ? '100dvh' : '94dvh',
           },
           body: {
             padding: 0,
@@ -1174,26 +1179,27 @@ export function AddMealDrawer({
         {/* Fixed (non-scrolling) top: grabber, title, meal time, search */}
         <div
           style={{
-            padding: '10px 20px 12px',
-            borderBottom: activeTab === 'hub' && !trimmedQuery ? 'none' : '1px solid var(--border-subtle)',
-            background: 'var(--card)',
+            padding: fullScreen ? 'calc(var(--sa-top, 0px) + 12px) 20px 12px' : '10px 20px 12px',
+            borderBottom: (activeTab === 'hub' && !trimmedQuery) || fullScreen ? 'none' : '1px solid var(--border-subtle)',
+            background: fullScreen ? 'transparent' : 'var(--card)',
+            ...(heroScreen ? { position: 'absolute' as const, insetInline: 0, insetBlockStart: 0, zIndex: 3, padding: 0 } : {}),
             display: 'flex',
             flexDirection: 'column',
             gap: 12,
             flexShrink: 0,
           }}
         >
-          <div className="sheet-grabber" aria-hidden />
+          {!fullScreen && <div className="sheet-grabber" aria-hidden />}
           <div
             style={{
-              display: 'flex',
+              display: activeTab === 'meal-items' && allMealPhotos.length > 0 ? 'none' : 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: 10,
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-              {(activeTab !== 'hub' || trimmedQuery.length > 0) && (
+              {(activeTab !== 'hub' || trimmedQuery.length > 0) && activeTab !== 'ai-recommend' && (
                 <GlassButton
                   label="חזרה"
                   size={40}
@@ -1209,7 +1215,7 @@ export function AddMealDrawer({
                 <h2
                   style={{
                     margin: 0,
-                    fontSize: activeTab === 'hub' ? 24 : 19,
+                    fontSize: activeTab === 'hub' || isDesignHeader ? 24 : 19,
                     fontWeight: 700,
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
@@ -1217,8 +1223,20 @@ export function AddMealDrawer({
                     color: 'var(--text)',
                   }}
                 >
-                  {activeTab === 'hub' ? 'מה אכלת?' : mealSlot.name}
+                  {activeTab === 'hub'
+                    ? 'מה אכלת?'
+                    : activeTab === 'ai-recommend'
+                    ? 'מה לאכול?'
+                    : activeTab === 'saved-meals'
+                    ? 'ארוחות שמורות'
+                    : mealSlot.name}
                 </h2>
+                {activeTab === 'ai-recommend' && (
+                  <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                    {mealSlot.name} · המלצות המאמן וה-AI
+                  </div>
+                )}
+                {activeTab !== 'ai-recommend' && activeTab !== 'saved-meals' && (
                 <div
                   style={{
                     display: 'flex',
@@ -1272,8 +1290,24 @@ export function AddMealDrawer({
                     )}
                   </span>
                 </div>
+                )}
               </div>
             </div>
+            {activeTab === 'ai-recommend' ? (
+              <GlassButton label="חזרה" onClick={() => setActiveTab('hub')}>
+                <ChevronLeft size={18} />
+              </GlassButton>
+            ) : activeTab === 'saved-meals' ? (
+              <GlassButton
+                label="ניהול כלים ויחידות מידה"
+                onClick={() => {
+                  setToolsInitialSection('tools');
+                  setToolsModalOpen(true);
+                }}
+              >
+                <SlidersHorizontal size={18} />
+              </GlassButton>
+            ) : (
             <GlassButton
               label="סגירה"
               data-autofocus
@@ -1283,6 +1317,7 @@ export function AddMealDrawer({
             >
               <X size={18} strokeWidth={2.2} />
             </GlassButton>
+            )}
           </div>
 
           {/* Meal type — preselected by time, switches the slot being logged */}
@@ -1642,13 +1677,13 @@ export function AddMealDrawer({
             flex: 1,
             minHeight: 0,
             overflowY: 'auto',
-            padding: '14px 16px 20px',
+            padding: heroScreen ? '0 16px 20px' : '14px 16px 20px',
             display: 'flex',
             flexDirection: 'column',
             gap: 14,
           }}
         >
-          {aiSummary && (
+          {aiSummary && !heroScreen && (
             <div
               style={{
                 padding: '10px 14px',
@@ -2021,7 +2056,7 @@ export function AddMealDrawer({
                           type="button"
                           disabled={aiLoading}
                           onClick={() => runAiAnalysis('text', optText, idx)}
-                          className="glass"
+                          className="btn-surface"
                           style={{
                             height: 44,
                             padding: '0 16px',
@@ -2769,7 +2804,7 @@ export function AddMealDrawer({
                 </div>
 
                 {/* Pinned analyse action (design: "נתח את הצלחת") */}
-                <div className="wizard-nav" style={{ marginTop: 0, background: 'linear-gradient(to top, var(--card) 70%, transparent)' }}>
+                <div className="wizard-nav" style={{ marginTop: 0, background: 'linear-gradient(to top, var(--bg) 70%, transparent)' }}>
                   <button
                     type="button"
                     disabled={
@@ -3139,7 +3174,7 @@ export function AddMealDrawer({
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div
                   style={{
-                    display: 'flex',
+                    display: heroScreen ? 'none' : 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     gap: 8,
@@ -3166,14 +3201,34 @@ export function AddMealDrawer({
 
                 {/* Result header (design: PhotoResult) — photo hero + totals vs meal target */}
                 {allMealPhotos.length > 0 && (
-                  <div style={{ position: 'relative', borderRadius: 28, overflow: 'hidden', background: 'var(--surface-2)' }}>
+                  <div style={{ position: 'relative', margin: '0 -16px', overflow: 'hidden', background: 'var(--surface-2)' }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={allMealPhotos[0]}
                       alt="תמונת הארוחה"
                       onClick={() => setActiveTab('ai-photo')}
-                      style={{ display: 'block', width: '100%', height: 190, objectFit: 'cover', cursor: 'pointer' }}
+                      style={{ display: 'block', width: '100%', height: 'calc(300px + var(--sa-top, 0px))', objectFit: 'cover', cursor: 'pointer' }}
                     />
+                    <div style={{ position: 'absolute', insetBlockStart: 'calc(var(--sa-top, 0px) + 12px)', insetInline: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <GlassButton
+                        label="סגירה"
+                        data-autofocus
+                        onClick={() => {
+                          if (!savingMeal) onClose();
+                        }}
+                      >
+                        <X size={18} strokeWidth={2.2} />
+                      </GlassButton>
+                      <button
+                        type="button"
+                        className="glass"
+                        onClick={() => setActiveTab('ai-photo')}
+                        style={{ height: 44, padding: '0 16px', borderRadius: 999, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
+                      >
+                        <Camera size={15} />
+                        צלם שוב
+                      </button>
+                    </div>
                     {allMealPhotos.length > 1 && (
                       <span
                         className="glass"
@@ -3195,13 +3250,13 @@ export function AddMealDrawer({
                     )}
                   </div>
                 )}
+                {allMealPhotos.length > 0 && (
+                  <div aria-hidden style={{ height: 32, margin: '-46px -16px 0', borderRadius: '28px 28px 0 0', background: 'var(--card)', position: 'relative' }} />
+                )}
 
                 <div
                   style={{
-                    background: 'var(--card)',
-                    border: '1px solid var(--line)',
-                    borderRadius: 26,
-                    padding: 16,
+                    padding: '4px 2px',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 14,
@@ -3253,6 +3308,34 @@ export function AddMealDrawer({
                   </div>
                 </div>
 
+                {heroScreen && (
+                <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <span style={{ fontSize: 17, fontWeight: 700 }}>
+                      מרכיבי הארוחה הנוכחית ({items.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('hub')}
+                      className="btn-surface"
+                      style={{
+                        padding: '5px 11px',
+                        borderRadius: 999,
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      + הוסף עוד פריטים
+                    </button>
+                  </div>
+                  )}
                 {items.length === 0 ? (
                   <div
                     style={{
@@ -3267,19 +3350,15 @@ export function AddMealDrawer({
                     טרם נוספו פריטים לארוחה זו.
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                     {items.map((item) => {
                       const isEditing = editingItemId === item.id;
                       return (
                         <div
                           key={item.id}
                           style={{
-                            background: 'var(--card)',
-                            border: isEditing
-                              ? '1px solid var(--line-2)'
-                              : '1px solid var(--border-subtle)',
-                            borderRadius: 20,
-                            padding: '14px 16px',
+                            borderBottom: '1px solid var(--line)',
+                            padding: '8px 2px',
                           }}
                         >
                           <div
@@ -3287,133 +3366,22 @@ export function AddMealDrawer({
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center',
-                              gap: 8,
+                              gap: 10,
                             }}
                           >
-                            <div style={{ minWidth: 0, flex: 1 }}>
-                              <div
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 6,
-                                  flexWrap: 'wrap',
-                                }}
-                              >
-                                <span style={{ fontSize: 15, fontWeight: 600 }}>
-                                  {item.name}
-                                </span>
-                                <span
-                                  style={{
-                                    fontSize: 12,
-                                    padding: '1px 7px',
-                                    borderRadius: 999,
-                                    background: 'var(--line)',
-                                    color: 'var(--text-secondary)',
-                                  }}
-                                >
-                                  {item.unitLabel}
-                                </span>
-                                {(item.isAiFallback || item.aiEngine) && (
-                                  <span
-                                    title={
-                                      item.fallbackReason
-                                        ? `סיבת גיבוי: ${item.fallbackReason}`
-                                        : item.aiEngine
-                                    }
-                                    style={{
-                                      fontSize: 12,
-                                      padding: '1px 6px',
-                                      borderRadius: 999,
-                                      fontWeight: 800,
-                                      background: item.isAiFallback
-                                        ? 'rgba(245, 158, 11, 0.16)'
-                                        : 'var(--surface-2)',
-                                      border: item.isAiFallback
-                                        ? '1px solid rgba(245, 158, 11, 0.38)'
-                                        : '1px solid var(--line-2)',
-                                      color: item.isAiFallback
-                                        ? 'var(--warn-text)'
-                                        : 'var(--accent-orange-bright)',
-                                    }}
-                                  >
-                                    {item.isAiFallback
-                                      ? `לא AI · ${item.aiEngine || 'Fallback'}`
-                                      : `AI · ${item.aiEngine}`}
-                                  </span>
-                                )}
+                            <button
+                              type="button"
+                              aria-label={isEditing ? 'סגור עריכה' : `ערוך ${item.name}`}
+                              aria-expanded={isEditing}
+                              onClick={() => setEditingItemId(isEditing ? null : item.id)}
+                              style={{ minWidth: 0, flex: 1, background: 'transparent', border: 0, padding: 0, textAlign: 'start', color: 'inherit', fontFamily: 'inherit', cursor: 'pointer', minHeight: 44 }}
+                            >
+                              <div style={{ fontSize: 16, fontWeight: 600 }}>{item.name}</div>
+                              <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                                <bdi dir="ltr" className="num-mono ltr-num">{item.macros.calories}</bdi> קק״ל
+                                {item.isAiFallback ? ' · לא AI' : item.aiEngine ? ' · AI' : ''}
                               </div>
-                              <div
-                                className="num-mono"
-                                style={{
-                                  fontSize: 12,
-                                  color: 'var(--text-secondary)',
-                                  marginTop: 2,
-                                }}
-                              >
-                                <b style={{ color: 'var(--text-primary)' }}>
-                                  {item.macros.calories} קק״ל
-                                </b>{' '}
-                                · ח׳ {item.macros.protein}g · פ׳ {item.macros.carbs}
-                                g · ש׳ {item.macros.fat}g
-                              </div>
-                            </div>
-
-                            <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
-                              <button
-                                type="button"
-                                aria-label={isEditing ? 'סגור עריכה' : `ערוך ${item.name}`}
-                                aria-expanded={isEditing}
-                                onClick={() => setEditingItemId(isEditing ? null : item.id)}
-                                style={{
-                                  width: 44,
-                                  height: 44,
-                                  padding: 0,
-                                  borderRadius: 999,
-                                  border: '1px solid var(--line-2)',
-                                  background: isEditing ? 'var(--sel-bg)' : 'transparent',
-                                  color: isEditing ? 'var(--sel-text)' : 'var(--text-2)',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                <Edit3 size={16} />
-                              </button>
-                              <button
-                                type="button"
-                                aria-label={`הסר ${item.name}`}
-                                onClick={() => removeItem(item.id)}
-                                style={{
-                                  width: 44,
-                                  height: 44,
-                                  padding: 0,
-                                  borderRadius: 999,
-                                  border: '1px solid var(--line-2)',
-                                  background: 'transparent',
-                                  color: 'var(--danger-text)',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Quick gram stepper (design: PhotoResult rows) */}
-                          <div
-                            style={{
-                              marginTop: 10,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              gap: 8,
-                            }}
-                          >
-                            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>כמות</span>
+                            </button>
                             <span
                               style={{
                                 display: 'inline-flex',
@@ -3422,6 +3390,7 @@ export function AddMealDrawer({
                                 padding: 3,
                                 borderRadius: 999,
                                 background: 'var(--surface-2)',
+                                flex: 'none',
                               }}
                             >
                               <button
@@ -3432,7 +3401,7 @@ export function AddMealDrawer({
                               >
                                 <Minus size={16} strokeWidth={2.2} />
                               </button>
-                              <bdi dir="ltr" className="num-mono ltr-num" style={{ minWidth: 64, textAlign: 'center', fontSize: 14, fontWeight: 600 }}>
+                              <bdi dir="ltr" className="num-mono ltr-num" style={{ minWidth: 56, textAlign: 'center', fontSize: 14, fontWeight: 600 }}>
                                 {Math.round(item.grams)} ג׳
                               </bdi>
                               <button
@@ -3541,6 +3510,15 @@ export function AddMealDrawer({
                                   }
                                 />
                               </div>
+                              <button
+                                type="button"
+                                aria-label={`הסר ${item.name}`}
+                                onClick={() => removeItem(item.id)}
+                                style={{ alignSelf: 'flex-start', minHeight: 44, display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: 0, padding: 0, color: 'var(--danger-text)', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+                              >
+                                <Trash2 size={15} />
+                                הסר מרכיב
+                              </button>
                             </div>
                           </Collapse>
                         </div>
@@ -3588,34 +3566,39 @@ export function AddMealDrawer({
                   </div>
                 )}
 
-                <button
-                  disabled={savingMeal}
-                  onClick={() => void handleSaveMealAndClose()}
-                  className="btn-volt"
-                  style={{
-                    padding: '12px 18px',
-                    fontSize: 13.5,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {savingMeal ? (
-                    <Loader2 size={16} className="spot-spinner" />
-                  ) : (
-                    <Check size={16} />
-                  )}
-                  <span>
-                    {savingMeal
-                      ? 'שומר ארוחה...'
-                      : `שמור ארוחה (${currentTotals.calories} קק״ל)`}
-                  </span>
-                </button>
               </div>
             )}
         </div>
+
+        {activeTab === 'meal-items' && (
+          <div
+            style={{
+              flexShrink: 0,
+              background: heroScreen ? 'var(--card)' : 'var(--bg)',
+              padding: '10px 16px calc(var(--sa-bottom) + 12px)',
+              display: 'flex',
+            }}
+          >
+            <button
+              disabled={savingMeal}
+              onClick={() => void handleSaveMealAndClose()}
+              className="btn-volt"
+              style={{
+                flex: 1,
+                height: 56,
+                fontSize: 16,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                cursor: 'pointer',
+              }}
+            >
+              {savingMeal ? <Loader2 size={16} className="spot-spinner" /> : <Check size={16} />}
+              <span>{savingMeal ? 'שומר ארוחה...' : `שמור ארוחה (${currentTotals.calories} קק״ל)`}</span>
+            </button>
+          </div>
+        )}
 
         {/* Pinned action bar (design): one primary save button carrying the meal total, plus a
             glass pill that opens the meal's items. Hidden while there is nothing to save. */}
@@ -3623,7 +3606,7 @@ export function AddMealDrawer({
           <div
             style={{
               flexShrink: 0,
-              background: 'var(--card)',
+              background: fullScreen ? 'var(--bg)' : 'var(--card)',
               padding: '10px 16px calc(var(--sa-bottom) + 12px)',
               display: 'flex',
               alignItems: 'center',

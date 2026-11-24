@@ -1058,3 +1058,24 @@ a.glass {
   background: #ffffff !important;
   box-shadow: var(--shadow-raise);
 }
+
+
+/* Add-meal sub-screens are full-screen pages in the design (not bottom sheets). */
+.mantine-Drawer-content.add-meal-full {
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  background-color: var(--bg) !important;
+  max-width: none !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  margin: 0 !important;
+}
+
+.mantine-Drawer-content.add-meal-hero {
+  background-color: var(--card) !important;
+}
+
+.mantine-Drawer-content.add-meal-full .mantine-Drawer-body {
+  padding-bottom: 0 !important;
+}

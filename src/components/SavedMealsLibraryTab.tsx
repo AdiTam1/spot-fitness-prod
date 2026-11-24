@@ -435,28 +435,6 @@ export function SavedMealsLibraryTab({
           </button>
         </div>
 
-        <button
-          type="button"
-          onClick={onOpenToolsModal}
-          className="btn-surface"
-          title="ניהול כלים ויחידות מדידה"
-          style={{
-            padding: '8px 11px',
-            borderRadius: 999,
-            fontSize: 12,
-            fontWeight: 700,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            cursor: 'pointer',
-            borderColor: 'var(--line-2)',
-            whiteSpace: 'nowrap',
-            flexShrink: 0,
-          }}
-        >
-          <Ruler size={13} color="currentColor" />
-          <span>כלים ויחידות</span>
-        </button>
       </div>
 
       {/* צ׳יפים לסינון */}
