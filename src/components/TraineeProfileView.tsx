@@ -1270,11 +1270,17 @@ export function TraineeProfileView({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {loggedMealsList.map((row) => {
               const [yy, mo, dd] = row.date.split('-');
-              const time =
-                row.mealTime ||
-                (row.updatedAt
-                  ? new Date(row.updatedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false })
-                  : '');
+              const rawTimeSource = (row.mealTime || row.updatedAt || '').trim();
+              let time = '';
+              if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(rawTimeSource)) {
+                const [hh, mm] = rawTimeSource.split(':');
+                time = `${hh.padStart(2, '0')}:${mm}`;
+              } else if (rawTimeSource) {
+                const parsed = new Date(rawTimeSource);
+                if (!Number.isNaN(parsed.getTime())) {
+                  time = parsed.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false });
+                }
+              }
               return (
                 <button
                   key={row.id}

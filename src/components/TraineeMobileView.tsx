@@ -1532,9 +1532,21 @@ export function TraineeMobileView({
                   <div
                     key={slot.id}
                     className="pro-card"
+                    onClick={(e) => {
+                      if (!hasItems || isBlockedDay) return;
+                      if (
+                        (e.target as HTMLElement).closest(
+                          'button, input, a, select, label'
+                        )
+                      ) {
+                        return;
+                      }
+                      openMealDrawer(slot, 'meal-items');
+                    }}
                     style={{
                       padding: 16,
                       borderRadius: 24,
+                      cursor: hasItems && !isBlockedDay ? 'pointer' : 'default',
                       borderColor:
                         hasItems && isObservationDay
                           ? 'var(--surface-2)'
@@ -1803,8 +1815,9 @@ export function TraineeMobileView({
                         {loggedItems.map((item, i) => (
                           <div
                             key={item.id}
-                            onClick={() => {
-                              if (!isBlockedDay) openMealDrawer(slot, 'catalog');
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!isBlockedDay) openMealDrawer(slot, 'meal-items');
                             }}
                             style={{
                               display: 'flex',
@@ -1992,28 +2005,30 @@ export function TraineeMobileView({
                           );
                         })}
 
-                      <button
-                        type="button"
-                        disabled={isBlockedDay}
-                        onClick={() => openMealDrawer(slot, 'hub')}
-                        className={hasItems ? 'btn-surface' : 'btn-volt'}
-                        style={{
-                          flex: '1 1 auto',
-                          minWidth: 0,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 5,
-                          padding: '9px 10px',
-                          fontSize: 13,
-                          whiteSpace: 'nowrap',
-                          opacity: isBlockedDay ? 0.45 : 1,
-                          cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                        }}
-                      >
-                        <Plus size={14} style={{ flexShrink: 0 }} />
-                        <span>{hasItems ? 'הוסף / ערוך' : 'הזן ארוחה'}</span>
-                      </button>
+                      {!hasItems && (
+                        <button
+                          type="button"
+                          disabled={isBlockedDay}
+                          onClick={() => openMealDrawer(slot, 'hub')}
+                          className="btn-volt"
+                          style={{
+                            flex: '1 1 auto',
+                            minWidth: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 5,
+                            padding: '9px 10px',
+                            fontSize: 13,
+                            whiteSpace: 'nowrap',
+                            opacity: isBlockedDay ? 0.45 : 1,
+                            cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          <Plus size={14} style={{ flexShrink: 0 }} />
+                          <span>הזן ארוחה</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -2573,7 +2588,7 @@ export function TraineeMobileView({
                 const targetSlot = findTraineeMealSlotById(trainee, mealSlotId);
                 if (targetSlot) {
                   setActiveMealSlot(targetSlot);
-                  setDrawerTab('hub');
+                  setDrawerTab('meal-items');
                 }
               }}
             />

@@ -695,7 +695,7 @@ export default function HomePage() {
           traineeId,
           date: targetDate,
           mealSlotId: target.mealSlotId,
-          initialTab: target.kind === 'ai-meal' ? 'ai-photo' : undefined,
+          initialTab: target.kind === 'ai-meal' ? 'meal-items' : undefined,
           nonce: Date.now(),
         });
       } else {
@@ -1633,7 +1633,7 @@ export default function HomePage() {
                 : j
             )
           );
-          await fetchAuthorizedData();
+          await fetchAuthorizedData({ force: true });
         } else {
           setLocalBgJobs((prev) =>
             prev.map((j) =>
@@ -3020,11 +3020,17 @@ export default function HomePage() {
             void handleCancelAiJob(jobId, loggedInTraineeProfile.id)
           }
           onOpenJobMeal={(job) => {
+            void fetchAuthorizedData({ force: true });
             setExternalOpenMealRequest({
               traineeId: job.targetTraineeId,
               date: job.date,
               mealSlotId: job.mealSlotId,
-              initialTab: job.mode === 'photo' ? 'ai-photo' : 'ai-text',
+              initialTab:
+                job.status === 'completed'
+                  ? 'meal-items'
+                  : job.mode === 'photo'
+                  ? 'ai-photo'
+                  : 'ai-text',
               nonce: Date.now(),
             });
           }}

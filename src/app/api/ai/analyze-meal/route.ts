@@ -286,6 +286,11 @@ function formatContextParamsPrompt(ctx?: AiContextParams): string {
   if (ctx.portionOrGrams?.trim()) {
     lines.push(`- כמויות/משקל שדווחו: ${ctx.portionOrGrams.trim()}`);
   }
+  if (ctx.netFoodWeightGrams && Number.isFinite(ctx.netFoodWeightGrams) && ctx.netFoodWeightGrams > 0) {
+    lines.push(
+      `- משקל האוכל הכולל במנה (נטו בגרם, ללא הצלחת/קערה): ${Math.round(ctx.netFoodWeightGrams)} גרם — הקפד שסכום הגרמים של כלל המרכיבים שתזהה יהיה תואם למשקל נטו זה.`
+    );
+  }
   if (ctx.prepState?.trim()) {
     lines.push(`- מצב צבירה/בישול/חיתוך: ${ctx.prepState.trim()}`);
   }
@@ -1114,6 +1119,9 @@ ${contextBlock ? `\nנתוני הקשר מעודכנים מהמשתמש:\n${cont
     // גיבוי טקסטואלי דטרמיניסטי: משלב גם טקסט וגם שדות הקשר (רטבים/שתייה/יחידות מותאמות)
     const combinedFallbackText = [
       textPrompt || '',
+      contextParams?.netFoodWeightGrams && contextParams.netFoodWeightGrams > 0
+        ? `${Math.round(contextParams.netFoodWeightGrams)} גרם`
+        : '',
       contextParams?.portionOrGrams || '',
       contextParams?.saucesAndOils || '',
       contextParams?.drinksAndSides || '',
@@ -1143,21 +1151,30 @@ ${contextBlock ? `\nנתוני הקשר מעודכנים מהמשתמש:\n${cont
       fallbackReason,
     }));
 
-    // אם המתאמן בחר כלי מוגדר עם משקל ברירת מחדל ויש מרכיב מרכזי אחד ללא משקל מפורש — הצמד משקל מכלי
+    // אם המתאמן הזין משקל מנה נטו או בחר כלי מוגדר עם משקל ברירת מחדל ויש מרכיב מרכזי אחד ללא משקל מפורש — הצמד משקל
     if (
       items.length === 1 &&
       !(textPrompt && /\d+\s*(?:גרם|ג'|g)/i.test(textPrompt)) &&
-      contextParams?.servingToolLabel
+      ((contextParams?.netFoodWeightGrams && contextParams.netFoodWeightGrams > 0) ||
+        contextParams?.servingToolLabel)
     ) {
       const catMatch = mergedCatalogPool.find((c) => c.name === items[0].name);
       const customGrams = contextParams?.portionOrGrams?.match(/(\d+)\s*(?:גרם|g)/i)?.[1];
-      const toolGrams = customGrams ? Number(customGrams) : undefined;
+      const toolGrams =
+        contextParams?.netFoodWeightGrams && contextParams.netFoodWeightGrams > 0
+          ? Math.round(contextParams.netFoodWeightGrams)
+          : customGrams
+          ? Number(customGrams)
+          : undefined;
       if (catMatch && toolGrams && toolGrams > 0) {
+        const labelPrefix = contextParams?.servingToolLabel
+          ? contextParams.servingToolLabel
+          : 'משקל מנה מדווח';
         items = [
           {
             ...items[0],
             grams: toolGrams,
-            unitLabel: `${contextParams.servingToolLabel} (${toolGrams} גרם)`,
+            unitLabel: `${labelPrefix} (${toolGrams} גרם)`,
             macros: calculateMacrosForGrams(catMatch.per100g, toolGrams),
           },
         ];

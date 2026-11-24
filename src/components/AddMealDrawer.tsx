@@ -655,7 +655,8 @@ export function AddMealDrawer({
 
   const handlePhotoUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    preferredAngle?: 'top-down' | 'side-45' | 'label' | 'other'
+    preferredAngle?: 'top-down' | 'side-45' | 'label' | 'other',
+    options?: { stayOnTab?: boolean }
   ) => {
     const files = Array.from(e.target.files || []).slice(
       0,
@@ -713,7 +714,9 @@ export function AddMealDrawer({
         return merged;
       });
       setCameraChooserOpen(false);
-      setActiveTab('ai-photo');
+      if (!options?.stayOnTab) {
+        setActiveTab('ai-photo');
+      }
     } catch {
       setAiSummary({ msg: 'לא ניתן לקרוא את התמונה – נסה לצלם שוב', isError: true });
     } finally {
@@ -2757,6 +2760,108 @@ export function AddMealDrawer({
                   )}
                 </div>
 
+                {/* הקשר נוסף לצילום + משקל מנה נטו בגרם (ללא הצלחת) — בראש ההגדרות מעל דיוק מהיר */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <label htmlFor="photo-note" style={{ fontSize: 13, color: 'var(--text-2)', fontWeight: 600 }}>
+                      {photoMode === 'nutrition-label'
+                        ? 'שם המוצר וכמות שאכלת'
+                        : 'הקשר נוסף לצילום (אופציונלי)'}
+                    </label>
+                    <textarea
+                      id="photo-note"
+                      rows={2}
+                      placeholder={
+                        photoMode === 'nutrition-label'
+                          ? 'למשל: חטיף חלבון - יחידה אחת 60 גרם'
+                          : 'למשל: פיתה כוסמין, גבינה צהובה 9%, עגבנייה וקוטג׳'
+                      }
+                      value={photoNote}
+                      onChange={(e) => setPhotoNote(e.currentTarget.value)}
+                      style={{
+                        font: 'inherit',
+                        fontSize: 16,
+                        color: 'var(--text)',
+                        background: 'var(--card)',
+                        border: '1px solid var(--line-2)',
+                        borderRadius: 20,
+                        padding: '12px 14px',
+                        resize: 'none',
+                        outline: 'none',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <label htmlFor="photo-net-grams" style={{ fontSize: 13, color: 'var(--text-2)', fontWeight: 600 }}>
+                      כמה גרם המנה (ללא הצלחת, אופציונלי)
+                    </label>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        background: 'var(--card)',
+                        border: '1px solid var(--line-2)',
+                        borderRadius: 18,
+                        padding: '0 14px',
+                        height: 48,
+                      }}
+                    >
+                      <input
+                        id="photo-net-grams"
+                        type="number"
+                        inputMode="decimal"
+                        min={1}
+                        max={5000}
+                        step={1}
+                        dir="ltr"
+                        placeholder="למשל: 250"
+                        value={contextParams.netFoodWeightGrams ?? ''}
+                        onChange={(e) => {
+                          const raw = e.currentTarget.value;
+                          if (raw === '') {
+                            setContextParams({
+                              ...contextParams,
+                              netFoodWeightGrams: undefined,
+                            });
+                            return;
+                          }
+                          const parsed = Number(raw);
+                          if (Number.isFinite(parsed) && parsed >= 0) {
+                            setContextParams({
+                              ...contextParams,
+                              netFoodWeightGrams: Math.min(5000, Math.round(parsed)),
+                            });
+                          }
+                        }}
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          background: 'transparent',
+                          border: 'none',
+                          color: 'var(--text)',
+                          font: 'inherit',
+                          fontSize: 16,
+                          fontWeight: 700,
+                          textAlign: 'right',
+                          outline: 'none',
+                        }}
+                      />
+                      <span
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: 'var(--text-2)',
+                          flexShrink: 0,
+                        }}
+                      >
+                        גרם (ללא צלחת)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
                 <AiQuickContextPanel
                   traineeId={traineeId}
                   customServingTools={customServingTools}
@@ -2772,36 +2877,6 @@ export function AddMealDrawer({
                   }}
                   onManageQuickChips={onManageQuickChips}
                 />
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label htmlFor="photo-note" style={{ fontSize: 13, color: 'var(--text-2)' }}>
-                    {photoMode === 'nutrition-label'
-                      ? 'שם המוצר וכמות שאכלת'
-                      : 'הקשר נוסף לצילום (אופציונלי)'}
-                  </label>
-                  <textarea
-                    id="photo-note"
-                    rows={2}
-                    placeholder={
-                      photoMode === 'nutrition-label'
-                        ? 'למשל: חטיף חלבון - יחידה אחת 60 גרם'
-                        : 'למשל: 180 גרם פסטה מבושלת, ללא תוספת שמן'
-                    }
-                    value={photoNote}
-                    onChange={(e) => setPhotoNote(e.currentTarget.value)}
-                    style={{
-                      font: 'inherit',
-                      fontSize: 16,
-                      color: 'var(--text)',
-                      background: 'var(--card)',
-                      border: '1px solid var(--line-2)',
-                      borderRadius: 20,
-                      padding: '12px 14px',
-                      resize: 'none',
-                      outline: 'none',
-                    }}
-                  />
-                </div>
 
                 {/* Pinned analyse action (design: "נתח את הצלחת") */}
                 <div className="wizard-nav" style={{ marginTop: 0, background: 'linear-gradient(to top, var(--bg) 70%, transparent)' }}>
@@ -3524,6 +3599,111 @@ export function AddMealDrawer({
                         </div>
                       );
                     })}
+                  </div>
+                )}
+
+                {allMealPhotos.length === 0 && (
+                  <div
+                    style={{
+                      background: 'var(--card)',
+                      borderRadius: 18,
+                      padding: '12px 14px',
+                      border: '1px solid var(--line)',
+                      boxShadow: 'var(--card-shadow)',
+                      marginBottom: 14,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <span
+                          style={{
+                            fontSize: 13.5,
+                            fontWeight: 700,
+                            color: 'var(--text)',
+                          }}
+                        >
+                          תמונת הארוחה (אופציונלי)
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 11.5,
+                            color: 'var(--text-2)',
+                          }}
+                        >
+                          צילום או העלאה יציגו את התמונה בראש הארוחה
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <label
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          height: 44,
+                          borderRadius: 999,
+                          background: 'var(--btn-primary)',
+                          color: 'var(--btn-primary-text)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Camera size={15} />
+                        <span>צלם עכשיו</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={(e) =>
+                            handlePhotoUpload(e, 'top-down', { stayOnTab: true })
+                          }
+                          style={{ display: 'none' }}
+                        />
+                      </label>
+                      <label
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          height: 44,
+                          borderRadius: 999,
+                          background: 'var(--surface-2)',
+                          border: '1px solid var(--line-2)',
+                          color: 'var(--text)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <ImageIcon size={15} />
+                        <span>מהגלריה / קובץ</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) =>
+                            handlePhotoUpload(e, 'top-down', { stayOnTab: true })
+                          }
+                          style={{ display: 'none' }}
+                        />
+                      </label>
+                    </div>
                   </div>
                 )}
 

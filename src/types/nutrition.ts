@@ -377,6 +377,7 @@ export interface AiContextParams {
   servingToolVolumeMl?: number;
   saucesAndOils?: string;
   portionOrGrams?: string;
+  netFoodWeightGrams?: number;
   prepState?: string;
   drinksAndSides?: string;
   mealSource?: 'home' | 'restaurant' | 'packaged' | '';

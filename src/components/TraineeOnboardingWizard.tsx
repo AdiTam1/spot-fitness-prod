@@ -6,7 +6,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  SkipForward,
   Footprints,
   Dumbbell,
   Loader2,
@@ -457,24 +456,33 @@ export function TraineeOnboardingWizard({
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: 8,
+                gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+                gap: 10,
               }}
             >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div
+                style={{
+                  gridColumn: '1 / -1',
+                  minWidth: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                }}
+              >
                 <div
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: 600,
+                    color: 'var(--text)',
                   }}
                 >
                   <span>תאריך לידה</span>
                   <span
                     style={{
-                      fontSize: 10.5,
+                      fontSize: 11.5,
                       fontWeight: 800,
                       color: 'var(--accent-orange-bright)',
                     }}
@@ -492,25 +500,35 @@ export function TraineeOnboardingWizard({
                   }}
                   style={{
                     width: '100%',
-                    height: 36,
-                    padding: '0 10px',
-                    borderRadius: 12,
+                    maxWidth: '100%',
+                    minWidth: 0,
+                    boxSizing: 'border-box',
+                    height: 52,
+                    minHeight: 52,
+                    padding: '0 14px',
+                    borderRadius: 16,
                     border: '1px solid var(--line-2)',
-                    background: 'var(--bg-surface-2)',
-                    color: 'var(--text-primary)',
-                    fontSize: 13,
+                    backgroundColor: 'var(--surface-2)',
+                    color: 'var(--text)',
+                    fontSize: 16,
                     fontWeight: 600,
-                    colorScheme: 'dark',
+                    fontFamily: 'inherit',
+                    display: 'flex',
+                    alignItems: 'center',
+                    WebkitAppearance: 'none',
+                    appearance: 'none',
                   }}
                 />
               </div>
-              <NumberInput
-                label="גובה (ס״מ)"
-                value={heightCm}
-                min={120}
-                max={230}
-                onChange={(v) => setHeightCm(Number(v) || 174)}
-              />
+              <div style={{ gridColumn: '1 / -1', minWidth: 0 }}>
+                <NumberInput
+                  label="גובה (ס״מ)"
+                  value={heightCm}
+                  min={120}
+                  max={230}
+                  onChange={(v) => setHeightCm(Number(v) || 174)}
+                />
+              </div>
               <NumberInput
                 label="משקל נוכחי (ק״ג)"
                 value={currentWeight}
@@ -869,7 +887,7 @@ export function TraineeOnboardingWizard({
         {step === 4 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-              בחר אזור לראות כיצד למדוד. אם אין לידך סרט מדידה כרגע, תוכל לדלג.
+              בחר אזור לראות כיצד למדוד. אם אין לידך סרט מדידה כרגע, תוכל להמשיך ללא מילוי.
             </div>
 
             <BodyMeasurementGuide
@@ -909,27 +927,13 @@ export function TraineeOnboardingWizard({
               <button
                 type="button"
                 onClick={() => {
-                  setSkippedMeasurements(true);
-                  setStep(5);
-                }}
-                className="btn-surface"
-                style={{
-                  padding: '10px 12px',
-                  fontSize: 12,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  cursor: 'pointer',
-                }}
-              >
-                <SkipForward size={13} />
-                <span>דלג</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setSkippedMeasurements(false);
+                  const hasAnyFilled = Boolean(
+                    measurements.chestCm ||
+                      measurements.waistNavelCm ||
+                      measurements.armCm ||
+                      measurements.thighCm
+                  );
+                  setSkippedMeasurements(!hasAnyFilled);
                   setStep(5);
                 }}
                 className="btn-volt"
