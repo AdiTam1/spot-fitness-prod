@@ -403,6 +403,60 @@ export function TraineeMobileView({
   }
 
   const weekDays = getWeekDaysAroundDate(selectedDate, todayIso);
+  // Weekly summary shared by the check-in stats grid and the WhatsApp report (same numbers as before).
+  const buildWeeklySummary = () => {
+    const actTargets = trainee.activityTargets || {
+      weeklyWorkoutsTarget: 4,
+      weeklyCardioTarget: 3,
+      dailySleepTargetHours: 7.5,
+      dailyStepsTarget: 8000,
+    };
+    const workoutsDone = weekDays.filter((wd) => trainee.logs[wd.iso]?.workoutLog?.completed).length;
+    const cardioDone = weekDays.filter((wd) => trainee.logs[wd.iso]?.cardioLog?.completed).length;
+    const sleepDays = weekDays
+      .map((wd) => trainee.logs[wd.iso]?.sleepHours)
+      .filter((v): v is number => typeof v === 'number' && v > 0);
+    const avgSleep = sleepDays.length > 0 ? (sleepDays.reduce((a, b) => a + b, 0) / sleepDays.length).toFixed(1) : '—';
+    const hasAutoSyncedWeek = weekDays.some((wd) => {
+      const src = trainee.logs[wd.iso]?.stepsSource;
+      return Boolean(src && src !== 'manual');
+    });
+    const stepDays = weekDays
+      .map((wd) => trainee.logs[wd.iso]?.steps)
+      .filter((v): v is number => typeof v === 'number' && v > 0);
+    const avgSteps =
+      stepDays.length > 0
+        ? Math.round(stepDays.reduce((a, b) => a + b, 0) / stepDays.length).toLocaleString()
+        : '—';
+    const stepsGoal = actTargets.dailyStepsTarget ?? 8000;
+    return {
+      stats: [
+        { label: 'אימונים', value: `${workoutsDone}/${actTargets.weeklyWorkoutsTarget}` },
+        { label: 'הליכות / ריצות', value: `${cardioDone}/${actTargets.weeklyCardioTarget}` },
+        { label: 'שינה ממוצעת', value: avgSleep },
+        { label: 'צעדים ממוצע', value: avgSteps },
+        { label: 'משקל נוכחי', value: String(trainee.currentWeight) },
+        { label: 'משקל יעד', value: String(trainee.targetWeight) },
+      ],
+      report: (note: string) =>
+        [
+          `📊 *דו"ח סיכום שבועי SPOT - ${trainee.name}* (${todayIso})`,
+          `• משקל נוכחי: ${trainee.currentWeight} ק"ג (יעד: ${trainee.targetWeight} ק"ג)`,
+          `• אימונים השבוע: ${workoutsDone}/${actTargets.weeklyWorkoutsTarget}`,
+          hasAutoSyncedWeek ? `• ממוצע צעדים יומי: ${avgSteps} (יעד: ${stepsGoal.toLocaleString()})` : '',
+          `• הליכות/ריצות השבוע: ${cardioDone}/${actTargets.weeklyCardioTarget}`,
+          `• ממוצע שעות שינה: ${avgSleep} שעות (יעד: ${actTargets.dailySleepTargetHours})`,
+          latestMeasurement
+            ? `• היקפים אחרונים: חזה ${latestMeasurement.chestCm || '—'} | בטן ${latestMeasurement.waistNavelCm || '—'} | זרוע ${latestMeasurement.armCm || '—'} | ירך ${latestMeasurement.thighCm || '—'} ס"מ`
+            : '',
+          `• הרגשה שבועית (1-5): אנרגיה ${energyLevel}/5 | שובע ${hungerLevel}/5 | איכות שינה ${sleepQuality}/5`,
+          note ? `• הערת מתאמן: ${note}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+    };
+  };
+
   const prevWeekAnchor = addDaysIso(selectedDate, -7);
   const nextWeekAnchor = addDaysIso(selectedDate, 7);
   const canPrevWeek = getWeekDaysAroundDate(prevWeekAnchor, todayIso).some((d) =>
@@ -503,8 +557,8 @@ export function TraineeMobileView({
             justifyContent: 'space-between',
             padding: '10px 14px',
             borderRadius: 14,
-            background: 'rgba(214, 125, 9, 0.12)',
-            border: '1px solid rgba(214, 125, 9, 0.35)',
+            background: 'var(--surface-2)',
+            border: '1px solid var(--line-2)',
             marginBottom: 14,
           }}
         >
@@ -522,7 +576,7 @@ export function TraineeMobileView({
             className="btn-volt"
             style={{
               padding: '5px 12px',
-              fontSize: 11,
+              fontSize: 12,
               cursor: 'pointer',
             }}
           >
@@ -541,21 +595,21 @@ export function TraineeMobileView({
             justifyContent: 'space-between',
             padding: '10px 14px',
             borderRadius: 14,
-            background: 'rgba(56, 189, 248, 0.1)',
-            border: '1px solid rgba(56, 189, 248, 0.35)',
+            background: 'var(--surface-2)',
+            border: '1px solid var(--line-2)',
             marginBottom: 12,
             cursor: 'pointer',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Ruler size={16} color="#38bdf8" />
+            <Ruler size={16} color="var(--text-2)" />
             <span style={{ fontSize: 12, fontWeight: 700, color: '#38bdf8' }}>
               טרם השלמת מדידת היקפים ראשונית – לחץ להדרכה מונפשת
             </span>
           </div>
           <span
             style={{
-              fontSize: 11,
+              fontSize: 12,
               fontWeight: 800,
               color: '#38bdf8',
               textDecoration: 'underline',
@@ -672,7 +726,7 @@ export function TraineeMobileView({
               setCalendarModalOpen(true);
             }}
             style={{
-              height: 40,
+              height: 44,
               padding: '0 12px 0 14px',
               borderRadius: 999,
               display: 'flex',
@@ -701,7 +755,7 @@ export function TraineeMobileView({
                 className="glass"
                 onClick={() => setSelectedDate(todayIso)}
                 style={{
-                  height: 40,
+                  height: 44,
                   padding: '0 14px',
                   borderRadius: 999,
                   fontFamily: 'inherit',
@@ -715,7 +769,7 @@ export function TraineeMobileView({
             )}
             <GlassButton
               label="שבוע קודם"
-              size={40}
+              size={44}
               disabled={!canPrevWeek}
               onClick={() => {
                 const candidates = getWeekDaysAroundDate(prevWeekAnchor, todayIso).filter((d) =>
@@ -730,7 +784,7 @@ export function TraineeMobileView({
             </GlassButton>
             <GlassButton
               label="שבוע הבא"
-              size={40}
+              size={44}
               disabled={!canNextWeek}
               onClick={() => {
                 const candidates = getWeekDaysAroundDate(nextWeekAnchor, todayIso).filter((d) =>
@@ -864,9 +918,9 @@ export function TraineeMobileView({
                   gap: 10,
                 }}
               >
-                <Ban size={18} color="#f87171" style={{ flexShrink: 0 }} />
+                <Ban size={18} color="var(--danger-text)" style={{ flexShrink: 0 }} />
                 <div style={{ fontSize: 12 }}>
-                  <div style={{ fontWeight: 800, color: '#f87171' }}>
+                  <div style={{ fontWeight: 800, color: 'var(--danger-text)' }}>
                     יום חסום להזנה
                   </div>
                   <div style={{ color: 'var(--text-secondary)' }}>
@@ -882,15 +936,15 @@ export function TraineeMobileView({
                 style={{
                   padding: '10px 14px',
                   borderRadius: 14,
-                  background: 'rgba(56, 189, 248, 0.1)',
-                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--line-2)',
                   marginBottom: 14,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 10,
                 }}
               >
-                <Eye size={18} color="#38bdf8" style={{ flexShrink: 0 }} />
+                <Eye size={18} color="var(--text-2)" style={{ flexShrink: 0 }} />
                 <div style={{ fontSize: 12 }}>
                   <div style={{ fontWeight: 800, color: '#38bdf8' }}>
                     יום תשקיף (ללא מטרת יעד קלורי)
@@ -902,9 +956,9 @@ export function TraineeMobileView({
                     <div
                       style={{
                         marginTop: 3,
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: 700,
-                        color: '#7dd3fc',
+                        color: 'var(--info-text)',
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: 4,
@@ -923,7 +977,7 @@ export function TraineeMobileView({
               aria-label="סיכום יומי"
               style={{
                 background: 'var(--card)',
-                border: `1px solid ${isObservationDay ? 'rgba(56, 189, 248, 0.35)' : 'var(--line)'}`,
+                border: `1px solid ${isObservationDay ? 'var(--surface-2)' : 'var(--line)'}`,
                 borderRadius: 28,
                 padding: 20,
                 marginBottom: 20,
@@ -1169,7 +1223,7 @@ export function TraineeMobileView({
                         padding: '10px 8px',
                         border:
                           remainingWorkouts === 0
-                            ? '1px solid rgba(214, 125, 9, 0.42)'
+                            ? '1px solid var(--line-2)'
                             : '1px solid var(--border-subtle)',
                         display: 'flex',
                         flexDirection: 'column',
@@ -1195,7 +1249,7 @@ export function TraineeMobileView({
                           ? 'יעד הושלם ✓'
                           : `נותרו ${remainingWorkouts}`}
                       </div>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 700 }}>
                         אימונים ({workoutsThisWeek}/{actTargets.weeklyWorkoutsTarget})
                       </div>
                     </div>
@@ -1207,7 +1261,7 @@ export function TraineeMobileView({
                         padding: '10px 8px',
                         border:
                           remainingCardio === 0
-                            ? '1px solid rgba(214, 125, 9, 0.42)'
+                            ? '1px solid var(--line-2)'
                             : '1px solid var(--border-subtle)',
                         display: 'flex',
                         flexDirection: 'column',
@@ -1233,7 +1287,7 @@ export function TraineeMobileView({
                           ? 'יעד הושלם ✓'
                           : `נותרו ${remainingCardio}`}
                       </div>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 700 }}>
                         הליכה/ריצה ({cardioThisWeek}/{actTargets.weeklyCardioTarget})
                       </div>
                     </div>
@@ -1246,7 +1300,7 @@ export function TraineeMobileView({
                           padding: '10px 8px',
                           border:
                             remainingSteps === 0
-                              ? '1px solid rgba(214, 125, 9, 0.42)'
+                              ? '1px solid var(--line-2)'
                               : '1px solid var(--border-subtle)',
                           display: 'flex',
                           flexDirection: 'column',
@@ -1272,7 +1326,7 @@ export function TraineeMobileView({
                             ? 'יעד הושלם ✓'
                             : `נותרו ${remainingSteps.toLocaleString()}`}
                         </div>
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 700 }}>
                           צעדים ({currentSteps.toLocaleString()})
                         </div>
                       </div>
@@ -1308,7 +1362,7 @@ export function TraineeMobileView({
                       padding: '10px 12px',
                       borderRadius: 12,
                       border: todayWorkout?.completed
-                        ? '1px solid rgba(214, 125, 9, 0.35)'
+                        ? '1px solid var(--line-2)'
                         : '1px solid var(--border-subtle)',
                     }}
                   >
@@ -1335,7 +1389,7 @@ export function TraineeMobileView({
                       <span
                         className="num-mono"
                         style={{
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: 800,
                           color:
                             workoutsThisWeek >= actTargets.weeklyWorkoutsTarget
@@ -1393,7 +1447,7 @@ export function TraineeMobileView({
                                 : 'var(--bg-surface-1)',
                               color: isSelected ? 'var(--sel-text)'
                                 : 'var(--text-secondary)',
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: 700,
                               opacity: isBlockedDay ? 0.45 : 1,
                               cursor: isBlockedDay ? 'not-allowed' : 'pointer',
@@ -1413,7 +1467,7 @@ export function TraineeMobileView({
                       padding: '10px 12px',
                       borderRadius: 12,
                       border: todayCardio?.completed
-                        ? '1px solid rgba(214, 125, 9, 0.4)'
+                        ? '1px solid var(--line-2)'
                         : '1px solid var(--border-subtle)',
                     }}
                   >
@@ -1443,7 +1497,7 @@ export function TraineeMobileView({
                       <span
                         className="num-mono"
                         style={{
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: 800,
                           color:
                             cardioThisWeek >= actTargets.weeklyCardioTarget
@@ -1509,7 +1563,7 @@ export function TraineeMobileView({
                                 : 'var(--bg-surface-1)',
                               color: isSelected ? 'var(--sel-text)'
                                 : 'var(--text-secondary)',
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: 700,
                               cursor: isBlockedDay ? 'not-allowed' : 'pointer',
                               opacity: isBlockedDay ? 0.45 : 1,
@@ -1529,7 +1583,7 @@ export function TraineeMobileView({
                       padding: '10px 12px',
                       borderRadius: 12,
                       border: todaySleep
-                        ? '1px solid rgba(214, 125, 9, 0.4)'
+                        ? '1px solid var(--line-2)'
                         : '1px solid var(--border-subtle)',
                     }}
                   >
@@ -1556,7 +1610,7 @@ export function TraineeMobileView({
                       <span
                         className="num-mono"
                         style={{
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: 800,
                           color:
                             (todaySleep || 0) >=
@@ -1601,7 +1655,7 @@ export function TraineeMobileView({
                                 : 'var(--bg-surface-1)',
                               color: isSelected ? 'var(--sel-text)'
                                 : 'var(--text-secondary)',
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: 800,
                               cursor: isBlockedDay ? 'not-allowed' : 'pointer',
                               opacity: isBlockedDay ? 0.45 : 1,
@@ -1636,7 +1690,7 @@ export function TraineeMobileView({
                                 : 'var(--bg-surface-1)',
                               color: isSelected ? 'var(--sel-text)'
                                 : 'var(--text-secondary)',
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: 800,
                               cursor: isBlockedDay ? 'not-allowed' : 'pointer',
                               opacity: isBlockedDay ? 0.45 : 1,
@@ -1682,7 +1736,7 @@ export function TraineeMobileView({
                             flex: 1,
                             minWidth: 0,
                             background: 'var(--bg-surface-1)',
-                            border: '1px solid rgba(214, 125, 9, 0.45)',
+                            border: '1px solid var(--line-2)',
                             borderRadius: 8,
                             padding: '6px 10px',
                             color: 'var(--text-primary)',
@@ -1697,7 +1751,7 @@ export function TraineeMobileView({
                           className="btn-volt"
                           style={{
                             padding: '6px 12px',
-                            fontSize: 11.5,
+                            fontSize: 12.5,
                             cursor: 'pointer',
                           }}
                         >
@@ -1725,7 +1779,7 @@ export function TraineeMobileView({
                 </span>
                 <span
                   style={{
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: 700,
                     padding: '2px 8px',
                     borderRadius: 999,
@@ -1753,7 +1807,7 @@ export function TraineeMobileView({
                     style={{
                       padding: '5px 10px',
                       borderRadius: 999,
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: 700,
                       display: 'flex',
                       alignItems: 'center',
@@ -1761,7 +1815,7 @@ export function TraineeMobileView({
                       cursor: 'pointer',
                       borderColor:
                         answeredCount > 0
-                          ? 'rgba(214, 125, 9, 0.45)'
+                          ? 'var(--surface-2)'
                           : 'var(--border-subtle)',
                       color:
                         answeredCount > 0
@@ -1775,10 +1829,10 @@ export function TraineeMobileView({
                       <span
                         className="num-mono"
                         style={{
-                          fontSize: 10,
+                          fontSize: 12,
                           padding: '1px 5px',
                           borderRadius: 999,
-                          background: 'rgba(214, 125, 9, 0.14)',
+                          background: 'var(--surface-2)',
                           color: 'var(--accent-volt)',
                         }}
                       >
@@ -1815,7 +1869,7 @@ export function TraineeMobileView({
                       borderRadius: 24,
                       borderColor:
                         hasItems && isObservationDay
-                          ? 'rgba(56, 189, 248, 0.3)'
+                          ? 'var(--surface-2)'
                           : 'var(--border-subtle)',
                     }}
                   >
@@ -1875,7 +1929,7 @@ export function TraineeMobileView({
                             className="num-mono"
                             style={{
                               position: 'absolute',
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: 800,
                               color: hasItems
                                 ? isObservationDay
@@ -1935,7 +1989,7 @@ export function TraineeMobileView({
                                     ? 'var(--text)'
                                     : 'var(--text-secondary)',
                                   minHeight: 26,
-                                  fontSize: 11,
+                                  fontSize: 12,
                                   fontWeight: 700,
                                   opacity: isBlockedDay ? 0.5 : 1,
                                   cursor:
@@ -2014,7 +2068,7 @@ export function TraineeMobileView({
                         </div>
                         <div
                           style={{
-                            fontSize: 10,
+                            fontSize: 12,
                             color: 'var(--text-muted)',
                           }}
                         >
@@ -2057,7 +2111,7 @@ export function TraineeMobileView({
                             <div style={{ flex: 1 }}>
                               <div
                                 style={{
-                                  fontSize: 11,
+                                  fontSize: 12,
                                   fontWeight: 700,
                                   color: 'var(--accent-volt)',
                                 }}
@@ -2067,7 +2121,7 @@ export function TraineeMobileView({
                               {entry.photoNote && (
                                 <div
                                   style={{
-                                    fontSize: 11,
+                                    fontSize: 12,
                                     color: 'var(--text-secondary)',
                                   }}
                                 >
@@ -2111,7 +2165,7 @@ export function TraineeMobileView({
                               </div>
                               <div
                                 style={{
-                                  fontSize: 11,
+                                  fontSize: 12,
                                   color: 'var(--text-muted)',
                                 }}
                               >
@@ -2132,7 +2186,7 @@ export function TraineeMobileView({
                               {item.macros.calories}{' '}
                               <span
                                 style={{
-                                  fontSize: 10,
+                                  fontSize: 12,
                                   color: 'var(--text-muted)',
                                   fontWeight: 500,
                                 }}
@@ -2153,8 +2207,8 @@ export function TraineeMobileView({
                           gap: 10,
                           padding: '10px 12px',
                           borderRadius: 12,
-                          background: 'rgba(214, 125, 9, 0.07)',
-                          border: '1px solid rgba(214, 125, 9, 0.22)',
+                          background: 'var(--fill-1)',
+                          border: '1px solid var(--line-2)',
                           marginBottom: 12,
                         }}
                       >
@@ -2256,7 +2310,7 @@ export function TraineeMobileView({
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: 4,
-                                fontSize: 11.5,
+                                fontSize: 12.5,
                                 fontWeight: 700,
                                 whiteSpace: 'nowrap',
                                 flexShrink: 0,
@@ -2324,7 +2378,7 @@ export function TraineeMobileView({
                       width: 36,
                       height: 36,
                       borderRadius: 10,
-                      background: 'rgba(214, 125, 9, 0.12)',
+                      background: 'var(--surface-2)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -2395,7 +2449,7 @@ export function TraineeMobileView({
                         {item.val ? `${item.val}` : '—'}
                       </div>
                       <div
-                        style={{ fontSize: 11, color: 'var(--text-secondary)' }}
+                        style={{ fontSize: 12, color: 'var(--text-secondary)' }}
                       >
                         {item.label} (ס״מ)
                       </div>
@@ -2514,7 +2568,7 @@ export function TraineeMobileView({
                       width: 36,
                       height: 36,
                       borderRadius: 10,
-                      background: 'rgba(214, 125, 9, 0.12)',
+                      background: 'var(--surface-2)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -2571,7 +2625,7 @@ export function TraineeMobileView({
                     >
                       {w.weight}
                     </div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                       {w.date}
                     </div>
                   </div>
@@ -2649,9 +2703,9 @@ export function TraineeMobileView({
                 <div
                   style={{
                     marginTop: 8,
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: 700,
-                    color: weightFeedback.isError ? '#f87171' : '#4ade80',
+                    color: weightFeedback.isError ? 'var(--danger-text)' : 'var(--ok-text)',
                   }}
                 >
                   {weightFeedback.msg}
@@ -2659,246 +2713,136 @@ export function TraineeMobileView({
               )}
             </div>
 
-            {/* כרטיס צ'ק-אין שבועי וייצוא דו"ח סיכום לוואטסאפ */}
-            <div className="pro-card" style={{ padding: 18 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: 10,
-                  marginBottom: 12,
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 800 }}>
-                    📋 צ׳ק-אין שבועי ודו״ח סיכום למאמן
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                    עדכן מדדי הרגשה שבועיים או העתק דו״ח התקדמות מלא
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const actTargets = trainee.activityTargets || {
-                      weeklyWorkoutsTarget: 4,
-                      weeklyCardioTarget: 3,
-                      dailySleepTargetHours: 7.5,
-                      dailyStepsTarget: 8000,
-                    };
-                    const workoutsDone = weekDays.filter(
-                      (wd) => trainee.logs[wd.iso]?.workoutLog?.completed
-                    ).length;
-                    const cardioDone = weekDays.filter(
-                      (wd) => trainee.logs[wd.iso]?.cardioLog?.completed
-                    ).length;
-                    const sleepDays = weekDays
-                      .map((wd) => trainee.logs[wd.iso]?.sleepHours)
-                      .filter((s): s is number => typeof s === 'number' && s > 0);
-                    const avgSleep =
-                      sleepDays.length > 0
-                        ? (
-                            sleepDays.reduce((a, b) => a + b, 0) /
-                            sleepDays.length
-                          ).toFixed(1)
-                        : '—';
-                    const hasAutoSyncedWeek = weekDays.some((wd) => {
-                      const s = trainee.logs[wd.iso]?.stepsSource;
-                      return Boolean(s && s !== 'manual');
-                    });
-                    const stepDays = weekDays
-                      .map((wd) => trainee.logs[wd.iso]?.steps)
-                      .filter((s): s is number => typeof s === 'number' && s > 0);
-                    const avgSteps =
-                      stepDays.length > 0
-                        ? Math.round(
-                            stepDays.reduce((a, b) => a + b, 0) / stepDays.length
-                          ).toLocaleString()
-                        : '—';
-                    const stepsGoal = actTargets.dailyStepsTarget ?? 8000;
-
-                    const reportLines = [
-                      `📊 *דו"ח סיכום שבועי SPOT - ${trainee.name}* (${todayIso})`,
-                      `• משקל נוכחי: ${trainee.currentWeight} ק"ג (יעד: ${trainee.targetWeight} ק"ג)`,
-                      `• אימונים השבוע: ${workoutsDone}/${actTargets.weeklyWorkoutsTarget}`,
-                      hasAutoSyncedWeek
-                        ? `• ממוצע צעדים יומי: ${avgSteps} (יעד: ${stepsGoal.toLocaleString()})`
-                        : '',
-                      `• הליכות/ריצות השבוע: ${cardioDone}/${actTargets.weeklyCardioTarget}`,
-                      `• ממוצע שעות שינה: ${avgSleep} שעות (יעד: ${actTargets.dailySleepTargetHours})`,
-                      latestMeasurement
-                        ? `• היקפים אחרונים: חזה ${latestMeasurement.chestCm || '—'} | בטן ${latestMeasurement.waistNavelCm || '—'} | זרוע ${latestMeasurement.armCm || '—'} | ירך ${latestMeasurement.thighCm || '—'} ס"מ`
-                        : '',
-                      `• הרגשה שבועית (1-5): אנרגיה ${energyLevel}/5 | שובע ${hungerLevel}/5 | איכות שינה ${sleepQuality}/5`,
-                      checkInNote ? `• הערת מתאמן: ${checkInNote}` : '',
-                    ]
-                      .filter(Boolean)
-                      .join('\n');
-
-                    setReportCopyError(false);
-                    try {
-                      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-                        await navigator.clipboard.writeText(reportLines);
-                      } else if (typeof document !== 'undefined') {
-                        const ta = document.createElement('textarea');
-                        ta.value = reportLines;
-                        ta.style.position = 'fixed';
-                        ta.style.opacity = '0';
-                        document.body.appendChild(ta);
-                        ta.select();
-                        document.execCommand('copy');
-                        document.body.removeChild(ta);
-                      } else {
-                        throw new Error('Clipboard unavailable');
-                      }
-                      setReportCopiedBanner(true);
-                      setTimeout(() => setReportCopiedBanner(false), 3500);
-                    } catch {
-                      setReportCopyError(true);
-                      setTimeout(() => setReportCopyError(false), 4000);
-                    }
-                  }}
-                  className="btn-surface"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '7px 12px',
-                    fontSize: 11,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    color: 'var(--accent-volt)',
-                    borderColor: 'rgba(214, 125, 9, 0.35)',
-                  }}
-                >
-                  <Share2 size={13} />
-                  <span>העתק דו״ח לוואטסאפ</span>
-                </button>
+            {/* צ'ק-אין שבועי + דו"ח סיכום (design: CheckIn) */}
+            <section aria-label="צ׳ק-אין שבועי" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>צ׳ק-אין שבועי</h2>
+                <span style={{ fontSize: 13, color: 'var(--text-2)' }}>סיכום השבוע · נשלח למאמן</span>
               </div>
 
-              {reportCopiedBanner && (
-                <div
-                  style={{
-                    marginBottom: 12,
-                    padding: '8px 12px',
-                    borderRadius: 10,
-                    background: 'rgba(214, 125, 9, 0.12)',
-                    border: '1px solid rgba(214, 125, 9, 0.35)',
-                    color: 'var(--accent-volt)',
-                    fontSize: 11,
-                    fontWeight: 700,
-                  }}
-                >
-                  ✓ הדו״ח השבועי הועתק ללוח! ניתן להדביק ישירות בוואטסאפ למאמן.
-                </div>
-              )}
-
-              {reportCopyError && (
-                <div
-                  style={{
-                    marginBottom: 12,
-                    padding: '8px 12px',
-                    borderRadius: 10,
-                    background: 'rgba(239, 68, 68, 0.12)',
-                    border: '1px solid rgba(239, 68, 68, 0.35)',
-                    color: '#f87171',
-                    fontSize: 11,
-                    fontWeight: 700,
-                  }}
-                >
-                  לא ניתן להעתיק ללוח בדפדפן זה – בדוק הרשאות העתקה.
-                </div>
-              )}
+              <div
+                aria-label="סיכום השבוע"
+                style={{
+                  background: 'var(--card)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 26,
+                  padding: 16,
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                  rowGap: 14,
+                  columnGap: 8,
+                  boxShadow: 'var(--card-shadow)',
+                }}
+              >
+                {buildWeeklySummary().stats.map((s) => (
+                  <div key={s.label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 20, fontWeight: 700 }}>
+                      {s.value}
+                    </bdi>
+                    <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{s.label}</span>
+                  </div>
+                ))}
+              </div>
 
               <div
+                aria-label="הרגשה שבועית"
                 style={{
+                  background: 'var(--card)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 26,
+                  padding: 16,
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 10,
+                  gap: 16,
+                  boxShadow: 'var(--card-shadow)',
                 }}
               >
                 {[
-                  {
-                    label: 'רמת אנרגיה באימונים וביום-יום (1-5)',
-                    val: energyLevel,
-                    setVal: setEnergyLevel,
-                  },
-                  {
-                    label: 'תחושת שובע ונוחות עם התפריט (1-5)',
-                    val: hungerLevel,
-                    setVal: setHungerLevel,
-                  },
-                  {
-                    label: 'איכות השינה וההתאוששות השבוע (1-5)',
-                    val: sleepQuality,
-                    setVal: setSleepQuality,
-                  },
+                  { label: 'רמת אנרגיה באימונים וביום-יום', val: energyLevel, setVal: setEnergyLevel },
+                  { label: 'תחושת שובע ונוחות עם התפריט', val: hungerLevel, setVal: setHungerLevel },
+                  { label: 'איכות השינה וההתאוששות השבוע', val: sleepQuality, setVal: setSleepQuality },
                 ].map((row) => (
-                  <div
-                    key={row.label}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      flexWrap: 'wrap',
-                      gap: 8,
-                      background: 'var(--bg-surface-2)',
-                      padding: '8px 12px',
-                      borderRadius: 10,
-                    }}
-                  >
-                    <span style={{ fontSize: 12, fontWeight: 700 }}>
-                      {row.label}
-                    </span>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      {[1, 2, 3, 4, 5].map((num) => (
-                        <button
-                          key={num}
-                          type="button"
-                          onClick={() => row.setVal(num)}
-                          className="num-mono"
-                          style={{
-                            width: 26,
-                            height: 26,
-                            borderRadius: 7,
-                            border:
-                              row.val === num ? '1px solid var(--sel-bg)'
-                                : '1px solid var(--border-subtle)',
-                            background:
-                              row.val === num ? 'var(--sel-bg)'
-                                : 'var(--bg-surface-1)',
-                            color:
-                              row.val === num ? 'var(--sel-text)'
-                                : 'var(--text-secondary)',
-                            fontSize: 12,
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {num}
-                        </button>
-                      ))}
+                  <div key={row.label} role="radiogroup" aria-label={row.label} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <span style={{ fontSize: 14, fontWeight: 500 }}>{row.label}</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6 }}>
+                      {[1, 2, 3, 4, 5].map((num) => {
+                        const on = row.val === num;
+                        return (
+                          <button
+                            key={num}
+                            type="button"
+                            role="radio"
+                            aria-checked={on}
+                            onClick={() => row.setVal(num)}
+                            className="num-mono"
+                            style={{
+                              height: 44,
+                              borderRadius: 14,
+                              border: `1px solid ${on ? 'var(--sel-bg)' : 'var(--line-2)'}`,
+                              background: on ? 'var(--sel-bg)' : 'transparent',
+                              color: on ? 'var(--sel-text)' : 'var(--text)',
+                              fontSize: 16,
+                              fontWeight: on ? 700 : 600,
+                              cursor: 'pointer',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            {num}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
+              </div>
 
-                <input
-                  type="text"
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label htmlFor="ci-note" style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                  הערה למאמן
+                </label>
+                <textarea
+                  id="ci-note"
+                  rows={2}
                   placeholder="סיכום קצר או שאלה למאמן לקראת השבוע הבא..."
                   value={checkInNote}
                   onChange={(e) => setCheckInNote(e.target.value)}
                   style={{
-                    background: 'var(--bg-surface-2)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 10,
-                    padding: '9px 12px',
-                    color: 'var(--text-primary)',
-                    fontSize: 12,
+                    font: 'inherit',
+                    fontSize: 16,
+                    color: 'var(--text)',
+                    background: 'var(--card)',
+                    border: '1px solid var(--line-2)',
+                    borderRadius: 20,
+                    padding: '12px 14px',
+                    resize: 'none',
+                    outline: 'none',
                   }}
                 />
+              </div>
 
+              {reportCopiedBanner && (
+                <div
+                  role="status"
+                  style={{ padding: '10px 14px', borderRadius: 16, background: 'var(--surface-2)', fontSize: 13, fontWeight: 600 }}
+                >
+                  ✓ הדו״ח השבועי הועתק! ניתן להדביק ישירות בוואטסאפ למאמן.
+                </div>
+              )}
+              {reportCopyError && (
+                <div
+                  role="alert"
+                  style={{ padding: '10px 14px', borderRadius: 16, background: 'var(--surface-2)', color: 'var(--danger-text)', fontSize: 13, fontWeight: 600 }}
+                >
+                  לא ניתן להעתיק ללוח בדפדפן זה – בדוק הרשאות העתקה.
+                </div>
+              )}
+              {checkInSavedBanner && (
+                <div role="status" style={{ fontSize: 13, color: 'var(--ok-text)', fontWeight: 700, textAlign: 'center' }}>
+                  ✓ הצ׳ק-אין השבועי נשמר ונשלח למאמן!
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <button
                   type="button"
                   disabled={savingCheckIn}
@@ -2925,42 +2869,46 @@ export function TraineeMobileView({
                     }
                   }}
                   className="btn-volt"
-                  style={{
-                    padding: '10px',
-                    fontSize: 12,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    cursor: 'pointer',
-                  }}
+                  style={{ height: 56, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer' }}
                 >
-                  {savingCheckIn ? (
-                    <Loader2 size={15} className="spot-spinner" />
-                  ) : (
-                    <Check size={15} />
-                  )}
-                  <span>
-                    {savingCheckIn
-                      ? 'שומר צ׳ק-אין למאמן...'
-                      : 'שמור צ׳ק-אין שבועי למאמן'}
-                  </span>
+                  {savingCheckIn ? <Loader2 size={18} className="spot-spinner" /> : <Check size={18} />}
+                  <span>{savingCheckIn ? 'שומר צ׳ק-אין...' : 'שמור צ׳ק-אין למאמן'}</span>
                 </button>
-
-                {checkInSavedBanner && (
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: '#4ade80',
-                      fontWeight: 700,
-                      textAlign: 'center',
-                    }}
-                  >
-                    ✓ הצ׳ק-אין השבועי נשמר ונשלח למאמן!
-                  </div>
-                )}
+                <button
+                  type="button"
+                  className="glass"
+                  onClick={async () => {
+                    const lines = buildWeeklySummary().report(checkInNote);
+                    setReportCopyError(false);
+                    try {
+                      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+                        await navigator.clipboard.writeText(lines);
+                      } else if (typeof document !== 'undefined') {
+                        const ta = document.createElement('textarea');
+                        ta.value = lines;
+                        ta.style.position = 'fixed';
+                        ta.style.opacity = '0';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(ta);
+                      } else {
+                        throw new Error('Clipboard unavailable');
+                      }
+                      setReportCopiedBanner(true);
+                      setTimeout(() => setReportCopiedBanner(false), 3500);
+                    } catch {
+                      setReportCopyError(true);
+                      setTimeout(() => setReportCopyError(false), 4000);
+                    }
+                  }}
+                  style={{ height: 52, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}
+                >
+                  <Share2 size={18} />
+                  <span>העתק דו״ח לוואטסאפ</span>
+                </button>
               </div>
-            </div>
+            </section>
           </motion.div>
         ) : (
           /* טאב פרופיל: הארוחות שלי, סטטיסטיקות, הגדרות פושים ושינוי שם */
@@ -3166,7 +3114,7 @@ export function TraineeMobileView({
               overflow: 'hidden',
               borderRadius: 12,
               background: 'var(--bg-surface-2)',
-              border: '1px solid rgba(214, 125, 9, 0.45)',
+              border: '1px solid var(--line-2)',
               padding: '8px 12px',
               display: 'flex',
               alignItems: 'center',
@@ -3209,7 +3157,7 @@ export function TraineeMobileView({
                 );
               }}
               className="btn-surface"
-              style={{ padding: '7px 8px', fontSize: 11.5, cursor: 'pointer' }}
+              style={{ padding: '7px 8px', fontSize: 12.5, cursor: 'pointer' }}
             >
               -15 דק׳
             </button>
@@ -3224,7 +3172,7 @@ export function TraineeMobileView({
                 );
               }}
               className="btn-surface"
-              style={{ padding: '7px 8px', fontSize: 11.5, cursor: 'pointer' }}
+              style={{ padding: '7px 8px', fontSize: 12.5, cursor: 'pointer' }}
             >
               +15 דק׳
             </button>
@@ -3241,7 +3189,7 @@ export function TraineeMobileView({
                 setDraftMealTime(`${hh}:${mm}`);
               }}
               className="btn-surface"
-              style={{ flex: 1, padding: '8px', fontSize: 11.5, cursor: 'pointer' }}
+              style={{ flex: 1, padding: '8px', fontSize: 12.5, cursor: 'pointer' }}
             >
               עכשיו
             </button>
@@ -3256,7 +3204,7 @@ export function TraineeMobileView({
                   );
                 }}
                 className="btn-surface"
-                style={{ flex: 1, padding: '8px', fontSize: 11.5, cursor: 'pointer' }}
+                style={{ flex: 1, padding: '8px', fontSize: 12.5, cursor: 'pointer' }}
               >
                 תבנית ({timeEditSlot.timeHint})
               </button>

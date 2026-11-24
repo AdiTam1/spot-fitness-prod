@@ -369,8 +369,8 @@ export function SavedMealsLibraryTab({
             position: 'relative',
             display: 'flex',
             alignItems: 'center',
-            background: 'var(--bg-surface-2)',
-            border: '1px solid var(--border-subtle)',
+            background: 'var(--surface-2)',
+            border: '1px solid var(--line)',
             borderRadius: 999,
             padding: '0 12px',
             height: 38,
@@ -419,7 +419,7 @@ export function SavedMealsLibraryTab({
               flexShrink: 0,
               color:
                 voiceState === 'listening'
-                  ? '#f87171'
+                  ? 'var(--danger-text)'
                   : voiceState === 'transcribing'
                   ? 'var(--accent-orange-bright)'
                   : 'var(--text-secondary)',
@@ -443,13 +443,13 @@ export function SavedMealsLibraryTab({
           style={{
             padding: '8px 11px',
             borderRadius: 999,
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: 700,
             display: 'flex',
             alignItems: 'center',
             gap: 4,
             cursor: 'pointer',
-            borderColor: 'rgba(214, 125, 9, 0.35)',
+            borderColor: 'var(--line-2)',
             whiteSpace: 'nowrap',
             flexShrink: 0,
           }}
@@ -478,15 +478,15 @@ export function SavedMealsLibraryTab({
             style={{
               padding: '5px 10px',
               borderRadius: 999,
-              fontSize: 11,
+              fontSize: 12,
               fontWeight: 700,
               cursor: 'pointer',
               border:
                 filterMode === f.id ? '1px solid var(--sel-bg)'
-                  : '1px solid var(--border-subtle)',
+                  : '1px solid var(--line)',
               background:
                 filterMode === f.id ? 'var(--sel-bg)'
-                  : 'var(--bg-surface-2)',
+                  : 'var(--surface-2)',
               color:
                 filterMode === f.id ? 'var(--sel-text)'
                   : 'var(--text-secondary)',
@@ -501,21 +501,21 @@ export function SavedMealsLibraryTab({
         <div
           style={{
             padding: '8px 12px',
-            borderRadius: 10,
-            fontSize: 11,
+            borderRadius: 16,
+            fontSize: 12,
             fontWeight: 600,
             background: feedbackBanner.isError
               ? 'rgba(239, 68, 68, 0.14)'
-              : 'rgba(214, 125, 9, 0.1)',
+              : 'var(--fill-1)',
             border: feedbackBanner.isError
               ? '1px solid rgba(239, 68, 68, 0.35)'
-              : '1px solid rgba(214, 125, 9, 0.3)',
-            color: feedbackBanner.isError ? '#fca5a5' : 'var(--accent-volt)',
+              : '1px solid var(--line-2)',
+            color: feedbackBanner.isError ? 'var(--danger-text)' : 'var(--accent-volt)',
           }}
         >
           {feedbackBanner.msg}
           {feedbackBanner.engine && (
-            <span style={{ display: 'block', fontSize: 10, marginTop: 2 }}>
+            <span style={{ display: 'block', fontSize: 12, marginTop: 2 }}>
               {feedbackBanner.isFallback
                 ? `לא AI · Fallback (${feedbackBanner.engine})`
                 : `✨ AI · ${feedbackBanner.engine}`}
@@ -535,9 +535,9 @@ export function SavedMealsLibraryTab({
               <div
                 key={entry.key}
                 style={{
-                  background: 'var(--bg-surface-2)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 12,
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 18,
                   padding: '10px 12px',
                   display: 'flex',
                   flexDirection: 'column',
@@ -546,11 +546,11 @@ export function SavedMealsLibraryTab({
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <History size={13} color="#38bdf8" />
-                    <span className="num-mono" style={{ fontSize: 11, fontWeight: 700, color: '#38bdf8' }}>
+                    <History size={13} color="var(--text-2)" />
+                    <span className="num-mono" style={{ fontSize: 12, fontWeight: 700, color: '#38bdf8' }}>
                       {entry.date}
                     </span>
-                    <span className="num-mono" style={{ fontSize: 11, fontWeight: 700 }}>
+                    <span className="num-mono" style={{ fontSize: 12, fontWeight: 700 }}>
                       · {entry.totalCalories} קק״ל
                     </span>
                   </div>
@@ -560,7 +560,7 @@ export function SavedMealsLibraryTab({
                       disabled={busyId === entry.key}
                       onClick={() => handleSaveHistoryAsPreset(entry)}
                       className="btn-surface"
-                      style={{ padding: '4px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}
+                      style={{ padding: '4px 8px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
                     >
                       <Bookmark size={11} style={{ marginLeft: 4 }} />
                       שמור בספרייה
@@ -572,13 +572,13 @@ export function SavedMealsLibraryTab({
                         setFeedbackBanner({ msg: `ארוחה מתאריך ${entry.date} נטענה` });
                       }}
                       className="btn-volt"
-                      style={{ padding: '4px 10px', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}
+                      style={{ padding: '4px 10px', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
                     >
                       + טען לארוחה
                     </button>
                   </div>
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                   {entry.items.map((it) => `${it.name} (${it.unitLabel})`).join(' · ')}
                 </div>
               </div>
@@ -592,9 +592,9 @@ export function SavedMealsLibraryTab({
               style={{
                 padding: 20,
                 textAlign: 'center',
-                borderRadius: 14,
-                background: 'var(--bg-surface-2)',
-                border: '1px dashed var(--border-subtle)',
+                borderRadius: 20,
+                background: 'var(--surface-2)',
+                border: '1px dashed var(--line)',
                 fontSize: 12,
                 color: 'var(--text-muted)',
               }}
@@ -656,7 +656,7 @@ export function SavedMealsLibraryTab({
                           style={{
                             width: 34,
                             height: 34,
-                            borderRadius: 10,
+                            borderRadius: 16,
                             objectFit: 'cover',
                             border: '1px solid rgba(255,255,255,0.35)',
                           }}
@@ -666,7 +666,7 @@ export function SavedMealsLibraryTab({
                           style={{
                             width: 34,
                             height: 34,
-                            borderRadius: 10,
+                            borderRadius: 16,
                             background: 'var(--line-2)',
                             display: 'flex',
                             alignItems: 'center',
@@ -723,7 +723,7 @@ export function SavedMealsLibraryTab({
                       <div
                         className="num-mono"
                         style={{
-                          fontSize: 10.5,
+                          fontSize: 12.5,
                           fontWeight: 700,
                           color: 'rgba(255, 255, 255, 0.86)',
                           marginTop: 4,
@@ -753,7 +753,7 @@ export function SavedMealsLibraryTab({
                       alignSelf: 'flex-start',
                       padding: '5px 11px',
                       borderRadius: 999,
-                      fontSize: 11.5,
+                      fontSize: 12.5,
                       fontWeight: 700,
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -768,10 +768,10 @@ export function SavedMealsLibraryTab({
                   <div
                     key={preset.id}
                     style={{
-                      background: 'var(--bg-surface-2)',
+                      background: 'var(--surface-2)',
                       border: preset.isPinned
-                        ? '1px solid rgba(214, 125, 9, 0.45)'
-                        : '1px solid var(--border-subtle)',
+                        ? '1px solid var(--line-2)'
+                        : '1px solid var(--line)',
                       borderRadius: 16,
                       padding: 12,
                       display: 'flex',
@@ -789,7 +789,7 @@ export function SavedMealsLibraryTab({
                           style={{
                             width: 44,
                             height: 44,
-                            borderRadius: 10,
+                            borderRadius: 16,
                             objectFit: 'cover',
                             flexShrink: 0,
                           }}
@@ -802,7 +802,7 @@ export function SavedMealsLibraryTab({
                             <span
                               className="num-mono"
                               style={{
-                                fontSize: 10,
+                                fontSize: 12,
                                 padding: '1px 6px',
                                 borderRadius: 999,
                                 background: 'var(--line)',
@@ -815,14 +815,14 @@ export function SavedMealsLibraryTab({
                           {(preset.isAiFallback !== undefined || preset.aiEngine) && (
                             <span
                               style={{
-                                fontSize: 9,
+                                fontSize: 12,
                                 padding: '1px 6px',
                                 borderRadius: 999,
                                 fontWeight: 800,
                                 background: preset.isAiFallback
                                   ? 'rgba(245, 158, 11, 0.16)'
-                                  : 'rgba(214, 125, 9, 0.12)',
-                                color: preset.isAiFallback ? '#fbbf24' : 'var(--accent-volt)',
+                                  : 'var(--surface-2)',
+                                color: preset.isAiFallback ? 'var(--warn-text)' : 'var(--accent-volt)',
                               }}
                             >
                               {preset.isAiFallback
@@ -831,7 +831,7 @@ export function SavedMealsLibraryTab({
                             </span>
                           )}
                         </div>
-                        <div className="num-mono" style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                        <div className="num-mono" style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
                           <b style={{ color: 'var(--text)' }}>{Math.round(preset.totalCalories)} קק״ל</b> · ח׳ {preset.totalProtein}g · פ׳ {preset.totalCarbs}g · ש׳ {preset.totalFat}g
                         </div>
                       </div>
@@ -917,13 +917,13 @@ export function SavedMealsLibraryTab({
                           cursor: 'pointer',
                         }}
                       >
-                        <Trash2 size={12} color="#f87171" />
+                        <Trash2 size={12} color="var(--danger-text)" />
                       </button>
                     </div>
                   </div>
 
                   {/* פירוט רכיבים */}
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                     {preset.items.map((it) => `${it.name} (${it.unitLabel})`).join(' · ')}
                   </div>
 
@@ -932,16 +932,16 @@ export function SavedMealsLibraryTab({
                     <div
                       style={{
                         padding: '7px 10px',
-                        borderRadius: 10,
+                        borderRadius: 16,
                         background:
                           preset.coachQuestion.status === 'answered'
-                            ? 'rgba(214, 125, 9, 0.08)'
+                            ? 'var(--fill-1)'
                             : 'rgba(56, 189, 248, 0.08)',
                         border:
                           preset.coachQuestion.status === 'answered'
-                            ? '1px solid rgba(214, 125, 9, 0.25)'
+                            ? '1px solid var(--line-2)'
                             : '1px solid rgba(56, 189, 248, 0.25)',
-                        fontSize: 11,
+                        fontSize: 12,
                       }}
                     >
                       <div>
@@ -953,7 +953,7 @@ export function SavedMealsLibraryTab({
                           {preset.coachQuestion.reply}
                         </div>
                       ) : (
-                        <div style={{ marginTop: 3, color: '#7dd3fc', fontSize: 10 }}>
+                        <div style={{ marginTop: 3, color: 'var(--info-text)', fontSize: 12 }}>
                           ממתין למענה המאמן...
                         </div>
                       )}
@@ -968,7 +968,7 @@ export function SavedMealsLibraryTab({
                       className="btn-volt"
                       style={{
                         padding: '6px 11px',
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: 800,
                         display: 'flex',
                         alignItems: 'center',
@@ -989,13 +989,13 @@ export function SavedMealsLibraryTab({
                       className="btn-surface"
                       style={{
                         padding: '6px 10px',
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: 700,
                         display: 'flex',
                         alignItems: 'center',
                         gap: 4,
                         cursor: 'pointer',
-                        borderColor: 'rgba(214, 125, 9, 0.35)',
+                        borderColor: 'var(--line-2)',
                         color: 'var(--accent-volt)',
                       }}
                     >
@@ -1012,7 +1012,7 @@ export function SavedMealsLibraryTab({
                       className="btn-surface"
                       style={{
                         padding: '6px 10px',
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: 700,
                         display: 'flex',
                         alignItems: 'center',
@@ -1020,7 +1020,7 @@ export function SavedMealsLibraryTab({
                         cursor: 'pointer',
                       }}
                     >
-                      <MessageCircle size={12} color="#38bdf8" />
+                      <MessageCircle size={12} color="var(--text-2)" />
                       <span>שאל מאמן</span>
                     </button>
 
@@ -1030,13 +1030,13 @@ export function SavedMealsLibraryTab({
                       className="btn-surface"
                       style={{
                         padding: '6px 9px',
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: 700,
                         display: 'flex',
                         alignItems: 'center',
                         gap: 4,
                         cursor: 'pointer',
-                        color: '#4ade80',
+                        color: 'var(--ok-text)',
                       }}
                     >
                       <Share2 size={12} />
@@ -1049,9 +1049,9 @@ export function SavedMealsLibraryTab({
                     <div
                       style={{
                         padding: 10,
-                        borderRadius: 10,
-                        background: 'rgba(214, 125, 9, 0.06)',
-                        border: '1px solid rgba(214, 125, 9, 0.25)',
+                        borderRadius: 16,
+                        background: 'var(--fill-1)',
+                        border: '1px solid var(--line-2)',
                         display: 'flex',
                         flexDirection: 'column',
                         gap: 8,
@@ -1071,7 +1071,7 @@ export function SavedMealsLibraryTab({
                             type="button"
                             onClick={() => setAdjustPrompt(quick)}
                             className="btn-surface"
-                            style={{ padding: '3px 8px', fontSize: 10, cursor: 'pointer' }}
+                            style={{ padding: '3px 8px', fontSize: 12, cursor: 'pointer' }}
                           >
                             {quick}
                           </button>
@@ -1084,7 +1084,7 @@ export function SavedMealsLibraryTab({
                         className="btn-volt"
                         style={{
                           padding: '7px 12px',
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: 800,
                           display: 'flex',
                           alignItems: 'center',
@@ -1108,9 +1108,9 @@ export function SavedMealsLibraryTab({
                     <div
                       style={{
                         padding: 10,
-                        borderRadius: 10,
-                        background: 'var(--bg-surface-1)',
-                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 16,
+                        background: 'var(--card)',
+                        border: '1px solid var(--line)',
                         display: 'flex',
                         flexDirection: 'column',
                         gap: 8,
@@ -1177,7 +1177,7 @@ export function SavedMealsLibraryTab({
                         disabled={busyId === preset.id}
                         onClick={() => handleSaveEditedPreset(preset)}
                         className="btn-volt"
-                        style={{ padding: '7px', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}
+                        style={{ padding: '7px', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
                       >
                         <Check size={12} style={{ marginLeft: 4 }} />
                         שמור שינויים בספרייה
@@ -1190,7 +1190,7 @@ export function SavedMealsLibraryTab({
                     <div
                       style={{
                         padding: 10,
-                        borderRadius: 10,
+                        borderRadius: 16,
                         background: 'rgba(56, 189, 248, 0.06)',
                         border: '1px solid rgba(56, 189, 248, 0.25)',
                         display: 'flex',
@@ -1211,7 +1211,7 @@ export function SavedMealsLibraryTab({
                         disabled={busyId === preset.id || !questionText.trim()}
                         onClick={() => handleAskCoach(preset.id)}
                         className="btn-volt"
-                        style={{ padding: '7px', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}
+                        style={{ padding: '7px', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
                       >
                         שלח שאלה למאמן
                       </button>

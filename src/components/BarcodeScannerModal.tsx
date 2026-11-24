@@ -9,7 +9,6 @@ import {
   Group,
   TextInput,
   Badge,
-  Paper,
   Alert,
   Loader,
   SimpleGrid,
@@ -43,6 +42,8 @@ export function BarcodeScannerModal({
   const [cameraActive, setCameraActive] = useState(false);
   const scannerRef = useRef<unknown>(null);
   const lookingUpRef = useRef(false);
+  // Scan result stage (design: Barcode): the product is shown before it is added to the meal.
+  const [found, setFound] = useState<FoodCatalogItem | null>(null);
 
   const lookupBarcode = async (code: string) => {
     const clean = code.trim();
@@ -57,8 +58,7 @@ export function BarcodeScannerModal({
         setError(data.error || 'המוצר לא נמצא לפי הברקוד שהוזן');
       } else {
         await stopCamera();
-        onProductFound(data.item);
-        onClose();
+        setFound(data.item as FoodCatalogItem);
       }
     } catch {
       setError('שגיאה בחיפוש הברקוד');
@@ -113,6 +113,7 @@ export function BarcodeScannerModal({
 
   useEffect(() => {
     if (!opened) {
+      setFound(null);
       stopCamera();
       setError(null);
       setManualCode('');
@@ -141,44 +142,100 @@ export function BarcodeScannerModal({
       radius="lg"
       size="md"
     >
+      {found ? (
+        <FoundProduct
+          item={found}
+          onAdd={() => {
+            onProductFound(found);
+            setFound(null);
+            onClose();
+          }}
+          onRescan={() => setFound(null)}
+        />
+      ) : (
       <Stack gap="md">
-        <Paper
-          p="md"
-          radius="md"
+        <div
           style={{
-            background: 'rgba(214, 125, 9, 0.08)',
-            border: '1px dashed rgba(214, 125, 9, 0.38)',
+            position: 'relative',
+            borderRadius: 24,
+            background: 'radial-gradient(circle at 50% 45%, #2b2b2b, #0b0b0b 75%)',
+            overflow: 'hidden',
+            minHeight: 210,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+            padding: 20,
             textAlign: 'center',
           }}
         >
           {!cameraActive ? (
-            <Stack align="center" gap="xs">
-              <Camera size={34} color="currentColor" />
-              <Text size="sm" c="dimmed">
+            <>
+              {/* Viewfinder: corner brackets + a single orange scan line (active indicator). */}
+              <div aria-hidden style={{ position: 'relative', width: 220, height: 96 }}>
+                {(['top', 'bottom'] as const).flatMap((v) =>
+                  (['insetInlineStart', 'insetInlineEnd'] as const).map((h) => (
+                    <span
+                      key={`${v}-${h}`}
+                      style={{
+                        position: 'absolute',
+                        [v]: 0,
+                        [h]: 0,
+                        width: 28,
+                        height: 28,
+                        [v === 'top' ? 'borderTop' : 'borderBottom']: '3px solid #fff',
+                        [h === 'insetInlineStart' ? 'borderInlineStart' : 'borderInlineEnd']: '3px solid #fff',
+                        borderRadius:
+                          v === 'top'
+                            ? h === 'insetInlineStart'
+                              ? '14px 0 0 0'
+                              : '0 14px 0 0'
+                            : h === 'insetInlineStart'
+                              ? '0 0 0 14px'
+                              : '0 0 14px 0',
+                      }}
+                    />
+                  ))
+                )}
+                <span
+                  style={{
+                    position: 'absolute',
+                    insetInline: 14,
+                    top: '50%',
+                    height: 2,
+                    background: 'var(--accent)',
+                    boxShadow: '0 0 12px var(--accent)',
+                  }}
+                />
+                <Camera size={30} color="#fff" style={{ position: 'absolute', inset: 0, margin: 'auto', opacity: 0.35 }} />
+              </div>
+              <Text size="sm" style={{ color: 'rgba(255,255,255,.8)' }}>
                 כוון את מצלמת הטלפון לברקוד שעל אריזת המוצר לטעינה אוטומטית של הקלוריות והמאקרו
               </Text>
               <Button
-                variant="light"
-                color="orange"
-                radius="md"
+                className="btn-volt"
+                radius="xl"
+                size="md"
                 leftSection={<Camera size={16} />}
                 onClick={startCamera}
+                style={{ minHeight: 44 }}
               >
                 הפעל מצלמה לסריקת ברקוד
               </Button>
-            </Stack>
+            </>
           ) : (
-            <Stack gap="xs">
+            <Stack gap="xs" style={{ width: '100%' }}>
               <div
                 id="spot-barcode-reader"
-                style={{ width: '100%', minHeight: 200, borderRadius: 12, overflow: 'hidden' }}
+                style={{ width: '100%', minHeight: 200, borderRadius: 16, overflow: 'hidden' }}
               />
-              <Button variant="subtle" color="gray" size="xs" onClick={stopCamera}>
+              <Button variant="subtle" color="gray" size="sm" onClick={stopCamera} style={{ minHeight: 44 }}>
                 סגור מצלמה
               </Button>
             </Stack>
           )}
-        </Paper>
+        </div>
 
         <Group align="flex-end" gap="xs">
           <TextInput
@@ -198,7 +255,8 @@ export function BarcodeScannerModal({
             }}
           />
           <Button
-            color="orange"
+            className="btn-volt"
+            style={{ minHeight: 44 }}
             disabled={loading || !manualCode.trim()}
             onClick={() => lookupBarcode(manualCode)}
             loading={loading}
@@ -231,7 +289,7 @@ export function BarcodeScannerModal({
                 justify="space-between"
                 disabled={loading}
                 rightSection={
-                  loading ? <Loader size={12} /> : <Check size={12} color="var(--accent-volt)" />
+                  loading ? <Loader size={12} /> : <Check size={12} color="var(--text-3)" />
                 }
                 onClick={() => lookupBarcode(b.code)}
                 styles={{
@@ -242,7 +300,7 @@ export function BarcodeScannerModal({
                 <Text size="xs" fw={600}>
                   {b.label}
                 </Text>
-                <Badge size="xs" variant="dot" color="orange">
+                <Badge size="xs" variant="outline" color="gray" styles={{ label: { direction: 'ltr', unicodeBidi: 'isolate' } }}>
                   {b.code}
                 </Badge>
               </Button>
@@ -250,6 +308,78 @@ export function BarcodeScannerModal({
           </SimpleGrid>
         </Stack>
       </Stack>
+      )}
     </Modal>
+  );
+}
+
+function FoundProduct({
+  item,
+  onAdd,
+  onRescan,
+}: {
+  item: FoodCatalogItem;
+  onAdd: () => void;
+  onRescan: () => void;
+}) {
+  const unit = item.units[0] || { label: '100 גרם', grams: 100 };
+  const k = unit.grams / 100;
+  const kcal = Math.round(item.per100g.calories * k);
+  const macro = (v: number) => Math.round(v * k * 10) / 10;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span
+          aria-hidden
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 16,
+            background: 'var(--surface-2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flex: 'none',
+          }}
+        >
+          <Barcode size={22} />
+        </span>
+        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 12, color: 'var(--text-2)' }}>
+            נמצא במאגר
+            {item.barcode ? (
+              <>
+                {' · '}
+                <bdi dir="ltr" className="ltr-num">{item.barcode}</bdi>
+              </>
+            ) : null}
+          </span>
+          <span style={{ fontSize: 17, fontWeight: 700 }}>{item.name}</span>
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+        <span>
+          <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 32, fontWeight: 700 }}>
+            {kcal}
+          </bdi>{' '}
+          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>קק״ל</span>
+        </span>
+        <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+          <span style={{ color: 'var(--macro-protein)' }}>ח׳ <bdi dir="ltr" className="ltr-num">{macro(item.per100g.protein)}</bdi></span>
+          {' · '}
+          <span style={{ color: 'var(--macro-carbs)' }}>פ׳ <bdi dir="ltr" className="ltr-num">{macro(item.per100g.carbs)}</bdi></span>
+          {' · '}
+          <span style={{ color: 'var(--macro-fat)' }}>ש׳ <bdi dir="ltr" className="ltr-num">{macro(item.per100g.fat)}</bdi></span>
+          {' · '}
+          {unit.label}
+        </span>
+      </div>
+      <Button className="btn-volt" radius="xl" style={{ height: 56, fontSize: 16 }} leftSection={<Check size={18} />} onClick={onAdd}>
+        הוסף לארוחה
+      </Button>
+      <Button className="glass" radius="xl" variant="default" style={{ height: 52, fontSize: 15 }} onClick={onRescan}>
+        סרוק מוצר אחר
+      </Button>
+    </div>
   );
 }

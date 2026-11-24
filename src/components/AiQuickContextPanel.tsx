@@ -204,9 +204,9 @@ export function AiQuickContextPanel({
   return (
     <div
       style={{
-        background: 'var(--bg-surface-2)',
-        border: '1px solid var(--border-subtle)',
-        borderRadius: 14,
+        background: 'var(--surface-2)',
+        border: '1px solid var(--line)',
+        borderRadius: 20,
         padding: '10px 12px',
         display: 'flex',
         flexDirection: 'column',
@@ -223,7 +223,7 @@ export function AiQuickContextPanel({
           flexWrap: 'wrap',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 800 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 800 }}>
           <SlidersHorizontal size={12} color="currentColor" />
           <span>דיוק מהיר (הכל ברירת מחדל: ללא)</span>
         </div>
@@ -235,13 +235,13 @@ export function AiQuickContextPanel({
             className="btn-surface"
             style={{
               padding: '4px 8px',
-              fontSize: 10,
+              fontSize: 12,
               fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
               gap: 4,
               cursor: 'pointer',
-              borderColor: 'rgba(214, 125, 9, 0.3)',
+              borderColor: 'var(--line-2)',
             }}
           >
             <Ruler size={11} color="currentColor" />
@@ -254,7 +254,7 @@ export function AiQuickContextPanel({
             className="btn-surface"
             style={{
               padding: '4px 8px',
-              fontSize: 10,
+              fontSize: 12,
               fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
@@ -271,7 +271,7 @@ export function AiQuickContextPanel({
       {/* צ׳יפים של כלי ההגשה השמורים של המשתמש */}
       {customServingTools.length > 0 && (
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 700 }}>
             <Utensils size={10} style={{ marginLeft: 3, verticalAlign: 'middle' }} />
             כלי:
           </span>
@@ -285,14 +285,14 @@ export function AiQuickContextPanel({
                 style={{
                   padding: '3px 8px',
                   borderRadius: 999,
-                  fontSize: 10,
+                  fontSize: 12,
                   fontWeight: 700,
                   cursor: 'pointer',
                   border: active ? '1px solid var(--sel-bg)'
                     : '1px solid rgba(56, 189, 248, 0.3)',
                   background: active ? 'var(--sel-bg)'
                     : 'rgba(56, 189, 248, 0.08)',
-                  color: active ? 'var(--sel-text)' : '#7dd3fc',
+                  color: active ? 'var(--sel-text)' : 'var(--info-text)',
                 }}
               >
                 {tool.name}
@@ -315,20 +315,20 @@ export function AiQuickContextPanel({
               style={{
                 padding: '4px 8px',
                 borderRadius: 999,
-                fontSize: 10,
+                fontSize: 12,
                 fontWeight: 700,
                 cursor: 'pointer',
                 border: active ? '1px solid var(--sel-bg)'
-                  : '1px solid var(--border-subtle)',
+                  : '1px solid var(--line)',
                 background: active ? 'var(--sel-bg)'
-                  : 'var(--bg-surface-1)',
+                  : 'var(--card)',
                 color: active ? 'var(--sel-text)' : 'var(--text-secondary)',
               }}
             >
               {active ? '✓ ' : ''}
               {chip.label}
               {chip.originBadge && chip.originBadge !== 'שלי' && (
-                <span style={{ fontSize: 9, opacity: 0.65, marginRight: 4 }}>
+                <span style={{ fontSize: 12, opacity: 0.65, marginRight: 4 }}>
                   ({chip.originBadge})
                 </span>
               )}
@@ -343,10 +343,10 @@ export function AiQuickContextPanel({
             style={{
               padding: '4px 8px',
               borderRadius: 999,
-              fontSize: 10,
+              fontSize: 12,
               fontWeight: 700,
               cursor: 'pointer',
-              border: '1px dashed rgba(214, 125, 9, 0.4)',
+              border: '1px dashed var(--line-2)',
               background: 'transparent',
               color: 'var(--accent-volt)',
               display: 'flex',
@@ -392,7 +392,7 @@ export function AiQuickContextPanel({
             disabled={savingChip || !newChipLabel.trim()}
             onClick={handleSaveNewPersonalChip}
             className="btn-volt"
-            style={{ padding: '6px 10px', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}
+            style={{ padding: '6px 10px', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
           >
             שמור
           </button>

@@ -291,7 +291,7 @@ export function CoachAlertSettingsModal({
       key: 'water',
       label: 'שתייה',
       desc: 'עדכון כוסות מים יומיות',
-      icon: <Droplets size={14} color="#38bdf8" />,
+      icon: <Droplets size={14} color="var(--text-2)" />,
     },
   ];
 
@@ -315,9 +315,9 @@ export function CoachAlertSettingsModal({
         {/* 1. חיבור המכשיר של המאמן */}
         <div
           style={{
-            background: 'var(--bg-surface-2)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 12,
+            background: 'var(--surface-2)',
+            border: '1px solid var(--line)',
+            borderRadius: 18,
             padding: 12,
             display: 'flex',
             flexDirection: 'column',
@@ -351,14 +351,14 @@ export function CoachAlertSettingsModal({
 
             <span
               style={{
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 800,
                 padding: '3px 9px',
                 borderRadius: 999,
                 background: isDeviceReady
-                  ? 'rgba(34, 197, 94, 0.16)'
-                  : 'rgba(245, 158, 11, 0.16)',
-                color: isDeviceReady ? '#4ade80' : '#fcd34d',
+                  ? 'var(--surface-2)'
+                  : 'var(--surface-2)',
+                color: isDeviceReady ? 'var(--ok-text)' : 'var(--warn-text)',
               }}
             >
               {isDeviceReady
@@ -449,9 +449,9 @@ export function CoachAlertSettingsModal({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            background: 'var(--bg-surface-2)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 12,
+            background: 'var(--surface-2)',
+            border: '1px solid var(--line)',
+            borderRadius: 18,
             padding: '10px 12px',
           }}
         >
@@ -459,7 +459,7 @@ export function CoachAlertSettingsModal({
             <div style={{ fontSize: 13, fontWeight: 800 }}>
               הפעל קבלת התראות אוטומטיות
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
               מתקבל פוש מיידי ברגע שמתאמן/ת שנבחרו מזינים נתונים חדשים
             </div>
           </div>
@@ -503,10 +503,10 @@ export function CoachAlertSettingsModal({
                   style={{
                     textAlign: 'right',
                     background: active ? 'var(--surface-3)'
-                      : 'var(--bg-surface-2)',
+                      : 'var(--surface-2)',
                     border: active ? '1px solid var(--text-3)'
-                      : '1px solid var(--border-subtle)',
-                    borderRadius: 12,
+                      : '1px solid var(--line)',
+                    borderRadius: 18,
                     padding: '9px 11px',
                     cursor: 'pointer',
                     display: 'flex',
@@ -531,7 +531,7 @@ export function CoachAlertSettingsModal({
                     </div>
                     <div
                       style={{
-                        fontSize: 10.5,
+                        fontSize: 12.5,
                         color: 'var(--text-secondary)',
                         marginTop: 2,
                       }}
@@ -599,7 +599,7 @@ export function CoachAlertSettingsModal({
                   background: 'transparent',
                   border: 'none',
                   color: 'var(--accent-volt)',
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: 700,
                   cursor: 'pointer',
                 }}
@@ -627,13 +627,13 @@ export function CoachAlertSettingsModal({
                       padding: '6px 11px',
                       borderRadius: 999,
                       cursor: 'pointer',
-                      fontSize: 11.5,
+                      fontSize: 12.5,
                       fontWeight: 700,
                       border: isSelected
                         ? `1px solid ${grp.color || 'var(--accent-volt)'}`
-                        : '1px solid var(--border-subtle)',
+                        : '1px solid var(--line)',
                       background: isSelected ? 'var(--sel-bg)'
-                        : 'var(--bg-surface-2)',
+                        : 'var(--surface-2)',
                       color: isSelected
                         ? 'var(--sel-text)'
                         : 'var(--text-secondary)',
@@ -688,7 +688,7 @@ export function CoachAlertSettingsModal({
                   background: 'transparent',
                   border: 'none',
                   color: 'var(--accent-volt)',
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: 700,
                   cursor: 'pointer',
                 }}
@@ -705,7 +705,7 @@ export function CoachAlertSettingsModal({
                   background: 'transparent',
                   border: 'none',
                   color: 'var(--text-muted)',
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: 700,
                   cursor: 'pointer',
                 }}
@@ -761,22 +761,21 @@ export function CoachAlertSettingsModal({
                       justifyContent: 'space-between',
                       gap: 8,
                       padding: '8px 10px',
-                      borderRadius: 10,
+                      borderRadius: 16,
                       cursor: 'pointer',
                       background:
                         direct || viaGroup
-                          ? 'rgba(214, 125, 9, 0.06)'
-                          : 'var(--bg-surface-2)',
+                          ? 'var(--fill-1)'
+                          : 'var(--surface-2)',
                       border: direct
-                        ? '1px solid rgba(214, 125, 9, 0.35)'
-                        : '1px solid var(--border-subtle)',
+                        ? '1px solid var(--line-2)'
+                        : '1px solid var(--line)',
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Checkbox
                         checked={direct}
                         onChange={() => {}}
-                        color="orange"
                         size="xs"
                       />
                       <div>
@@ -786,7 +785,7 @@ export function CoachAlertSettingsModal({
                         {grpName && (
                           <div
                             style={{
-                              fontSize: 10.5,
+                              fontSize: 12.5,
                               color: viaGroup
                                 ? 'var(--accent-volt)'
                                 : 'var(--text-secondary)',
@@ -814,7 +813,7 @@ export function CoachAlertSettingsModal({
               gap: 6,
               fontSize: 12,
               fontWeight: 700,
-              color: feedback.ok ? '#4ade80' : '#fca5a5',
+              color: feedback.ok ? 'var(--ok-text)' : 'var(--danger-text)',
             }}
           >
             {feedback.ok ? (

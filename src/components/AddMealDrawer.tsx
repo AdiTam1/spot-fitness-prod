@@ -17,6 +17,7 @@ import {
   Sparkles,
   Barcode,
   Plus,
+  Minus,
   Trash2,
   Check,
   Edit3,
@@ -1307,7 +1308,7 @@ export function AddMealDrawer({
                   alignItems: 'center',
                   background: 'var(--bg-surface-2)',
                   border: trimmedQuery
-                    ? '1px solid rgba(214, 125, 9, 0.5)'
+                    ? '1px solid var(--line-2)'
                     : '1px solid var(--border-strong)',
                   borderRadius: 999,
                   padding: '0 10px 0 6px',
@@ -1381,11 +1382,11 @@ export function AddMealDrawer({
                       voiceState === 'listening'
                         ? 'rgba(239, 68, 68, 0.2)'
                         : voiceState === 'transcribing'
-                        ? 'rgba(214, 125, 9, 0.22)'
+                        ? 'var(--surface-2)'
                         : 'transparent',
                     color:
                       voiceState === 'listening'
-                        ? '#f87171'
+                        ? 'var(--danger-text)'
                         : voiceState === 'transcribing'
                         ? 'var(--accent-volt)'
                         : 'var(--text-secondary)',
@@ -1440,9 +1441,7 @@ export function AddMealDrawer({
                     justifyContent: 'center',
                     cursor: 'pointer',
                     flexShrink: 0,
-                    boxShadow: trimmedQuery
-                      ? '0 2px 10px rgba(214, 125, 9, 0.4)'
-                      : 'none',
+                    boxShadow: 'none',
                   }}
                 >
                   {isSlotBgProcessing || aiLoading ? (
@@ -1482,21 +1481,21 @@ export function AddMealDrawer({
                     padding: 6,
                     borderRadius: 14,
                     background: 'var(--bg-surface-2)',
-                    border: '1px solid rgba(214, 125, 9, 0.35)',
+                    border: '1px solid var(--line-2)',
                   }}
                 >
                   <label
                     className="btn-surface"
                     style={{
                       padding: '8px 6px',
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: 700,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       gap: 4,
                       cursor: 'pointer',
-                      borderColor: 'rgba(214, 125, 9, 0.4)',
+                      borderColor: 'var(--line-2)',
                     }}
                   >
                     <Camera size={13} color="currentColor" />
@@ -1514,7 +1513,7 @@ export function AddMealDrawer({
                     className="btn-surface"
                     style={{
                       padding: '8px 6px',
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: 700,
                       display: 'flex',
                       alignItems: 'center',
@@ -1523,7 +1522,7 @@ export function AddMealDrawer({
                       cursor: 'pointer',
                     }}
                   >
-                    <ImageIcon size={13} color="#38bdf8" />
+                    <ImageIcon size={13} color="var(--text-2)" />
                     <span>גלריה (מרובה)</span>
                     <input
                       type="file"
@@ -1538,7 +1537,7 @@ export function AddMealDrawer({
                     className="btn-surface"
                     style={{
                       padding: '8px 6px',
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: 700,
                       display: 'flex',
                       alignItems: 'center',
@@ -1575,19 +1574,19 @@ export function AddMealDrawer({
                 background:
                   voiceState === 'listening'
                     ? 'rgba(239, 68, 68, 0.14)'
-                    : 'rgba(214, 125, 9, 0.14)',
+                    : 'var(--surface-2)',
                 border:
                   voiceState === 'listening'
                     ? '1px solid rgba(239, 68, 68, 0.42)'
-                    : '1px solid rgba(214, 125, 9, 0.42)',
-                color: voiceState === 'listening' ? '#fca5a5' : 'var(--accent-volt)',
+                    : '1px solid var(--line-2)',
+                color: voiceState === 'listening' ? 'var(--danger-text)' : 'var(--accent-volt)',
                 fontSize: 12,
                 fontWeight: 700,
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
                 {voiceState === 'listening' ? (
-                  <Mic size={14} color="#f87171" style={{ flexShrink: 0 }} />
+                  <Mic size={14} color="var(--danger-text)" style={{ flexShrink: 0 }} />
                 ) : (
                   <Loader2 size={14} className="spot-spinner" style={{ flexShrink: 0 }} />
                 )}
@@ -1605,7 +1604,7 @@ export function AddMealDrawer({
                     className="btn-volt"
                     style={{
                       padding: '4px 10px',
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: 800,
                       borderRadius: 999,
                       cursor: 'pointer',
@@ -1621,7 +1620,7 @@ export function AddMealDrawer({
                   className="btn-surface"
                   style={{
                     padding: '4px 8px',
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: 700,
                     borderRadius: 999,
                     cursor: 'pointer',
@@ -1656,16 +1655,16 @@ export function AddMealDrawer({
                   ? 'rgba(239, 68, 68, 0.14)'
                   : aiSummary.isFallback
                   ? 'rgba(245, 158, 11, 0.14)'
-                  : 'rgba(214, 125, 9, 0.1)',
+                  : 'var(--fill-1)',
                 border: aiSummary.isError
                   ? '1px solid rgba(239, 68, 68, 0.35)'
                   : aiSummary.isFallback
                   ? '1px solid rgba(245, 158, 11, 0.35)'
-                  : '1px solid rgba(214, 125, 9, 0.3)',
+                  : '1px solid var(--line-2)',
                 color: aiSummary.isError
-                  ? '#f87171'
+                  ? 'var(--danger-text)'
                   : aiSummary.isFallback
-                  ? '#fbbf24'
+                  ? 'var(--warn-text)'
                   : 'var(--accent-volt)',
                 fontSize: 12,
                 fontWeight: 700,
@@ -1678,7 +1677,7 @@ export function AddMealDrawer({
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div>{aiSummary.msg}</div>
                 {aiSummary.engine && (
-                  <div style={{ marginTop: 4, fontSize: 10, opacity: 0.95 }}>
+                  <div style={{ marginTop: 4, fontSize: 12, opacity: 0.95 }}>
                     {aiSummary.isFallback
                       ? `⚠️ תג תחקור: לא AI פיענח (${aiSummary.engine})${
                           aiSummary.fallbackReason
@@ -1924,7 +1923,7 @@ export function AddMealDrawer({
           {/* פאנל ב׳: תוצאות חיפוש מאוחדות (ארוחות שמורות תואמות + מאגר מוצרים + כפתור ✨ ל-AI למעלה) */}
           {(activeTab === 'hub' || activeTab === 'catalog') && trimmedQuery.length > 0 && matchedSavedPresets.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--accent-orange-bright)' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--accent-orange-bright)' }}>
                 ארוחות שמורות תואמות ({matchedSavedPresets.length})
               </div>
               {matchedSavedPresets.map((preset) => (
@@ -1932,7 +1931,7 @@ export function AddMealDrawer({
                   key={preset.id}
                   style={{
                     background: 'var(--bg-surface-2)',
-                    border: '1px solid rgba(214, 125, 9, 0.28)',
+                    border: '1px solid var(--line-2)',
                     borderRadius: 12,
                     padding: '9px 12px',
                     display: 'flex',
@@ -1943,7 +1942,7 @@ export function AddMealDrawer({
                 >
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 800 }}>{preset.title}</div>
-                    <div className="num-mono" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                    <div className="num-mono" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                       {Math.round(preset.totalCalories)} קק״ל · {preset.items.length} מרכיבים
                     </div>
                   </div>
@@ -1961,7 +1960,7 @@ export function AddMealDrawer({
                       setAiSummary({ msg: `נוספה המנה "${preset.title}"` });
                     }}
                     className="btn-volt"
-                    style={{ padding: '6px 11px', fontSize: 11.5, cursor: 'pointer', flexShrink: 0 }}
+                    style={{ padding: '6px 11px', fontSize: 12.5, cursor: 'pointer', flexShrink: 0 }}
                   >
                     + הוסף
                   </button>
@@ -2002,7 +2001,7 @@ export function AddMealDrawer({
                   <div
                     style={{
                       background: 'var(--bg-surface-2)',
-                      border: '1px solid rgba(214, 125, 9, 0.25)',
+                      border: '1px solid var(--line-2)',
                       borderRadius: 14,
                       padding: 12,
                     }}
@@ -2039,7 +2038,7 @@ export function AddMealDrawer({
                             className="btn-surface"
                             style={{
                               padding: '5px 10px',
-                              fontSize: 11,
+                              fontSize: 12,
                               cursor: 'pointer',
                               whiteSpace: 'nowrap',
                               color: 'var(--accent-volt)',
@@ -2084,7 +2083,7 @@ export function AddMealDrawer({
                       <div style={{ fontSize: 13, fontWeight: 800 }}>
                         🤖 השלמת מאקרו חכמה (Smart Macro Finisher)
                       </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                         יתרה להשלמה בארוחה זו:{' '}
                         <b className="num-mono" style={{ color: 'var(--accent-volt)' }}>
                           {Math.max(0, mealSlot.targets.calories - currentTotals.calories)} קק״ל · ח׳{' '}
@@ -2121,7 +2120,7 @@ export function AddMealDrawer({
                   {learnedPreferences.length > 0 && (
                     <div
                       style={{
-                        fontSize: 11,
+                        fontSize: 12,
                         color: 'var(--text-secondary)',
                         background: 'var(--fill-1)',
                         padding: '6px 10px',
@@ -2142,17 +2141,17 @@ export function AddMealDrawer({
                       {aiRecDebug?.engine && (
                         <div
                           style={{
-                            fontSize: 10,
+                            fontSize: 12,
                             fontWeight: 700,
                             padding: '5px 10px',
                             borderRadius: 8,
                             background: aiRecDebug.isFallback
                               ? 'rgba(245, 158, 11, 0.14)'
-                              : 'rgba(214, 125, 9, 0.08)',
+                              : 'var(--fill-1)',
                             border: aiRecDebug.isFallback
                               ? '1px solid rgba(245, 158, 11, 0.35)'
-                              : '1px solid rgba(214, 125, 9, 0.25)',
-                            color: aiRecDebug.isFallback ? '#fbbf24' : 'var(--accent-volt)',
+                              : '1px solid var(--line-2)',
+                            color: aiRecDebug.isFallback ? 'var(--warn-text)' : 'var(--accent-volt)',
                           }}
                         >
                           {aiRecDebug.isFallback
@@ -2170,8 +2169,8 @@ export function AddMealDrawer({
                           style={{
                             padding: 12,
                             borderRadius: 12,
-                            background: 'rgba(214, 125, 9, 0.05)',
-                            border: '1px solid rgba(214, 125, 9, 0.25)',
+                            background: 'var(--fill-1)',
+                            border: '1px solid var(--line-2)',
                             display: 'flex',
                             flexDirection: 'column',
                             gap: 6,
@@ -2198,7 +2197,7 @@ export function AddMealDrawer({
                               className="btn-volt"
                               style={{
                                 padding: '5px 12px',
-                                fontSize: 11,
+                                fontSize: 12,
                                 cursor: 'pointer',
                                 whiteSpace: 'nowrap',
                               }}
@@ -2206,13 +2205,13 @@ export function AddMealDrawer({
                               + הוסף ארוחה זו
                             </button>
                           </div>
-                          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                             {option.whyItFits}
                           </div>
                           <div
                             className="num-mono"
                             style={{
-                              fontSize: 11,
+                              fontSize: 12,
                               color: 'var(--accent-volt)',
                               fontWeight: 700,
                             }}
@@ -2248,7 +2247,7 @@ export function AddMealDrawer({
                     </div>
                     <div
                       style={{
-                        fontSize: 11,
+                        fontSize: 12,
                         color: 'var(--text-secondary)',
                         marginBottom: 8,
                       }}
@@ -2275,7 +2274,7 @@ export function AddMealDrawer({
                         className="btn-surface"
                         style={{
                           padding: '0 12px',
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: 700,
                           cursor: 'pointer',
                           color: 'var(--accent-volt)',
@@ -2306,9 +2305,9 @@ export function AddMealDrawer({
                             ? '1px solid rgba(239, 68, 68, 0.35)'
                             : '1px solid rgba(34, 197, 94, 0.35)',
                           color: learnedFeedbackBanner.isError
-                            ? '#f87171'
-                            : '#4ade80',
-                          fontSize: 11,
+                            ? 'var(--danger-text)'
+                            : 'var(--ok-text)',
+                          fontSize: 12,
                           fontWeight: 700,
                         }}
                       >
@@ -2321,9 +2320,9 @@ export function AddMealDrawer({
                           <div
                             style={{
                               marginTop: 4,
-                              fontSize: 10,
+                              fontSize: 12,
                               color: learnedFeedbackBanner.isFallback
-                                ? '#fbbf24'
+                                ? 'var(--warn-text)'
                                 : 'var(--text-secondary)',
                             }}
                           >
@@ -2355,7 +2354,7 @@ export function AddMealDrawer({
                     gap: 6,
                   }}
                 >
-                  <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--text-secondary)' }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text-secondary)' }}>
                     תוצאות מהמאגר הישראלי והסופרים:
                   </span>
                   <button
@@ -2368,7 +2367,7 @@ export function AddMealDrawer({
                       gap: 5,
                       padding: '4px 10px',
                       borderRadius: 999,
-                      fontSize: 11,
+                      fontSize: 12,
                       cursor: 'pointer',
                     }}
                   >
@@ -2411,7 +2410,7 @@ export function AddMealDrawer({
                         onClick={() => setSourceFilter(src.id)}
                         style={{
                           flexShrink: 0,
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: 700,
                           padding: '4px 10px',
                           borderRadius: 999,
@@ -2434,7 +2433,7 @@ export function AddMealDrawer({
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
-                    fontSize: 10.5,
+                    fontSize: 12.5,
                     color: 'var(--text-muted)',
                   }}
                 >
@@ -2504,7 +2503,7 @@ export function AddMealDrawer({
                             <div
                               className="num-mono"
                               style={{
-                                fontSize: 11,
+                                fontSize: 12,
                                 color: 'var(--text-secondary)',
                               }}
                             >
@@ -2514,7 +2513,7 @@ export function AddMealDrawer({
                               <div
                                 style={{
                                   marginTop: 2,
-                                  fontSize: 10,
+                                  fontSize: 12,
                                   display: 'flex',
                                   alignItems: 'center',
                                   flexWrap: 'wrap',
@@ -2543,7 +2542,7 @@ export function AddMealDrawer({
                                       borderRadius: 6,
                                       background: 'var(--line)',
                                       color: 'var(--text-secondary)',
-                                      fontSize: 9.5,
+                                      fontSize: 12.5,
                                     }}
                                   >
                                     <Barcode size={9} />
@@ -2595,8 +2594,8 @@ export function AddMealDrawer({
                       justifyContent: 'space-between',
                       padding: '9px 12px',
                       borderRadius: 12,
-                      background: 'rgba(214, 125, 9, 0.14)',
-                      border: '1px solid rgba(214, 125, 9, 0.42)',
+                      background: 'var(--surface-2)',
+                      border: '1px solid var(--line-2)',
                       color: 'var(--text)',
                       fontSize: 12,
                       fontWeight: 800,
@@ -2675,7 +2674,7 @@ export function AddMealDrawer({
                 <div
                   style={{
                     background: 'var(--bg-surface-2)',
-                    border: '1px dashed rgba(214, 125, 9, 0.35)',
+                    border: '1px dashed var(--line-2)',
                     borderRadius: 16,
                     padding: 16,
                     textAlign: 'center',
@@ -2700,7 +2699,7 @@ export function AddMealDrawer({
                               height: photoItems.length === 1 ? 140 : 102,
                               borderRadius: 12,
                               overflow: 'hidden',
-                              border: '1px solid rgba(214, 125, 9, 0.35)',
+                              border: '1px solid var(--line-2)',
                             }}
                           >
                             <img
@@ -2761,7 +2760,7 @@ export function AddMealDrawer({
                                 bottom: 3,
                                 left: 3,
                                 right: 3,
-                                fontSize: 9,
+                                fontSize: 12,
                                 fontWeight: 700,
                                 borderRadius: 5,
                                 border: 'none',
@@ -2784,7 +2783,7 @@ export function AddMealDrawer({
                       {photoSizeKB && (
                         <span
                           style={{
-                            fontSize: 10,
+                            fontSize: 12,
                             color: 'var(--accent-volt)',
                             fontWeight: 700,
                           }}
@@ -2814,7 +2813,7 @@ export function AddMealDrawer({
                           : 'העלאה או צילום ארוחה לפענוח AI (עד 3 תמונות)'}
                       </div>
                       <div
-                        style={{ fontSize: 11, color: 'var(--text-secondary)', maxWidth: 360 }}
+                        style={{ fontSize: 12, color: 'var(--text-secondary)', maxWidth: 360 }}
                       >
                         {photoMode === 'nutrition-label'
                           ? 'ה-AI יקרא את הטבלה שעל האריזה (ל-100 גרם או למנה) ויוסיף לארוחה'
@@ -2846,7 +2845,7 @@ export function AddMealDrawer({
                           borderColor: 'rgba(56, 189, 248, 0.35)',
                         }}
                       >
-                        <ImageIcon size={14} color="#38bdf8" />
+                        <ImageIcon size={14} color="var(--text-2)" />
                         <span>
                           {photoUploading
                             ? 'מכווץ ומעבד...'
@@ -2874,7 +2873,7 @@ export function AddMealDrawer({
                           fontSize: 12,
                           cursor: photoUploading ? 'wait' : 'pointer',
                           opacity: photoUploading ? 0.65 : 1,
-                          borderColor: 'rgba(214, 125, 9, 0.35)',
+                          borderColor: 'var(--line-2)',
                         }}
                       >
                         <Camera size={14} color="currentColor" />
@@ -2970,63 +2969,37 @@ export function AddMealDrawer({
 
             {/* לשונית 3: טקסט חופשי + הקלטה קולית ל-AI */}
             {activeTab === 'ai-text' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}
-                >
-                  <span style={{ fontSize: 12, fontWeight: 700 }}>
-                    תאר בטקסט או בהקלטה קולית מה אכלת:
-                  </span>
-                  <button
-                    type="button"
-                    disabled={voiceState === 'transcribing'}
-                    onClick={() => toggleVoiceRecording('ai-text')}
-                    className={voiceState !== 'idle' ? 'btn-volt' : 'btn-surface'}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {/* Big, borderless "write it like a message" field (design: QuickLog) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 4 }}>
+                  <label htmlFor="ql-text" style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                    מה אכלת? כתוב כמו להודעה
+                  </label>
+                  <textarea
+                    id="ql-text"
+                    ref={aiTextRef}
+                    rows={3}
+                    placeholder="למשל: אכלתי 2 ביצים מקושקשות, חצי גביע קוטג' 5%, 2 פרוסות לחם כוסמין וקרמבו אחד"
+                    value={freeTextPrompt}
+                    onChange={(e) => setFreeTextPrompt(e.currentTarget.value)}
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      padding: '8px 13px',
-                      fontSize: 11.5,
-                      fontWeight: 700,
-                      cursor: voiceState === 'transcribing' ? 'wait' : 'pointer',
-                      touchAction: 'manipulation',
-                      WebkitTapHighlightColor: 'transparent',
+                      font: 'inherit',
+                      fontSize: 24,
+                      fontWeight: 500,
+                      lineHeight: 1.3,
+                      color: 'var(--text)',
+                      background: 'transparent',
+                      border: 0,
+                      outline: 'none',
+                      resize: 'none',
+                      padding: 0,
+                      caretColor: 'var(--accent)',
+                      minHeight: 96,
                     }}
-                  >
-                    {voiceState === 'listening' ? (
-                      <>
-                        <MicOff size={14} />
-                        <span>מקליט בעברית... לחץ לסיום ותמלול</span>
-                      </>
-                    ) : voiceState === 'transcribing' ? (
-                      <>
-                        <Loader2 size={14} className="spot-spinner" />
-                        <span>מתמלל הקלטה ב-AI...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Mic size={14} color="currentColor" />
-                        <span>🎙️ הקלט ארוחה בקול</span>
-                      </>
-                    )}
-                  </button>
+                  />
                 </div>
 
-                <Textarea
-                  ref={aiTextRef}
-                  placeholder="למשל: אכלתי 2 ביצים מקושקשות, חצי גביע קוטג' 5%, 2 פרוסות לחם כוסמין וקרמבו אחד"
-                  value={freeTextPrompt}
-                  onChange={(e) => setFreeTextPrompt(e.currentTarget.value)}
-                  minRows={3}
-                />
-
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                <div data-h-scroll style={{ display: 'flex', gap: 6, paddingBottom: 2 }}>
                   {[
                     "2 ביצים, חצי קוטג' 5%, 2 פרוסות לחם כוסמין וקרמבו",
                     '200 גרם חזה עוף, כוס אורז וכף טחינה גולמית',
@@ -3034,12 +3007,20 @@ export function AddMealDrawer({
                   ].map((sample) => (
                     <button
                       key={sample}
+                      type="button"
                       onClick={() => setFreeTextPrompt(sample)}
-                      className="btn-surface"
                       style={{
-                        padding: '5px 10px',
-                        fontSize: 11,
+                        flex: 'none',
+                        height: 36,
+                        padding: '0 12px',
+                        borderRadius: 999,
+                        border: '1px solid var(--line-2)',
+                        background: 'transparent',
+                        color: 'var(--text)',
+                        fontFamily: 'inherit',
+                        fontSize: 13,
                         cursor: 'pointer',
+                        whiteSpace: 'nowrap',
                       }}
                     >
                       {sample}
@@ -3063,31 +3044,77 @@ export function AddMealDrawer({
                   onManageQuickChips={onManageQuickChips}
                 />
 
-                <button
-                  disabled={isSlotBgProcessing || aiLoading || !freeTextPrompt.trim()}
-                  onClick={() => runAiAnalysis('text')}
-                  className="btn-volt"
-                  style={{
-                    padding: '12px',
-                    fontSize: 13,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {isSlotBgProcessing || aiLoading ? (
-                    <Loader2 size={16} className="spot-spinner" />
-                  ) : (
-                    <Sparkles size={16} />
-                  )}
-                  <span>
-                    {isSlotBgProcessing || aiLoading
-                      ? progressTicker.currentStepText
-                      : 'פרק משפט לקלוריות ומאקרו'}
-                  </span>
-                </button>
+                {/* Primary action + floating orange mic */}
+                <div style={{ display: 'flex', flexDirection: 'row-reverse', alignItems: 'center', gap: 12 }}>
+                  <button
+                    type="button"
+                    disabled={isSlotBgProcessing || aiLoading || !freeTextPrompt.trim()}
+                    onClick={() => runAiAnalysis('text')}
+                    className="btn-volt"
+                    style={{
+                      flex: 1,
+                      height: 56,
+                      fontSize: 16,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {isSlotBgProcessing || aiLoading ? (
+                      <Loader2 size={18} className="spot-spinner" />
+                    ) : (
+                      <Sparkles size={18} />
+                    )}
+                    <span>
+                      {isSlotBgProcessing || aiLoading
+                        ? progressTicker.currentStepText
+                        : 'פרק משפט לקלוריות ומאקרו'}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="glass glass-tint"
+                    disabled={voiceState === 'transcribing'}
+                    aria-label={
+                      voiceState === 'listening'
+                        ? 'עצור הקלטה ותמלל'
+                        : voiceState === 'transcribing'
+                          ? 'מתמלל הקלטה'
+                          : 'הקלט ארוחה בקול'
+                    }
+                    aria-pressed={voiceState === 'listening'}
+                    onClick={() => toggleVoiceRecording('ai-text')}
+                    style={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: 999,
+                      flex: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: voiceState === 'transcribing' ? 'wait' : 'pointer',
+                      boxShadow:
+                        voiceState === 'listening'
+                          ? '0 0 0 6px color-mix(in srgb, var(--accent) 28%, transparent)'
+                          : undefined,
+                    }}
+                  >
+                    {voiceState === 'listening' ? (
+                      <MicOff size={24} />
+                    ) : voiceState === 'transcribing' ? (
+                      <Loader2 size={24} className="spot-spinner" />
+                    ) : (
+                      <Mic size={24} />
+                    )}
+                  </button>
+                </div>
+                {voiceState === 'listening' && (
+                  <div role="status" style={{ fontSize: 13, color: 'var(--text-2)', textAlign: 'center' }}>
+                    מקליט בעברית… לחץ שוב לסיום ותמלול
+                  </div>
+                )}
               </div>
             )}
 
@@ -3156,7 +3183,7 @@ export function AddMealDrawer({
                             <div
                               className="num-mono"
                               style={{
-                                fontSize: 11,
+                                fontSize: 12,
                                 color: 'var(--text-secondary)',
                               }}
                             >
@@ -3183,7 +3210,7 @@ export function AddMealDrawer({
                             className="btn-surface"
                             style={{
                               padding: '6px 10px',
-                              fontSize: 11,
+                              fontSize: 12,
                               cursor: 'pointer',
                             }}
                           >
@@ -3202,8 +3229,8 @@ export function AddMealDrawer({
                 style={{
                   padding: '12px 14px',
                   borderRadius: 14,
-                  background: 'rgba(214, 125, 9, 0.08)',
-                  border: '1px solid rgba(214, 125, 9, 0.35)',
+                  background: 'var(--fill-1)',
+                  border: '1px solid var(--line-2)',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 8,
@@ -3219,18 +3246,18 @@ export function AddMealDrawer({
                   <span
                     className="num-mono"
                     style={{
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: 800,
                       padding: '2px 8px',
                       borderRadius: 999,
-                      background: 'rgba(214, 125, 9, 0.14)',
+                      background: 'var(--surface-2)',
                       color: 'var(--accent-volt)',
                     }}
                   >
                     {progressTicker.formattedElapsed}
                   </span>
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.45 }}>
                   ניתוח AI מתקדם עשוי לקחת 1–3 דקות. <b>אפשר לצאת מהחלונית או אפילו לסגור בינתיים</b> — הפענוח ממשיך ברקע והפריטים יסתנכרנו אוטומטית ליומן הארוחות שלך.
                 </div>
                 <button
@@ -3240,10 +3267,10 @@ export function AddMealDrawer({
                   style={{
                     alignSelf: 'flex-start',
                     padding: '6px 12px',
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: 700,
                     cursor: 'pointer',
-                    borderColor: 'rgba(214, 125, 9, 0.35)',
+                    borderColor: 'var(--line-2)',
                     color: 'var(--accent-volt)',
                   }}
                 >
@@ -3259,7 +3286,7 @@ export function AddMealDrawer({
                   borderRadius: 12,
                   background: 'rgba(239, 68, 68, 0.14)',
                   border: '1px solid rgba(239, 68, 68, 0.35)',
-                  color: '#f87171',
+                  color: 'var(--danger-text)',
                   fontSize: 12,
                   fontWeight: 700,
                 }}
@@ -3279,7 +3306,7 @@ export function AddMealDrawer({
                     gap: 8,
                   }}
                 >
-                  <span style={{ fontSize: 14, fontWeight: 900 }}>
+                  <span style={{ fontSize: 17, fontWeight: 700 }}>
                     מרכיבי הארוחה הנוכחית ({items.length})
                   </span>
                   <button
@@ -3289,7 +3316,7 @@ export function AddMealDrawer({
                     style={{
                       padding: '5px 11px',
                       borderRadius: 999,
-                      fontSize: 11.5,
+                      fontSize: 12.5,
                       fontWeight: 700,
                       cursor: 'pointer',
                     }}
@@ -3298,34 +3325,101 @@ export function AddMealDrawer({
                   </button>
                 </div>
 
+                {/* Result header (design: PhotoResult) — photo hero + totals vs meal target */}
                 {allMealPhotos.length > 0 && (
-                  <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
-                    {allMealPhotos.map((src, i) => (
-                      <img
-                        key={i}
-                        src={src}
-                        alt={`תמונת ארוחה ${i + 1}`}
-                        onClick={() => setActiveTab('ai-photo')}
+                  <div style={{ position: 'relative', borderRadius: 28, overflow: 'hidden', background: 'var(--surface-2)' }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={allMealPhotos[0]}
+                      alt="תמונת הארוחה"
+                      onClick={() => setActiveTab('ai-photo')}
+                      style={{ display: 'block', width: '100%', height: 190, objectFit: 'cover', cursor: 'pointer' }}
+                    />
+                    {allMealPhotos.length > 1 && (
+                      <span
+                        className="glass"
                         style={{
-                          width: 64,
-                          height: 64,
-                          borderRadius: 12,
-                          objectFit: 'cover',
-                          border: '1px solid rgba(214, 125, 9, 0.45)',
-                          cursor: 'pointer',
-                          flexShrink: 0,
+                          position: 'absolute',
+                          insetBlockEnd: 10,
+                          insetInlineStart: 10,
+                          height: 30,
+                          padding: '0 12px',
+                          borderRadius: 999,
+                          fontSize: 13,
+                          fontWeight: 600,
+                          display: 'inline-flex',
+                          alignItems: 'center',
                         }}
-                      />
-                    ))}
+                      >
+                        +<bdi className="ltr-num">{allMealPhotos.length - 1}</bdi> תמונות
+                      </span>
+                    )}
                   </div>
                 )}
+
+                <div
+                  style={{
+                    background: 'var(--card)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 26,
+                    padding: 16,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 14,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                      <bdi className="ltr-num">{items.length}</bdi> מרכיבים · יעד{' '}
+                      <bdi className="ltr-num">{mealSlot.targets.calories}</bdi>
+                    </span>
+                    <span>
+                      <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 36, fontWeight: 700, lineHeight: 1 }}>
+                        {currentTotals.calories}
+                      </bdi>{' '}
+                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>קק״ל</span>
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+                    {(
+                      [
+                        { l: 'חלבון', v: currentTotals.protein, g: mealSlot.targets.protein, c: 'var(--macro-protein)' },
+                        { l: 'פחמימות', v: currentTotals.carbs, g: mealSlot.targets.carbs, c: 'var(--macro-carbs)' },
+                        { l: 'שומן', v: currentTotals.fat, g: mealSlot.targets.fat, c: 'var(--macro-fat)' },
+                      ] as const
+                    ).map((m) => (
+                      <div key={m.l} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-2)' }}>
+                          <span style={{ width: 7, height: 7, borderRadius: 9, background: m.c }} />
+                          {m.l}
+                        </div>
+                        <div style={{ height: 5, borderRadius: 9, background: 'var(--surface-3)', overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              height: '100%',
+                              width: `${Math.min(100, Math.round((m.v / Math.max(1, m.g)) * 100))}%`,
+                              background: m.c,
+                              borderRadius: 9,
+                            }}
+                          />
+                        </div>
+                        <span style={{ fontSize: 14, fontWeight: 600 }}>
+                          <bdi dir="ltr" className="num-mono ltr-num">{Math.round(m.v)}</bdi>
+                          <span style={{ color: 'var(--text-3)', fontWeight: 500 }}>
+                            {' '}/ <bdi dir="ltr" className="num-mono ltr-num">{Math.round(m.g)}</bdi> ג׳
+                          </span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
                 {items.length === 0 ? (
                   <div
                     style={{
                       padding: 24,
                       textAlign: 'center',
-                      borderRadius: 14,
+                      borderRadius: 20,
                       background: 'var(--bg-surface-2)',
                       color: 'var(--text-muted)',
                       fontSize: 12,
@@ -3341,12 +3435,12 @@ export function AddMealDrawer({
                         <div
                           key={item.id}
                           style={{
-                            background: 'var(--bg-surface-2)',
+                            background: 'var(--card)',
                             border: isEditing
-                              ? '1px solid rgba(214, 125, 9, 0.45)'
+                              ? '1px solid var(--line-2)'
                               : '1px solid var(--border-subtle)',
-                            borderRadius: 14,
-                            padding: '10px 12px',
+                            borderRadius: 20,
+                            padding: '14px 16px',
                           }}
                         >
                           <div
@@ -3366,12 +3460,12 @@ export function AddMealDrawer({
                                   flexWrap: 'wrap',
                                 }}
                               >
-                                <span style={{ fontSize: 13, fontWeight: 700 }}>
+                                <span style={{ fontSize: 15, fontWeight: 600 }}>
                                   {item.name}
                                 </span>
                                 <span
                                   style={{
-                                    fontSize: 10,
+                                    fontSize: 12,
                                     padding: '1px 7px',
                                     borderRadius: 999,
                                     background: 'var(--line)',
@@ -3388,18 +3482,18 @@ export function AddMealDrawer({
                                         : item.aiEngine
                                     }
                                     style={{
-                                      fontSize: 9,
+                                      fontSize: 12,
                                       padding: '1px 6px',
                                       borderRadius: 999,
                                       fontWeight: 800,
                                       background: item.isAiFallback
                                         ? 'rgba(245, 158, 11, 0.16)'
-                                        : 'rgba(214, 125, 9, 0.14)',
+                                        : 'var(--surface-2)',
                                       border: item.isAiFallback
                                         ? '1px solid rgba(245, 158, 11, 0.38)'
-                                        : '1px solid rgba(214, 125, 9, 0.32)',
+                                        : '1px solid var(--line-2)',
                                       color: item.isAiFallback
-                                        ? '#fbbf24'
+                                        ? 'var(--warn-text)'
                                         : 'var(--accent-orange-bright)',
                                     }}
                                   >
@@ -3412,7 +3506,7 @@ export function AddMealDrawer({
                               <div
                                 className="num-mono"
                                 style={{
-                                  fontSize: 11,
+                                  fontSize: 12,
                                   color: 'var(--text-secondary)',
                                   marginTop: 2,
                                 }}
@@ -3425,47 +3519,92 @@ export function AddMealDrawer({
                               </div>
                             </div>
 
-                            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                            <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
                               <button
-                                onClick={() =>
-                                  setEditingItemId(isEditing ? null : item.id)
-                                }
-                                className="btn-surface"
+                                type="button"
+                                aria-label={isEditing ? 'סגור עריכה' : `ערוך ${item.name}`}
+                                aria-expanded={isEditing}
+                                onClick={() => setEditingItemId(isEditing ? null : item.id)}
                                 style={{
-                                  width: 30,
-                                  height: 30,
+                                  width: 44,
+                                  height: 44,
                                   padding: 0,
+                                  borderRadius: 999,
+                                  border: '1px solid var(--line-2)',
+                                  background: isEditing ? 'var(--sel-bg)' : 'transparent',
+                                  color: isEditing ? 'var(--sel-text)' : 'var(--text-2)',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
                                   cursor: 'pointer',
                                 }}
                               >
-                                <Edit3
-                                  size={13}
-                                  color={
-                                    isEditing
-                                      ? 'var(--accent-volt)'
-                                      : 'var(--text-secondary)'
-                                  }
-                                />
+                                <Edit3 size={16} />
                               </button>
                               <button
+                                type="button"
+                                aria-label={`הסר ${item.name}`}
                                 onClick={() => removeItem(item.id)}
-                                className="btn-surface"
                                 style={{
-                                  width: 30,
-                                  height: 30,
+                                  width: 44,
+                                  height: 44,
                                   padding: 0,
+                                  borderRadius: 999,
+                                  border: '1px solid var(--line-2)',
+                                  background: 'transparent',
+                                  color: 'var(--danger-text)',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
                                   cursor: 'pointer',
                                 }}
                               >
-                                <Trash2 size={13} color="#ef4444" />
+                                <Trash2 size={16} />
                               </button>
                             </div>
+                          </div>
+
+                          {/* Quick gram stepper (design: PhotoResult rows) */}
+                          <div
+                            style={{
+                              marginTop: 10,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: 8,
+                            }}
+                          >
+                            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>כמות</span>
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 2,
+                                padding: 3,
+                                borderRadius: 999,
+                                background: 'var(--surface-2)',
+                              }}
+                            >
+                              <button
+                                type="button"
+                                aria-label={`הפחת כמות ${item.name}`}
+                                onClick={() => updateLoggedItemGrams(item.id, item.grams - 10)}
+                                style={{ width: 44, height: 40, borderRadius: 999, border: 0, background: 'transparent', color: 'var(--text-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                              >
+                                <Minus size={16} strokeWidth={2.2} />
+                              </button>
+                              <bdi dir="ltr" className="num-mono ltr-num" style={{ minWidth: 64, textAlign: 'center', fontSize: 14, fontWeight: 600 }}>
+                                {Math.round(item.grams)} ג׳
+                              </bdi>
+                              <button
+                                type="button"
+                                aria-label={`הוסף כמות ${item.name}`}
+                                onClick={() => updateLoggedItemGrams(item.id, item.grams + 10)}
+                                style={{ width: 44, height: 40, borderRadius: 999, border: 0, background: 'transparent', color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                              >
+                                <Plus size={16} strokeWidth={2.2} />
+                              </button>
+                            </span>
                           </div>
 
                           <Collapse in={isEditing}>
@@ -3576,7 +3715,7 @@ export function AddMealDrawer({
                     style={{
                       background: 'var(--bg-surface-2)',
                       border: '1px solid var(--border-subtle)',
-                      borderRadius: 14,
+                      borderRadius: 20,
                       padding: 12,
                       display: 'flex',
                       flexDirection: 'column',
@@ -3589,7 +3728,7 @@ export function AddMealDrawer({
                       checked={saveAsPreset}
                       onChange={(e) => setSaveAsPreset(e.currentTarget.checked)}
                       label={
-                        <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-secondary)' }}>
                           📌 שמור מנה זו גם ב&quot;הארוחות שלי&quot; לשימוש חוזר
                         </span>
                       }
@@ -3646,7 +3785,7 @@ export function AddMealDrawer({
               flexShrink: 0,
               background: 'var(--card)',
               borderTop: '1px solid var(--line)',
-              padding: '10px 14px calc(10px + env(safe-area-inset-bottom, 0px))',
+              padding: '10px 14px calc(10px + var(--sa-bottom))',
               display: 'flex',
               alignItems: 'center',
               gap: 10,
@@ -3728,7 +3867,7 @@ export function AddMealDrawer({
                   </span>
                   <span
                     style={{
-                      fontSize: 10,
+                      fontSize: 12,
                       fontWeight: 700,
                       color: 'var(--accent-orange-bright)',
                       whiteSpace: 'nowrap',
@@ -3741,7 +3880,7 @@ export function AddMealDrawer({
                 <div
                   className="num-mono"
                   style={{
-                    fontSize: 11,
+                    fontSize: 12,
                     color: 'var(--text-secondary)',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
@@ -3830,7 +3969,7 @@ export function AddMealDrawer({
                   {selectedFood.name}
                   {selectedFood.brand ? ` (${selectedFood.brand})` : ''}
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 3, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
                   <span>
                     ל-100 גרם: {selectedFood.per100g.calories} קק״ל · ח׳ {selectedFood.per100g.protein}g
                   </span>
@@ -3844,10 +3983,10 @@ export function AddMealDrawer({
                         gap: 3,
                         padding: '1px 6px',
                         borderRadius: 999,
-                        background: 'rgba(214, 125, 9, 0.14)',
-                        border: '1px solid rgba(214, 125, 9, 0.32)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--line-2)',
                         color: 'var(--accent-orange-bright)',
-                        fontSize: 10,
+                        fontSize: 12,
                         fontWeight: 700,
                       }}
                     >
@@ -3856,7 +3995,7 @@ export function AddMealDrawer({
                     </span>
                   )}
                   {enrichingFood && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--accent-orange-bright)', fontSize: 10 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--accent-orange-bright)', fontSize: 12 }}>
                       <Loader2 size={10} className="spot-spinner" />
                       <span>מושך מידות אריזה וברקוד...</span>
                     </span>
@@ -3915,7 +4054,7 @@ export function AddMealDrawer({
             {/* בחירת יחידה בקפסולות + מידות המשתמש */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-secondary)' }}>
                   יחידת מידה (אריזה, מידות אישיות וגרם):
                 </span>
                 {onManageToolsAndUnits && (
@@ -3929,7 +4068,7 @@ export function AddMealDrawer({
                       background: 'transparent',
                       border: 'none',
                       color: 'var(--accent-orange-bright)',
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: 700,
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -3970,8 +4109,8 @@ export function AddMealDrawer({
                           : uOpt.isUser
                           ? 'rgba(56, 189, 248, 0.1)'
                           : 'var(--bg-surface-2)',
-                        color: active ? '#ffffff' : uOpt.isUser ? '#7dd3fc' : 'var(--text-secondary)',
-                        fontSize: 11.5,
+                        color: active ? '#ffffff' : uOpt.isUser ? 'var(--info-text)' : 'var(--text-secondary)',
+                        fontSize: 12.5,
                         fontWeight: 700,
                         cursor: 'pointer',
                       }}
@@ -3988,10 +4127,10 @@ export function AddMealDrawer({
                     style={{
                       padding: '6px 11px',
                       borderRadius: 999,
-                      border: '1px dashed rgba(214, 125, 9, 0.55)',
-                      background: inlineUnitOpen ? 'rgba(214, 125, 9, 0.16)' : 'transparent',
+                      border: '1px dashed var(--line-2)',
+                      background: inlineUnitOpen ? 'var(--surface-2)' : 'transparent',
                       color: 'var(--accent-orange-bright)',
-                      fontSize: 11.5,
+                      fontSize: 12.5,
                       fontWeight: 800,
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -4012,7 +4151,7 @@ export function AddMealDrawer({
                     padding: 10,
                     borderRadius: 12,
                     background: 'var(--bg-surface-2)',
-                    border: '1px solid rgba(214, 125, 9, 0.35)',
+                    border: '1px solid var(--line-2)',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 8,
@@ -4041,7 +4180,7 @@ export function AddMealDrawer({
                       color="orange"
                       checked={inlineUnitForFoodOnly}
                       onChange={(e) => setInlineUnitForFoodOnly(e.currentTarget.checked)}
-                      label={<span style={{ fontSize: 11 }}>שייך למוצר זה</span>}
+                      label={<span style={{ fontSize: 12 }}>שייך למוצר זה</span>}
                     />
                     <button
                       type="button"
@@ -4050,7 +4189,7 @@ export function AddMealDrawer({
                       className="btn-volt"
                       style={{
                         padding: '6px 12px',
-                        fontSize: 11.5,
+                        fontSize: 12.5,
                         cursor: 'pointer',
                         display: 'inline-flex',
                         alignItems: 'center',

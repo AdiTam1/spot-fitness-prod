@@ -7,6 +7,16 @@
    attribute on <html> (persisted in localStorage, defaults to system).
    ============================================================ */
 
+:root {
+  /* Safe-area insets. Capacitor's SystemBars plugin (insetsHandling: 'css') exposes
+     --safe-area-inset-* on Android WebViews where env() resolves to 0; iOS/modern
+     browsers fall back to env(). Always use these instead of env() directly. */
+  --sa-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --sa-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  --sa-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --sa-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+}
+
 :root,
 :root[data-mantine-color-scheme='dark'] {
   color-scheme: dark;
@@ -35,6 +45,12 @@
   --sheet-shadow: 0 -20px 50px -20px rgba(0, 0, 0, 0.6);
 
   --accent-orange-bright: #eb931c;
+
+  /* Semantic text colours (readable on dark surfaces). */
+  --ok-text: #4ade80;
+  --danger-text: #f87171;
+  --warn-text: #fbbf24;
+  --info-text: #7dd3fc;
 }
 
 :root[data-mantine-color-scheme='light'] {
@@ -65,6 +81,12 @@
 
   /* Darker orange for orange *text* on light surfaces (contrast). */
   --accent-orange-bright: #a95f00;
+
+  /* Semantic text colours (AA contrast on white / light-gray surfaces). */
+  --ok-text: #15803d;
+  --danger-text: #b91c1c;
+  --warn-text: #b45309;
+  --info-text: #0369a1;
 }
 
 :root {
@@ -208,7 +230,7 @@ a:focus-visible {
   font-weight: 700 !important;
   border: none !important;
   border-radius: 999px !important;
-  min-height: 36px;
+  min-height: 44px;
   transition: background-color 0.18s ease, transform 0.18s ease !important;
 }
 
@@ -291,7 +313,7 @@ a:focus-visible {
   color: var(--on-accent);
 }
 
-/* Header kept as a translucent bar that follows the theme. */
+/* Top app bar: translucent, never cut by the phone's status bar / notch. */
 .spot-sticky-header {
   position: sticky;
   top: 0;
@@ -300,19 +322,125 @@ a:focus-visible {
   backdrop-filter: blur(22px) saturate(180%);
   -webkit-backdrop-filter: blur(22px) saturate(180%);
   border-bottom: 1px solid var(--line);
-  padding: calc(7px + env(safe-area-inset-top, 0px)) 14px 7px;
+  /* status bar / notch inset + 8px breathing room; side insets for landscape cutouts */
+  padding: calc(var(--sa-top) + 8px) max(14px, var(--sa-right)) 8px max(14px, var(--sa-left));
 }
 
-@media (max-width: 640px) {
-  .spot-sticky-header {
-    padding: calc(5px + env(safe-area-inset-top, 0px)) 10px 5px;
+.spot-header-row {
+  max-width: 1180px;
+  margin: 0 auto;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.spot-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.spot-header-brand img {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  object-fit: cover;
+}
+
+.spot-header-wordmark {
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: -0.04em;
+}
+
+.spot-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.spot-header-user {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+  max-width: 170px;
+  color: var(--text);
+}
+
+.spot-header-user-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spot-header-saving {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  flex: none;
+}
+
+.spot-header-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0;
+  flex: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.spot-header-btn-wide {
+  width: auto;
+  padding: 0 14px;
+}
+
+/* Narrow phones: drop the name chip's text before anything gets clipped. */
+@media (max-width: 400px) {
+  .spot-header-user {
+    max-width: 112px;
+    padding: 0 10px;
+  }
+  .spot-header-wordmark {
+    display: none;
+  }
+}
+
+@media (max-width: 340px) {
+  .spot-header-user {
+    display: none;
   }
 }
 
 /* ---------- Floating dock (trainee + coach) ---------- */
 .mobile-bottom-dock {
   position: fixed;
-  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(18px + var(--sa-bottom));
   left: 50%;
   transform: translateX(-50%);
   z-index: 90;
@@ -328,7 +456,7 @@ a:focus-visible {
   left: 0;
   right: 0;
   bottom: 0;
-  height: calc(120px + env(safe-area-inset-bottom, 0px));
+  height: calc(120px + var(--sa-bottom));
   background: linear-gradient(to top, var(--bg), transparent);
   pointer-events: none;
   z-index: 89;
@@ -336,20 +464,32 @@ a:focus-visible {
 
 @media (max-width: 768px) {
   .mantine-Drawer-header {
-    padding-top: max(12px, env(safe-area-inset-top, 0px)) !important;
+    padding-top: max(12px, var(--sa-top)) !important;
   }
   .mantine-Drawer-body {
-    padding-bottom: max(18px, env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: max(18px, var(--sa-bottom)) !important;
   }
 }
 
 /* ---------- Mantine inputs ---------- */
+/* Mantine sizes inputs through --input-height; override it for every size. */
+.mantine-InputWrapper-root,
+.mantine-Input-wrapper,
 .mantine-Input-input {
+  --input-height-xs: 52px;
+  --input-height-sm: 52px;
+  --input-height-md: 52px;
+  --input-height: 52px;
+}
+.mantine-Input-input {
+  height: 52px;
   background-color: var(--surface-2) !important;
   border: 1px solid var(--line-2) !important;
   color: var(--text) !important;
-  border-radius: 14px !important;
-  min-height: 44px;
+  border-radius: 16px !important;
+  min-height: 52px !important;
+  /* 16px prevents iOS from zooming the page when an input is focused. */
+  font-size: 16px !important;
   transition: border-color 0.15s ease !important;
 }
 
@@ -418,6 +558,16 @@ a:focus-visible {
   border-radius: 9px;
   background: var(--surface-3);
   margin: 0 auto;
+  position: relative;
+  touch-action: none;
+  cursor: grab;
+}
+
+/* Invisible 44px-tall drag zone around the grabber. */
+.sheet-grabber::after {
+  content: '';
+  position: absolute;
+  inset: -20px -60px;
 }
 
 /* ---------- Scrollbar ---------- */
@@ -450,4 +600,383 @@ a:focus-visible {
   .coach-dashboard-root {
     padding-bottom: 120px;
   }
+}
+
+
+/* ============================================================
+   Interaction layer — press feedback, touch behaviour, sheets
+   ============================================================ */
+
+/* No 300ms tap delay / double-tap zoom on any interactive element. */
+:where(button, a, [role='button'], [role='tab'], [role='radio'], [role='switch'], label, summary, input, select, textarea) {
+  touch-action: manipulation;
+}
+
+/* Pressed state: quick scale + slightly darker fill. Specificity is kept at 0
+   (:where) so any component-specific transition/transform still wins. */
+:where(button, a[href], [role='button'], [role='tab'], [role='radio']) {
+  transition: transform 0.12s ease, background-color 0.15s ease, opacity 0.15s ease,
+    border-color 0.15s ease, color 0.15s ease;
+}
+
+:where(button, a[href], [role='button'], [role='tab'], [role='radio']):not(:disabled):not([aria-disabled='true']):not([data-disabled]):active {
+  transform: scale(0.97);
+}
+
+/* Disabled controls are clearly muted and inert. */
+:where(button:disabled, [aria-disabled='true'], [data-disabled='true']) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+:where(button:disabled, [aria-disabled='true']) {
+  pointer-events: none;
+}
+
+/* Keyboard focus ring on every focusable control (not only buttons/links). */
+:where([role='button'], [role='tab'], [role='radio'], [role='switch'], input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Horizontal scrollers: momentum, no vertical jitter, no scroll chaining. */
+.h-scroll,
+[data-h-scroll] {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
+  scrollbar-width: none;
+}
+.h-scroll::-webkit-scrollbar,
+[data-h-scroll]::-webkit-scrollbar {
+  display: none;
+}
+
+/* Numbers, times and signed values stay left-to-right inside RTL text. */
+.ltr-num,
+bdi {
+  unicode-bidi: isolate;
+}
+.ltr-num {
+  direction: ltr;
+  display: inline-block;
+}
+
+/* Inputs keep their text visible above the keyboard (scrolled into view by the
+   InteractionLayer); give them room when scrolled. */
+input, textarea, select {
+  scroll-margin-bottom: 140px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- Modals become bottom sheets on phones ---------- */
+@media (max-width: 768px) {
+  .mantine-Modal-inner {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+  .mantine-Modal-content:not([data-full-screen]) {
+    flex: 0 0 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+    margin: 0 !important;
+    max-height: calc(100dvh - 52px - var(--sa-top)) !important;
+    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0 !important;
+    border-bottom: none !important;
+    box-shadow: var(--sheet-shadow) !important;
+    padding-bottom: var(--sa-bottom);
+    /* The drag handle is drawn by ::before; it also acts as the drag zone. */
+    position: relative;
+  }
+  .mantine-Modal-content:not([data-full-screen])::before {
+    content: '';
+    position: absolute;
+    top: 10px;
+    inset-inline-start: 50%;
+    width: 40px;
+    height: 5px;
+    margin-inline-start: -20px;
+    border-radius: 9px;
+    background: var(--surface-3);
+    pointer-events: none;
+    z-index: 2;
+  }
+  /* Centered 160x44 drag zone (touch-action: none so the browser never steals the gesture). */
+  .mantine-Modal-content:not([data-full-screen])::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    inset-inline-start: 50%;
+    width: 160px;
+    height: 44px;
+    margin-inline-start: -80px;
+    touch-action: none;
+    z-index: 2;
+  }
+  .mantine-Modal-content:not([data-full-screen]) .mantine-Modal-header {
+    padding-top: 26px;
+  }
+  .mantine-Modal-close,
+  .mantine-Drawer-close {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+  }
+}
+
+/* ---------- Selection controls are neutral, never orange ---------- */
+.mantine-Checkbox-input:checked,
+.mantine-Radio-radio:checked {
+  background-color: var(--btn-primary) !important;
+  border-color: var(--btn-primary) !important;
+}
+.mantine-Checkbox-icon,
+.mantine-Radio-icon {
+  color: var(--btn-primary-text) !important;
+}
+.mantine-Chip-label[data-checked] {
+  background-color: var(--btn-primary) !important;
+  color: var(--btn-primary-text) !important;
+  border-color: var(--btn-primary) !important;
+  font-weight: 700;
+}
+.mantine-Chip-label:not([data-checked]) {
+  background-color: transparent !important;
+  border: 1px solid var(--line-2) !important;
+  color: var(--text) !important;
+  opacity: 1 !important;
+}
+.mantine-Chip-checkIcon {
+  color: var(--btn-primary-text) !important;
+}
+.mantine-Select-option[data-checked],
+.mantine-Combobox-option[data-checked] {
+  font-weight: 700;
+}
+
+/* ---------- Touch targets: visuals may be smaller, hit areas are >= 44px ---------- */
+.hit-44-sm,
+.hit-44-md {
+  position: relative;
+}
+.hit-44-sm::after {
+  content: '';
+  position: absolute;
+  inset: -5px -2px;
+}
+.hit-44-md::after {
+  content: '';
+  position: absolute;
+  inset: -2px 0;
+}
+button.glass,
+a.glass {
+  min-width: 44px;
+  min-height: 44px;
+}
+.btn-surface {
+  min-height: 44px;
+}
+
+/* Auto-expanded hit area (set by InteractionLayer for controls smaller than 44px). */
+.hit-44-auto::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--hy, 0px) * -1) calc(var(--hx, 0px) * -1);
+}
+
+/* Numeric steppers are replaced by plain typing (design has none). */
+.mantine-NumberInput-controls {
+  display: none !important;
+}
+.mantine-NumberInput-input {
+  padding-inline-end: 12px !important;
+}
+.mantine-Textarea-input {
+  min-height: 52px;
+  padding-block: 14px !important;
+}
+
+/* ---------- Coach dashboard navigation on phones: flat, scrollable chip rows ---------- */
+@media (max-width: 768px) {
+  .coach-dashboard-root {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .coach-nav-card {
+    min-width: 0;
+    max-width: 100%;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+  .coach-nav-tabs {
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin-inline: -4px;
+    padding: 2px 4px;
+  }
+  .coach-nav-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .coach-nav-tabs > button {
+    flex: none;
+    white-space: nowrap;
+    min-height: 44px;
+    border-radius: 999px !important;
+    border: 1px solid var(--line-2);
+  }
+}
+
+/* ---------- Tables -> stacked cards on phones ---------- */
+@media (max-width: 768px) {
+  table.m-cards,
+  table.m-cards tbody {
+    display: block;
+    width: 100%;
+  }
+  table.m-cards thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  table.m-cards tbody tr {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 10px;
+    padding: 14px 16px;
+    background: var(--surface-2);
+    border: 1px solid var(--line) !important;
+    border-radius: 22px;
+  }
+  table.m-cards tbody td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 !important;
+    text-align: start !important;
+    border: none !important;
+  }
+  table.m-cards tbody td[data-label]::before {
+    content: attr(data-label);
+    flex: none;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-2);
+  }
+  table.m-cards tbody td:last-child {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  table.m-cards tbody td:last-child > div {
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  table.m-cards tbody td[colspan] {
+    display: block;
+    text-align: center !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .coach-filter-card {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .coach-filter-groups {
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin-inline: -4px;
+    padding: 2px 4px;
+  }
+  .coach-filter-groups::-webkit-scrollbar {
+    display: none;
+  }
+  .coach-filter-groups > button {
+    flex: none;
+    min-height: 44px;
+    padding-inline: 16px !important;
+    font-size: 14px !important;
+    white-space: nowrap;
+  }
+  .coach-filter-card .mantine-TextInput-root,
+  .coach-filter-card .mantine-Select-root {
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .coach-group-controls {
+    width: 100%;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .coach-group-controls .mantine-Select-root,
+  .coach-group-controls .mantine-InputWrapper-root {
+    width: 100% !important;
+  }
+  .coach-group-controls > button {
+    width: 100%;
+    min-height: 48px;
+    justify-content: center;
+    font-size: 15px !important;
+  }
+}
+
+/* Toasts stay below the status bar / notch. */
+.mantine-Notifications-root[data-position^='top'] {
+  top: calc(var(--sa-top) + 8px) !important;
+}
+.mantine-Notifications-root[data-position^='bottom'] {
+  bottom: calc(var(--sa-bottom) + 90px) !important;
+}
+
+/* Wizard step navigation stays reachable above the keyboard / home indicator. */
+.wizard-nav {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+  position: sticky;
+  bottom: 0;
+  padding: 10px 0 calc(var(--sa-bottom) + 8px);
+  background: linear-gradient(to top, var(--bg) 70%, transparent);
+  z-index: 5;
 }

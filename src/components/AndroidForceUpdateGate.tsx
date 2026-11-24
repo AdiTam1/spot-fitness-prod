@@ -7,7 +7,6 @@ import {
   ExternalLink,
   Loader2,
   RefreshCw,
-  ShieldAlert,
 } from 'lucide-react';
 import {
   AppUpdateInfo,
@@ -106,69 +105,52 @@ export function AndroidForceUpdateGate({
         background: 'var(--bg)',
         color: 'var(--text)',
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'stretch',
         justifyContent: 'center',
-        padding: '24px 18px',
+        padding: 'calc(24px + var(--sa-top)) 24px calc(24px + var(--sa-bottom))',
         overflowY: 'auto',
       }}
     >
       <div
-        className="pro-card"
         style={{
           width: '100%',
-          maxWidth: 420,
-          padding: '26px 22px',
+          maxWidth: 440,
+          margin: '0 auto',
+          minHeight: '100%',
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'center',
-          textAlign: 'center',
-          gap: 16,
-          border: '1px solid rgba(214, 125, 9, 0.45)',
-          boxShadow: '0 24px 60px rgba(0, 0, 0, 0.72)',
+          alignItems: 'stretch',
+          textAlign: 'start',
+          gap: 18,
+          paddingTop: 56,
         }}
       >
-        <div style={{ position: 'relative', display: 'inline-flex' }}>
-          <img
-            src="/app-logo.png"
-            alt="SPOT Fitness"
-            style={{
-              width: 68,
-              height: 68,
-              borderRadius: 19,
-              objectFit: 'cover',
-              boxShadow: '0 10px 28px rgba(214, 125, 9, 0.36)',
-            }}
-          />
-          <div
-            style={{
-              position: 'absolute',
-              bottom: -6,
-              left: -6,
-              width: 28,
-              height: 28,
-              borderRadius: '50%',
-              background: 'var(--card)',
-              border: '2px solid rgba(214, 125, 9, 0.7)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#f59e0b',
-            }}
-          >
-            <ShieldAlert size={15} />
-          </div>
-        </div>
-
+        <span
+          aria-hidden
+          style={{
+            width: 72,
+            height: 72,
+            borderRadius: 24,
+            background: 'var(--card)',
+            border: '1px solid var(--line-2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--accent)',
+          }}
+        >
+          <Download size={34} strokeWidth={2.2} />
+        </span>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <h1 style={{ margin: 0, fontSize: 21, fontWeight: 900 }}>
+          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, lineHeight: 1.2 }}>
             נדרש עדכון חובה לאפליקציה
           </h1>
           <p
             style={{
               margin: 0,
-              fontSize: 13.5,
-              color: 'var(--text-secondary)',
-              lineHeight: 1.6,
+              fontSize: 15,
+              color: 'var(--text-2)',
+              lineHeight: 1.5,
             }}
           >
             הגרסה המותקנת במכשירך אינה נתמכת עוד. כדי להמשיך להשתמש ב-SPOT
@@ -181,35 +163,31 @@ export function AndroidForceUpdateGate({
             width: '100%',
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
-            gap: 8,
-            background: 'var(--bg-surface-2)',
-            borderRadius: 14,
-            padding: 12,
-            border: '1px solid var(--border-subtle)',
+            gap: 10,
           }}
         >
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+          <div style={{ padding: 14, borderRadius: 18, background: 'var(--card)', border: '1px solid var(--line)' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-2)' }}>
               גרסה מותקנת כעת
             </div>
             <div
               className="num-mono"
-              style={{ fontSize: 14, fontWeight: 800, color: '#f87171', marginTop: 2 }}
+              style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginTop: 2 }}
               dir="ltr"
             >
               v{info.localVersionName} (#{info.localVersionCode})
             </div>
           </div>
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+          <div style={{ padding: 14, borderRadius: 18, background: 'var(--card)', border: '1px solid var(--accent)' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-2)' }}>
               גרסה חדשה להתקנה
             </div>
             <div
               className="num-mono"
               style={{
-                fontSize: 14,
-                fontWeight: 800,
-                color: '#22c55e',
+                fontSize: 20,
+                fontWeight: 700,
+                color: 'var(--text)',
                 marginTop: 2,
               }}
               dir="ltr"
@@ -223,14 +201,14 @@ export function AndroidForceUpdateGate({
           <div
             style={{
               width: '100%',
-              background: 'var(--fill-1)',
-              borderRadius: 12,
-              padding: '10px 12px',
-              fontSize: 12,
-              color: 'var(--text-secondary)',
-              textAlign: 'right',
-              lineHeight: 1.55,
-              border: '1px solid var(--border-subtle)',
+              background: 'var(--card)',
+              borderRadius: 18,
+              padding: '14px 16px',
+              fontSize: 13,
+              color: 'var(--text-2)',
+              textAlign: 'start',
+              lineHeight: 1.5,
+              border: '1px solid var(--line)',
             }}
           >
             <strong style={{ color: 'var(--text)', display: 'block', marginBottom: 4 }}>
@@ -285,7 +263,7 @@ export function AndroidForceUpdateGate({
               borderRadius: 12,
               background: 'rgba(245, 158, 11, 0.14)',
               border: '1px solid rgba(245, 158, 11, 0.4)',
-              color: '#fbbf24',
+              color: 'var(--warn-text)',
               fontSize: 12.5,
               fontWeight: 700,
               lineHeight: 1.5,
@@ -304,7 +282,7 @@ export function AndroidForceUpdateGate({
               borderRadius: 12,
               background: 'rgba(239, 68, 68, 0.14)',
               border: '1px solid rgba(239, 68, 68, 0.35)',
-              color: '#f87171',
+              color: 'var(--danger-text)',
               fontSize: 12,
               fontWeight: 700,
               display: 'flex',
@@ -325,16 +303,15 @@ export function AndroidForceUpdateGate({
           className="btn-volt"
           style={{
             width: '100%',
-            padding: '14px 16px',
-            fontSize: 15,
-            fontWeight: 900,
-            borderRadius: 14,
+            height: 56,
+            fontSize: 16,
+            fontWeight: 700,
             cursor: downloading ? 'wait' : 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 8,
-            boxShadow: '0 8px 24px rgba(214, 125, 9, 0.38)',
+            boxShadow: 'none',
           }}
         >
           {downloading ? (
@@ -375,12 +352,13 @@ export function AndroidForceUpdateGate({
             type="button"
             disabled={checking || downloading}
             onClick={() => void handleManualRecheck()}
-            className="btn-surface"
+            className="glass"
             style={{
               flex: 1,
-              padding: '9px 10px',
-              fontSize: 12,
-              fontWeight: 700,
+              height: 50,
+              borderRadius: 999,
+              fontSize: 14,
+              fontWeight: 600,
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -400,14 +378,15 @@ export function AndroidForceUpdateGate({
             href={info.apkDownloadUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="btn-surface"
+            className="glass"
             style={{
               flex: 1,
-              padding: '9px 10px',
-              fontSize: 12,
-              fontWeight: 700,
+              height: 50,
+              borderRadius: 999,
+              fontSize: 14,
+              fontWeight: 600,
               textDecoration: 'none',
-              color: 'var(--text-secondary)',
+              color: 'var(--text)',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',

@@ -170,18 +170,18 @@ export function CoachPushModal({
             alignItems: 'center',
             gap: 8,
             padding: '8px 10px',
-            borderRadius: 10,
+            borderRadius: 16,
             fontSize: 12,
             fontWeight: 700,
             background:
               hasDevice && coachAlertsEnabled
-                ? 'rgba(34, 197, 94, 0.12)'
-                : 'rgba(245, 158, 11, 0.12)',
+                ? 'var(--surface-2)'
+                : 'var(--surface-2)',
             border:
               hasDevice && coachAlertsEnabled
-                ? '1px solid rgba(34, 197, 94, 0.35)'
-                : '1px solid rgba(245, 158, 11, 0.35)',
-            color: hasDevice && coachAlertsEnabled ? '#4ade80' : '#fcd34d',
+                ? '1px solid var(--line-2)'
+                : '1px solid var(--line-2)',
+            color: hasDevice && coachAlertsEnabled ? 'var(--ok-text)' : 'var(--warn-text)',
           }}
         >
           {hasDevice && coachAlertsEnabled ? (
@@ -207,7 +207,7 @@ export function CoachPushModal({
         <div>
           <div
             style={{
-              fontSize: 11.5,
+              fontSize: 12.5,
               fontWeight: 700,
               color: 'var(--text-secondary)',
               marginBottom: 6,
@@ -229,7 +229,7 @@ export function CoachPushModal({
                 className="btn-surface"
                 style={{
                   padding: '5px 9px',
-                  fontSize: 11,
+                  fontSize: 12,
                   cursor: 'pointer',
                 }}
               >
@@ -298,7 +298,7 @@ export function CoachPushModal({
               gap: 6,
               fontSize: 12,
               fontWeight: 700,
-              color: feedback.ok ? '#4ade80' : '#fca5a5',
+              color: feedback.ok ? 'var(--ok-text)' : 'var(--danger-text)',
             }}
           >
             {feedback.ok ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
@@ -332,14 +332,14 @@ export function CoachPushModal({
         {(trainee.pushHistory?.length || 0) > 0 && (
           <div
             style={{
-              borderTop: '1px solid var(--border-subtle)',
+              borderTop: '1px solid var(--line)',
               paddingTop: 10,
               marginTop: 4,
             }}
           >
             <div
               style={{
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 700,
                 color: 'var(--text-secondary)',
                 marginBottom: 6,
@@ -352,10 +352,10 @@ export function CoachPushModal({
                 <div
                   key={h.id}
                   style={{
-                    fontSize: 11,
-                    background: 'var(--bg-surface-2)',
+                    fontSize: 12,
+                    background: 'var(--surface-2)',
                     padding: '6px 9px',
-                    borderRadius: 8,
+                    borderRadius: 16,
                     color: 'var(--text-secondary)',
                   }}
                 >

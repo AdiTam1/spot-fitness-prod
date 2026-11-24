@@ -307,10 +307,10 @@ export function ServingToolsManagerModal({
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
             gap: 6,
-            background: 'var(--bg-surface-2)',
+            background: 'var(--surface-2)',
             padding: 4,
-            borderRadius: 12,
-            border: '1px solid var(--border-subtle)',
+            borderRadius: 18,
+            border: '1px solid var(--line)',
           }}
         >
           <button
@@ -318,7 +318,7 @@ export function ServingToolsManagerModal({
             onClick={() => setSection('tools')}
             style={{
               padding: '8px',
-              borderRadius: 8,
+              borderRadius: 16,
               border: 'none',
               background: section === 'tools' ? 'var(--sel-bg)' : 'transparent',
               color: section === 'tools' ? 'var(--sel-text)' : 'var(--text-secondary)',
@@ -339,7 +339,7 @@ export function ServingToolsManagerModal({
             onClick={() => setSection('units')}
             style={{
               padding: '8px',
-              borderRadius: 8,
+              borderRadius: 16,
               border: 'none',
               background: section === 'units' ? 'var(--sel-bg)' : 'transparent',
               color: section === 'units' ? 'var(--sel-text)' : 'var(--text-secondary)',
@@ -361,10 +361,10 @@ export function ServingToolsManagerModal({
           <div
             style={{
               padding: '8px 12px',
-              borderRadius: 10,
+              borderRadius: 16,
               background: 'rgba(239, 68, 68, 0.14)',
               border: '1px solid rgba(239, 68, 68, 0.35)',
-              color: '#fca5a5',
+              color: 'var(--danger-text)',
               fontSize: 12,
               fontWeight: 600,
             }}
@@ -415,9 +415,9 @@ export function ServingToolsManagerModal({
             {measureMode === 'ai' && (
               <div
                 style={{
-                  background: 'var(--bg-surface-2)',
-                  border: '1px solid rgba(214, 125, 9, 0.28)',
-                  borderRadius: 14,
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--line-2)',
+                  borderRadius: 20,
                   padding: 12,
                   display: 'flex',
                   flexDirection: 'column',
@@ -427,16 +427,16 @@ export function ServingToolsManagerModal({
                 {/* מדריך צילום מדעי לדיוק מירבי */}
                 <div
                   style={{
-                    fontSize: 11,
+                    fontSize: 12,
                     lineHeight: 1.5,
                     color: 'var(--text-secondary)',
                     background: 'rgba(56, 189, 248, 0.08)',
                     border: '1px solid rgba(56, 189, 248, 0.25)',
-                    borderRadius: 10,
+                    borderRadius: 16,
                     padding: '8px 10px',
                   }}
                 >
-                  <b style={{ color: '#7dd3fc' }}>
+                  <b style={{ color: 'var(--info-text)' }}>
                     כללי צילום לדיוק הגבוה ביותר (מבוסס מחקר Vision AI):
                   </b>
                   <br />
@@ -464,9 +464,9 @@ export function ServingToolsManagerModal({
                           position: 'relative',
                           width: 84,
                           height: 84,
-                          borderRadius: 10,
+                          borderRadius: 16,
                           overflow: 'hidden',
-                          border: '1px solid var(--border-subtle)',
+                          border: '1px solid var(--line)',
                         }}
                       >
                         <img
@@ -503,7 +503,7 @@ export function ServingToolsManagerModal({
                             bottom: 2,
                             left: 2,
                             right: 2,
-                            fontSize: 9,
+                            fontSize: 12,
                             textAlign: 'center',
                             background: 'rgba(0,0,0,0.72)',
                             color: 'var(--accent-volt)',
@@ -525,7 +525,7 @@ export function ServingToolsManagerModal({
                       flex: 1,
                       minWidth: 120,
                       padding: '7px 10px',
-                      fontSize: 11,
+                      fontSize: 12,
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -533,7 +533,7 @@ export function ServingToolsManagerModal({
                       cursor: 'pointer',
                     }}
                   >
-                    <ImageIcon size={13} color="#38bdf8" />
+                    <ImageIcon size={13} color="var(--text-2)" />
                     <span>בחר מהגלריה (עד 3)</span>
                     <input
                       type="file"
@@ -549,7 +549,7 @@ export function ServingToolsManagerModal({
                       flex: 1,
                       minWidth: 120,
                       padding: '7px 10px',
-                      fontSize: 11,
+                      fontSize: 12,
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -603,21 +603,21 @@ export function ServingToolsManagerModal({
                   <div
                     style={{
                       padding: '8px 10px',
-                      borderRadius: 10,
-                      fontSize: 11,
+                      borderRadius: 16,
+                      fontSize: 12,
                       fontWeight: 600,
                       background: aiResultNote.isError
                         ? 'rgba(239, 68, 68, 0.14)'
-                        : 'rgba(214, 125, 9, 0.1)',
+                        : 'var(--fill-1)',
                       border: aiResultNote.isError
                         ? '1px solid rgba(239, 68, 68, 0.35)'
-                        : '1px solid rgba(214, 125, 9, 0.3)',
-                      color: aiResultNote.isError ? '#fca5a5' : 'var(--accent-volt)',
+                        : '1px solid var(--line-2)',
+                      color: aiResultNote.isError ? 'var(--danger-text)' : 'var(--accent-volt)',
                     }}
                   >
                     {aiResultNote.msg}
                     {aiResultNote.engine && (
-                      <div style={{ fontSize: 10, opacity: 0.85, marginTop: 3 }}>
+                      <div style={{ fontSize: 12, opacity: 0.85, marginTop: 3 }}>
                         {aiResultNote.isFallback
                           ? `לא AI · Fallback (${aiResultNote.engine})`
                           : `✨ AI · ${aiResultNote.engine}`}
@@ -727,9 +727,9 @@ export function ServingToolsManagerModal({
                 <div
                   key={tool.id}
                   style={{
-                    background: 'var(--bg-surface-2)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 12,
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 18,
                     padding: '8px 12px',
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -743,10 +743,10 @@ export function ServingToolsManagerModal({
                       {tool.measuredByAi && (
                         <span
                           style={{
-                            fontSize: 9,
+                            fontSize: 12,
                             padding: '1px 6px',
                             borderRadius: 999,
-                            background: 'rgba(214, 125, 9, 0.14)',
+                            background: 'var(--surface-2)',
                             color: 'var(--accent-volt)',
                           }}
                         >
@@ -754,7 +754,7 @@ export function ServingToolsManagerModal({
                         </span>
                       )}
                     </div>
-                    <div className="num-mono" style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+                    <div className="num-mono" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                       {[
                         tool.diameterCm ? `קוטר ${tool.diameterCm} ס״מ` : '',
                         tool.depthCm ? `עומק ${tool.depthCm} ס״מ` : '',
@@ -780,7 +780,7 @@ export function ServingToolsManagerModal({
                       cursor: 'pointer',
                     }}
                   >
-                    <Trash2 size={12} color="#f87171" />
+                    <Trash2 size={12} color="var(--danger-text)" />
                   </button>
                 </div>
               ))}
@@ -788,7 +788,7 @@ export function ServingToolsManagerModal({
           </>
         ) : (
           <>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
               יחידות המידה שתגדיר כאן יופיעו אוטומטית בבחירת היחידות של מאגר המזון ובפענוח ה-AI.
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr 0.7fr', gap: 8 }}>
@@ -845,9 +845,9 @@ export function ServingToolsManagerModal({
                 <div
                   key={u.id}
                   style={{
-                    background: 'var(--bg-surface-2)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 12,
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 18,
                     padding: '8px 12px',
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -862,7 +862,7 @@ export function ServingToolsManagerModal({
                       </span>
                     </div>
                     {u.foodNameKeyword && (
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                         מותאם ל: {u.foodNameKeyword}
                       </div>
                     )}
@@ -882,7 +882,7 @@ export function ServingToolsManagerModal({
                       cursor: 'pointer',
                     }}
                   >
-                    <Trash2 size={12} color="#f87171" />
+                    <Trash2 size={12} color="var(--danger-text)" />
                   </button>
                 </div>
               ))}

@@ -21,6 +21,7 @@ export function Chip({
   hideCheck = false,
   size = 'md',
   style,
+  className,
   children,
   ...rest
 }: ChipProps) {
@@ -29,6 +30,7 @@ export function Chip({
       type="button"
       aria-pressed={selected}
       {...rest}
+      className={`${size === 'sm' ? 'hit-44-sm' : 'hit-44-md'}${className ? ` ${className}` : ''}`}
       style={{
         height: size === 'sm' ? 34 : 40,
         padding: size === 'sm' ? '0 12px' : '0 14px',

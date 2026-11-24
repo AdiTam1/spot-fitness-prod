@@ -86,7 +86,7 @@ export function BackgroundAiSyncBanner({
             pointerEvents: 'auto',
             background: 'rgba(13, 16, 22, 0.96)',
             backdropFilter: 'blur(14px)',
-            border: '1px solid rgba(214, 125, 9, 0.48)',
+            border: '1px solid var(--line-2)',
             boxShadow: '0 10px 30px rgba(0, 0, 0, 0.55)',
             borderRadius: 16,
             padding: '11px 14px',
@@ -116,10 +116,10 @@ export function BackgroundAiSyncBanner({
               <span
                 className="num-mono"
                 style={{
-                  fontSize: 10,
+                  fontSize: 12,
                   padding: '2px 7px',
                   borderRadius: 999,
-                  background: 'rgba(214, 125, 9, 0.14)',
+                  background: 'var(--surface-2)',
                   color: 'var(--accent-volt)',
                   fontWeight: 800,
                 }}
@@ -130,7 +130,7 @@ export function BackgroundAiSyncBanner({
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginTop: 3 }}>
               {ticker.currentStepText}
             </div>
-            <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 3 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
               אפשר להמשיך באפליקציה או לסגור בינתיים — הפריטים יסתנכרנו אוטומטית ליומן שלך.
             </div>
           </div>
@@ -164,7 +164,7 @@ export function BackgroundAiSyncBanner({
                 : 'rgba(48, 14, 14, 0.97)',
               backdropFilter: 'blur(14px)',
               border: isOk
-                ? '1px solid rgba(214, 125, 9, 0.55)'
+                ? '1px solid var(--line-2)'
                 : '1px solid rgba(239, 68, 68, 0.5)',
               boxShadow: '0 10px 30px rgba(0, 0, 0, 0.55)',
               borderRadius: 16,
@@ -186,28 +186,28 @@ export function BackgroundAiSyncBanner({
                     height: 34,
                     borderRadius: 9,
                     objectFit: 'cover',
-                    border: '1px solid rgba(214, 125, 9, 0.45)',
+                    border: '1px solid var(--line-2)',
                     flexShrink: 0,
                   }}
                 />
               ) : isOk ? (
                 <Sparkles size={16} color="currentColor" style={{ flexShrink: 0 }} />
               ) : (
-                <AlertTriangle size={16} color="#f87171" style={{ flexShrink: 0 }} />
+                <AlertTriangle size={16} color="var(--danger-text)" style={{ flexShrink: 0 }} />
               )}
               <div style={{ minWidth: 0 }}>
                 <div
                   style={{
                     fontSize: 12,
                     fontWeight: 800,
-                    color: isOk ? 'var(--accent-orange-bright)' : '#fca5a5',
+                    color: isOk ? 'var(--accent-orange-bright)' : 'var(--danger-text)',
                   }}
                 >
                   {isOk
                     ? `הושלם וסונכרן ל${job.mealSlotName}! (${job.itemsCount || 1} מרכיבים)`
                     : `פענוח ה-AI ל${job.mealSlotName} נכשל`}
                 </div>
-                <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                   {isOk
                     ? job.mode === 'photo'
                       ? 'לחץ לפתיחת הפענוח והתמונה'
@@ -231,7 +231,7 @@ export function BackgroundAiSyncBanner({
                   className="btn-volt"
                   style={{
                     padding: '5px 10px',
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: 800,
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -258,7 +258,7 @@ export function BackgroundAiSyncBanner({
                   cursor: 'pointer',
                 }}
               >
-                {isOk ? <Check size={13} color="var(--accent-volt)" /> : <X size={13} color="#fca5a5" />}
+                {isOk ? <Check size={13} color="var(--accent-volt)" /> : <X size={13} color="var(--danger-text)" />}
               </button>
             </div>
           </div>
