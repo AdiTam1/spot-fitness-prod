@@ -697,7 +697,13 @@ export function TraineeMobileView({
                   flex: 'none',
                 }}
               >
-                {trainee.avatar}
+                {trainee.avatar ||
+                  (trainee.name || '')
+                    .trim()
+                    .split(/\s+/)
+                    .map((w) => Array.from(w)[0] || '')
+                    .join('')
+                    .slice(0, 2)}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                 <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{dateLabel}</span>
@@ -1118,7 +1124,7 @@ export function TraineeMobileView({
               if (!quickSlot) return null;
               const items: { id: string; label: string; icon: React.ReactNode; tab: string }[] = [
                 { id: 'photo', label: 'צילום AI', icon: <Camera size={26} strokeWidth={1.8} />, tab: 'ai-photo' },
-                { id: 'text', label: 'טקסט / קול', icon: <Mic size={26} strokeWidth={1.8} />, tab: 'ai-text' },
+                { id: 'text', label: 'במילים', icon: <Mic size={26} strokeWidth={1.8} />, tab: 'ai-text' },
                 { id: 'barcode', label: 'ברקוד', icon: <Barcode size={26} strokeWidth={1.8} />, tab: 'barcode' },
                 { id: 'saved', label: 'שמורות', icon: <Bookmark size={26} strokeWidth={1.8} />, tab: 'saved-meals' },
               ];
@@ -2007,6 +2013,212 @@ export function TraineeMobileView({
             transition={{ duration: 0.2 }}
             style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
           >
+            {/* כרטיס מעקב משקל גוף ומגמה (design: Metrics hero) */}
+            <div className="pro-card" style={{ padding: 18, borderRadius: 28 }}>
+              {(() => {
+                const hist = trainee.weightHistory.slice(-12);
+                const first = trainee.weightHistory[0]?.weight;
+                const delta = first != null ? Math.round((trainee.currentWeight - first) * 10) / 10 : 0;
+                const vals = hist.map((w) => w.weight);
+                const target = trainee.targetWeight;
+                const all = target ? [...vals, target] : vals;
+                const lo = Math.min(...all) - 0.5;
+                const hi = Math.max(...all) + 0.5;
+                const W = 300;
+                const H = 80;
+                const x = (i: number) => (vals.length <= 1 ? W / 2 : (i / (vals.length - 1)) * W);
+                const y = (v: number) => H - ((v - lo) / (hi - lo || 1)) * (H - 8) - 4;
+                const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+                return (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
+                        {Boolean(target) && (
+                          <span style={{ fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 999, background: 'var(--surface-3)', color: 'var(--text-2)' }}>
+                            יעד מאמן: <bdi dir="ltr" className="ltr-num">{target}</bdi> ק״ג
+                          </span>
+                        )}
+                        {trainee.weightHistory.length > 1 && (
+                          <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: 'var(--accent)', color: 'var(--on-accent)' }}>
+                            <bdi dir="ltr" className="ltr-num">{delta > 0 ? '+' : delta < 0 ? '−' : ''}{Math.abs(delta)}</bdi> ק״ג מההתחלה
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ textAlign: 'start' }}>
+                        <div style={{ fontSize: 13, color: 'var(--text-2)' }}>משקל נוכחי</div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                          <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 44, fontWeight: 700, lineHeight: 1.05 }}>
+                            {trainee.currentWeight}
+                          </bdi>
+                          <span style={{ fontSize: 15, color: 'var(--text-2)' }}>ק״ג</span>
+                        </div>
+                      </div>
+                    </div>
+                    {vals.length > 1 && (
+                      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" aria-hidden style={{ display: 'block', margin: '14px 0', direction: 'ltr', overflow: 'visible' }}>
+                        <defs>
+                          <linearGradient id="wg" x1="0" x2="0" y1="0" y2="1">
+                            <stop offset="0" stopColor="currentColor" stopOpacity="0.28" />
+                            <stop offset="1" stopColor="currentColor" stopOpacity="0" />
+                          </linearGradient>
+                        </defs>
+                        <g style={{ color: 'var(--text)' }}>
+                          <polygon points={`0,${H} ${pts.join(' ')} ${W},${H}`} fill="url(#wg)" />
+                          <polyline points={pts.join(' ')} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                        </g>
+                        {Boolean(target) && (
+                          <line x1="0" x2={W} y1={y(target)} y2={y(target)} stroke="var(--accent)" strokeWidth="1.5" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+                        )}
+                        <circle cx={x(vals.length - 1)} cy={y(vals[vals.length - 1])} r="4" fill="var(--accent)" />
+                      </svg>
+                    )}
+                  </>
+                );
+              })()}
+
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (isBlockedDay || weightLockRef.current) return;
+                  const num = parseFloat(weightInput);
+                  if (isNaN(num) || num < 30 || num > 250) {
+                    setWeightFeedback({
+                      msg: 'נא להזין משקל תקין בין 30 ל-250 ק״ג',
+                      isError: true,
+                    });
+                    return;
+                  }
+                  weightLockRef.current = true;
+                  setSavingWeight(true);
+                  setWeightFeedback(null);
+                  try {
+                    await onUpdateWeight(trainee.id, selectedDate, num);
+                    setWeightFeedback({ msg: `✓ שקילה (${num} ק״ג) נשמרה בהצלחה!` });
+                    setTimeout(() => setWeightFeedback(null), 3000);
+                  } catch {
+                    setWeightFeedback({
+                      msg: 'שגיאה בשמירת השקילה – נסה שוב',
+                      isError: true,
+                    });
+                  } finally {
+                    weightLockRef.current = false;
+                    setSavingWeight(false);
+                  }
+                }}
+                style={{ display: 'flex', gap: 8 }}
+              >
+                <input
+                  type="number"
+                  step="0.1"
+                  inputMode="decimal"
+                  dir="ltr"
+                  aria-label="שקילת היום בק״ג"
+                  placeholder="שקילת היום (ק״ג)"
+                  disabled={savingWeight || isBlockedDay}
+                  value={weightInput}
+                  onChange={(e) => setWeightInput(e.target.value)}
+                  className="num-mono"
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    height: 52,
+                    background: 'transparent',
+                    border: '1px solid var(--line-2)',
+                    borderRadius: 999,
+                    padding: '0 18px',
+                    color: 'var(--text)',
+                    fontSize: 18,
+                    fontWeight: 600,
+                    outline: 'none',
+                    opacity: isBlockedDay ? 0.5 : 1,
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={savingWeight || isBlockedDay}
+                  className="btn-volt"
+                  aria-label="תיעוד שקילה"
+                  style={{
+                    height: 52,
+                    padding: '0 22px',
+                    fontSize: 16,
+                    whiteSpace: 'nowrap',
+                    flex: 'none',
+                    cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                    opacity: isBlockedDay ? 0.45 : 1,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  {savingWeight && <Loader2 size={16} className="spot-spinner" />}
+                  <span>{savingWeight ? 'שומר...' : 'תיעוד'}</span>
+                </button>
+              </form>
+              {weightFeedback && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: weightFeedback.isError ? 'var(--danger-text)' : 'var(--ok-text)',
+                  }}
+                >
+                  {weightFeedback.msg}
+                </div>
+              )}
+            </div>
+
+            {/* כרטיס הידרציה / שתיית מים (design: Metrics) */}
+            <div className="pro-card" style={{ padding: 18, borderRadius: 28 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 'none' }}>
+                  <button
+                    type="button"
+                    aria-label="הוסף כוס מים"
+                    disabled={isBlockedDay}
+                    onClick={() => !isBlockedDay && onUpdateWater(trainee.id, selectedDate, dailyLog.waterCups + 1)}
+                    className="btn-volt hit-44"
+                    style={{ width: 52, height: 52, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, opacity: isBlockedDay ? 0.45 : 1 }}
+                  >
+                    <Plus size={22} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="הורד כוס מים"
+                    disabled={isBlockedDay || dailyLog.waterCups <= 0}
+                    onClick={() => !isBlockedDay && onUpdateWater(trainee.id, selectedDate, Math.max(0, dailyLog.waterCups - 1))}
+                    className="btn-surface hit-44"
+                    style={{ width: 52, height: 52, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isBlockedDay || dailyLog.waterCups <= 0 ? 0.45 : 1 }}
+                  >
+                    <Minus size={22} />
+                  </button>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>מאזן נוזלים</div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+                    <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 40, fontWeight: 700, lineHeight: 1 }}>
+                      {dailyLog.waterCups}
+                    </bdi>
+                    <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                      כוסות · <bdi dir="ltr" className="ltr-num">{dailyLog.waterCups * 0.25}</bdi> ליטר
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 4 }} aria-label={`${dailyLog.waterCups} מתוך ${dailyLog.waterGoal} כוסות`}>
+                    {Array.from({ length: Math.max(dailyLog.waterGoal, dailyLog.waterCups) }).map((_, i) => (
+                      <span
+                        key={i}
+                        style={{ flex: 1, height: 16, borderRadius: 5, background: i < dailyLog.waterCups ? 'var(--accent)' : 'var(--surface-3)' }}
+                      />
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 8 }}>
+                    כל כוס = 250 מ״ל · יעד <bdi dir="ltr" className="ltr-num">{dailyLog.waterGoal}</bdi> כוסות
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* כרטיס היקפי גוף ומדריך מדידה מונפש */}
             <div className="pro-card" style={{ padding: 18, borderRadius: 28 }}>
               <div
@@ -2115,260 +2327,6 @@ export function TraineeMobileView({
                 >
                   טרם הוזנו היקפים. לחץ על &ldquo;הזן היקפים&rdquo; לפתיחת
                   המדריך המונפש.
-                </div>
-              )}
-            </div>
-
-            {/* כרטיס הידרציה / שתיית מים */}
-            <div className="pro-card" style={{ padding: 18, borderRadius: 28 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 14,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 18,
-                      background: 'var(--surface-2)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Droplets size={18} color="var(--text)" />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 800 }}>
-                      מאזן נוזלים יומי
-                    </div>
-                    <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
-                      כל כוס = 250 מ״ל ({dailyLog.waterCups * 0.25} ליטר היום)
-                    </div>
-                  </div>
-                </div>
-                <div
-                  className="num-mono"
-                  style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}
-                >
-                  {dailyLog.waterCups} / {dailyLog.waterGoal}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(6, 1fr)',
-                  gap: 8,
-                  marginBottom: 12,
-                }}
-              >
-                {Array.from({ length: dailyLog.waterGoal }).map((_, i) => {
-                  const filled = i < dailyLog.waterCups;
-                  return (
-                    <button
-                      key={i}
-                      type="button"
-                      disabled={isBlockedDay}
-                      onClick={() => {
-                        if (!isBlockedDay) {
-                          onUpdateWater(trainee.id, selectedDate, i + 1);
-                        }
-                      }}
-                      style={{
-                        height: 44,
-                        borderRadius: 18,
-                        border: filled ? '1px solid var(--accent)' : '1px solid var(--line)',
-                        background: filled ? 'var(--accent)' : 'var(--surface-2)',
-                        color: filled ? 'var(--on-accent)' : 'var(--text-muted)',
-                        fontFamily: 'var(--font-num)',
-                        fontWeight: 700,
-                        fontSize: 13,
-                        opacity: isBlockedDay ? 0.45 : 1,
-                        cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      {i + 1}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* כרטיס מעקב משקל גוף ומגמה */}
-            <div className="pro-card" style={{ padding: 18, borderRadius: 28 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 14,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 18,
-                      background: 'var(--surface-2)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Scale size={18} color="currentColor" />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 800 }}>
-                      מגמת משקל גוף
-                    </div>
-                    <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
-                      יעד מאמן: {trainee.targetWeight} ק״ג
-                    </div>
-                  </div>
-                </div>
-                <div
-                  className="num-mono"
-                  style={{
-                    fontSize: 22,
-                    fontWeight: 800,
-                    color: 'var(--accent-volt)',
-                  }}
-                >
-                  {trainee.currentWeight} ק״ג
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: `repeat(${Math.max(
-                    1,
-                    Math.min(5, trainee.weightHistory.length)
-                  )}, 1fr)`,
-                  gap: 8,
-                  marginBottom: 14,
-                }}
-              >
-                {trainee.weightHistory.slice(-5).map((w, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      background: 'var(--surface-2)',
-                      padding: '8px 6px',
-                      borderRadius: 18,
-                      textAlign: 'center',
-                      border: '1px solid var(--line)',
-                    }}
-                  >
-                    <div
-                      className="num-mono"
-                      style={{ fontSize: 17, fontWeight: 700 }}
-                    >
-                      {w.weight}
-                    </div>
-                    <bdi dir="ltr" className="ltr-num" style={{ fontSize: 13, color: 'var(--text-3)' }}>
-                      {w.date.slice(8, 10)}.{w.date.slice(5, 7)}
-                    </bdi>
-                  </div>
-                ))}
-              </div>
-
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (isBlockedDay || weightLockRef.current) return;
-                  const num = parseFloat(weightInput);
-                  if (isNaN(num) || num < 30 || num > 250) {
-                    setWeightFeedback({
-                      msg: 'נא להזין משקל תקין בין 30 ל-250 ק״ג',
-                      isError: true,
-                    });
-                    return;
-                  }
-                  weightLockRef.current = true;
-                  setSavingWeight(true);
-                  setWeightFeedback(null);
-                  try {
-                    await onUpdateWeight(trainee.id, selectedDate, num);
-                    setWeightFeedback({ msg: `✓ שקילה (${num} ק״ג) נשמרה בהצלחה!` });
-                    setTimeout(() => setWeightFeedback(null), 3000);
-                  } catch {
-                    setWeightFeedback({
-                      msg: 'שגיאה בשמירת השקילה – נסה שוב',
-                      isError: true,
-                    });
-                  } finally {
-                    weightLockRef.current = false;
-                    setSavingWeight(false);
-                  }
-                }}
-                style={{ display: 'flex', gap: 8 }}
-              >
-                <input
-                  type="number"
-                  step="0.1"
-                  inputMode="decimal"
-                  dir="ltr"
-                  aria-label="שקילת היום בק״ג"
-                  placeholder="שקילת היום (ק״ג)"
-                  disabled={savingWeight || isBlockedDay}
-                  value={weightInput}
-                  onChange={(e) => setWeightInput(e.target.value)}
-                  className="num-mono"
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    height: 52,
-                    background: 'transparent',
-                    border: '1px solid var(--line-2)',
-                    borderRadius: 999,
-                    padding: '0 18px',
-                    color: 'var(--text)',
-                    fontSize: 18,
-                    fontWeight: 600,
-                    outline: 'none',
-                    opacity: isBlockedDay ? 0.5 : 1,
-                  }}
-                />
-                <button
-                  type="submit"
-                  disabled={savingWeight || isBlockedDay}
-                  className="btn-volt"
-                  aria-label="תיעוד שקילה"
-                  style={{
-                    height: 52,
-                    padding: '0 22px',
-                    fontSize: 16,
-                    whiteSpace: 'nowrap',
-                    flex: 'none',
-                    cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                    opacity: isBlockedDay ? 0.45 : 1,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                  }}
-                >
-                  {savingWeight && <Loader2 size={16} className="spot-spinner" />}
-                  <span>{savingWeight ? 'שומר...' : 'תיעוד'}</span>
-                </button>
-              </form>
-              {weightFeedback && (
-                <div
-                  style={{
-                    marginTop: 8,
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: weightFeedback.isError ? 'var(--danger-text)' : 'var(--ok-text)',
-                  }}
-                >
-                  {weightFeedback.msg}
                 </div>
               )}
             </div>

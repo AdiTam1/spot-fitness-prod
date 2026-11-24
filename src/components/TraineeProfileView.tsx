@@ -423,7 +423,14 @@ export function TraineeProfileView({
               flex: 'none',
             }}
           >
-            {trainee.avatar || trainee.name.charAt(0) || 'מ'}
+            {trainee.avatar ||
+              trainee.name
+                .trim()
+                .split(/\s+/)
+                .map((w) => Array.from(w)[0] || '')
+                .join('')
+                .slice(0, 2) ||
+              'מ'}
           </div>
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
             <span
@@ -533,7 +540,7 @@ export function TraineeProfileView({
       </section>
 
       {/* 2. מיני-דשבורד סטטיסטיקות (7 ימים אחרונים) */}
-      <div className="pro-card" style={{ padding: 18, borderRadius: 28 }}>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
         <div
           style={{
             display: 'flex',
@@ -559,9 +566,11 @@ export function TraineeProfileView({
         >
           <div
             style={{
-              background: 'var(--surface-2)',
+              background: 'var(--card)',
+              border: '1px solid var(--line)',
+              boxShadow: 'var(--card-shadow)',
               padding: '14px 16px',
-              borderRadius: 22,
+              borderRadius: 24,
             }}
           >
             <div
@@ -590,9 +599,11 @@ export function TraineeProfileView({
           ) && (
             <div
               style={{
-                background: 'var(--surface-2)',
+                background: 'var(--card)',
+                border: '1px solid var(--line)',
+                boxShadow: 'var(--card-shadow)',
                 padding: '14px 16px',
-                borderRadius: 22,
+                borderRadius: 24,
               }}
             >
               <div
@@ -620,9 +631,11 @@ export function TraineeProfileView({
 
           <div
             style={{
-              background: 'var(--surface-2)',
+              background: 'var(--card)',
+              border: '1px solid var(--line)',
+              boxShadow: 'var(--card-shadow)',
               padding: '14px 16px',
-              borderRadius: 22,
+              borderRadius: 24,
             }}
           >
             <div
@@ -648,9 +661,11 @@ export function TraineeProfileView({
 
           <div
             style={{
-              background: 'var(--surface-2)',
+              background: 'var(--card)',
+              border: '1px solid var(--line)',
+              boxShadow: 'var(--card-shadow)',
               padding: '14px 16px',
-              borderRadius: 22,
+              borderRadius: 24,
             }}
           >
             <div
