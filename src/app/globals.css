@@ -723,3 +723,59 @@ a.glass {
     border: 1px solid var(--line-2);
   }
 }
+
+/* ---------- Tables -> stacked cards on phones ---------- */
+@media (max-width: 768px) {
+  table.m-cards,
+  table.m-cards tbody {
+    display: block;
+    width: 100%;
+  }
+  table.m-cards thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  table.m-cards tbody tr {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 10px;
+    padding: 14px 16px;
+    background: var(--surface-2);
+    border: 1px solid var(--line) !important;
+    border-radius: 22px;
+  }
+  table.m-cards tbody td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 !important;
+    text-align: start !important;
+    border: none !important;
+  }
+  table.m-cards tbody td[data-label]::before {
+    content: attr(data-label);
+    flex: none;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-2);
+  }
+  table.m-cards tbody td:last-child {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  table.m-cards tbody td:last-child > div {
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  table.m-cards tbody td[colspan] {
+    display: block;
+    text-align: center !important;
+  }
+}

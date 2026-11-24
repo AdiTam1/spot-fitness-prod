@@ -50,8 +50,8 @@
 | 48 | `CoachOnb3` | מאמן · הגדרה 3 | `CoachOnboardingWizard` | Not restructured | Color rules only |
 | 49 | `CoachOnb4` | מאמן · הגדרה 4 | `CoachOnboardingWizard` | Not restructured | Color rules only |
 | 50 | `CoachOnb5` | מאמן · הגדרה 5 | `CoachOnboardingWizard` | Not restructured | Color rules only |
-| 51 | `AdminApprovals` | מנהל · ממתינים לאישור | `CoachDashboardView` (admin section) | Not restructured | Color rules only |
-| 52 | `AdminCoaches` | מנהל · ניהול מאמנים | `CoachDashboardView` (admin section) | Not restructured | Color rules only |
+| 51 | `AdminApprovals` | מנהל · ממתינים לאישור | `CoachDashboardView` (pending queue) | Partial | Rebuilt as cards per design; not screenshot-verified (needs pending-trainee fixture) |
+| 52 | `AdminCoaches` | מנהל · ניהול מאמנים | `CoachDashboardView` (admin section) | Partial | Table renders as stacked cards on phones; header/actions not rebuilt |
 | 53 | `AdminChips` | מנהל · צ׳יפים גלובליים | `QuickChipsAdminPanel` | Not restructured | Color rules only |
 | 54 | `AdminScrapers` | מנהל · סקרייפרים ומאגר מזון | `AdminScrapersPanel` | Not restructured | Neutral tints |
 | 55 | `AdminVersions` | מנהל · בקרת גרסאות | `CoachDashboardView` (admin section) | Not restructured | Color rules only |

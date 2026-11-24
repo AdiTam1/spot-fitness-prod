@@ -989,104 +989,110 @@ export function CoachDashboardView({
 
   return (
     <div className="coach-dashboard-root" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* תור אישור מתאמנים שנרשמו ללא קוד מאמן (גלוי למנהל הראשי בלבד) */}
+      {/* תור אישור מתאמנים שנרשמו ללא קוד מאמן (גלוי למנהל הראשי בלבד) — design: AdminApprovals */}
       {pendingTrainees.length > 0 && (
-        <div
-          style={{
-            padding: '16px 20px',
-            borderRadius: 16,
-            background: 'rgba(245, 158, 11, 0.1)',
-            border: '1px solid rgba(245, 158, 11, 0.35)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 12,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <UserCheck size={18} color="var(--warn-text)" />
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--warn-text)' }}>
-                מתאמנים הממתינים לאישור ושיוך למאמן ({pendingTrainees.length})
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                בחר לאיזה מאמן לשייך כל מתאמן ולחץ על אישור כדי לפתוח לו גישה
-              </div>
-            </div>
+        <section aria-label="ממתינים לאישור" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>ממתינים לאישור</h2>
+            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+              נרשמו ללא קוד מאמן · <bdi className="ltr-num">{pendingTrainees.length}</bdi>
+            </span>
           </div>
-
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-            {pendingTrainees.map((p) => {
-              const targetCoach =
-                pendingAssignCoachMap[p.id] || p.primaryCoachId || 'coach-admin';
-              return (
-                <div
-                  key={p.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    background: 'var(--bg-surface-1)',
-                    padding: '8px 12px',
-                    borderRadius: 12,
-                    border: '1px solid var(--border-subtle)',
-                  }}
-                >
-                  <span style={{ fontSize: 13, fontWeight: 800 }}>
-                    {p.name} ({p.email})
+          <span style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.45 }}>
+            בחר לאיזה מאמן לשייך כל מתאמן ולחץ על אישור כדי לפתוח לו גישה.
+          </span>
+          {pendingTrainees.map((p) => {
+            const targetCoach = pendingAssignCoachMap[p.id] || p.primaryCoachId || 'coach-admin';
+            const initials = p.name
+              .trim()
+              .split(/\s+/)
+              .map((w) => w[0])
+              .join('')
+              .slice(0, 2);
+            return (
+              <article
+                key={p.id}
+                style={{
+                  background: 'var(--card)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 24,
+                  padding: '14px 16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                  boxShadow: 'var(--card-shadow)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span
+                    aria-hidden
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 999,
+                      background: 'var(--surface-3)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      flex: 'none',
+                    }}
+                  >
+                    {initials}
                   </span>
+                  <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: 15, fontWeight: 600 }}>{p.name}</span>
+                    <bdi dir="ltr" style={{ fontSize: 12, color: 'var(--text-2)', textAlign: 'start', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {p.email}
+                    </bdi>
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
                   {isSuperAdmin && (
-                    <Select
-                      size="xs"
-                      w={150}
-                      value={targetCoach}
-                      onChange={(val) =>
-                        val &&
-                        setPendingAssignCoachMap((prev) => ({
-                          ...prev,
-                          [p.id]: val,
-                        }))
-                      }
-                      data={coachDirectory.map((c) => ({
-                        value: c.id,
-                        label: `מאמן: ${c.name}`,
-                      }))}
-                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <Select
+                        aria-label="שיוך למאמן"
+                        value={targetCoach}
+                        onChange={(val) =>
+                          val && setPendingAssignCoachMap((prev) => ({ ...prev, [p.id]: val }))
+                        }
+                        data={coachDirectory.map((c) => ({ value: c.id, label: `מאמן: ${c.name}` }))}
+                        allowDeselect={false}
+                      />
+                    </div>
                   )}
                   <button
+                    type="button"
                     disabled={isBusy(`approve-${p.id}`)}
                     onClick={() =>
                       runBusy(
                         `approve-${p.id}`,
                         () => onUpdateTraineeStatus(p.id, 'active', targetCoach),
-                        `${p.name} אושר ושויך למאמן ${getCoachNameById(
-                          targetCoach
-                        )}!`
+                        `${p.name} אושר ושויך למאמן ${getCoachNameById(targetCoach)}!`
                       )
                     }
                     className="btn-volt"
                     style={{
-                      padding: '6px 12px',
-                      fontSize: 12,
+                      height: 52,
+                      padding: '0 18px',
+                      fontSize: 14,
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 5,
+                      justifyContent: 'center',
+                      gap: 6,
+                      flex: isSuperAdmin ? 'none' : 1,
                     }}
                   >
-                    {isBusy(`approve-${p.id}`) ? (
-                      <BusyIcon size={13} />
-                    ) : (
-                      <Check size={13} />
-                    )}
-                    <span>
-                      {isBusy(`approve-${p.id}`) ? 'מאשר...' : 'אשר ושייך'}
-                    </span>
+                    {isBusy(`approve-${p.id}`) ? <BusyIcon size={15} /> : <Check size={15} />}
+                    <span>{isBusy(`approve-${p.id}`) ? 'מאשר...' : 'אשר ושייך'}</span>
                   </button>
                 </div>
-              );
-            })}
-          </div>
-        </div>
+              </article>
+            );
+          })}
+        </section>
       )}
 
       {/* סרגל ניווט ראשי של הדשבורד */}

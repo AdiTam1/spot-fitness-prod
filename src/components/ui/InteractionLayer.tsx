@@ -190,9 +190,28 @@ export function InteractionLayer() {
         el.classList.add('hit-44-auto');
       });
     };
+    // Tables become stacked cards on phones: copy each header label onto its cells.
+    const labelTables = () => {
+      document.querySelectorAll<HTMLTableElement>('table').forEach((table) => {
+        const heads = Array.from(table.querySelectorAll('thead th')).map((th) => (th.textContent || '').trim());
+        if (!heads.length) return;
+        table.classList.add('m-cards');
+        table.querySelectorAll('tbody tr').forEach((tr) => {
+          Array.from(tr.children).forEach((td, i) => {
+            const el = td as HTMLElement;
+            if (!el.dataset.label && heads[i] && (el as HTMLTableCellElement).colSpan <= 1) el.dataset.label = heads[i];
+          });
+        });
+      });
+    };
     const schedule = () => {
       if (raf) return;
-      raf = window.requestAnimationFrame(() => window.setTimeout(expand, 120));
+      raf = window.requestAnimationFrame(() =>
+        window.setTimeout(() => {
+          expand();
+          labelTables();
+        }, 120)
+      );
     };
     const mo = new MutationObserver(schedule);
     mo.observe(document.body, { childList: true, subtree: true });
