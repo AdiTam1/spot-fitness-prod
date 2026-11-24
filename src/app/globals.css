@@ -983,3 +983,43 @@ a.glass {
   background: linear-gradient(to top, var(--bg) 70%, transparent);
   z-index: 5;
 }
+
+/* Long coach form blocks: header on top, controls full width on phones. */
+@media (max-width: 768px) {
+  .coach-form-block {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .coach-form-block > div:last-child {
+    width: 100%;
+  }
+  .coach-form-block button:not(.glass) {
+    min-height: 44px;
+  }
+  /* Action buttons share the row evenly instead of ragged right-aligned pills. */
+  .coach-form-block > div:last-child > button {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+  .coach-form-block > div:last-child > div {
+    flex: 1 1 100%;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .coach-form-actions {
+    width: 100%;
+  }
+  .coach-form-actions > button {
+    flex: 1 1 100%;
+    justify-content: center;
+    min-height: 44px;
+  }
+  .coach-form-actions > div {
+    flex: 1 1 100%;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+}

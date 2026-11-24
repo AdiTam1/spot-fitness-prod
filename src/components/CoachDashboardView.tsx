@@ -18,6 +18,7 @@ import {
   LayoutTemplate,
   Plus,
   Trash2,
+  ChevronDown,
   MoreHorizontal,
   Check,
   Send,
@@ -515,6 +516,7 @@ export function CoachDashboardView({
     typeof window !== 'undefined' && window.innerWidth < 768 ? 'cards' : 'table'
   );
   const [rosterViewPinned, setRosterViewPinned] = useState(false);
+  const [openMealIds, setOpenMealIds] = useState<Record<string, boolean>>({});
   const [accountsFilter, setAccountsFilter] = useState<'all' | 'pending' | 'active' | 'paused'>('all');
   const [expandedAccountId, setExpandedAccountId] = useState<string | null>(null);
   const [inspTab, setInspTab] = useState<'data' | 'plan' | 'journal'>('data');
@@ -2915,7 +2917,7 @@ export function CoachDashboardView({
                 </div>
               );
             })()}
-            <div
+            <div className="coach-form-block"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -2939,7 +2941,7 @@ export function CoachDashboardView({
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <div className="coach-form-actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button
                   disabled={isBusy('obs-ins-today')}
                   onClick={() =>
@@ -3172,7 +3174,7 @@ export function CoachDashboardView({
               </div>
 
               {/* ניהול טווח תאריכים פעילים לניווט המתאמן (שבועי וחודשי) */}
-              <div
+              <div className="coach-form-block"
                 style={{
                   marginTop: 12,
                   paddingTop: 12,
@@ -3271,7 +3273,7 @@ export function CoachDashboardView({
                   gap: 10,
                 }}
               >
-                <div
+                <div className="coach-form-block"
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -4608,13 +4610,13 @@ export function CoachDashboardView({
               <div
                 style={{
                   display: 'flex',
-                  gap: 8,
-                  alignItems: 'flex-end',
-                  flexWrap: 'wrap',
+                  flexDirection: 'column',
+                  gap: 10,
                   background: 'var(--surface-2)',
-                  padding: '10px 14px',
-                  borderRadius: 20,
+                  padding: 16,
+                  borderRadius: 22,
                   border: '1px solid var(--line)',
+                  width: '100%',
                 }}
               >
                 <Select
@@ -4627,7 +4629,6 @@ export function CoachDashboardView({
                 <Select
                   size="xs"
                   label="סוג יום"
-                  w={120}
                   value={assignDayType}
                   onChange={(val) => val && setAssignDayType(val as DayType)}
                   data={[
@@ -4654,15 +4655,16 @@ export function CoachDashboardView({
                   }}
                   className="btn-volt"
                   style={{
-                    padding: '7px 14px',
-                    fontSize: 13,
+                    height: 52,
+                    fontSize: 16,
                     cursor: 'pointer',
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: 6,
+                    justifyContent: 'center',
+                    gap: 8,
                   }}
                 >
-                  {isBusy('assign-tpl') && <BusyIcon size={13} />}
+                  {isBusy('assign-tpl') && <BusyIcon size={15} />}
                   <span>
                     {isBusy('assign-tpl') ? 'משייך...' : 'שייך למתאמן'}
                   </span>
@@ -4713,6 +4715,48 @@ export function CoachDashboardView({
                   gap: 8,
                 }}
               >
+                <button
+                  type="button"
+                  aria-expanded={Boolean(openMealIds[meal.id])}
+                  onClick={() => setOpenMealIds((prev) => ({ ...prev, [meal.id]: !prev[meal.id] }))}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 10,
+                    background: 'transparent',
+                    border: 'none',
+                    padding: 0,
+                    minHeight: 44,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    color: 'var(--text)',
+                    textAlign: 'start',
+                  }}
+                >
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                    <span style={{ fontSize: 16, fontWeight: 600 }}>
+                      {meal.name || `ארוחה ${index + 1}`}
+                      {meal.timeHint ? (
+                        <span style={{ color: 'var(--text-2)', fontWeight: 500 }}>
+                          {' · '}
+                          <bdi dir="ltr" className="ltr-num">{meal.timeHint}</bdi>
+                        </span>
+                      ) : null}
+                    </span>
+                    <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                      <bdi dir="ltr" className="num-mono ltr-num">{meal.targets.calories}</bdi> קק״ל · ח׳{' '}
+                      <bdi dir="ltr" className="ltr-num">{meal.targets.protein}</bdi> · פ׳{' '}
+                      <bdi dir="ltr" className="ltr-num">{meal.targets.carbs}</bdi> · ש׳{' '}
+                      <bdi dir="ltr" className="ltr-num">{meal.targets.fat}</bdi>
+                    </span>
+                  </span>
+                  <ChevronDown
+                    size={20}
+                    style={{ flex: 'none', transform: openMealIds[meal.id] ? 'rotate(180deg)' : 'none', transition: 'transform .15s ease' }}
+                  />
+                </button>
+                <div hidden={!openMealIds[meal.id]} style={{ display: openMealIds[meal.id] ? 'flex' : 'none', flexDirection: 'column', gap: 8, paddingTop: 6 }}>
                 <div
                   style={{
                     display: 'grid',
@@ -4816,6 +4860,7 @@ export function CoachDashboardView({
                     )
                   }
                 />
+                </div>
               </div>
             ))}
           </div>
