@@ -4332,7 +4332,7 @@ export function CoachDashboardView({
                           gap: 4,
                           marginBottom: 10,
                           padding: '8px 10px',
-                          background: 'rgba(0,0,0,0.2)',
+                          background: 'var(--surface-2)',
                           borderRadius: 10,
                         }}
                       >

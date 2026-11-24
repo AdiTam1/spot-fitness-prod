@@ -26,6 +26,8 @@ export function Sheet({ title, subtitle, headerExtra, children, onClose, size = 
       padding={0}
       styles={{
         body: { padding: '10px 20px 24px', display: 'flex', flexDirection: 'column', gap: 16 },
+        // `size="auto"` hugs the content (capped) instead of filling the viewport.
+        ...(size === 'auto' ? { content: { height: 'auto', maxHeight: '93dvh', flex: '0 0 100%', width: '100%' } } : {}),
         ...(styles as object),
       }}
       {...rest}

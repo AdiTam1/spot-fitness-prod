@@ -26,6 +26,9 @@ import {
   CalendarDays,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
+  Mic,
+  NotebookText,
   Barcode,
   Heart,
   Footprints,
@@ -73,6 +76,12 @@ import { TraineeOnboardingWizard } from './TraineeOnboardingWizard';
 import { BodyMeasurementGuide } from './BodyMeasurementGuide';
 import { DailyStepsCard } from './DailyStepsCard';
 import { TraineeProfileView } from './TraineeProfileView';
+import { CalendarSheet } from './journal/CalendarSheet';
+import { GlassButton } from './ui/GlassButton';
+import { GlassDock } from './ui/GlassDock';
+import { ProgressRing } from './ui/ProgressRing';
+import { SegmentedPill } from './ui/SegmentedPill';
+import { SectionHeader } from './ui/Card';
 
 function findTraineeMealSlotById(trainee: TraineeProfile, mealSlotId: string) {
   const allSlots = [
@@ -449,6 +458,26 @@ export function TraineeMobileView({
     ? arcLength * Math.min(1, dailyConsumed.calories / 2200)
     : Math.min(arcLength, arcLength * Math.min(1, calRatio));
 
+  // Default slot for quick-add / FAB: on today, the slot whose time hint is
+  // closest to now; otherwise (or without hints) the first unlogged slot.
+  const pickDefaultMealSlot = (): MealTemplateSlot | undefined => {
+    const firstUnlogged =
+      activeTemplate.meals.find((m) => !(dailyLog.meals[m.id]?.items?.length > 0)) ||
+      activeTemplate.meals[0];
+    if (selectedDate !== todayIso) return firstUnlogged;
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    let best: { slot: MealTemplateSlot; d: number } | null = null;
+    for (const m of activeTemplate.meals) {
+      const hint = dailyLog.meals[m.id]?.mealTime || m.timeHint;
+      const match = hint?.match(/^(\d{1,2}):(\d{2})/);
+      if (!match) continue;
+      const d = Math.abs(Number(match[1]) * 60 + Number(match[2]) - nowMin);
+      if (!best || d < best.d) best = { slot: m, d };
+    }
+    return best?.slot || firstUnlogged;
+  };
+
   const openMealDrawer = (slot: MealTemplateSlot, tab = 'hub') => {
     if (isBlockedDay) return;
     setActiveMealSlot(slot);
@@ -463,7 +492,7 @@ export function TraineeMobileView({
       style={{
         maxWidth: 460,
         margin: '0 auto',
-        paddingBottom: 96,
+        paddingBottom: 130,
       }}
     >
       {isCoachPreview && onExitCoachPreview && (
@@ -537,276 +566,173 @@ export function TraineeMobileView({
         </div>
       )}
 
-      {/* כותרת אפליקציית המובייל של המתאמן המחובר + מתג יום אימון/מנוחה */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 14,
-          position: 'relative',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            background: 'var(--bg-surface-1)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 999,
-            padding: '6px 14px 6px 10px',
-            color: 'var(--text-primary)',
-          }}
-        >
-          <div
+      {/* Header: avatar, date + greeting, questionnaire shortcut */}
+      {(() => {
+        const now = new Date();
+        const hour = now.getHours();
+        const greeting =
+          hour < 5 ? 'לילה טוב' : hour < 12 ? 'בוקר טוב' : hour < 17 ? 'צהריים טובים' : hour < 21 ? 'ערב טוב' : 'לילה טוב';
+        const [sy, sm, sd] = selectedDate.split('-').map(Number);
+        const dateObj = new Date(sy, (sm || 1) - 1, sd || 1);
+        const weekdayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+        const dateLabel = `יום ${weekdayNames[dateObj.getDay()]}, ${sd} ב${HEBREW_MONTH_NAMES[(sm || 1) - 1]}`;
+        const firstName = (trainee.name || '').trim().split(/\s+/)[0] || trainee.name;
+        return (
+          <header
             style={{
-              width: 30,
-              height: 30,
-              borderRadius: '50%',
-              background: 'var(--accent-volt)',
-              color: 'var(--on-accent)',
-              fontWeight: 800,
-              fontSize: 14,
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              marginBottom: 16,
             }}
           >
-            {trainee.avatar}
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.1 }}>
-              {trainee.name}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+              <div
+                aria-hidden
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 999,
+                  background: 'var(--surface-3)',
+                  color: 'var(--text)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: 15,
+                  flex: 'none',
+                }}
+              >
+                {trainee.avatar}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{dateLabel}</span>
+                <span
+                  style={{
+                    fontSize: 22,
+                    fontWeight: 700,
+                    lineHeight: 1.2,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {greeting}, {firstName}
+                </span>
+              </div>
             </div>
-            <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
-              {trainee.goal}
-            </div>
-          </div>
+            <GlassButton label="עדכון שאלון פרופיל והעדפות" onClick={() => setEditingOnboarding(true)}>
+              <ClipboardCheck size={20} />
+            </GlassButton>
+          </header>
+        );
+      })()}
+
+      {/* Workout / rest day switch (only when the coach enabled the split) */}
+      {Boolean(trainee.enableWorkoutRestSplit) && (
+        <SegmentedPill
+          ariaLabel="סוג יום"
+          value={dailyLog.dayType === 'rest' ? 'rest' : 'workout'}
+          onChange={(v) => !isBlockedDay && onUpdateDayType(trainee.id, selectedDate, v as DayType)}
+          options={[
+            { value: 'workout', label: 'יום אימון', icon: <Dumbbell size={15} />, disabled: isBlockedDay },
+            { value: 'rest', label: 'יום מנוחה', icon: <Moon size={15} />, disabled: isBlockedDay },
+          ]}
+          style={{ marginBottom: 14 }}
+        />
+      )}
+
+      {/* Week strip: month pill (opens calendar), week navigation, 7 day tiles */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <button
-            title="עדכון שאלון פרופיל והעדפות"
-            onClick={() => setEditingOnboarding(true)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer',
-              padding: 2,
-              display: 'flex',
+            type="button"
+            className="glass"
+            aria-label="בחירת תאריך מלוח שנה"
+            onClick={() => {
+              const [y, m] = selectedDate.split('-').map(Number);
+              if (y && m) setCalendarCursor({ year: y, month: m - 1 });
+              setCalendarModalOpen(true);
             }}
-          >
-            <ClipboardCheck size={14} />
-          </button>
-        </div>
-
-        {/* מתג קפסולה: יום אימון / יום מנוחה (מוצג אך ורק אם המאמן הפעיל פיצול תפריט אימון/מנוחה למתאמן זה) */}
-        {Boolean(trainee.enableWorkoutRestSplit) && (
-          <div
             style={{
-              display: 'flex',
-              background: 'var(--bg-surface-1)',
-              border: '1px solid var(--border-subtle)',
+              height: 40,
+              padding: '0 12px 0 14px',
               borderRadius: 999,
-              padding: 3,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontFamily: 'inherit',
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: 'pointer',
             }}
           >
-            <button
-              disabled={isBlockedDay}
-              onClick={() =>
-                !isBlockedDay && onUpdateDayType(trainee.id, selectedDate, 'workout')
-              }
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '6px 12px',
-                borderRadius: 999,
-                border: 'none',
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                opacity: isBlockedDay ? 0.45 : 1,
-                background:
-                  dailyLog.dayType === 'workout'
-                    ? 'var(--accent-volt)'
-                    : 'transparent',
-                color:
-                  dailyLog.dayType === 'workout'
-                    ? 'var(--text)'
-                    : 'var(--text-secondary)',
-                transition: 'all 0.18s ease',
-              }}
-            >
-              <Dumbbell size={13} />
-              <span>אימון</span>
-            </button>
-            <button
-              disabled={isBlockedDay}
-              onClick={() =>
-                !isBlockedDay && onUpdateDayType(trainee.id, selectedDate, 'rest')
-              }
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '6px 12px',
-                borderRadius: 999,
-                border: 'none',
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                opacity: isBlockedDay ? 0.45 : 1,
-                background:
-                  dailyLog.dayType === 'rest' ? 'var(--text)' : 'transparent',
-                color:
-                  dailyLog.dayType === 'rest'
-                    ? '#08090c'
-                    : 'var(--text-secondary)',
-                transition: 'all 0.18s ease',
-              }}
-            >
-              <Moon size={13} />
-              <span>מנוחה</span>
-            </button>
-          </div>
-        )}
-      </div>
+            <CalendarDays size={17} />
+            <span>
+              {(() => {
+                const [y, m] = selectedDate.split('-').map(Number);
+                return `${HEBREW_MONTH_NAMES[(m || 1) - 1]} ${y}`;
+              })()}
+            </span>
+            <ChevronDown size={14} />
+          </button>
 
-      {/* סרגל תאריכים שבועי + ניווט שבועות ולוח חודשי פעיל */}
-      <div
-        className="pro-card"
-        style={{
-          padding: '10px 10px 10px',
-          marginBottom: 16,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 6,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <button
-              type="button"
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {selectedDate !== todayIso && (
+              <button
+                type="button"
+                className="glass"
+                onClick={() => setSelectedDate(todayIso)}
+                style={{
+                  height: 40,
+                  padding: '0 14px',
+                  borderRadius: 999,
+                  fontFamily: 'inherit',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                חזור להיום
+              </button>
+            )}
+            <GlassButton
+              label="שבוע קודם"
+              size={40}
               disabled={!canPrevWeek}
-              title="שבוע קודם"
               onClick={() => {
-                const candidates = getWeekDaysAroundDate(prevWeekAnchor, todayIso).filter(
-                  (d) => isDateActiveForTrainee(d.iso, trainee, todayIso)
+                const candidates = getWeekDaysAroundDate(prevWeekAnchor, todayIso).filter((d) =>
+                  isDateActiveForTrainee(d.iso, trainee, todayIso)
                 );
                 if (candidates.length > 0) {
                   setSelectedDate(candidates[candidates.length - 1].iso);
                 }
               }}
-              className="btn-surface"
-              style={{
-                width: 28,
-                height: 28,
-                padding: 0,
-                borderRadius: 9,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: canPrevWeek ? 'pointer' : 'not-allowed',
-                opacity: canPrevWeek ? 1 : 0.35,
-              }}
             >
-              <ChevronRight size={14} />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                const [y, m] = selectedDate.split('-').map(Number);
-                if (y && m) setCalendarCursor({ year: y, month: m - 1 });
-                setCalendarModalOpen(true);
-              }}
-              className="btn-surface"
-              style={{
-                padding: '5px 10px',
-                borderRadius: 9,
-                fontSize: 12,
-                fontWeight: 800,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                cursor: 'pointer',
-              }}
-            >
-              <CalendarDays size={13} color="var(--accent-volt)" />
-              <span>
-                {(() => {
-                  const [y, m] = selectedDate.split('-').map(Number);
-                  return `${HEBREW_MONTH_NAMES[(m || 1) - 1]} ${y}`;
-                })()}
-              </span>
-            </button>
-
-            <button
-              type="button"
+              <ChevronRight size={18} />
+            </GlassButton>
+            <GlassButton
+              label="שבוע הבא"
+              size={40}
               disabled={!canNextWeek}
-              title="שבוע הבא"
               onClick={() => {
-                const candidates = getWeekDaysAroundDate(nextWeekAnchor, todayIso).filter(
-                  (d) => isDateActiveForTrainee(d.iso, trainee, todayIso)
+                const candidates = getWeekDaysAroundDate(nextWeekAnchor, todayIso).filter((d) =>
+                  isDateActiveForTrainee(d.iso, trainee, todayIso)
                 );
                 if (candidates.length > 0) {
                   setSelectedDate(candidates[0].iso);
                 }
               }}
-              className="btn-surface"
-              style={{
-                width: 28,
-                height: 28,
-                padding: 0,
-                borderRadius: 9,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: canNextWeek ? 'pointer' : 'not-allowed',
-                opacity: canNextWeek ? 1 : 0.35,
-              }}
             >
-              <ChevronLeft size={14} />
-            </button>
+              <ChevronLeft size={18} />
+            </GlassButton>
           </div>
-
-          {selectedDate !== todayIso ? (
-            <button
-              type="button"
-              onClick={() => setSelectedDate(todayIso)}
-              style={{
-                padding: '4px 10px',
-                borderRadius: 999,
-                border: '1px solid rgba(214, 125, 9, 0.45)',
-                background: 'rgba(214, 125, 9, 0.14)',
-                color: 'var(--accent-orange-bright)',
-                fontSize: 11,
-                fontWeight: 800,
-                cursor: 'pointer',
-              }}
-            >
-              חזור להיום
-            </button>
-          ) : (
-            <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>
-              היום
-            </span>
-          )}
         </div>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(7, 1fr)',
-            gap: 4,
-          }}
+        <nav
+          aria-label="ימי השבוע"
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 6 }}
         >
           {weekDays.map((d) => {
             const isSelected = d.iso === selectedDate;
@@ -816,112 +742,84 @@ export function TraineeMobileView({
               Boolean(trainee.logs[d.iso]?.isObservationDay);
             const isBlockedCell = isDayBlockedForTrainee(d.iso, trainee);
             const hasLog =
-              trainee.logs[d.iso] &&
-              Object.keys(trainee.logs[d.iso].meals || {}).length > 0;
+              trainee.logs[d.iso] && Object.keys(trainee.logs[d.iso].meals || {}).length > 0;
+            const bg = isSelected
+              ? isBlockedCell
+                ? 'var(--status-danger)'
+                : 'var(--accent)'
+              : 'var(--card)';
+            const fg = isSelected
+              ? 'var(--on-accent)'
+              : isBlockedCell
+              ? 'var(--status-danger)'
+              : isActive
+              ? 'var(--text)'
+              : 'var(--text-3)';
             return (
               <button
                 key={d.iso}
                 type="button"
                 disabled={!isActive}
+                aria-pressed={isSelected}
+                aria-label={`${d.dayLetter} ${d.dayNumber}${d.isToday ? ', היום' : ''}${
+                  isObs ? ', יום תשקיף' : ''
+                }${isBlockedCell ? ', חסום' : ''}`}
                 onClick={() => {
                   if (isActive) setSelectedDate(d.iso);
                 }}
                 style={{
+                  height: 64,
+                  borderRadius: 18,
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  gap: 3,
-                  padding: '8px 2px',
-                  borderRadius: 14,
-                  border: isSelected
-                    ? isBlockedCell
-                      ? '1px solid rgba(239, 68, 68, 0.7)'
+                  justifyContent: 'center',
+                  gap: 2,
+                  padding: 0,
+                  fontFamily: 'inherit',
+                  background: bg,
+                  color: fg,
+                  border: `1.5px ${isObs && !isSelected ? 'dashed' : 'solid'} ${
+                    isSelected
+                      ? 'transparent'
+                      : d.isToday
+                      ? 'var(--text)'
                       : isObs
-                      ? '1px solid rgba(56, 189, 248, 0.55)'
-                      : '1px solid rgba(214, 125, 9, 0.55)'
-                    : isBlockedCell
-                    ? '1px solid rgba(239, 68, 68, 0.25)'
-                    : '1px solid transparent',
-                  background: isSelected
-                    ? isBlockedCell
-                      ? 'rgba(239, 68, 68, 0.16)'
-                      : isObs
-                      ? 'rgba(56, 189, 248, 0.14)'
-                      : 'rgba(214, 125, 9, 0.16)'
-                    : isBlockedCell
-                    ? 'rgba(239, 68, 68, 0.06)'
-                    : 'transparent',
-                  color: isSelected
-                    ? isBlockedCell
-                      ? '#f87171'
-                      : isObs
-                      ? '#38bdf8'
-                      : 'var(--accent-orange-bright)'
-                    : 'var(--text-secondary)',
-                  opacity: isActive ? 1 : 0.3,
+                      ? 'var(--macro-protein)'
+                      : 'var(--line)'
+                  }`,
+                  opacity: isActive ? 1 : 0.45,
                   cursor: isActive ? 'pointer' : 'not-allowed',
-                  transition: 'all 0.15s ease',
+                  transition: 'background-color .15s ease',
                 }}
               >
-                <span style={{ fontSize: 11, fontWeight: 600 }}>
-                  {d.dayLetter}
-                </span>
+                <span style={{ fontSize: 12, opacity: 0.75 }}>{d.dayLetter}</span>
                 <span
                   className="num-mono"
                   style={{
-                    fontSize: 14,
-                    fontWeight: 800,
-                    color: isSelected
-                      ? isBlockedCell
-                        ? '#f87171'
-                        : isObs
-                        ? '#38bdf8'
-                        : 'var(--text)'
-                      : 'var(--text-primary)',
+                    fontSize: 17,
+                    fontWeight: 600,
+                    textDecoration: isBlockedCell ? 'line-through' : 'none',
                   }}
                 >
                   {d.dayNumber}
                 </span>
-                {isBlockedCell ? (
-                  <span
-                    style={{
-                      fontSize: 9,
-                      fontWeight: 800,
-                      color: '#f87171',
-                      lineHeight: 1,
-                    }}
-                  >
-                    חסום
-                  </span>
-                ) : isObs ? (
-                  <span
-                    style={{
-                      fontSize: 9,
-                      fontWeight: 800,
-                      color: '#38bdf8',
-                      lineHeight: 1,
-                    }}
-                  >
-                    תשקיף
-                  </span>
-                ) : (
-                  <span
-                    style={{
-                      width: 5,
-                      height: 5,
-                      borderRadius: '50%',
-                      background: hasLog
-                        ? 'var(--accent-volt)'
-                        : d.isToday
-                        ? 'rgba(255,255,255,0.45)'
-                        : 'transparent',
-                    }}
-                  />
-                )}
+                <span
+                  style={{
+                    width: 4,
+                    height: 4,
+                    borderRadius: 9,
+                    background: hasLog
+                      ? isSelected
+                        ? 'var(--on-accent)'
+                        : 'var(--accent)'
+                      : 'transparent',
+                  }}
+                />
               </button>
             );
           })}
-        </div>
+        </nav>
       </div>
 
       <AnimatePresence mode="wait">
@@ -1001,354 +899,178 @@ export function TraineeMobileView({
               </div>
             )}
 
-            {/* קוקפיט קלוריות ומאקרו יומי */}
-            <div
-              className="pro-card-elevated"
+            {/* Calorie ring + macros */}
+            <section
+              aria-label="סיכום יומי"
               style={{
-                padding: '22px 20px 20px',
+                background: 'var(--card)',
+                border: `1px solid ${isObservationDay ? 'rgba(56, 189, 248, 0.35)' : 'var(--line)'}`,
+                borderRadius: 28,
+                padding: 20,
                 marginBottom: 20,
-                position: 'relative',
-                overflow: 'hidden',
-                borderColor: isObservationDay
-                  ? 'rgba(56, 189, 248, 0.3)'
-                  : undefined,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 20,
+                boxShadow: 'var(--card-shadow)',
               }}
             >
-              <div
-                style={{
-                  position: 'absolute',
-                  top: -70,
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  width: 240,
-                  height: 140,
-                  background: isObservationDay
-                    ? 'radial-gradient(circle, rgba(56, 189, 248, 0.16) 0%, transparent 70%)'
-                    : 'radial-gradient(circle, rgba(214, 125, 9, 0.13) 0%, transparent 70%)',
-                  pointerEvents: 'none',
-                }}
-              />
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr auto 1fr',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-              >
-                {/* נצרך בפועל */}
-                <div style={{ textAlign: 'center' }}>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: 'var(--text-secondary)',
-                      marginBottom: 2,
-                    }}
-                  >
-                    סה״כ הוזן
-                  </div>
-                  <div
-                    className="num-mono"
-                    style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)' }}
-                  >
-                    {dailyConsumed.calories.toLocaleString()}
-                  </div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                    קק״ל נספרו
-                  </div>
-                </div>
-
-                {/* מד קשת SVG מרכזי */}
-                <div
-                  style={{
-                    position: 'relative',
-                    width: 180,
-                    height: 150,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+                <ProgressRing
+                  value={isObservationDay ? 1 : dailyConsumed.calories}
+                  max={isObservationDay ? 1 : dailyTarget.calories}
+                  color={
+                    isObservationDay
+                      ? 'var(--macro-protein)'
+                      : isOverLimit
+                      ? 'var(--status-warn)'
+                      : 'var(--accent)'
+                  }
+                  ariaLabel={
+                    isObservationDay
+                      ? `נאכלו ${dailyConsumed.calories} קלוריות ביום תשקיף`
+                      : `נאכלו ${dailyConsumed.calories} מתוך ${dailyTarget.calories} קלוריות`
+                  }
                 >
-                  <svg
-                    width="180"
-                    height="180"
-                    viewBox="0 0 180 180"
-                    style={{ transform: 'rotate(140deg)' }}
-                  >
-                    <circle
-                      cx="90"
-                      cy="90"
-                      r={radius}
-                      fill="none"
-                      stroke="var(--surface-3)"
-                      strokeWidth="12"
-                      strokeDasharray={`${arcLength} ${circumference}`}
-                      strokeLinecap="round"
-                    />
-                    <circle
-                      cx="90"
-                      cy="90"
-                      r={radius}
-                      fill="none"
-                      stroke={
-                        isObservationDay
-                          ? '#38bdf8'
-                          : isOverLimit
-                          ? '#f59e0b'
-                          : '#d67d09'
-                      }
-                      strokeWidth="12"
-                      strokeDasharray={`${filledArc} ${circumference}`}
-                      strokeLinecap="round"
-                      style={{
-                        transition:
-                          'stroke-dasharray 0.6s cubic-bezier(0.22, 1, 0.36, 1)',
-                        filter: isObservationDay
-                          ? 'drop-shadow(0 0 10px rgba(56, 189, 248, 0.35))'
-                          : isOverLimit
-                          ? 'drop-shadow(0 0 8px rgba(245, 158, 11, 0.35))'
-                          : 'drop-shadow(0 0 10px rgba(214, 125, 9, 0.35))',
-                      }}
-                    />
-                  </svg>
-
-                  <div
+                  <span className="num-mono" style={{ fontSize: 32, fontWeight: 700, lineHeight: 1 }}>
+                    {isObservationDay
+                      ? dailyConsumed.calories.toLocaleString()
+                      : Math.abs(remainingCalories).toLocaleString()}
+                  </span>
+                  <span
                     style={{
-                      position: 'absolute',
-                      top: '52%',
-                      left: '50%',
-                      transform: 'translate(-50%, -50%)',
-                      textAlign: 'center',
-                    }}
-                  >
-                    {isObservationDay ? (
-                      <>
-                        <div
-                          className="num-mono"
-                          style={{
-                            fontSize: 32,
-                            fontWeight: 800,
-                            lineHeight: 1,
-                            color: 'var(--text)',
-                          }}
-                        >
-                          {dailyConsumed.calories.toLocaleString()}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: '#38bdf8',
-                            marginTop: 4,
-                          }}
-                        >
-                          קק״ל ביום תשקיף
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 10,
-                            color: 'var(--text-muted)',
-                            marginTop: 2,
-                          }}
-                        >
-                          ללא הגבלת יעד יומי
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div
-                          className="num-mono"
-                          style={{
-                            fontSize: 34,
-                            fontWeight: 800,
-                            lineHeight: 1,
-                            color: isOverLimit ? '#f59e0b' : 'var(--text)',
-                          }}
-                        >
-                          {Math.abs(remainingCalories).toLocaleString()}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: isOverLimit
-                              ? '#f59e0b'
-                              : 'var(--accent-orange-bright)',
-                            marginTop: 5,
-                          }}
-                        >
-                          {remainingCalories >= 0
-                            ? 'קק״ל נותרו'
-                            : 'קק״ל מעל היעד'}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* יעד מאמן */}
-                <div style={{ textAlign: 'center' }}>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: 'var(--text-secondary)',
-                      marginBottom: 2,
-                    }}
-                  >
-                    {isObservationDay ? 'מצב יום' : 'יעד יומי'}
-                  </div>
-                  <div
-                    className="num-mono"
-                    style={{
-                      fontSize: isObservationDay ? 16 : 22,
-                      fontWeight: 800,
+                      fontSize: 12,
+                      marginTop: 4,
                       color: isObservationDay
-                        ? '#38bdf8'
-                        : 'var(--text-primary)',
+                        ? 'var(--macro-protein)'
+                        : isOverLimit
+                        ? 'var(--status-warn)'
+                        : 'var(--text-2)',
                     }}
                   >
                     {isObservationDay
-                      ? 'תשקיף'
-                      : dailyTarget.calories.toLocaleString()}
-                  </div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                    {activeTemplate.meals.length} ארוחות
-                  </div>
+                      ? 'קק״ל ביום תשקיף'
+                      : remainingCalories >= 0
+                      ? 'קק״ל נותרו'
+                      : 'קק״ל מעל היעד'}
+                  </span>
+                </ProgressRing>
+
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+                  {[
+                    { label: 'נאכל', value: dailyConsumed.calories.toLocaleString() },
+                    {
+                      label: isObservationDay ? 'מצב יום' : 'יעד יומי',
+                      value: isObservationDay ? 'תשקיף' : dailyTarget.calories.toLocaleString(),
+                    },
+                    { label: 'ארוחות', value: String(activeTemplate.meals.length) },
+                  ].map((row, idx) => (
+                    <React.Fragment key={row.label}>
+                      {idx > 0 && <div style={{ height: 1, background: 'var(--line)' }} />}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                        <span style={{ fontSize: 14, color: 'var(--text-2)' }}>{row.label}</span>
+                        <span className="num-mono" style={{ fontSize: 18, fontWeight: 600 }}>
+                          {row.value}
+                        </span>
+                      </div>
+                    </React.Fragment>
+                  ))}
                 </div>
               </div>
 
-              {/* שלוש עמודות אבות המזון */}
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(3, 1fr)',
-                  gap: 10,
-                  marginTop: 14,
-                  paddingTop: 16,
-                  borderTop: '1px solid var(--border-subtle)',
-                }}
-              >
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 14 }}>
                 {[
-                  {
-                    label: 'חלבון',
-                    consumed: dailyConsumed.protein,
-                    target: dailyTarget.protein,
-                    color: 'var(--macro-protein)',
-                  },
-                  {
-                    label: 'פחמימות',
-                    consumed: dailyConsumed.carbs,
-                    target: dailyTarget.carbs,
-                    color: 'var(--macro-carbs)',
-                  },
-                  {
-                    label: 'שומנים',
-                    consumed: dailyConsumed.fat,
-                    target: dailyTarget.fat,
-                    color: 'var(--macro-fat)',
-                  },
+                  { label: 'חלבון', consumed: dailyConsumed.protein, target: dailyTarget.protein, color: 'var(--macro-protein)' },
+                  { label: 'פחמימות', consumed: dailyConsumed.carbs, target: dailyTarget.carbs, color: 'var(--macro-carbs)' },
+                  { label: 'שומן', consumed: dailyConsumed.fat, target: dailyTarget.fat, color: 'var(--macro-fat)' },
                 ].map((m) => {
                   const pct = isObservationDay
                     ? Math.min(100, Math.round((m.consumed / 150) * 100))
-                    : Math.min(
-                        100,
-                        Math.round((m.consumed / Math.max(1, m.target)) * 100)
-                      );
-                  const left = Math.max(0, Math.round(m.target - m.consumed));
+                    : Math.min(100, Math.round((m.consumed / Math.max(1, m.target)) * 100));
                   return (
-                    <div
-                      key={m.label}
-                      style={{
-                        background: 'var(--fill-1)',
-                        border: '1px solid var(--fill-1)',
-                        borderRadius: 14,
-                        padding: '10px 9px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
-                        minWidth: 0,
-                      }}
-                    >
-                      <div style={{ marginBottom: 6 }}>
-                        <div
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 800,
-                            color: m.color,
-                            whiteSpace: 'nowrap',
-                            lineHeight: 1.2,
-                          }}
-                        >
-                          {m.label}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 10,
-                            color: 'var(--text-muted)',
-                            fontWeight: 600,
-                            whiteSpace: 'nowrap',
-                            marginTop: 2,
-                          }}
-                        >
-                          {isObservationDay ? 'נספר' : `נותר ${left}g`}
-                        </div>
+                    <div key={m.label} style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ width: 7, height: 7, borderRadius: 9, background: m.color, flex: 'none' }} />
+                        <span style={{ fontSize: 13, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>{m.label}</span>
                       </div>
-
-                      <div>
-                        <div
-                          className="num-mono"
-                          dir="ltr"
-                          style={{
-                            fontSize: 14,
-                            fontWeight: 800,
-                            marginBottom: 7,
-                            whiteSpace: 'nowrap',
-                            textAlign: 'right',
-                          }}
-                        >
-                          {m.consumed}g
-                          {!isObservationDay && (
-                            <span
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 500,
-                                color: 'var(--text-secondary)',
-                              }}
-                            >
-                              {' '}
-                              / {m.target}g
-                            </span>
-                          )}
-                        </div>
-
+                      <div style={{ height: 5, borderRadius: 9, background: 'var(--surface-3)', overflow: 'hidden' }}>
                         <div
                           style={{
-                            height: 5,
-                            width: '100%',
-                            background: 'var(--line)',
-                            borderRadius: 999,
-                            overflow: 'hidden',
+                            height: '100%',
+                            width: `${pct}%`,
+                            background: m.color,
+                            borderRadius: 9,
+                            transition: 'width .4s ease',
                           }}
-                        >
-                          <div
-                            style={{
-                              height: '100%',
-                              width: `${pct}%`,
-                              background: m.color,
-                              borderRadius: 999,
-                              transition: 'width 0.4s ease',
-                            }}
-                          />
-                        </div>
+                        />
                       </div>
+                      <span className="num-mono" style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                        {Math.round(m.consumed)}
+                        {!isObservationDay && (
+                          <span style={{ color: 'var(--text-3)', fontWeight: 500 }}> / {Math.round(m.target)} ג׳</span>
+                        )}
+                        {isObservationDay && <span style={{ color: 'var(--text-3)', fontWeight: 500 }}> ג׳</span>}
+                      </span>
                     </div>
                   );
                 })}
               </div>
-            </div>
+            </section>
+
+            {/* Quick add: the four fastest ways to log a meal */}
+            {!isBlockedDay && activeTemplate.meals.length > 0 && (() => {
+              const quickSlot = pickDefaultMealSlot();
+              if (!quickSlot) return null;
+              const items: { id: string; label: string; icon: React.ReactNode; tab: string }[] = [
+                { id: 'photo', label: 'צילום AI', icon: <Camera size={26} strokeWidth={1.8} />, tab: 'ai-photo' },
+                { id: 'text', label: 'טקסט / קול', icon: <Mic size={26} strokeWidth={1.8} />, tab: 'ai-text' },
+                { id: 'barcode', label: 'ברקוד', icon: <Barcode size={26} strokeWidth={1.8} />, tab: 'barcode' },
+                { id: 'saved', label: 'שמורות', icon: <Bookmark size={26} strokeWidth={1.8} />, tab: 'saved-meals' },
+              ];
+              return (
+                <section aria-label="הוספה מהירה" style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+                  <SectionHeader
+                    title="הוספה מהירה"
+                    meta={`${quickSlot.name}${selectedDate === todayIso ? ' · עכשיו' : ''}`}
+                  />
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10 }}>
+                    {items.map((it) => (
+                      <button
+                        key={it.id}
+                        type="button"
+                        onClick={() => openMealDrawer(quickSlot, it.tab)}
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: 8,
+                          background: 'transparent',
+                          border: 'none',
+                          padding: 0,
+                          cursor: 'pointer',
+                          color: 'var(--text)',
+                          fontFamily: 'inherit',
+                        }}
+                      >
+                        <span
+                          className="glass"
+                          style={{
+                            width: 64,
+                            height: 64,
+                            borderRadius: 22,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          {it.icon}
+                        </span>
+                        <span style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap' }}>{it.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              );
+            })()}
 
             {/* כותרת ציר זמן הארוחות */}
             {(() => {
@@ -2071,11 +1793,11 @@ export function TraineeMobileView({
                     className="pro-card"
                     style={{
                       padding: 16,
-                      borderColor: hasItems
-                        ? isObservationDay
+                      borderRadius: 24,
+                      borderColor:
+                        hasItems && isObservationDay
                           ? 'rgba(56, 189, 248, 0.3)'
-                          : 'rgba(214, 125, 9, 0.22)'
-                        : 'var(--border-subtle)',
+                          : 'var(--border-subtle)',
                     }}
                   >
                     <div
@@ -2188,15 +1910,12 @@ export function TraineeMobileView({
                                   gap: 4,
                                   padding: '2px 8px',
                                   borderRadius: 999,
-                                  border: entry?.mealTime
-                                    ? '1px solid rgba(214, 125, 9, 0.4)'
-                                    : '1px solid var(--line)',
-                                  background: entry?.mealTime
-                                    ? 'rgba(214, 125, 9, 0.14)'
-                                    : 'var(--fill-1)',
+                                  border: '1px solid var(--line)',
+                                  background: 'var(--surface-2)',
                                   color: entry?.mealTime
-                                    ? 'var(--accent-orange-bright)'
+                                    ? 'var(--text)'
                                     : 'var(--text-secondary)',
+                                  minHeight: 26,
                                   fontSize: 11,
                                   fontWeight: 700,
                                   opacity: isBlockedDay ? 0.5 : 1,
@@ -2288,8 +2007,8 @@ export function TraineeMobileView({
                     {hasItems && (
                       <div
                         style={{
-                          background: 'rgba(0, 0, 0, 0.25)',
-                          borderRadius: 14,
+                          background: 'var(--surface-2)',
+                          borderRadius: 16,
                           padding: '8px 12px',
                           marginBottom: 12,
                           border: '1px solid var(--fill-1)',
@@ -3263,346 +2982,44 @@ export function TraineeMobileView({
         )}
       </AnimatePresence>
 
-      {/* סרגל ניווט תחתון צף: לשוניות בימין + כפתור מצלמה עם + בצד השמאלי ביותר */}
-      <div className="mobile-bottom-dock">
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 8,
-          }}
-        >
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: 4,
-              flex: 1,
-            }}
-          >
-            <button
-              onClick={() => setMobileSection('journal')}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 3,
-                padding: '7px 4px',
-                borderRadius: 999,
-                border: 'none',
-                background:
-                  mobileSection === 'journal'
-                    ? 'var(--line)'
-                    : 'transparent',
-                color:
-                  mobileSection === 'journal'
-                    ? 'var(--text)'
-                    : 'var(--text-secondary)',
-                fontSize: 11,
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              <Utensils size={16} />
-              <span>יומן</span>
-            </button>
+      {/* Floating glass dock: 3 tabs + separate orange add-meal button */}
+      <GlassDock
+        tabs={[
+          { id: 'journal', label: 'יומן', icon: <NotebookText size={22} strokeWidth={1.8} /> },
+          { id: 'metrics', label: 'מדדים', icon: <Activity size={22} strokeWidth={1.8} /> },
+          { id: 'profile', label: 'פרופיל', icon: <User size={22} strokeWidth={1.8} /> },
+        ]}
+        active={mobileSection}
+        onChange={(id) => setMobileSection(id)}
+        action={{
+          label: isBlockedDay ? 'יום חסום להזנה' : 'הוספת ארוחה',
+          disabled: isBlockedDay,
+          onClick: () => {
+            if (isBlockedDay) return;
+            const slot = pickDefaultMealSlot();
+            if (slot) openMealDrawer(slot, 'hub');
+          },
+        }}
+      />
 
-            <button
-              onClick={() => setMobileSection('metrics')}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 3,
-                padding: '7px 4px',
-                borderRadius: 999,
-                border: 'none',
-                background:
-                  mobileSection === 'metrics'
-                    ? 'var(--line)'
-                    : 'transparent',
-                color:
-                  mobileSection === 'metrics'
-                    ? 'var(--text)'
-                    : 'var(--text-secondary)',
-                fontSize: 11,
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              <Activity size={16} />
-              <span>מדדים</span>
-            </button>
-
-            <button
-              onClick={() => setMobileSection('profile')}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 3,
-                padding: '7px 4px',
-                borderRadius: 999,
-                border: 'none',
-                background:
-                  mobileSection === 'profile'
-                    ? 'var(--line)'
-                    : 'transparent',
-                color:
-                  mobileSection === 'profile'
-                    ? 'var(--text)'
-                    : 'var(--text-secondary)',
-                fontSize: 11,
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              <User size={16} />
-              <span>פרופיל</span>
-            </button>
-          </div>
-
-          {/* כפתור הוספה מהיר בצד השמאלי ביותר — אייקון מצלמה בלבד עם פינות מעוגלות */}
-          <button
-            type="button"
-            disabled={isBlockedDay}
-            aria-label="הוספת ארוחה וסריקת AI"
-            title={isBlockedDay ? 'יום חסום להזנה' : 'הוספת ארוחה / צילום'}
-            onClick={() => {
-              if (isBlockedDay) return;
-              const firstUnlogged =
-                activeTemplate.meals.find(
-                  (m) => !(dailyLog.meals[m.id]?.items?.length > 0)
-                ) || activeTemplate.meals[0];
-              if (firstUnlogged) openMealDrawer(firstUnlogged, 'hub');
-            }}
-            className="btn-volt"
-            style={{
-              width: 44,
-              height: 44,
-              padding: 0,
-              borderRadius: 999,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              opacity: isBlockedDay ? 0.45 : 1,
-              cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-              boxShadow: '0 4px 18px rgba(214, 125, 9, 0.45)',
-            }}
-          >
-            <Camera size={20} strokeWidth={2.2} />
-          </button>
-        </div>
-      </div>
-
-      {/* מודאל לוח שנה חודשי לתאריכים הפעילים */}
-      <Modal
+      {/* Journal date picker (bottom sheet with month / year picker) */}
+      <CalendarSheet
         opened={calendarModalOpen}
         onClose={() => setCalendarModalOpen(false)}
-        centered
-        radius="lg"
-        size="sm"
-        title={
-          <span style={{ fontWeight: 800, fontSize: 15 }}>
-            בחר תאריך מתוך החלון הפעיל
-          </span>
+        cursor={calendarCursor}
+        onCursorChange={setCalendarCursor}
+        selectedDate={selectedDate}
+        todayIso={todayIso}
+        onSelectDate={setSelectedDate}
+        isDateActive={(iso) => isDateActiveForTrainee(iso, trainee, todayIso)}
+        isObservation={(iso) =>
+          (trainee.observationDates || []).includes(iso) || Boolean(trainee.logs[iso]?.isObservationDay)
         }
-      >
-        {(() => {
-          const { year, month } = calendarCursor;
-          const firstDay = new Date(year, month, 1);
-          const startPad = firstDay.getDay();
-          const daysInMonth = new Date(year, month + 1, 0).getDate();
-          const cells: Array<{ iso: string; day: number } | null> = [];
-          for (let i = 0; i < startPad; i++) cells.push(null);
-          for (let day = 1; day <= daysInMonth; day++) {
-            const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(
-              day
-            ).padStart(2, '0')}`;
-            cells.push({ iso, day });
-          }
-
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() =>
-                    setCalendarCursor((prev) =>
-                      prev.month === 0
-                        ? { year: prev.year - 1, month: 11 }
-                        : { year: prev.year, month: prev.month - 1 }
-                    )
-                  }
-                  className="btn-surface"
-                  style={{ width: 32, height: 32, padding: 0, cursor: 'pointer', display: 'grid', placeItems: 'center' }}
-                >
-                  <ChevronRight size={15} />
-                </button>
-                <span style={{ fontSize: 14, fontWeight: 800 }}>
-                  {HEBREW_MONTH_NAMES[month]} {year}
-                </span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setCalendarCursor((prev) =>
-                      prev.month === 11
-                        ? { year: prev.year + 1, month: 0 }
-                        : { year: prev.year, month: prev.month + 1 }
-                    )
-                  }
-                  className="btn-surface"
-                  style={{ width: 32, height: 32, padding: 0, cursor: 'pointer', display: 'grid', placeItems: 'center' }}
-                >
-                  <ChevronLeft size={15} />
-                </button>
-              </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(7, 1fr)',
-                  gap: 4,
-                  textAlign: 'center',
-                }}
-              >
-                {HEBREW_WEEKDAY_LETTERS.map((l) => (
-                  <div
-                    key={l}
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: 'var(--text-muted)',
-                      paddingBottom: 4,
-                    }}
-                  >
-                    {l}
-                  </div>
-                ))}
-
-                {cells.map((cell, i) => {
-                  if (!cell) return <div key={`pad-${i}`} />;
-                  const isActive = isDateActiveForTrainee(
-                    cell.iso,
-                    trainee,
-                    todayIso
-                  );
-                  const isSelected = cell.iso === selectedDate;
-                  const isToday = cell.iso === todayIso;
-                  const isObs =
-                    (trainee.observationDates || []).includes(cell.iso) ||
-                    Boolean(trainee.logs[cell.iso]?.isObservationDay);
-                  const isBlockedCell = isDayBlockedForTrainee(cell.iso, trainee);
-                  const hasLog =
-                    trainee.logs[cell.iso] &&
-                    Object.keys(trainee.logs[cell.iso].meals || {}).length > 0;
-
-                  return (
-                    <button
-                      key={cell.iso}
-                      type="button"
-                      disabled={!isActive}
-                      onClick={() => {
-                        setSelectedDate(cell.iso);
-                        setCalendarModalOpen(false);
-                      }}
-                      style={{
-                        height: 38,
-                        borderRadius: 11,
-                        border: isSelected ? '1px solid var(--sel-bg)'
-                          : isBlockedCell
-                          ? '1px solid rgba(239, 68, 68, 0.55)'
-                          : isToday
-                          ? '1px solid rgba(214, 125, 9, 0.5)'
-                          : isObs
-                          ? '1px solid rgba(56, 189, 248, 0.4)'
-                          : '1px solid transparent',
-                        background: isSelected
-                          ? isBlockedCell
-                            ? '#ef4444'
-                            : 'var(--accent-volt)'
-                          : isBlockedCell
-                          ? 'rgba(239, 68, 68, 0.14)'
-                          : isObs
-                          ? 'rgba(56, 189, 248, 0.12)'
-                          : 'var(--bg-surface-2)',
-                        color: isSelected
-                          ? '#ffffff'
-                          : isActive
-                          ? 'var(--text-primary)'
-                          : 'var(--text-muted)',
-                        opacity: isActive ? 1 : 0.28,
-                        cursor: isActive ? 'pointer' : 'not-allowed',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 2,
-                        padding: 0,
-                      }}
-                    >
-                      <span className="num-mono" style={{ fontSize: 12.5, fontWeight: 800 }}>
-                        {cell.day}
-                      </span>
-                      {hasLog && (
-                        <span
-                          style={{
-                            width: 4,
-                            height: 4,
-                            borderRadius: '50%',
-                            background: isSelected ? 'var(--text)' : 'var(--accent-volt)',
-                          }}
-                        />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  fontSize: 10.5,
-                  color: 'var(--text-muted)',
-                  paddingTop: 4,
-                }}
-              >
-                <span>* ימים פעילים נקבעים ע״י המאמן (ימי תשקיף ולוג זמינים תמיד)</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedDate(todayIso);
-                    setCalendarModalOpen(false);
-                  }}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'var(--accent-orange-bright)',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    fontSize: 11.5,
-                  }}
-                >
-                  היום
-                </button>
-              </div>
-            </div>
-          );
-        })()}
-      </Modal>
+        isBlocked={(iso) => isDayBlockedForTrainee(iso, trainee)}
+        hasLog={(iso) => Boolean(trainee.logs[iso] && Object.keys(trainee.logs[iso].meals || {}).length > 0)}
+        monthNames={HEBREW_MONTH_NAMES}
+        weekdayLetters={HEBREW_WEEKDAY_LETTERS}
+      />
 
       {/* מודאל מדידת היקפים מונפש */}
       <Modal

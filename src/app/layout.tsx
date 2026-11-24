@@ -4,7 +4,6 @@ import './globals.css';
 import React from 'react';
 import {
   ColorSchemeScript,
-  CSSVariablesResolver,
   DirectionProvider,
   MantineColorsTuple,
   MantineProvider,
@@ -98,25 +97,6 @@ const theme = createTheme({
   },
 });
 
-// Map Mantine's surface variables onto the app's design tokens so Mantine
-// components (inputs, menus, popovers, switches...) follow both themes.
-const cssVariablesResolver: CSSVariablesResolver = () => ({
-  variables: {},
-  light: {
-    '--mantine-color-body': '#f2f2f4',
-    '--mantine-color-text': '#0a0a0a',
-    '--mantine-color-dimmed': '#6e6e73',
-    '--mantine-color-default': '#ffffff',
-    '--mantine-color-default-border': 'rgba(0, 0, 0, 0.1)',
-  },
-  dark: {
-    '--mantine-color-body': '#000000',
-    '--mantine-color-text': '#f5f5f5',
-    '--mantine-color-dimmed': '#8e8e93',
-    '--mantine-color-default': '#2c2c2e',
-    '--mantine-color-default-border': 'rgba(255, 255, 255, 0.14)',
-  },
-});
 
 export default function RootLayout({
   children,
@@ -134,7 +114,6 @@ export default function RootLayout({
           <MantineProvider
             theme={theme}
             defaultColorScheme="auto"
-            cssVariablesResolver={cssVariablesResolver}
           >
             <ThemeMetaSync />
             <Notifications position="top-center" zIndex={300} />
