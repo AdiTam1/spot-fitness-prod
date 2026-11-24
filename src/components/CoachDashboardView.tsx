@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { GlassDock } from './ui/GlassDock';
+import { SegmentedPill } from './ui/SegmentedPill';
 import {
   Modal,
   TextInput,
@@ -512,6 +513,7 @@ export function CoachDashboardView({
     typeof window !== 'undefined' && window.innerWidth < 768 ? 'cards' : 'table'
   );
   const [rosterViewPinned, setRosterViewPinned] = useState(false);
+  const [tplScope, setTplScope] = useState<'all' | 'system' | 'mine'>('all');
 
   useEffect(() => {
     if (typeof window === 'undefined' || rosterViewPinned) return;
@@ -4371,6 +4373,105 @@ export function CoachDashboardView({
       {/* תצוגה 3: ספריית טמפלייטים דו-שכבתית (מערכתיים + אישיים של המאמן)     */}
       {/* ===================================================================== */}
       {activeSection === 'templates' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Library list (design: CoachTemplates) — picking a card selects it for editing below */}
+          <header style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>תפריטים</span>
+            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, lineHeight: 1.2 }}>ספריית טמפלייטים</h1>
+          </header>
+          <SegmentedPill
+            ariaLabel="סוג טמפלייט"
+            value={tplScope}
+            onChange={(v) => setTplScope(v as 'all' | 'system' | 'mine')}
+            options={[
+              { value: 'all', label: 'הכל' },
+              { value: 'system', label: 'מערכת' },
+              { value: 'mine', label: 'האישיים שלי' },
+            ]}
+          />
+          {templates
+            .filter((t) => {
+              const isGlobal = !t.ownerCoachId || t.ownerCoachId === 'coach-admin';
+              return tplScope === 'all' || (tplScope === 'system' ? isGlobal : !isGlobal);
+            })
+            .map((t) => {
+              const isGlobal = !t.ownerCoachId || t.ownerCoachId === 'coach-admin';
+              const on = t.id === selectedTemplateId;
+              return (
+                <article
+                  key={t.id}
+                  style={{
+                    background: 'var(--card)',
+                    border: `1px solid ${on ? 'var(--line-2)' : 'var(--line)'}`,
+                    borderRadius: 28,
+                    padding: 16,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                    boxShadow: 'var(--card-shadow)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                    <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                      <span style={{ fontSize: 17, fontWeight: 700 }}>{t.name}</span>
+                      {t.description && <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{t.description}</span>}
+                    </span>
+                    <span
+                      style={{
+                        height: 26,
+                        padding: '0 10px',
+                        borderRadius: 999,
+                        background: 'var(--surface-2)',
+                        color: 'var(--text-2)',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        flex: 'none',
+                      }}
+                    >
+                      {isGlobal ? 'מערכת' : 'אישי'}
+                    </span>
+                  </div>
+                  <div data-h-scroll style={{ display: 'flex', gap: 6 }}>
+                    {t.meals.map((m) => (
+                      <span
+                        key={m.id}
+                        style={{
+                          flex: 'none',
+                          height: 30,
+                          padding: '0 12px',
+                          borderRadius: 999,
+                          border: '1px solid var(--line-2)',
+                          fontSize: 13,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {m.name}
+                      </span>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectTemplate(t.id)}
+                    aria-pressed={on}
+                    className={on ? 'btn-volt' : 'glass'}
+                    style={{
+                      height: 48,
+                      borderRadius: 999,
+                      fontFamily: 'inherit',
+                      fontSize: 15,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {on ? 'נבחר לעריכה ✓' : 'בחר לעריכה ושיוך'}
+                  </button>
+                </article>
+              );
+            })}
         <div className="pro-card" style={{ padding: 22 }}>
           <div
             style={{
@@ -4392,23 +4493,6 @@ export function CoachDashboardView({
                 flexWrap: 'wrap',
               }}
             >
-              <Select
-                label="בחר טמפלייט תזונה"
-                style={{ minWidth: 240, maxWidth: '100%', flex: '1 1 260px' }}
-                value={selectedTemplateId}
-                onChange={(val) => val && handleSelectTemplate(val)}
-                data={templates.map((t) => {
-                  const isGlobal =
-                    !t.ownerCoachId || t.ownerCoachId === 'coach-admin';
-                  return {
-                    value: t.id,
-                    label: `${isGlobal ? '👑 [מערכת]' : '🏋️ [אישי]'} ${
-                      t.name
-                    } (${t.meals.length} ארוחות)`,
-                  };
-                })}
-              />
-
               <button
                 disabled={isBusy('create-tpl')}
                 onClick={handleCreateNewTemplate}
@@ -4787,6 +4871,7 @@ export function CoachDashboardView({
               )}
             </div>
           </div>
+        </div>
         </div>
       )}
 
