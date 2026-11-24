@@ -4880,7 +4880,11 @@ export function CoachDashboardView({
       {/* ===================================================================== */}
       {activeSection === 'users' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          <div className="pro-card" style={{ padding: 20 }}>
+          <header style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>ניהול</span>
+            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, lineHeight: 1.2 }}>חשבונות מתאמנים</h1>
+          </header>
+          <div className="pro-card" style={{ padding: 20, borderRadius: 28 }}>
             <div
               style={{
                 display: 'flex',
@@ -4890,14 +4894,27 @@ export function CoachDashboardView({
                 gap: 14,
               }}
             >
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 800 }}>
-                  קוד ההזמנה האישי שלך למתאמנים ({coachInviteCode})
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+                <span style={{ fontSize: 13, color: 'var(--text-2)' }}>קוד ההזמנה האישי שלך</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 30, fontWeight: 700, lineHeight: 1 }}>
+                    {coachInviteCode}
+                  </bdi>
+                  <button
+                    type="button"
+                    className="glass"
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(coachInviteCode).catch(() => {});
+                    }}
+                    style={{ height: 44, padding: '0 16px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    <Copy size={16} />
+                    העתק
+                  </button>
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  מתאמן שנרשם באפליקציה ומזין את הקוד שלך משויך אוטומטית אליך
-                  ומופעל מיד
-                </div>
+                <span style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.45 }}>
+                  מתאמן שנרשם באפליקציה ומזין את הקוד משויך אליך אוטומטית ומופעל מיד
+                </span>
               </div>
 
               {isSuperAdmin && (
