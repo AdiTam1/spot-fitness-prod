@@ -346,7 +346,7 @@ a:focus-visible {
 /* ---------- Mantine inputs ---------- */
 .mantine-Input-input {
   background-color: var(--surface-2) !important;
-  border: 1px solid var(--line) !important;
+  border: 1px solid var(--line-2) !important;
   color: var(--text) !important;
   border-radius: 14px !important;
   min-height: 44px;

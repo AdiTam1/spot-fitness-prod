@@ -180,71 +180,62 @@ export function AuthGateView({
       style={{
         minHeight: '100dvh',
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         justifyContent: 'center',
-        padding: '12px 14px',
+        padding: 'calc(56px + env(safe-area-inset-top, 0px)) 24px 32px',
       }}
     >
       <div
-        className="pro-card-elevated"
         style={{
           width: '100%',
           maxWidth: 420,
-          padding: '20px 18px',
           position: 'relative',
-          overflow: 'hidden',
         }}
       >
         <div
           style={{
-            position: 'absolute',
-            top: -80,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            width: 240,
-            height: 140,
-            background:
-              'radial-gradient(circle, rgba(214, 125, 9, 0.16) 0%, transparent 70%)',
-            pointerEvents: 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 12,
+            marginBottom: 26,
           }}
-        />
-
-        <div style={{ textAlign: 'center', marginBottom: 14 }}>
+        >
           <img
             src="/app-logo.png"
-            alt="SPOT"
+            alt=""
             style={{
-              width: 54,
-              height: 54,
-              borderRadius: 15,
+              width: 76,
+              height: 76,
+              borderRadius: 24,
               objectFit: 'cover',
-              display: 'inline-block',
-              marginBottom: 8,
-              boxShadow: '0 8px 20px rgba(214, 125, 9, 0.32)',
+              border: '1px solid var(--line-2)',
             }}
           />
-          <div
-            className="num-mono"
-            style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.03em' }}
-          >
-            SPOT NUTRITION OS
-          </div>
+          <h1 style={{ margin: 0, fontSize: 32, fontWeight: 800, letterSpacing: '0.04em' }}>SPOT</h1>
+          <span style={{ fontSize: 14, color: 'var(--text-2)' }}>
+            תזונה, מדדים וליווי מאמן במקום אחד
+          </span>
         </div>
 
         <div
+          role="tablist"
+          aria-label="סוג כניסה"
           style={{
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
-            gap: 6,
-            background: 'var(--bg-surface-2)',
+            gap: 4,
+            background: 'var(--card)',
             padding: 4,
-            borderRadius: 12,
+            borderRadius: 999,
             border: '1px solid var(--border-subtle)',
-            marginBottom: 14,
+            marginBottom: 20,
           }}
         >
           <button
             type="button"
+            role="tab"
+            aria-selected={mode === 'login'}
             disabled={loading}
             onClick={() => {
               setMode('login');
@@ -256,14 +247,16 @@ export function AuthGateView({
               alignItems: 'center',
               justifyContent: 'center',
               gap: 6,
-              padding: '8px',
-              borderRadius: 9,
+              height: 42,
+              padding: '0 8px',
+              borderRadius: 999,
               border: 'none',
+              fontFamily: 'inherit',
               background:
                 mode === 'login' ? 'var(--sel-bg)' : 'transparent',
               color: mode === 'login' ? 'var(--sel-text)' : 'var(--text-secondary)',
-              fontSize: 13,
-              fontWeight: 700,
+              fontSize: 15,
+              fontWeight: mode === 'login' ? 700 : 500,
               cursor: loading ? 'not-allowed' : 'pointer',
               opacity: loading && mode !== 'login' ? 0.5 : 1,
             }}
@@ -274,6 +267,8 @@ export function AuthGateView({
 
           <button
             type="button"
+            role="tab"
+            aria-selected={mode === 'register'}
             disabled={loading}
             onClick={() => {
               setMode('register');
@@ -286,14 +281,16 @@ export function AuthGateView({
               alignItems: 'center',
               justifyContent: 'center',
               gap: 6,
-              padding: '8px',
-              borderRadius: 9,
+              height: 42,
+              padding: '0 8px',
+              borderRadius: 999,
               border: 'none',
+              fontFamily: 'inherit',
               background:
                 mode === 'register' ? 'var(--sel-bg)' : 'transparent',
               color: mode === 'register' ? 'var(--sel-text)' : 'var(--text-secondary)',
-              fontSize: 13,
-              fontWeight: 700,
+              fontSize: 15,
+              fontWeight: mode === 'register' ? 700 : 500,
               cursor: loading ? 'not-allowed' : 'pointer',
               opacity: loading && mode !== 'register' ? 0.5 : 1,
             }}
@@ -410,8 +407,9 @@ export function AuthGateView({
               className="btn-volt"
               style={{
                 marginTop: 4,
-                padding: '11px',
-                fontSize: 14,
+                height: 56,
+                fontSize: 16,
+                fontFamily: 'inherit',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -486,8 +484,9 @@ export function AuthGateView({
               className="btn-volt"
               style={{
                 marginTop: 4,
-                padding: '11px',
-                fontSize: 14,
+                height: 56,
+                fontSize: 16,
+                fontFamily: 'inherit',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
