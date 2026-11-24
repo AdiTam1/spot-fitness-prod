@@ -42,6 +42,8 @@ export function BarcodeScannerModal({
   const [cameraActive, setCameraActive] = useState(false);
   const scannerRef = useRef<unknown>(null);
   const lookingUpRef = useRef(false);
+  // Scan result stage (design: Barcode): the product is shown before it is added to the meal.
+  const [found, setFound] = useState<FoodCatalogItem | null>(null);
 
   const lookupBarcode = async (code: string) => {
     const clean = code.trim();
@@ -56,8 +58,7 @@ export function BarcodeScannerModal({
         setError(data.error || 'המוצר לא נמצא לפי הברקוד שהוזן');
       } else {
         await stopCamera();
-        onProductFound(data.item);
-        onClose();
+        setFound(data.item as FoodCatalogItem);
       }
     } catch {
       setError('שגיאה בחיפוש הברקוד');
@@ -112,6 +113,7 @@ export function BarcodeScannerModal({
 
   useEffect(() => {
     if (!opened) {
+      setFound(null);
       stopCamera();
       setError(null);
       setManualCode('');
@@ -140,6 +142,17 @@ export function BarcodeScannerModal({
       radius="lg"
       size="md"
     >
+      {found ? (
+        <FoundProduct
+          item={found}
+          onAdd={() => {
+            onProductFound(found);
+            setFound(null);
+            onClose();
+          }}
+          onRescan={() => setFound(null)}
+        />
+      ) : (
       <Stack gap="md">
         <div
           style={{
@@ -295,6 +308,78 @@ export function BarcodeScannerModal({
           </SimpleGrid>
         </Stack>
       </Stack>
+      )}
     </Modal>
+  );
+}
+
+function FoundProduct({
+  item,
+  onAdd,
+  onRescan,
+}: {
+  item: FoodCatalogItem;
+  onAdd: () => void;
+  onRescan: () => void;
+}) {
+  const unit = item.units[0] || { label: '100 גרם', grams: 100 };
+  const k = unit.grams / 100;
+  const kcal = Math.round(item.per100g.calories * k);
+  const macro = (v: number) => Math.round(v * k * 10) / 10;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span
+          aria-hidden
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 16,
+            background: 'var(--surface-2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flex: 'none',
+          }}
+        >
+          <Barcode size={22} />
+        </span>
+        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 12, color: 'var(--text-2)' }}>
+            נמצא במאגר
+            {item.barcode ? (
+              <>
+                {' · '}
+                <bdi dir="ltr" className="ltr-num">{item.barcode}</bdi>
+              </>
+            ) : null}
+          </span>
+          <span style={{ fontSize: 17, fontWeight: 700 }}>{item.name}</span>
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+        <span>
+          <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 32, fontWeight: 700 }}>
+            {kcal}
+          </bdi>{' '}
+          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>קק״ל</span>
+        </span>
+        <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+          <span style={{ color: 'var(--macro-protein)' }}>ח׳ <bdi dir="ltr" className="ltr-num">{macro(item.per100g.protein)}</bdi></span>
+          {' · '}
+          <span style={{ color: 'var(--macro-carbs)' }}>פ׳ <bdi dir="ltr" className="ltr-num">{macro(item.per100g.carbs)}</bdi></span>
+          {' · '}
+          <span style={{ color: 'var(--macro-fat)' }}>ש׳ <bdi dir="ltr" className="ltr-num">{macro(item.per100g.fat)}</bdi></span>
+          {' · '}
+          {unit.label}
+        </span>
+      </div>
+      <Button className="btn-volt" radius="xl" style={{ height: 56, fontSize: 16 }} leftSection={<Check size={18} />} onClick={onAdd}>
+        הוסף לארוחה
+      </Button>
+      <Button className="glass" radius="xl" variant="default" style={{ height: 52, fontSize: 15 }} onClick={onRescan}>
+        סרוק מוצר אחר
+      </Button>
+    </div>
   );
 }

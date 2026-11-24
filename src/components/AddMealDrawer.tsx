@@ -17,6 +17,7 @@ import {
   Sparkles,
   Barcode,
   Plus,
+  Minus,
   Trash2,
   Check,
   Edit3,
@@ -3324,27 +3325,94 @@ export function AddMealDrawer({
                   </button>
                 </div>
 
+                {/* Result header (design: PhotoResult) — photo hero + totals vs meal target */}
                 {allMealPhotos.length > 0 && (
-                  <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
-                    {allMealPhotos.map((src, i) => (
-                      <img
-                        key={i}
-                        src={src}
-                        alt={`תמונת ארוחה ${i + 1}`}
-                        onClick={() => setActiveTab('ai-photo')}
+                  <div style={{ position: 'relative', borderRadius: 28, overflow: 'hidden', background: 'var(--surface-2)' }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={allMealPhotos[0]}
+                      alt="תמונת הארוחה"
+                      onClick={() => setActiveTab('ai-photo')}
+                      style={{ display: 'block', width: '100%', height: 190, objectFit: 'cover', cursor: 'pointer' }}
+                    />
+                    {allMealPhotos.length > 1 && (
+                      <span
+                        className="glass"
                         style={{
-                          width: 64,
-                          height: 64,
-                          borderRadius: 12,
-                          objectFit: 'cover',
-                          border: '1px solid var(--line-2)',
-                          cursor: 'pointer',
-                          flexShrink: 0,
+                          position: 'absolute',
+                          insetBlockEnd: 10,
+                          insetInlineStart: 10,
+                          height: 30,
+                          padding: '0 12px',
+                          borderRadius: 999,
+                          fontSize: 13,
+                          fontWeight: 600,
+                          display: 'inline-flex',
+                          alignItems: 'center',
                         }}
-                      />
-                    ))}
+                      >
+                        +<bdi className="ltr-num">{allMealPhotos.length - 1}</bdi> תמונות
+                      </span>
+                    )}
                   </div>
                 )}
+
+                <div
+                  style={{
+                    background: 'var(--card)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 26,
+                    padding: 16,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 14,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                      <bdi className="ltr-num">{items.length}</bdi> מרכיבים · יעד{' '}
+                      <bdi className="ltr-num">{mealSlot.targets.calories}</bdi>
+                    </span>
+                    <span>
+                      <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 36, fontWeight: 700, lineHeight: 1 }}>
+                        {currentTotals.calories}
+                      </bdi>{' '}
+                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>קק״ל</span>
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+                    {(
+                      [
+                        { l: 'חלבון', v: currentTotals.protein, g: mealSlot.targets.protein, c: 'var(--macro-protein)' },
+                        { l: 'פחמימות', v: currentTotals.carbs, g: mealSlot.targets.carbs, c: 'var(--macro-carbs)' },
+                        { l: 'שומן', v: currentTotals.fat, g: mealSlot.targets.fat, c: 'var(--macro-fat)' },
+                      ] as const
+                    ).map((m) => (
+                      <div key={m.l} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-2)' }}>
+                          <span style={{ width: 7, height: 7, borderRadius: 9, background: m.c }} />
+                          {m.l}
+                        </div>
+                        <div style={{ height: 5, borderRadius: 9, background: 'var(--surface-3)', overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              height: '100%',
+                              width: `${Math.min(100, Math.round((m.v / Math.max(1, m.g)) * 100))}%`,
+                              background: m.c,
+                              borderRadius: 9,
+                            }}
+                          />
+                        </div>
+                        <span style={{ fontSize: 14, fontWeight: 600 }}>
+                          <bdi dir="ltr" className="num-mono ltr-num">{Math.round(m.v)}</bdi>
+                          <span style={{ color: 'var(--text-3)', fontWeight: 500 }}>
+                            {' '}/ <bdi dir="ltr" className="num-mono ltr-num">{Math.round(m.g)}</bdi> ג׳
+                          </span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
                 {items.length === 0 ? (
                   <div
@@ -3451,47 +3519,92 @@ export function AddMealDrawer({
                               </div>
                             </div>
 
-                            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                            <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
                               <button
-                                onClick={() =>
-                                  setEditingItemId(isEditing ? null : item.id)
-                                }
-                                className="btn-surface"
+                                type="button"
+                                aria-label={isEditing ? 'סגור עריכה' : `ערוך ${item.name}`}
+                                aria-expanded={isEditing}
+                                onClick={() => setEditingItemId(isEditing ? null : item.id)}
                                 style={{
-                                  width: 30,
-                                  height: 30,
+                                  width: 44,
+                                  height: 44,
                                   padding: 0,
+                                  borderRadius: 999,
+                                  border: '1px solid var(--line-2)',
+                                  background: isEditing ? 'var(--sel-bg)' : 'transparent',
+                                  color: isEditing ? 'var(--sel-text)' : 'var(--text-2)',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
                                   cursor: 'pointer',
                                 }}
                               >
-                                <Edit3
-                                  size={13}
-                                  color={
-                                    isEditing
-                                      ? 'var(--accent-volt)'
-                                      : 'var(--text-secondary)'
-                                  }
-                                />
+                                <Edit3 size={16} />
                               </button>
                               <button
+                                type="button"
+                                aria-label={`הסר ${item.name}`}
                                 onClick={() => removeItem(item.id)}
-                                className="btn-surface"
                                 style={{
-                                  width: 30,
-                                  height: 30,
+                                  width: 44,
+                                  height: 44,
                                   padding: 0,
+                                  borderRadius: 999,
+                                  border: '1px solid var(--line-2)',
+                                  background: 'transparent',
+                                  color: 'var(--danger-text)',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
                                   cursor: 'pointer',
                                 }}
                               >
-                                <Trash2 size={13} color="#ef4444" />
+                                <Trash2 size={16} />
                               </button>
                             </div>
+                          </div>
+
+                          {/* Quick gram stepper (design: PhotoResult rows) */}
+                          <div
+                            style={{
+                              marginTop: 10,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: 8,
+                            }}
+                          >
+                            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>כמות</span>
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 2,
+                                padding: 3,
+                                borderRadius: 999,
+                                background: 'var(--surface-2)',
+                              }}
+                            >
+                              <button
+                                type="button"
+                                aria-label={`הפחת כמות ${item.name}`}
+                                onClick={() => updateLoggedItemGrams(item.id, item.grams - 10)}
+                                style={{ width: 44, height: 40, borderRadius: 999, border: 0, background: 'transparent', color: 'var(--text-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                              >
+                                <Minus size={16} strokeWidth={2.2} />
+                              </button>
+                              <bdi dir="ltr" className="num-mono ltr-num" style={{ minWidth: 64, textAlign: 'center', fontSize: 14, fontWeight: 600 }}>
+                                {Math.round(item.grams)} ג׳
+                              </bdi>
+                              <button
+                                type="button"
+                                aria-label={`הוסף כמות ${item.name}`}
+                                onClick={() => updateLoggedItemGrams(item.id, item.grams + 10)}
+                                style={{ width: 44, height: 40, borderRadius: 999, border: 0, background: 'transparent', color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                              >
+                                <Plus size={16} strokeWidth={2.2} />
+                              </button>
+                            </span>
                           </div>
 
                           <Collapse in={isEditing}>
