@@ -18,6 +18,7 @@ import {
   LayoutTemplate,
   Plus,
   Trash2,
+  MoreHorizontal,
   Check,
   Send,
   Sliders,
@@ -514,6 +515,8 @@ export function CoachDashboardView({
     typeof window !== 'undefined' && window.innerWidth < 768 ? 'cards' : 'table'
   );
   const [rosterViewPinned, setRosterViewPinned] = useState(false);
+  const [accountsFilter, setAccountsFilter] = useState<'all' | 'pending' | 'active' | 'paused'>('all');
+  const [expandedAccountId, setExpandedAccountId] = useState<string | null>(null);
   const [inspTab, setInspTab] = useState<'data' | 'plan' | 'journal'>('data');
   const [tplScope, setTplScope] = useState<'all' | 'system' | 'mine'>('all');
 
@@ -5017,358 +5020,238 @@ export function CoachDashboardView({
             </div>
           </div>
 
-          <div className="pro-card" style={{ overflow: 'hidden' }}>
-            <div
-              style={{
-                padding: '18px 22px',
-                borderBottom: '1px solid var(--line)',
-              }}
-            >
-              <div style={{ fontSize: 16, fontWeight: 800 }}>
-                ניהול חשבונות מתאמנים, סיסמאות ושיתוף מאמנים
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                רק המאמן הראשי של המתאמן (או המנהל הראשי) יכול להשהות, למחוק או
-                לנהל את רשימת המאמנים השותפים שלו
-              </div>
-            </div>
-
-            <div style={{ overflowX: 'auto' }}>
-              <table
+          {/* Accounts list (design: CoachAccounts) */}
+          {(() => {
+            const counts = {
+              all: trainees.length,
+              pending: trainees.filter((t) => t.status === 'pending').length,
+              active: trainees.filter((t) => t.status === 'active').length,
+              paused: trainees.filter((t) => t.status === 'paused').length,
+            };
+            const shown = trainees.filter((t) => accountsFilter === 'all' || t.status === accountsFilter);
+            const pill = (label: string, tone: 'ok' | 'warn' | 'off'): React.ReactNode => (
+              <span
                 style={{
-                  width: '100%',
-                  borderCollapse: 'collapse',
-                  textAlign: 'right',
+                  height: 26,
+                  padding: '0 10px',
+                  borderRadius: 999,
+                  background: 'var(--surface-2)',
+                  color: tone === 'warn' ? 'var(--warn-text)' : tone === 'ok' ? 'var(--text)' : 'var(--text-2)',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  whiteSpace: 'nowrap',
+                  flex: 'none',
                 }}
               >
-                <thead>
-                  <tr
-                    style={{
-                      borderBottom: '1px solid var(--line)',
-                      color: 'var(--text-muted)',
-                      fontSize: 13,
-                      fontWeight: 700,
-                    }}
-                  >
-                    <th style={{ padding: '14px 20px' }}>שם מתאמן</th>
-                    <th style={{ padding: '14px 12px' }}>אימייל</th>
-                    <th style={{ padding: '14px 12px' }}>מאמן ראשי ושותפים</th>
-                    <th style={{ padding: '14px 12px' }}>סטטוס חשבון</th>
-                    <th style={{ padding: '14px 20px', textAlign: 'left' }}>
-                      ניהול הרשאות
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {trainees.map((t) => {
-                    const isOwner = isOwnerOfTrainee(t);
-                    const liveBadge = formatLiveActivityBadge(t.lastSeenAt);
+                {label}
+              </span>
+            );
+            const act: React.CSSProperties = {
+              height: 44,
+              padding: '0 16px',
+              borderRadius: 999,
+              fontFamily: 'inherit',
+              fontSize: 14,
+              fontWeight: 600,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              cursor: 'pointer',
+            };
+            return (
+              <>
+                <div data-h-scroll style={{ display: 'flex', gap: 8, paddingBottom: 2 }}>
+                  {(
+                    [
+                      ['all', 'הכל'],
+                      ['pending', 'ממתינים'],
+                      ['active', 'פעילים'],
+                      ['paused', 'מושהים'],
+                    ] as const
+                  ).map(([id, label]) => {
+                    const on = accountsFilter === id;
                     return (
-                      <tr
-                        key={t.id}
+                      <button
+                        key={id}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => setAccountsFilter(id)}
                         style={{
-                          borderBottom: '1px solid var(--line)',
+                          flex: 'none',
+                          minHeight: 40,
+                          padding: '0 16px',
+                          borderRadius: 999,
+                          fontFamily: 'inherit',
+                          fontSize: 14,
+                          fontWeight: on ? 700 : 500,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                          border: `1px solid ${on ? 'var(--sel-border)' : 'var(--line-2)'}`,
+                          background: on ? 'var(--sel-bg)' : 'transparent',
+                          color: on ? 'var(--sel-text)' : 'var(--text)',
                         }}
                       >
-                        <td style={{ padding: '14px 20px', fontWeight: 800 }}>
-                          <div>{t.name}</div>
-                          {liveBadge && (
-                            <div
-                              style={{
-                                marginTop: 4,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 5,
-                                fontSize: 12.5,
-                                fontWeight: 700,
-                                color: liveBadge.isOnline
-                                  ? '#22c55e'
-                                  : 'var(--text-muted)',
-                              }}
-                            >
-                              <span
-                                style={{
-                                  width: 6,
-                                  height: 6,
-                                  borderRadius: '50%',
-                                  background: liveBadge.isOnline
-                                    ? '#22c55e'
-                                    : 'var(--text-muted)',
-                                }}
-                              />
-                              <span>{liveBadge.label}</span>
-                            </div>
-                          )}
-                        </td>
-                        <td
-                          className="num-mono"
-                          style={{ padding: '14px 12px', fontSize: 13 }}
-                        >
-                          {t.email}
-                        </td>
-                        <td style={{ padding: '14px 12px', fontSize: 12 }}>
-                          <div>
-                            <b>ראשי:</b> {getCoachNameById(t.primaryCoachId)}
-                          </div>
-                          {(t.sharedCoachIds || []).length > 0 && (
-                            <div style={{ color: 'var(--text-secondary)' }}>
-                              <b>שותפים:</b>{' '}
-                              {t.sharedCoachIds
-                                .map((id) => getCoachNameById(id))
-                                .join(', ')}
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ padding: '14px 12px' }}>
-                          {t.status === 'active' ? (
-                            <span
-                              style={{
-                                padding: '4px 10px',
-                                borderRadius: 999,
-                                background: 'var(--surface-2)',
-                                color: '#22c55e',
-                                fontSize: 13,
-                                fontWeight: 700,
-                              }}
-                            >
-                              פעיל
-                            </span>
-                          ) : t.status === 'pending' ? (
-                            <span
-                              style={{
-                                padding: '4px 10px',
-                                borderRadius: 999,
-                                background: 'var(--surface-2)',
-                                color: 'var(--warn-text)',
-                                fontSize: 13,
-                                fontWeight: 700,
-                              }}
-                            >
-                              ממתין לאישור
-                            </span>
-                          ) : (
-                            <span
-                              style={{
-                                padding: '4px 10px',
-                                borderRadius: 999,
-                                background: 'rgba(239, 68, 68, 0.14)',
-                                color: '#ef4444',
-                                fontSize: 13,
-                                fontWeight: 700,
-                              }}
-                            >
-                              מושהה
-                            </span>
-                          )}
-                        </td>
-                        <td
-                          style={{ padding: '14px 20px', textAlign: 'left' }}
-                        >
-                          {isOwner ? (
-                            <div
-                              style={{
-                                display: 'inline-flex',
-                                gap: 6,
-                                alignItems: 'center',
-                              }}
-                            >
-                              <button
-                                onClick={() => {
-                                  setSharingModalTrainee(t);
-                                  setSharingPrimaryId(
-                                    t.primaryCoachId || 'coach-admin'
-                                  );
-                                  setSharingCollaboratorIds(
-                                    t.sharedCoachIds || []
-                                  );
-                                }}
-                                className="btn-surface"
-                                style={{
-                                  padding: '6px 10px',
-                                  fontSize: 13,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 4,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                <Share2
-                                  size={13}
-                                  color="currentColor"
-                                />
-                                <span>שתף מאמנים</span>
-                              </button>
-
-                              {t.status !== 'active' ? (
-                                <button
-                                  disabled={isBusy(`st-tr-${t.id}`)}
-                                  onClick={() =>
-                                    runBusy(
-                                      `st-tr-${t.id}`,
-                                      () => onUpdateTraineeStatus(t.id, 'active'),
-                                      `הגישה של ${t.name} הופעלה והחסימה הוסרה`
-                                    )
-                                  }
-                                  className="btn-volt"
-                                  style={{
-                                    padding: '6px 10px',
-                                    fontSize: 13,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 4,
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  {isBusy(`st-tr-${t.id}`) ? (
-                                    <BusyIcon size={13} />
-                                  ) : (
-                                    <PlayCircle size={13} />
-                                  )}
-                                  <span>
-                                    {isBusy(`st-tr-${t.id}`)
-                                      ? 'מפעיל...'
-                                      : t.status === 'paused'
-                                      ? 'בטל חסימה'
-                                      : 'הפעל'}
-                                  </span>
-                                </button>
-                              ) : (
-                                <>
-                                  {onForceLogoutTrainee && (
-                                    <button
-                                      title="נתק את המתאמן מכל המכשירים המחוברים בלייב (ללא חסימה)"
-                                      disabled={isBusy(`fl-tr-${t.id}`)}
-                                      onClick={() =>
-                                        runBusy(
-                                          `fl-tr-${t.id}`,
-                                          () => onForceLogoutTrainee(t.id),
-                                          `${t.name} נותק מכל המכשירים מרחוק`
-                                        )
-                                      }
-                                      className="btn-surface"
-                                      style={{
-                                        padding: '6px 10px',
-                                        fontSize: 13,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 4,
-                                        cursor: 'pointer',
-                                        color: 'var(--warn-text)',
-                                        borderColor: 'var(--surface-2)',
-                                      }}
-                                    >
-                                      {isBusy(`fl-tr-${t.id}`) ? (
-                                        <BusyIcon size={13} />
-                                      ) : (
-                                        <LogOut size={13} />
-                                      )}
-                                      <span>
-                                        {isBusy(`fl-tr-${t.id}`) ? 'מנתק...' : 'נתק'}
-                                      </span>
-                                    </button>
-                                  )}
-                                  <button
-                                    title="חסום גישה ונתק מיד מהאפליקציה"
-                                    disabled={isBusy(`st-tr-${t.id}`)}
-                                    onClick={() =>
-                                      runBusy(
-                                        `st-tr-${t.id}`,
-                                        () => onUpdateTraineeStatus(t.id, 'paused'),
-                                        `החשבון של ${t.name} נחסם ונותק מהמכשירים`
-                                      )
-                                    }
-                                    className="btn-surface"
-                                    style={{
-                                      padding: '6px 10px',
-                                      fontSize: 13,
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: 4,
-                                      cursor: 'pointer',
-                                      color: 'var(--danger-text)',
-                                      borderColor: 'rgba(239, 68, 68, 0.3)',
-                                    }}
-                                  >
-                                    {isBusy(`st-tr-${t.id}`) ? (
-                                      <BusyIcon size={13} />
-                                    ) : (
-                                      <PauseCircle size={13} />
-                                    )}
-                                    <span>
-                                      {isBusy(`st-tr-${t.id}`) ? 'חוסם...' : 'חסום'}
-                                    </span>
-                                  </button>
-                                </>
-                              )}
-
-                              <button
-                                onClick={() => {
-                                  setCredModalTrainee(t);
-                                  setEditEmail(t.email);
-                                  setEditPassword('');
-                                }}
-                                className="btn-surface"
-                                style={{
-                                  padding: '6px 10px',
-                                  fontSize: 13,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 4,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                <KeyRound size={13} />
-                                <span>איפוס סיסמה</span>
-                              </button>
-
-                              <button
-                                title="מחק מתאמן לצמיתות"
-                                disabled={isBusy(`del-tr-${t.id}`)}
-                                onClick={() => {
-                                  if (
-                                    !confirmDanger(
-                                      `למחוק לצמיתות את המתאמן "${t.name}" וכל נתוניו? פעולה זו אינה הפיכה.`
-                                    )
-                                  ) {
-                                    return;
-                                  }
-                                  runBusy(
-                                    `del-tr-${t.id}`,
-                                    () => onDeleteTrainee(t.id),
-                                    `המתאמן ${t.name} הוסר`
-                                  );
-                                }}
-                                className="btn-surface"
-                                style={{
-                                  padding: '6px 8px',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                {isBusy(`del-tr-${t.id}`) ? (
-                                  <BusyIcon size={13} />
-                                ) : (
-                                  <Trash2 size={13} color="#ef4444" />
-                                )}
-                              </button>
-                            </div>
-                          ) : (
-                            <span
-                              style={{
-                                fontSize: 13,
-                                color: 'var(--text-muted)',
-                              }}
-                            >
-                              שותף בצוות (ניהול חשבון ע״י המאמן הראשי)
-                            </span>
-                          )}
-                        </td>
-                      </tr>
+                        {label} · <bdi className="ltr-num">{counts[id]}</bdi>
+                      </button>
                     );
                   })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                </div>
+
+                {shown.length === 0 && (
+                  <div style={{ padding: 22, textAlign: 'center', color: 'var(--text-2)', fontSize: 14, border: '1.5px dashed var(--line-2)', borderRadius: 22 }}>
+                    אין חשבונות בקטגוריה זו
+                  </div>
+                )}
+
+                {shown.map((t) => {
+                  const isOwner = isOwnerOfTrainee(t);
+                  const liveBadge = formatLiveActivityBadge(t.lastSeenAt);
+                  const open = expandedAccountId === t.id;
+                  const initials = t.name.trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2);
+                  const shared = (t.sharedCoachIds || []).map((id) => getCoachNameById(id)).join(', ');
+                  return (
+                    <article
+                      key={t.id}
+                      style={{
+                        background: 'var(--card)',
+                        border: '1px solid var(--line)',
+                        borderRadius: 24,
+                        padding: '12px 14px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 10,
+                        boxShadow: 'var(--card-shadow)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span
+                          aria-hidden
+                          style={{ width: 44, height: 44, borderRadius: 999, background: 'var(--surface-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, flex: 'none' }}
+                        >
+                          {t.avatar || initials}
+                        </span>
+                        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                          <span style={{ fontSize: 16, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+                          <span style={{ fontSize: 13, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            ראשי: {getCoachNameById(t.primaryCoachId)}
+                            {shared ? ` · שותפים: ${shared}` : ''}
+                          </span>
+                          {liveBadge && (
+                            <span style={{ fontSize: 12, color: liveBadge.isOnline ? 'var(--ok-text)' : 'var(--text-3)' }}>{liveBadge.label}</span>
+                          )}
+                        </span>
+                        {t.status === 'active' ? pill('פעיל', 'ok') : t.status === 'pending' ? pill('ממתין לאישור', 'warn') : pill('מושהה', 'off')}
+                        {isOwner && (
+                          <button
+                            type="button"
+                            className="glass"
+                            aria-label={open ? 'סגור פעולות' : `פעולות ל${t.name}`}
+                            aria-expanded={open}
+                            onClick={() => setExpandedAccountId(open ? null : t.id)}
+                            style={{ width: 44, height: 44, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flex: 'none' }}
+                          >
+                            <MoreHorizontal size={20} />
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                        <bdi dir="ltr" className="ltr-num">{t.email}</bdi>
+                      </div>
+
+                      {!isOwner && (
+                        <span style={{ fontSize: 13, color: 'var(--text-3)' }}>שותף בצוות (ניהול חשבון ע״י המאמן הראשי)</span>
+                      )}
+
+                      {isOwner && open && (
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 10, borderTop: '1px solid var(--line)' }}>
+                          <button
+                            type="button"
+                            className="glass"
+                            style={act}
+                            onClick={() => {
+                              setSharingModalTrainee(t);
+                              setSharingPrimaryId(t.primaryCoachId || 'coach-admin');
+                              setSharingCollaboratorIds(t.sharedCoachIds || []);
+                            }}
+                          >
+                            <Share2 size={16} />
+                            שתף מאמנים
+                          </button>
+                          {t.status !== 'active' ? (
+                            <button
+                              type="button"
+                              disabled={isBusy(`st-tr-${t.id}`)}
+                              className="btn-volt"
+                              style={act}
+                              onClick={() =>
+                                runBusy(`st-tr-${t.id}`, () => onUpdateTraineeStatus(t.id, 'active'), `הגישה של ${t.name} הופעלה והחסימה הוסרה`)
+                              }
+                            >
+                              {isBusy(`st-tr-${t.id}`) ? <BusyIcon size={15} /> : <PlayCircle size={16} />}
+                              {isBusy(`st-tr-${t.id}`) ? 'מפעיל…' : t.status === 'paused' ? 'בטל חסימה' : 'הפעל'}
+                            </button>
+                          ) : (
+                            <>
+                              {onForceLogoutTrainee && (
+                                <button
+                                  type="button"
+                                  className="glass"
+                                  style={act}
+                                  disabled={isBusy(`fl-tr-${t.id}`)}
+                                  onClick={() => runBusy(`fl-tr-${t.id}`, () => onForceLogoutTrainee(t.id), `${t.name} נותק מכל המכשירים מרחוק`)}
+                                >
+                                  {isBusy(`fl-tr-${t.id}`) ? <BusyIcon size={15} /> : <LogOut size={16} />}
+                                  {isBusy(`fl-tr-${t.id}`) ? 'מנתק…' : 'נתק מכשירים'}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="glass"
+                                style={act}
+                                disabled={isBusy(`st-tr-${t.id}`)}
+                                onClick={() => runBusy(`st-tr-${t.id}`, () => onUpdateTraineeStatus(t.id, 'paused'), `החשבון של ${t.name} נחסם ונותק מהמכשירים`)}
+                              >
+                                {isBusy(`st-tr-${t.id}`) ? <BusyIcon size={15} /> : <PauseCircle size={16} />}
+                                {isBusy(`st-tr-${t.id}`) ? 'חוסם…' : 'חסום'}
+                              </button>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            className="glass"
+                            style={act}
+                            onClick={() => {
+                              setCredModalTrainee(t);
+                              setEditEmail(t.email);
+                              setEditPassword('');
+                            }}
+                          >
+                            <KeyRound size={16} />
+                            איפוס סיסמה
+                          </button>
+                          <button
+                            type="button"
+                            className="glass"
+                            style={{ ...act, color: 'var(--danger-text)' }}
+                            disabled={isBusy(`del-tr-${t.id}`)}
+                            onClick={() => {
+                              if (!confirmDanger(`למחוק לצמיתות את המתאמן "${t.name}" וכל נתוניו? פעולה זו אינה הפיכה.`)) return;
+                              runBusy(`del-tr-${t.id}`, () => onDeleteTrainee(t.id), `המתאמן ${t.name} הוסר`);
+                            }}
+                          >
+                            {isBusy(`del-tr-${t.id}`) ? <BusyIcon size={15} /> : <Trash2 size={16} />}
+                            מחק
+                          </button>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </>
+            );
+          })()}
         </div>
       )}
 

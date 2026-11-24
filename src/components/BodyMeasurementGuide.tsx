@@ -1,7 +1,6 @@
 ﻿'use client';
 
 import React, { useState, useEffect } from 'react';
-import { NumberInput } from '@mantine/core';
 import { motion } from 'framer-motion';
 import { Ruler, CheckCircle2, Info, Loader2 } from 'lucide-react';
 import { BodyMeasurementEntry } from '@/types/nutrition';
@@ -478,14 +477,27 @@ export function BodyMeasurementGuide({
             }}
           >
             {zoneInfo.instructions.map((step, i) => (
-              <div key={i} style={{ display: 'flex', gap: 5 }}>
+              <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                 <span
                   className="num-mono"
-                  style={{ color: 'var(--text)', fontWeight: 800 }}
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: 999,
+                    background: 'var(--surface-2)',
+                    color: 'var(--text)',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flex: 'none',
+                    marginTop: 1,
+                  }}
                 >
-                  {i + 1}.
+                  {i + 1}
                 </span>
-                <span>{step}</span>
+                <span style={{ color: 'var(--text-2)' }}>{step}</span>
               </div>
             ))}
           </div>
@@ -516,82 +528,115 @@ export function BodyMeasurementGuide({
         </div>
       </div>
 
-      {/* שדות הזנת 4 ההיקפים בס"מ */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(2, 1fr)',
-          gap: compact ? 8 : 10,
-        }}
-      >
-        <div onClick={() => setActiveZone('chest')}>
-          <NumberInput
-            label="היקף חזה (ס״מ)"
-            placeholder="למשל: 98"
-            value={chestCm ?? ''}
-            min={40}
-            max={200}
-            step={0.5}
-            decimalScale={1}
-            onChange={(val) => {
-              const num = val === '' ? undefined : Number(val);
-              setChestCm(num);
-              emitChange({ chestCm: num, waistNavelCm, armCm, thighCm });
-            }}
-          />
-        </div>
-
-        <div onClick={() => setActiveZone('waistNavel')}>
-          <NumberInput
-            label="היקף בטן – פופיק (ס״מ)"
-            placeholder="למשל: 84"
-            value={waistNavelCm ?? ''}
-            min={40}
-            max={200}
-            step={0.5}
-            decimalScale={1}
-            onChange={(val) => {
-              const num = val === '' ? undefined : Number(val);
-              setWaistNavelCm(num);
-              emitChange({ chestCm, waistNavelCm: num, armCm, thighCm });
-            }}
-          />
-        </div>
-
-        <div onClick={() => setActiveZone('arm')}>
-          <NumberInput
-            label="היקף זרוע בכיווץ (ס״מ)"
-            placeholder="למשל: 36"
-            value={armCm ?? ''}
-            min={15}
-            max={80}
-            step={0.5}
-            decimalScale={1}
-            onChange={(val) => {
-              const num = val === '' ? undefined : Number(val);
-              setArmCm(num);
-              emitChange({ chestCm, waistNavelCm, armCm: num, thighCm });
-            }}
-          />
-        </div>
-
-        <div onClick={() => setActiveZone('thigh')}>
-          <NumberInput
-            label="היקף ירך עליונה (ס״מ)"
-            placeholder="למשל: 56"
-            value={thighCm ?? ''}
-            min={25}
-            max={120}
-            step={0.5}
-            decimalScale={1}
-            onChange={(val) => {
-              const num = val === '' ? undefined : Number(val);
-              setThighCm(num);
-              emitChange({ chestCm, waistNavelCm, armCm, thighCm: num });
-            }}
-          />
-        </div>
-      </div>
+      {/* Active-zone entry (design: MeasureGuide) — one value at a time, next advances the zone */}
+      {(() => {
+        const ORDER: MeasurementZone[] = ['chest', 'waistNavel', 'arm', 'thigh'];
+        const idx = ORDER.indexOf(activeZone);
+        const isLast = idx === ORDER.length - 1;
+        const values: Record<MeasurementZone, number | undefined> = {
+          chest: chestCm,
+          waistNavel: waistNavelCm,
+          arm: armCm,
+          thigh: thighCm,
+        };
+        const range: Record<MeasurementZone, [number, number]> = {
+          chest: [40, 200],
+          waistNavel: [40, 200],
+          arm: [15, 80],
+          thigh: [25, 120],
+        };
+        const setZone = (z: MeasurementZone, num: number | undefined) => {
+          const next = { chestCm, waistNavelCm, armCm, thighCm } as Record<string, number | undefined>;
+          const key = { chest: 'chestCm', waistNavel: 'waistNavelCm', arm: 'armCm', thigh: 'thighCm' }[z];
+          next[key] = num;
+          if (z === 'chest') setChestCm(num);
+          if (z === 'waistNavel') setWaistNavelCm(num);
+          if (z === 'arm') setArmCm(num);
+          if (z === 'thigh') setThighCm(num);
+          emitChange(next as { chestCm?: number; waistNavelCm?: number; armCm?: number; thighCm?: number });
+        };
+        const v = values[activeZone];
+        const [lo, hi] = range[activeZone];
+        const outOfRange = v !== undefined && (v < lo || v > hi);
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
+              <label
+                htmlFor="mg-cm"
+                style={{
+                  width: 140,
+                  height: 56,
+                  borderRadius: 999,
+                  border: `1px solid ${outOfRange ? 'var(--danger-text)' : 'var(--line-2)'}`,
+                  background: 'var(--card)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '0 16px',
+                  boxSizing: 'border-box',
+                  flex: 'none',
+                  cursor: 'text',
+                }}
+              >
+                <span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+                  {`היקף ${zoneInfo.shortLabel} בס״מ`}
+                </span>
+                <input
+                  id="mg-cm"
+                  type="number"
+                  inputMode="decimal"
+                  step={0.5}
+                  dir="ltr"
+                  className="num-mono"
+                  placeholder={zoneInfo.placeholder.replace('למשל: ', '')}
+                  value={v ?? ''}
+                  onChange={(e) => {
+                    const raw = e.currentTarget.value;
+                    setZone(activeZone, raw === '' ? undefined : Number(raw));
+                  }}
+                  style={{
+                    width: '100%',
+                    minWidth: 0,
+                    border: 0,
+                    background: 'transparent',
+                    color: 'var(--text)',
+                    fontSize: 20,
+                    fontWeight: 600,
+                    outline: 'none',
+                    padding: 0,
+                    fontFamily: 'inherit',
+                  }}
+                />
+                <span style={{ fontSize: 14, color: 'var(--text-2)' }}>ס״מ</span>
+              </label>
+              {!isLast ? (
+                <button
+                  type="button"
+                  onClick={() => setActiveZone(ORDER[idx + 1])}
+                  className="btn-volt"
+                  style={{ flex: 1, height: 56, fontSize: 16, cursor: 'pointer' }}
+                >
+                  הבא: {ZONE_CONFIG[ORDER[idx + 1]].shortLabel}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setActiveZone(ORDER[0])}
+                  className="glass"
+                  style={{ flex: 1, height: 56, borderRadius: 999, fontFamily: 'inherit', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  חזרה להתחלה
+                </button>
+              )}
+            </div>
+            {outOfRange && (
+              <span role="alert" style={{ fontSize: 13, color: 'var(--danger-text)' }}>
+                טווח תקין: {lo}–{hi} ס״מ
+              </span>
+            )}
+          </div>
+        );
+      })()}
 
       {showSaveButtons && (
         <div

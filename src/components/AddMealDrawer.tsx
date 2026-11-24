@@ -1997,350 +1997,252 @@ export function AddMealDrawer({
 
           {/* לשונית מיוחדת: 💡 מה לאכול? (המלצות המאמן + Smart Macro Finisher + למידת העדפות ללא צ'אט) */}
           {activeTab === 'ai-recommend' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* אופציות מומלצות של המאמן לארוחה זו */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {/* Coach options (design: AiRecommend) */}
                 {mealSlot.recommendedOptions && mealSlot.recommendedOptions.length > 0 && (
-                  <div
-                    style={{
-                      background: 'var(--surface-2)',
-                      border: '1px solid var(--line-2)',
-                      borderRadius: 24,
-                      padding: 16,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 800,
-                        color: 'var(--text)',
-                        marginBottom: 8,
-                      }}
-                    >
-                      אופציות מומלצות של המאמן ל{mealSlot.name} (הוספה בקליק):
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {mealSlot.recommendedOptions.map((optText, idx) => (
-                        <div
-                          key={idx}
+                  <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <span style={{ fontSize: 13, color: 'var(--text-2)' }}>אופציות של המאמן לארוחה זו</span>
+                    {mealSlot.recommendedOptions.map((optText, idx) => (
+                      <article
+                        key={idx}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                          padding: '14px 16px',
+                          borderRadius: 22,
+                          background: 'var(--card)',
+                          border: '1px solid var(--line)',
+                          boxShadow: 'var(--card-shadow)',
+                        }}
+                      >
+                        <span style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 600, lineHeight: 1.35 }}>{optText}</span>
+                        <button
+                          type="button"
+                          disabled={aiLoading}
+                          onClick={() => runAiAnalysis('text', optText, idx)}
+                          className="glass"
                           style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
+                            height: 44,
+                            padding: '0 16px',
+                            borderRadius: 999,
+                            fontFamily: 'inherit',
+                            fontSize: 14,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            flex: 'none',
+                            display: 'inline-flex',
                             alignItems: 'center',
-                            gap: 8,
-                            padding: '12px 14px',
-                            borderRadius: 18,
-                            background: 'var(--fill-1)',
-                            border: '1px solid var(--border-subtle)',
-                          }}
-                        >
-                          <span style={{ fontSize: 13, fontWeight: 600 }}>{optText}</span>
-                          <button
-                            disabled={aiLoading}
-                            onClick={() => runAiAnalysis('text', optText, idx)}
-                            className="btn-surface"
-                            style={{
-                              padding: '5px 10px',
-                              fontSize: 13,
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap',
-                              color: 'var(--text)',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 4,
-                            }}
-                          >
-                            {addingOptionIdx === idx && (
-                              <Loader2 size={12} className="spot-spinner" />
-                            )}
-                            <span>
-                              {addingOptionIdx === idx ? 'מנתח ומוסיף...' : '+ בחר והוסף'}
-                            </span>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* כפתור Smart Macro Finisher */}
-                <div
-                  style={{
-                    background: 'var(--surface-2)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 14,
-                    padding: 14,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      flexWrap: 'wrap',
-                      gap: 8,
-                      marginBottom: 10,
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 800 }}>
-                        השלמת מאקרו חכמה (Smart Macro Finisher)
-                      </div>
-                      <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
-                        יתרה להשלמה בארוחה זו:{' '}
-                        <b className="num-mono" style={{ color: 'var(--text)' }}>
-                          {Math.max(0, mealSlot.targets.calories - currentTotals.calories)} קק״ל · ח׳{' '}
-                          {Math.max(0, Math.round(mealSlot.targets.protein - currentTotals.protein))}g
-                        </b>
-                      </div>
-                    </div>
-
-                    <button
-                      disabled={aiRecLoading}
-                      onClick={fetchAiRecommendations}
-                      className="btn-volt"
-                      style={{
-                        padding: '8px 14px',
-                        fontSize: 13,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {aiRecLoading ? (
-                        <Loader2 size={14} className="spot-spinner" />
-                      ) : (
-                        <Sparkles size={14} />
-                      )}
-                      <span>
-                        {aiRecLoading ? 'בונה 3 הצעות מותאמות...' : 'הצע לי 3 ארוחות ליתרה'}
-                      </span>
-                    </button>
-                  </div>
-
-                  {/* הצגת העדפות שכבר נלמדו */}
-                  {learnedPreferences.length > 0 && (
-                    <div
-                      style={{
-                        fontSize: 13,
-                        color: 'var(--text-2)',
-                        background: 'var(--fill-1)',
-                        padding: '6px 10px',
-                        borderRadius: 8,
-                        marginBottom: 10,
-                      }}
-                    >
-                      <span style={{ color: 'var(--text)', fontWeight: 700 }}>
-                        העדפות שנלמדו בחשבון שלך:{' '}
-                      </span>
-                      {learnedPreferences.join(' · ')}
-                    </div>
-                  )}
-
-                  {/* רשימת 3 ההצעות מה-AI */}
-                  {aiRecommendations.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-                      {aiRecDebug?.engine && (
-                        <div
-                          style={{
-                            fontSize: 13,
-                            fontWeight: 700,
-                            padding: '5px 10px',
-                            borderRadius: 8,
-                            background: aiRecDebug.isFallback
-                              ? 'rgba(245, 158, 11, 0.14)'
-                              : 'var(--fill-1)',
-                            border: aiRecDebug.isFallback
-                              ? '1px solid rgba(245, 158, 11, 0.35)'
-                              : '1px solid var(--line-2)',
-                            color: aiRecDebug.isFallback ? 'var(--warn-text)' : 'var(--accent-volt)',
-                          }}
-                        >
-                          {aiRecDebug.isFallback
-                            ? `נוצר ע״י מנוע כללים מקומי (לא AI · ${aiRecDebug.engine})${
-                                aiRecDebug.fallbackReason
-                                  ? ` · סיבה לתחקור: ${aiRecDebug.fallbackReason}`
-                                  : ''
-                              }`
-                            : `✨ נוצר ע״י AI (${aiRecDebug.engine})`}
-                        </div>
-                      )}
-                      {aiRecommendations.map((option) => (
-                        <div
-                          key={option.id}
-                          style={{
-                            padding: 12,
-                            borderRadius: 18,
-                            background: 'var(--fill-1)',
-                            border: '1px solid var(--line-2)',
-                            display: 'flex',
-                            flexDirection: 'column',
                             gap: 6,
                           }}
                         >
-                          <div
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              gap: 8,
+                          {addingOptionIdx === idx && <Loader2 size={14} className="spot-spinner" />}
+                          {addingOptionIdx === idx ? 'מנתח…' : 'בחר והוסף'}
+                        </button>
+                      </article>
+                    ))}
+                  </section>
+                )}
+
+                {/* Smart macro finisher */}
+                <section
+                  style={{
+                    background: 'var(--card)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 26,
+                    padding: 16,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 14,
+                    boxShadow: 'var(--card-shadow)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                    <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                      <span style={{ fontSize: 17, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        השלמת מאקרו חכמה
+                        <Sparkles size={15} color="var(--accent)" />
+                      </span>
+                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>יתרה להשלמה בארוחה זו</span>
+                    </span>
+                    <span
+                      className="num-mono"
+                      style={{
+                        height: 32,
+                        padding: '0 12px',
+                        borderRadius: 999,
+                        background: 'var(--accent)',
+                        color: 'var(--on-accent)',
+                        fontSize: 14,
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        flex: 'none',
+                      }}
+                    >
+                      <bdi dir="ltr" className="ltr-num">
+                        {Math.max(0, mealSlot.targets.calories - currentTotals.calories)}
+                      </bdi>{' '}
+                      קק״ל · ח׳{' '}
+                      <bdi dir="ltr" className="ltr-num">
+                        {Math.max(0, Math.round(mealSlot.targets.protein - currentTotals.protein))}
+                      </bdi>
+                    </span>
+                  </div>
+
+                  {aiRecommendations.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {aiRecDebug?.engine && (
+                        <span style={{ fontSize: 13, color: aiRecDebug.isFallback ? 'var(--warn-text)' : 'var(--text-2)' }}>
+                          {aiRecDebug.isFallback
+                            ? `נוצר ע״י מנוע כללים מקומי (לא AI · ${aiRecDebug.engine})${
+                                aiRecDebug.fallbackReason ? ` · ${aiRecDebug.fallbackReason}` : ''
+                              }`
+                            : `נוצר ע״י AI (${aiRecDebug.engine})`}
+                        </span>
+                      )}
+                      {aiRecommendations.map((option) => (
+                        <div key={option.id} style={{ borderTop: '1px solid var(--line)', paddingTop: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <button
+                            type="button"
+                            aria-label={`הוסף את ${option.title} לארוחה`}
+                            onClick={() => {
+                              setItems((prev) => [...prev, ...option.items]);
+                              setAiSummary({ msg: `נוספה לארוחה ההצעה: "${option.title}"` });
                             }}
+                            className="glass"
+                            style={{ width: 44, height: 44, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flex: 'none' }}
                           >
-                            <div style={{ fontSize: 13, fontWeight: 800 }}>
-                              {option.title}
-                            </div>
-                            <button
-                              onClick={() => {
-                                setItems((prev) => [...prev, ...option.items]);
-                                setAiSummary({
-                                  msg: `נוספה לארוחה ההצעה: "${option.title}"`,
-                                });
-                              }}
-                              className="btn-volt"
-                              style={{
-                                padding: '5px 12px',
-                                fontSize: 13,
-                                cursor: 'pointer',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              + הוסף ארוחה זו
-                            </button>
-                          </div>
-                          <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
-                            {option.whyItFits}
-                          </div>
-                          <div
-                            className="num-mono"
-                            style={{
-                              fontSize: 13,
-                              color: 'var(--text)',
-                              fontWeight: 700,
-                            }}
-                          >
-                            {option.totals.calories} קק״ל · חלבון {option.totals.protein}g · פחמימה{' '}
-                            {option.totals.carbs}g · שומן {option.totals.fat}g
-                          </div>
+                            <Plus size={20} strokeWidth={2.2} />
+                          </button>
+                          <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <span style={{ fontSize: 15, fontWeight: 600 }}>{option.title}</span>
+                            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{option.whyItFits}</span>
+                            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                              <bdi dir="ltr" className="num-mono ltr-num">{option.totals.calories}</bdi> קק״ל · ח׳{' '}
+                              <bdi dir="ltr" className="ltr-num">{option.totals.protein}</bdi> · פ׳{' '}
+                              <bdi dir="ltr" className="ltr-num">{option.totals.carbs}</bdi> · ש׳{' '}
+                              <bdi dir="ltr" className="ltr-num">{option.totals.fat}</bdi>
+                            </span>
+                          </span>
                         </div>
                       ))}
                     </div>
                   )}
 
-                  {/* תיבת פידבק ללמידה שקטה ללא צ'אט */}
-                  <div
+                  <button
+                    type="button"
+                    disabled={aiRecLoading}
+                    onClick={fetchAiRecommendations}
+                    className="glass"
                     style={{
-                      marginTop: 12,
-                      paddingTop: 12,
-                      borderTop: '1px solid var(--border-subtle)',
+                      height: 50,
+                      borderRadius: 999,
+                      fontFamily: 'inherit',
+                      fontSize: 15,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
                     }}
                   >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        fontSize: 13,
-                        fontWeight: 800,
-                        marginBottom: 4,
-                      }}
-                    >
-                      <Brain size={14} color="currentColor" />
-                      <span>משהו בהצעות לא מתאים לך?</span>
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        color: 'var(--text-2)',
-                        marginBottom: 8,
-                      }}
-                    >
-                      רשום העדפה או הגבלה (למשל: &quot;אני לא אוכל גבינות חוץ מגבינה צהובה&quot; או &quot;אני לא אוכל גלוטן&quot;) כדי שנזכור אותה בהצעות הבאות.
-                    </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <TextInput
-                        style={{ flex: 1 }}
-                        size="xs"
-                        placeholder="למשל: אני לא אוכל גבינות חוץ מגבינה צהובה..."
-                        value={preferenceFeedbackText}
-                        onChange={(e) => setPreferenceFeedbackText(e.currentTarget.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && preferenceFeedbackText.trim() && !learningPrefLoading) {
-                            e.preventDefault();
-                            handleLearnPreference();
-                          }
-                        }}
-                      />
-                      <button
-                        disabled={learningPrefLoading || !preferenceFeedbackText.trim()}
-                        onClick={handleLearnPreference}
-                        className="btn-surface"
-                        style={{
-                          padding: '0 12px',
-                          fontSize: 13,
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          color: 'var(--text)',
-                          whiteSpace: 'nowrap',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 5,
-                        }}
-                      >
-                        {learningPrefLoading && (
-                          <Loader2 size={12} className="spot-spinner" />
-                        )}
-                        <span>
-                          {learningPrefLoading ? 'לומד ושומר...' : 'שמור העדפה לעתיד'}
+                    {aiRecLoading ? <Loader2 size={16} className="spot-spinner" /> : <Sparkles size={16} />}
+                    {aiRecLoading ? 'בונה 3 הצעות מותאמות…' : aiRecommendations.length > 0 ? 'הצע 3 אחרות' : 'הצע לי 3 ארוחות ליתרה'}
+                  </button>
+                </section>
+
+                {/* Learned preferences + silent-learning feedback */}
+                <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <span style={{ fontSize: 13, color: 'var(--text-2)' }}>העדפות שנלמדו בחשבון שלך</span>
+                  {learnedPreferences.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {learnedPreferences.map((pref) => (
+                        <span
+                          key={pref}
+                          style={{
+                            minHeight: 36,
+                            padding: '0 14px',
+                            borderRadius: 999,
+                            border: '1px solid var(--line-2)',
+                            fontSize: 14,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                          }}
+                        >
+                          {pref}
                         </span>
-                      </button>
+                      ))}
                     </div>
-                    {learnedFeedbackBanner && (
-                      <div
-                        style={{
-                          marginTop: 8,
-                          padding: '7px 10px',
-                          borderRadius: 8,
-                          background: learnedFeedbackBanner.isError
-                            ? 'rgba(239, 68, 68, 0.14)'
-                            : 'rgba(34, 197, 94, 0.12)',
-                          border: learnedFeedbackBanner.isError
-                            ? '1px solid rgba(239, 68, 68, 0.35)'
-                            : '1px solid rgba(34, 197, 94, 0.35)',
-                          color: learnedFeedbackBanner.isError
-                            ? 'var(--danger-text)'
-                            : 'var(--ok-text)',
-                          fontSize: 13,
-                          fontWeight: 700,
-                        }}
-                      >
-                        <div>
-                          {learnedFeedbackBanner.isError
-                            ? learnedFeedbackBanner.msg
-                            : `✓ ${learnedFeedbackBanner.msg}`}
-                        </div>
-                        {!learnedFeedbackBanner.isError && learnedFeedbackBanner.engine && (
-                          <div
-                            style={{
-                              marginTop: 4,
-                              fontSize: 13,
-                              color: learnedFeedbackBanner.isFallback
-                                ? 'var(--warn-text)'
-                                : 'var(--text-2)',
-                            }}
-                          >
-                            {learnedFeedbackBanner.isFallback
-                              ? `נשמר ע״י מנגנון מקומי (לא AI · ${learnedFeedbackBanner.engine})${
-                                  learnedFeedbackBanner.fallbackReason
-                                    ? ` · סיבה: ${learnedFeedbackBanner.fallbackReason}`
-                                    : ''
-                                }`
-                              : `✨ נותח ע״י AI (${learnedFeedbackBanner.engine})`}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                  )}
+                  <span style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.45 }}>
+                    משהו בהצעות לא מתאים? רשום העדפה או הגבלה כדי שנזכור אותה בהצעות הבאות.
+                  </span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      aria-label="העדפה או הגבלה"
+                      placeholder="העדפה או הגבלה (למשל: אני לא אוכל גבינות)"
+                      value={preferenceFeedbackText}
+                      onChange={(e) => setPreferenceFeedbackText(e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && preferenceFeedbackText.trim() && !learningPrefLoading) {
+                          e.preventDefault();
+                          handleLearnPreference();
+                        }
+                      }}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        height: 52,
+                        borderRadius: 999,
+                        border: '1px solid var(--line-2)',
+                        background: 'transparent',
+                        color: 'var(--text)',
+                        fontFamily: 'inherit',
+                        fontSize: 16,
+                        padding: '0 18px',
+                        outline: 'none',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={learningPrefLoading || !preferenceFeedbackText.trim()}
+                      onClick={handleLearnPreference}
+                      className="btn-volt"
+                      style={{ height: 52, padding: '0 20px', fontSize: 15, flex: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    >
+                      {learningPrefLoading && <Loader2 size={14} className="spot-spinner" />}
+                      {learningPrefLoading ? 'שומר…' : 'שמור'}
+                    </button>
                   </div>
-                </div>
+                  {learnedFeedbackBanner && (
+                    <div
+                      role="status"
+                      style={{
+                        padding: '10px 14px',
+                        borderRadius: 18,
+                        background: 'var(--surface-2)',
+                        color: learnedFeedbackBanner.isError ? 'var(--danger-text)' : 'var(--text)',
+                        fontSize: 14,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {learnedFeedbackBanner.isError ? learnedFeedbackBanner.msg : `✓ ${learnedFeedbackBanner.msg}`}
+                      {!learnedFeedbackBanner.isError && learnedFeedbackBanner.engine && (
+                        <div style={{ marginTop: 4, fontSize: 13, fontWeight: 500, color: learnedFeedbackBanner.isFallback ? 'var(--warn-text)' : 'var(--text-2)' }}>
+                          {learnedFeedbackBanner.isFallback
+                            ? `נשמר ע״י מנגנון מקומי (לא AI · ${learnedFeedbackBanner.engine})${
+                                learnedFeedbackBanner.fallbackReason ? ` · ${learnedFeedbackBanner.fallbackReason}` : ''
+                              }`
+                            : `נותח ע״י AI (${learnedFeedbackBanner.engine})`}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </section>
               </div>
             )}
 

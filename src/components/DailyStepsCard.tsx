@@ -174,313 +174,153 @@ export function DailyStepsCard({
     }
   };
 
+  const reached = steps >= dailyStepsTarget;
+  const showHcHint =
+    nativeStatus &&
+    (nativeStatus.healthConnectStatus === 'not-installed' ||
+      nativeStatus.healthConnectStatus === 'update-required');
+  const glassBtn: React.CSSProperties = {
+    height: 48,
+    padding: '0 18px',
+    borderRadius: 999,
+    fontFamily: 'inherit',
+    fontSize: 15,
+    fontWeight: 600,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+    opacity: isBlockedDay ? 0.45 : 1,
+  };
+
   return (
-    <div
+    <section
+      aria-label="מד צעדים יומי"
       style={{
-        background: 'var(--bg-surface-2)',
-        padding: '10px 12px',
-        borderRadius: 12,
-        border:
-          steps >= dailyStepsTarget
-            ? '1px solid rgba(34, 197, 94, 0.4)'
-            : '1px solid var(--border-subtle)',
+        background: 'var(--card)',
+        border: '1px solid var(--line)',
+        borderRadius: 28,
+        padding: 18,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 14,
+        boxShadow: 'var(--card-shadow)',
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 8,
-          marginBottom: 8,
-          flexWrap: 'wrap',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            fontSize: 12,
-            fontWeight: 800,
-          }}
-        >
-          <Footprints size={14} color="var(--accent)" />
-          <span>מד צעדים יומי</span>
-          <span
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              padding: '2px 7px',
-              borderRadius: 999,
-              background: badge.bg,
-              color: badge.color,
-            }}
-          >
-            {badge.label}
-          </span>
-        </div>
-
+      {/* Title + source chip */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 17, fontWeight: 700 }}>
+          <Footprints size={18} />
+          מד צעדים יומי
+        </span>
         <span
-          className="num-mono"
           style={{
-            fontSize: 12,
-            fontWeight: 800,
-            color:
-              steps >= dailyStepsTarget ? 'var(--ok-text)' : 'var(--text-secondary)',
+            height: 28,
+            padding: '0 12px',
+            borderRadius: 999,
+            background: 'var(--surface-2)',
+            color: 'var(--text-2)',
+            fontSize: 13,
+            fontWeight: 600,
+            display: 'inline-flex',
+            alignItems: 'center',
           }}
         >
-          {steps.toLocaleString()} / {dailyStepsTarget.toLocaleString()} ({pct}%)
+          {badge.label}
         </span>
       </div>
 
-      {/* פס התקדמות */}
-      <div
-        style={{
-          height: 7,
-          borderRadius: 999,
-          background: 'var(--bg-surface-1)',
-          overflow: 'hidden',
-          marginBottom: 9,
-        }}
-      >
+      {/* Big number + target + progress */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+            יעד{' '}
+            <bdi dir="ltr" className="num-mono ltr-num">{dailyStepsTarget.toLocaleString()}</bdi> · <bdi dir="ltr" className="ltr-num">{pct}%</bdi>
+          </span>
+          <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 40, fontWeight: 700, lineHeight: 1 }}>
+            {steps.toLocaleString()}
+          </bdi>
+        </div>
         <div
-          style={{
-            height: '100%',
-            width: `${pct}%`,
-            background:
-              steps >= dailyStepsTarget
-                ? 'linear-gradient(90deg, #d67d09, #eb931c)'
-                : 'linear-gradient(90deg, #8a4f04, #d67d09)',
-            borderRadius: 999,
-            transition: 'width 0.35s ease',
-          }}
-        />
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={dailyStepsTarget}
+          aria-valuenow={Math.min(steps, dailyStepsTarget)}
+          aria-label="התקדמות צעדים"
+          style={{ height: 8, borderRadius: 999, background: 'var(--surface-3)', overflow: 'hidden' }}
+        >
+          <div
+            style={{
+              height: '100%',
+              width: `${pct}%`,
+              background: 'var(--accent)',
+              borderRadius: 999,
+              transition: 'width 0.35s ease',
+            }}
+          />
+        </div>
+        {syncTimeLabel && (
+          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+            סנכרון אחרון: <bdi dir="ltr" className="ltr-num">{syncTimeLabel}</bdi>
+            {reached ? ' · היעד הושג' : ''}
+          </span>
+        )}
       </div>
 
-      {syncTimeLabel && (
-        <div
-          style={{
-            fontSize: 12,
-            color: 'var(--text-muted)',
-            marginBottom: 8,
-          }}
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {nativeApp && !isCoachPreview && canAutoSyncDate && (
+          <button
+            type="button"
+            disabled={syncing || isBlockedDay}
+            onClick={handleConnectOrSync}
+            className="btn-volt"
+            style={{ flex: '1 1 180px', height: 52, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: isBlockedDay ? 'not-allowed' : syncing ? 'wait' : 'pointer', opacity: isBlockedDay ? 0.45 : 1 }}
+          >
+            <RefreshCw size={17} className={syncing ? 'spot-spinner' : undefined} />
+            <span>{needsPermissions ? 'חבר מד צעדים (טלפון / שעון)' : syncing ? 'מסנכרן צעדים…' : 'סנכרן צעדים עכשיו'}</span>
+          </button>
+        )}
+        <button
+          type="button"
+          className="glass"
+          disabled={isBlockedDay}
+          aria-expanded={manualOpen}
+          onClick={() => !isBlockedDay && setManualOpen((v) => !v)}
+          style={{ ...glassBtn, flex: nativeApp && !isCoachPreview && canAutoSyncDate ? 'none' : '1 1 180px', height: 52 }}
         >
-          סנכרון אחרון: {syncTimeLabel}
-        </div>
-      )}
-
-      {/* כפתורי פעולה חכמים לפי סביבת הריצה (APK באנדרואיד vs דפדפן) */}
-      {nativeApp && !isCoachPreview ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {canAutoSyncDate && (
-              <button
-                type="button"
-                disabled={syncing || isBlockedDay}
-                onClick={handleConnectOrSync}
-                className={needsPermissions ? 'btn-volt' : 'btn-surface'}
-                style={{
-                  flex: 1,
-                  minWidth: 160,
-                  padding: '8px 10px',
-                  fontSize: 12,
-                  fontWeight: 800,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                  cursor: isBlockedDay ? 'not-allowed' : syncing ? 'wait' : 'pointer',
-                  opacity: isBlockedDay ? 0.45 : 1,
-                }}
-              >
-                <RefreshCw
-                  size={13}
-                  className={syncing ? 'spot-spinner' : undefined}
-                />
-                <span>
-                  {needsPermissions
-                    ? 'חבר מד צעדים (טלפון / שעון)'
-                    : syncing
-                    ? 'מסנכרן צעדים...'
-                    : 'סנכרן צעדים עכשיו'}
-                </span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              disabled={isBlockedDay}
-              onClick={() => !isBlockedDay && setManualOpen((v) => !v)}
-              className="btn-surface"
-              style={{
-                padding: '8px 10px',
-                fontSize: 12,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                opacity: isBlockedDay ? 0.45 : 1,
-              }}
-            >
-              <Edit3 size={12} />
-              <span>ערוך ידנית</span>
-            </button>
-          </div>
-
-          {nativeStatus &&
-            (nativeStatus.healthConnectStatus === 'not-installed' ||
-              nativeStatus.healthConnectStatus === 'update-required') && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 8,
-                  padding: '7px 10px',
-                  borderRadius: 9,
-                  background: 'var(--surface-2)',
-                  border: '1px solid var(--line)',
-                  fontSize: 12.5,
-                  color: 'var(--text-secondary)',
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <Watch size={13} color="var(--text-2)" />
-                  משתמש בשעון חכם? התקן/עדכן Health Connect לחיבור מלא
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void installOrOpenHealthConnect()}
-                  style={{
-                    background: 'var(--btn-primary)',
-                    color: 'var(--btn-primary-text)',
-                    border: 'none',
-                    borderRadius: 7,
-                    padding: '4px 10px',
-                    fontSize: 12,
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                  }}
-                >
-                  פתח
-                </button>
-              </div>
-            )}
-
-          {restrictedHint && !nativeStatus?.healthConnectStepsGranted && (
-            <div
-              style={{
-                padding: '8px 10px',
-                borderRadius: 9,
-                background: 'rgba(245, 158, 11, 0.1)',
-                border: '1px solid rgba(245, 158, 11, 0.3)',
-                fontSize: 12.5,
-                color: 'var(--warn-text)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 6,
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }}>
-                <AlertTriangle size={13} />
-                <span>
-                  Android חסם אישור הרשאת שעון בהתקנת APK?
-                </span>
-              </div>
-              <div style={{ color: 'var(--text-secondary)', lineHeight: 1.45 }}>
-                הטלפון ממשיך לספור דרך חיישן המערכת; לשעון חכם פתח הגדרות &larr; 3
-                נקודות (⋮) למעלה &larr; &quot;אפשר הגדרות מוגבלות&quot;.
-              </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button
-                  type="button"
-                  onClick={() => void openAndroidAppSettings()}
-                  style={{
-                    background: 'var(--btn-primary)',
-                    color: 'var(--btn-primary-text)',
-                    border: 'none',
-                    borderRadius: 7,
-                    padding: '5px 9px',
-                    fontSize: 12.5,
-                    fontWeight: 800,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <Settings size={12} /> פתח הגדרות אפליקציה
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void installOrOpenHealthConnect()}
-                  className="btn-surface"
-                  style={{
-                    padding: '5px 9px',
-                    fontSize: 12.5,
-                    cursor: 'pointer',
-                  }}
-                >
-                  פתח Health Connect
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <button
-              type="button"
-              disabled={isBlockedDay}
-              onClick={() => !isBlockedDay && setManualOpen((v) => !v)}
-              className="btn-surface"
-              style={{
-                padding: '6px 10px',
-                fontSize: 12,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 5,
-                cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                opacity: isBlockedDay ? 0.45 : 1,
-              }}
-            >
-              <Edit3 size={12} />
-              <span>{steps > 0 ? 'עדכן צעדים ידנית' : 'הזן צעדים ידנית'}</span>
-            </button>
-          </div>
-        </div>
-      )}
+          <Edit3 size={16} />
+          <span>{nativeApp && !isCoachPreview ? 'ערוך ידנית' : steps > 0 ? 'עדכן צעדים ידנית' : 'הזן צעדים ידנית'}</span>
+        </button>
+      </div>
 
       {manualOpen && !isBlockedDay && (
-        <div
-          style={{
-            display: 'flex',
-            gap: 6,
-            alignItems: 'center',
-            marginTop: 8,
-            paddingTop: 8,
-            borderTop: '1px solid var(--border-subtle)',
-          }}
-        >
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input
             type="number"
             inputMode="numeric"
             min={0}
             max={150000}
+            aria-label="מספר צעדים"
             value={manualInput}
             onChange={(e) => setManualInput(e.target.value)}
-            placeholder="מספר צעדים..."
+            placeholder="מספר צעדים"
+            dir="ltr"
+            className="num-mono"
             style={{
               flex: 1,
-              background: 'var(--bg-surface-1)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 8,
-              padding: '7px 10px',
-              color: 'var(--text-primary)',
-              fontSize: 12,
+              minWidth: 0,
+              height: 52,
+              borderRadius: 999,
+              border: '1px solid var(--line-2)',
+              background: 'transparent',
+              color: 'var(--text)',
+              fontSize: 18,
+              fontWeight: 600,
+              padding: '0 18px',
+              outline: 'none',
+              fontFamily: 'inherit',
             }}
           />
           <button
@@ -488,20 +328,48 @@ export function DailyStepsCard({
             disabled={syncing}
             onClick={handleManualSave}
             className="btn-volt"
-            style={{
-              padding: '7px 12px',
-              fontSize: 12.5,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              cursor: 'pointer',
-            }}
+            style={{ height: 52, padding: '0 22px', fontSize: 16, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', flex: 'none' }}
           >
-            <Check size={13} />
+            <Check size={16} />
             <span>שמור</span>
           </button>
         </div>
       )}
-    </div>
+
+      {/* Help: smartwatch / permissions (design: "משתמש בשעון חכם?") */}
+      {nativeApp && !isCoachPreview && (showHcHint || (restrictedHint && !nativeStatus?.healthConnectStepsGranted)) && (
+        <div
+          style={{
+            background: 'var(--surface-2)',
+            borderRadius: 22,
+            padding: '14px 16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600 }}>
+            {restrictedHint && !nativeStatus?.healthConnectStepsGranted ? <AlertTriangle size={16} /> : <Watch size={16} />}
+            {restrictedHint && !nativeStatus?.healthConnectStepsGranted ? 'Android חסם אישור הרשאת שעון' : 'משתמש בשעון חכם?'}
+          </span>
+          <span style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5 }}>
+            {restrictedHint && !nativeStatus?.healthConnectStepsGranted
+              ? 'הטלפון ממשיך לספור דרך חיישן המערכת. לשעון חכם: הגדרות האפליקציה ← ⋮ למעלה ← "אפשר הגדרות מוגבלות".'
+              : 'התקן או עדכן את Health Connect כדי לחבר את השעון באופן מלא.'}
+          </span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {restrictedHint && !nativeStatus?.healthConnectStepsGranted && (
+              <button type="button" className="glass" onClick={() => void openAndroidAppSettings()} style={{ ...glassBtn, height: 44, opacity: 1, cursor: 'pointer' }}>
+                <Settings size={15} />
+                הגדרות אפליקציה
+              </button>
+            )}
+            <button type="button" className="btn-volt" onClick={() => void installOrOpenHealthConnect()} style={{ height: 44, padding: '0 18px', fontSize: 15, cursor: 'pointer' }}>
+              פתח <bdi dir="ltr">Health Connect</bdi>
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
