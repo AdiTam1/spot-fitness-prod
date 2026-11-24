@@ -5,8 +5,8 @@
 | 3 | `JournalActivity` | יומן · פעילות וכרטיסי ארוחה | `TraineeMobileView` (activity + meal cards) | Partial | Tokens, color rules, hit areas; card layout not re-verified against design |
 | 4 | `JournalStates` | יומן · יום חסום / תשקיף / תזכורות | `TraineeMobileView` | Partial | Tokens + color rules; not re-verified |
 | 5 | `AddMeal` | הוספת ארוחה | `AddMealDrawer` (hub) | Done | Keeps existing search bar and draft footer |
-| 6 | `PhotoResult` | ניתוח תמונה AI | `AddMealDrawer` (photo tab) | Done | Result stage (meal-items): photo hero, totals + macro bars, items with gram steppers, 44px actions. Analysis itself (pending-job flow) unchanged; tested with search-added items, not a live AI call |
-| 7 | `AiQuickContext` | דיוק מהיר לניתוח AI | `AiQuickContextPanel` | Partial | Neutral tints; layout unchanged |
+| 6 | `PhotoResult` | ניתוח תמונה AI | `AddMealDrawer` (photo tab) | Done | Capture tab (plate + nutrition-label) rebuilt: segmented mode, photo cards, glass actions, pinned "נתח את הצלחת"; result stage as before. Tested with an uploaded image, not a live AI call |
+| 7 | `AiQuickContext` | דיוק מהיר לניתוח AI | `AiQuickContextPanel` | Done | Grouped chips by category, serving tools, personal chip, pinned analyse CTA; verified dark/light |
 | 8 | `QuickLog` | תיאור במילים / קול | `AddMealDrawer` (text/voice tab) | Done | Large borderless field, sample chips, CTA + orange mic FAB; the design's live item preview is not implemented |
 | 9 | `Barcode` | סריקת ברקוד | `BarcodeScannerModal` | Done | Viewfinder + result stage (product, kcal/macros, add / scan another). Per-unit stepper not included (quantity is edited in the meal items step) |
 | 10 | `SavedMeals` | ארוחות שמורות והיסטוריה | `SavedMealsLibraryTab` | Partial | Neutral tints; layout unchanged |

@@ -2585,125 +2585,73 @@ export function AddMealDrawer({
 
             {/* לשונית 2: צילום ארוחה / טבלת ערכים תזונתיים + פענוח AI */}
             {activeTab === 'ai-photo' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {items.length > 0 && photoItems.length > 0 && (
                   <button
                     type="button"
                     onClick={() => setActiveTab('meal-items')}
+                    className="glass"
                     style={{
+                      minHeight: 48,
+                      padding: '0 16px',
+                      borderRadius: 999,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      padding: '9px 12px',
-                      borderRadius: 12,
-                      background: 'var(--surface-2)',
-                      border: '1px solid var(--line-2)',
-                      color: 'var(--text)',
-                      fontSize: 12,
-                      fontWeight: 800,
+                      gap: 8,
+                      fontFamily: 'inherit',
+                      fontSize: 14,
+                      fontWeight: 600,
                       cursor: 'pointer',
                     }}
                   >
                     <span>
-                      ✨ זוהו {items.length} מרכיבים מצילום זה ({currentTotals.calories} קק״ל)
+                      זוהו <bdi className="ltr-num">{items.length}</bdi> מרכיבים ·{' '}
+                      <bdi className="ltr-num">{currentTotals.calories}</bdi> קק״ל
                     </span>
-                    <span style={{ color: 'var(--accent-orange-bright)' }}>
-                      צפה וערוך מרכיבים ←
-                    </span>
+                    <span style={{ color: 'var(--text-2)' }}>צפה וערוך ←</span>
                   </button>
                 )}
 
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: 6,
-                    background: 'var(--bg-surface-2)',
-                    padding: 4,
-                    borderRadius: 12,
-                    border: '1px solid var(--border-subtle)',
-                  }}
-                >
-                  <button
-                    onClick={() => setPhotoMode('plate')}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      padding: '8px',
-                      borderRadius: 8,
-                      border: 'none',
-                      background:
-                        photoMode === 'plate' ? 'var(--sel-bg)' : 'transparent',
-                      color:
-                        photoMode === 'plate' ? 'var(--sel-text)' : 'var(--text-secondary)',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <Camera size={14} />
-                    <span>צילום ארוחה / צלחת</span>
-                  </button>
-                  <button
-                    onClick={() => setPhotoMode('nutrition-label')}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      padding: '8px',
-                      borderRadius: 8,
-                      border: 'none',
-                      background:
-                        photoMode === 'nutrition-label' ? 'var(--sel-bg)'
-                          : 'transparent',
-                      color:
-                        photoMode === 'nutrition-label'
-                          ? 'var(--sel-text)'
-                          : 'var(--text-secondary)',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <FileText size={14} />
-                    <span>טבלת ערכים תזונתיים מאריזה</span>
-                  </button>
-                </div>
+                <SegmentedPill
+                  ariaLabel="סוג צילום"
+                  value={photoMode}
+                  onChange={(v) => setPhotoMode(v as 'plate' | 'nutrition-label')}
+                  options={[
+                    { value: 'plate', label: 'צלחת / ארוחה', icon: <Camera size={15} /> },
+                    { value: 'nutrition-label', label: 'טבלת ערכים', icon: <FileText size={15} /> },
+                  ]}
+                />
 
+                {/* Capture area */}
                 <div
                   style={{
-                    background: 'var(--bg-surface-2)',
-                    border: '1px dashed var(--line-2)',
-                    borderRadius: 16,
+                    background: 'var(--surface-2)',
+                    borderRadius: 26,
                     padding: 16,
-                    textAlign: 'center',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'stretch',
+                    gap: 14,
                   }}
                 >
                   {photoItems.length > 0 ? (
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: 10,
-                      }}
-                    >
-                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+                    <>
+                      <div data-h-scroll style={{ display: 'flex', gap: 10, paddingBottom: 2 }}>
                         {photoItems.map((im, idx) => (
                           <div
                             key={idx}
                             style={{
                               position: 'relative',
-                              width: photoItems.length === 1 ? 168 : 102,
-                              height: photoItems.length === 1 ? 140 : 102,
-                              borderRadius: 12,
+                              flex: 'none',
+                              width: photoItems.length === 1 ? '100%' : 132,
+                              height: photoItems.length === 1 ? 190 : 132,
+                              borderRadius: 22,
                               overflow: 'hidden',
-                              border: '1px solid var(--line-2)',
+                              background: 'var(--surface-3)',
                             }}
                           >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={im.dataUrl}
                               alt={`צילום ארוחה ${idx + 1}`}
@@ -2711,7 +2659,8 @@ export function AddMealDrawer({
                             />
                             <button
                               type="button"
-                              title="הסר תמונה"
+                              className="glass"
+                              aria-label={`הסר תמונה ${idx + 1}`}
                               onClick={() => {
                                 setPhotoItems((prev) => {
                                   const next = prev.filter((_, i) => i !== idx);
@@ -2722,24 +2671,23 @@ export function AddMealDrawer({
                               }}
                               style={{
                                 position: 'absolute',
-                                top: 4,
-                                right: 4,
-                                width: 20,
-                                height: 20,
-                                borderRadius: '50%',
-                                background: 'rgba(0,0,0,0.75)',
-                                border: 'none',
-                                color: '#fff',
+                                insetBlockStart: 8,
+                                insetInlineStart: 8,
+                                width: 36,
+                                height: 36,
+                                borderRadius: 999,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 cursor: 'pointer',
                               }}
                             >
-                              <X size={12} />
+                              <X size={16} strokeWidth={2.4} />
                             </button>
                             <button
                               type="button"
+                              className="glass"
+                              aria-label="החלף סוג זווית"
                               onClick={() => {
                                 setPhotoItems((prev) =>
                                   prev.map((x, i) =>
@@ -2759,16 +2707,14 @@ export function AddMealDrawer({
                               }}
                               style={{
                                 position: 'absolute',
-                                bottom: 3,
-                                left: 3,
-                                right: 3,
-                                fontSize: 12,
-                                fontWeight: 700,
-                                borderRadius: 5,
-                                border: 'none',
-                                background: 'rgba(0,0,0,0.78)',
-                                color: 'var(--accent-volt)',
-                                padding: '2px 4px',
+                                insetBlockEnd: 8,
+                                insetInlineEnd: 8,
+                                height: 32,
+                                padding: '0 12px',
+                                borderRadius: 999,
+                                fontFamily: 'inherit',
+                                fontSize: 13,
+                                fontWeight: 600,
                                 cursor: 'pointer',
                               }}
                             >
@@ -2776,84 +2722,90 @@ export function AddMealDrawer({
                                 ? 'מלמעלה 90°'
                                 : im.angle === 'side-45'
                                 ? 'מהצד ~45°'
-                                : 'תווית / אחר'}{' '}
-                              · {im.sizeKB}KB
+                                : 'תווית / אחר'}
                             </button>
                           </div>
                         ))}
                       </div>
                       {photoSizeKB && (
-                        <span
-                          style={{
-                            fontSize: 12,
-                            color: 'var(--accent-volt)',
-                            fontWeight: 700,
-                          }}
-                        >
-                          {photoItems.length}/3 תמונות נבחרו ({photoFormatLabel} דחוס מהיר)
+                        <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                          <bdi className="ltr-num">{photoItems.length}/3</bdi> תמונות נבחרו · {photoFormatLabel}
                         </span>
                       )}
-                    </div>
+                    </>
                   ) : (
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: 6,
-                        marginBottom: 10,
-                      }}
-                    >
-                      {photoMode === 'nutrition-label' ? (
-                        <FileText size={32} color="currentColor" />
-                      ) : (
-                        <Camera size={32} color="currentColor" />
-                      )}
-                      <div style={{ fontSize: 14, fontWeight: 700 }}>
-                        {photoMode === 'nutrition-label'
-                          ? 'צילום טבלת ערכים תזונתיים מאריזת מוצר'
-                          : 'העלאה או צילום ארוחה לפענוח AI (עד 3 תמונות)'}
-                      </div>
-                      <div
-                        style={{ fontSize: 12, color: 'var(--text-secondary)', maxWidth: 360 }}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, textAlign: 'center', padding: '8px 0' }}>
+                      <span
+                        aria-hidden
+                        style={{
+                          width: 64,
+                          height: 64,
+                          borderRadius: 22,
+                          background: 'var(--card)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
                       >
+                        {photoMode === 'nutrition-label' ? <FileText size={28} /> : <Camera size={28} />}
+                      </span>
+                      <span style={{ fontSize: 17, fontWeight: 700 }}>
+                        {photoMode === 'nutrition-label' ? 'צלם את טבלת הערכים מהאריזה' : 'צלם את הצלחת'}
+                      </span>
+                      <span style={{ fontSize: 13, color: 'var(--text-2)', maxWidth: 320, lineHeight: 1.45 }}>
                         {photoMode === 'nutrition-label'
-                          ? 'ה-AI יקרא את הטבלה שעל האריזה (ל-100 גרם או למנה) ויוסיף לארוחה'
-                          : '💡 לדיוק מרבי בקלוריות ובנפח: צלם או העלה 2 תמונות — אחת מלמעלה (90°) ואחת מהצד (~45°), עם שולי הצלחת בפריים'}
-                      </div>
+                          ? 'ה-AI יקרא את הטבלה (ל-100 גרם או למנה) ויוסיף לארוחה'
+                          : 'עד 3 תמונות. לדיוק מרבי: אחת מלמעלה (90°) ואחת מהצד (~45°)'}
+                      </span>
                     </div>
                   )}
 
                   {photoItems.length < 3 && (
-                    <div
-                      style={{
-                        display: 'flex',
-                        gap: 8,
-                        justifyContent: 'center',
-                        flexWrap: 'wrap',
-                        marginTop: 10,
-                      }}
-                    >
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <label
-                        className="btn-surface"
+                        className="btn-volt"
                         style={{
+                          flex: '1 1 160px',
+                          height: 52,
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: 6,
-                          padding: '8px 14px',
-                          fontSize: 12,
+                          justifyContent: 'center',
+                          gap: 8,
+                          fontSize: 15,
                           cursor: photoUploading ? 'wait' : 'pointer',
                           opacity: photoUploading ? 0.65 : 1,
-                          borderColor: 'rgba(56, 189, 248, 0.35)',
                         }}
                       >
-                        <ImageIcon size={14} color="var(--text-2)" />
+                        <Camera size={18} />
+                        <span>{photoItems.length === 0 ? 'צלם עכשיו' : 'צלם זווית נוספת'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          hidden
+                          disabled={photoUploading}
+                          onChange={(e) => handlePhotoUpload(e, photoItems.length === 0 ? 'top-down' : 'side-45')}
+                        />
+                      </label>
+                      <label
+                        className="glass"
+                        style={{
+                          flex: '1 1 160px',
+                          height: 52,
+                          borderRadius: 999,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8,
+                          fontSize: 15,
+                          fontWeight: 600,
+                          cursor: photoUploading ? 'wait' : 'pointer',
+                          opacity: photoUploading ? 0.65 : 1,
+                        }}
+                      >
+                        <ImageIcon size={18} />
                         <span>
-                          {photoUploading
-                            ? 'מכווץ ומעבד...'
-                            : photoItems.length > 0
-                            ? 'הוסף תמונה מהגלריה'
-                            : 'בחר מהגלריה / קובץ'}
+                          {photoUploading ? 'מכווץ ומעבד...' : photoItems.length > 0 ? 'הוסף מהגלריה' : 'מהגלריה / קובץ'}
                         </span>
                         <input
                           type="file"
@@ -2862,38 +2814,6 @@ export function AddMealDrawer({
                           hidden
                           disabled={photoUploading}
                           onChange={(e) => handlePhotoUpload(e)}
-                        />
-                      </label>
-
-                      <label
-                        className="btn-surface"
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          padding: '8px 14px',
-                          fontSize: 12,
-                          cursor: photoUploading ? 'wait' : 'pointer',
-                          opacity: photoUploading ? 0.65 : 1,
-                          borderColor: 'var(--line-2)',
-                        }}
-                      >
-                        <Camera size={14} color="currentColor" />
-                        <span>
-                          {photoItems.length === 0 ? 'צלם עכשיו במצלמה' : 'צלם זווית נוספת'}
-                        </span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          hidden
-                          disabled={photoUploading}
-                          onChange={(e) =>
-                            handlePhotoUpload(
-                              e,
-                              photoItems.length === 0 ? 'top-down' : 'side-45'
-                            )
-                          }
                         />
                       </label>
                     </div>
@@ -2916,56 +2836,71 @@ export function AddMealDrawer({
                   onManageQuickChips={onManageQuickChips}
                 />
 
-                <Textarea
-                  label={
-                    photoMode === 'nutrition-label'
-                      ? 'שם המוצר וכמות שאכלת (למשל: חטיף חלבון - יחידה אחת 60 גרם)'
-                      : 'הקשר נוסף לצילום עבור ה-AI (אופציונלי)'
-                  }
-                  placeholder={
-                    photoMode === 'nutrition-label'
-                      ? 'למשל: חטיף חלבון 60 גרם...'
-                      : 'למשל: 180 גרם פסטה מבושלת, ללא תוספת שמן...'
-                  }
-                  value={photoNote}
-                  onChange={(e) => setPhotoNote(e.currentTarget.value)}
-                  minRows={2}
-                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label htmlFor="photo-note" style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                    {photoMode === 'nutrition-label'
+                      ? 'שם המוצר וכמות שאכלת'
+                      : 'הקשר נוסף לצילום (אופציונלי)'}
+                  </label>
+                  <textarea
+                    id="photo-note"
+                    rows={2}
+                    placeholder={
+                      photoMode === 'nutrition-label'
+                        ? 'למשל: חטיף חלבון - יחידה אחת 60 גרם'
+                        : 'למשל: 180 גרם פסטה מבושלת, ללא תוספת שמן'
+                    }
+                    value={photoNote}
+                    onChange={(e) => setPhotoNote(e.currentTarget.value)}
+                    style={{
+                      font: 'inherit',
+                      fontSize: 16,
+                      color: 'var(--text)',
+                      background: 'var(--card)',
+                      border: '1px solid var(--line-2)',
+                      borderRadius: 20,
+                      padding: '12px 14px',
+                      resize: 'none',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
 
-                <button
-                  disabled={
-                    isSlotBgProcessing ||
-                    aiLoading ||
-                    photoUploading ||
-                    (photoItems.length === 0 && !photoDataUrl && !photoNote.trim())
-                  }
-                  onClick={() => runAiAnalysis('photo')}
-                  className="btn-volt"
-                  style={{
-                    padding: '12px',
-                    fontSize: 13,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {isSlotBgProcessing || aiLoading ? (
-                    <Loader2 size={16} className="spot-spinner" />
-                  ) : (
-                    <Wand2 size={16} />
-                  )}
-                  <span>
-                    {isSlotBgProcessing || aiLoading
-                      ? progressTicker.currentStepText
-                      : photoMode === 'nutrition-label'
-                      ? 'חלץ ערכים תזונתיים מהאריזה (AI)'
-                      : photoItems.length > 1
-                      ? `פענח ${photoItems.length} תמונות ברקע (AI)`
-                      : 'פענח תמונה באמצעות AI'}
-                  </span>
-                </button>
+                {/* Pinned analyse action (design: "נתח את הצלחת") */}
+                <div className="wizard-nav" style={{ marginTop: 0, background: 'linear-gradient(to top, var(--card) 70%, transparent)' }}>
+                  <button
+                    type="button"
+                    disabled={
+                      isSlotBgProcessing ||
+                      aiLoading ||
+                      photoUploading ||
+                      (photoItems.length === 0 && !photoDataUrl && !photoNote.trim())
+                    }
+                    onClick={() => runAiAnalysis('photo')}
+                    className="btn-volt"
+                    style={{
+                      flex: 1,
+                      height: 56,
+                      fontSize: 16,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {isSlotBgProcessing || aiLoading ? <Loader2 size={18} className="spot-spinner" /> : <Wand2 size={18} />}
+                    <span>
+                      {isSlotBgProcessing || aiLoading
+                        ? progressTicker.currentStepText
+                        : photoMode === 'nutrition-label'
+                        ? 'חלץ ערכים מהאריזה'
+                        : photoItems.length > 1
+                        ? `נתח ${photoItems.length} תמונות`
+                        : 'נתח את הצלחת'}
+                    </span>
+                  </button>
+                </div>
               </div>
             )}
 

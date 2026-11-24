@@ -1,8 +1,9 @@
 ﻿'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Collapse, Select, TextInput } from '@mantine/core';
-import { ChevronDown, ChevronUp, Plus, Ruler, SlidersHorizontal, Utensils } from 'lucide-react';
+import { Collapse, TextInput } from '@mantine/core';
+import { SegmentedPill } from './ui/SegmentedPill';
+import { Check, ChevronDown, ChevronUp, Plus, Ruler, SlidersHorizontal } from 'lucide-react';
 import {
   AiContextParams,
   QuickChipCategory,
@@ -201,263 +202,195 @@ export function AiQuickContextPanel({
     }
   };
 
-  return (
-    <div
-      style={{
-        background: 'var(--surface-2)',
-        border: '1px solid var(--line)',
-        borderRadius: 20,
-        padding: '10px 12px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 8,
-      }}
-    >
-      {/* שורה עליונה: כלי הגשה + כפתור ניהול כלים */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 6,
-          flexWrap: 'wrap',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 800 }}>
-          <SlidersHorizontal size={12} color="currentColor" />
-          <span>דיוק מהיר (הכל ברירת מחדל: ללא)</span>
-        </div>
+  const CAT_ORDER: { id: QuickChipCategory; label: string }[] = [
+    { id: 'sauce', label: 'רוטב / שמן' },
+    { id: 'prep', label: 'הכנה / בישול' },
+    { id: 'portion', label: 'כמות / גודל מנה' },
+    { id: 'drink', label: 'שתייה / צד' },
+    { id: 'source', label: 'מקור המנה' },
+    { id: 'tool-hint', label: 'כלי הגשה' },
+  ];
+  const visibleChips = mergedChips.slice(0, 28);
 
-        <div style={{ display: 'flex', gap: 5 }}>
+  const chipStyle = (active: boolean): React.CSSProperties => ({
+    minHeight: 36,
+    padding: '0 14px',
+    borderRadius: 999,
+    fontFamily: 'inherit',
+    fontSize: 14,
+    fontWeight: active ? 700 : 500,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 5,
+    border: `1px solid ${active ? 'var(--sel-bg)' : 'var(--line-2)'}`,
+    background: active ? 'var(--sel-bg)' : 'transparent',
+    color: active ? 'var(--sel-text)' : 'var(--text)',
+  });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Header (design: AiQuickContext) */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ display: 'flex', flexDirection: 'column' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 17, fontWeight: 700 }}>
+            <SlidersHorizontal size={16} />
+            דיוק מהיר
+          </span>
+          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>הכל ברירת מחדל: ללא</span>
+        </span>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button
             type="button"
             onClick={onOpenToolsModal}
-            className="btn-surface"
-            style={{
-              padding: '4px 8px',
-              fontSize: 12,
-              fontWeight: 700,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              cursor: 'pointer',
-              borderColor: 'var(--line-2)',
-            }}
+            className="glass"
+            style={{ height: 44, padding: '0 14px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
           >
-            <Ruler size={11} color="currentColor" />
-            <span>הכלים והיחידות שלי ({customServingTools.length})</span>
+            <Ruler size={15} />
+            <span>
+              הכלים והיחידות שלי (<bdi className="ltr-num">{customServingTools.length}</bdi>)
+            </span>
           </button>
-
           <button
             type="button"
             onClick={() => setDetailsOpen((p) => !p)}
-            className="btn-surface"
-            style={{
-              padding: '4px 8px',
-              fontSize: 12,
-              fontWeight: 700,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 3,
-              cursor: 'pointer',
-            }}
+            aria-expanded={detailsOpen}
+            className="glass"
+            style={{ height: 44, padding: '0 14px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
           >
             <span>שדות נוספים</span>
-            {detailsOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+            {detailsOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
         </div>
       </div>
 
-      {/* צ׳יפים של כלי ההגשה השמורים של המשתמש */}
+      {/* Saved serving tools */}
       {customServingTools.length > 0 && (
-        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 700 }}>
-            <Utensils size={10} style={{ marginLeft: 3, verticalAlign: 'middle' }} />
-            כלי:
-          </span>
-          {customServingTools.map((tool) => {
-            const active = contextParams.servingToolId === tool.id;
-            return (
-              <button
-                key={tool.id}
-                type="button"
-                onClick={() => selectServingTool(tool)}
-                style={{
-                  padding: '3px 8px',
-                  borderRadius: 999,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  border: active ? '1px solid var(--sel-bg)'
-                    : '1px solid rgba(56, 189, 248, 0.3)',
-                  background: active ? 'var(--sel-bg)'
-                    : 'rgba(56, 189, 248, 0.08)',
-                  color: active ? 'var(--sel-text)' : 'var(--info-text)',
-                }}
-              >
-                {tool.name}
-                {tool.diameterCm ? ` (${tool.diameterCm} ס״מ)` : ''}
-              </button>
-            );
-          })}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>כלי הגשה</span>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {customServingTools.map((tool) => {
+              const active = contextParams.servingToolId === tool.id;
+              return (
+                <button key={tool.id} type="button" onClick={() => selectServingTool(tool)} aria-pressed={active} style={chipStyle(active)}>
+                  {active && <Check size={14} strokeWidth={2.8} />}
+                  {tool.name}
+                  {tool.diameterCm ? ` · ${tool.diameterCm} ס״מ` : ''}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {/* צ׳יפים מהירים לבחירה בקליק (MRU פר-משתמש + קבוצה + מערכת) */}
-      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
-        {mergedChips.slice(0, 14).map((chip) => {
-          const active = activeChipLabels.includes(chip.label);
-          return (
+      {/* Quick chips grouped by category */}
+      {CAT_ORDER.map((cat) => {
+        const inCat = visibleChips.filter((c) => c.category === cat.id);
+        if (inCat.length === 0) return null;
+        return (
+          <div key={cat.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{cat.label}</span>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {inCat.map((chip) => {
+                const active = activeChipLabels.includes(chip.label);
+                return (
+                  <button key={chip.id} type="button" onClick={() => toggleChip(chip)} aria-pressed={active} style={chipStyle(active)}>
+                    {active && <Check size={14} strokeWidth={2.8} />}
+                    {chip.label}
+                    {chip.originBadge && chip.originBadge !== 'שלי' && (
+                      <span style={{ fontSize: 12, opacity: 0.75 }}>· {chip.originBadge}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Personal chip */}
+      {onManageQuickChips && traineeId && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {!addingChipOpen ? (
             <button
-              key={chip.id}
               type="button"
-              onClick={() => toggleChip(chip)}
-              style={{
-                padding: '4px 8px',
-                borderRadius: 999,
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: 'pointer',
-                border: active ? '1px solid var(--sel-bg)'
-                  : '1px solid var(--line)',
-                background: active ? 'var(--sel-bg)'
-                  : 'var(--card)',
-                color: active ? 'var(--sel-text)' : 'var(--text-secondary)',
-              }}
+              onClick={() => setAddingChipOpen(true)}
+              style={{ ...chipStyle(false), border: '1px dashed var(--line-2)', alignSelf: 'flex-start' }}
             >
-              {active ? '✓ ' : ''}
-              {chip.label}
-              {chip.originBadge && chip.originBadge !== 'שלי' && (
-                <span style={{ fontSize: 12, opacity: 0.65, marginRight: 4 }}>
-                  ({chip.originBadge})
-                </span>
-              )}
+              <Plus size={14} />
+              <span>צ׳יפ אישי</span>
             </button>
-          );
-        })}
-
-        {onManageQuickChips && traineeId && (
-          <button
-            type="button"
-            onClick={() => setAddingChipOpen((p) => !p)}
-            style={{
-              minHeight: 36,
-              padding: '0 14px',
-              borderRadius: 999,
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: 'pointer',
-              border: '1px dashed var(--line-2)',
-              background: 'transparent',
-              color: 'var(--text)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 3,
-            }}
-          >
-            <Plus size={10} />
-            <span>צ׳יפ אישי</span>
-          </button>
-        )}
-      </div>
-
-      {addingChipOpen && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1.3fr 0.8fr auto',
-            gap: 6,
-            alignItems: 'end',
-          }}
-        >
-          <TextInput
-            size="xs"
-            placeholder="למשל: בלי גלוטן / חמאת בוטנים 10g"
-            value={newChipLabel}
-            onChange={(e) => setNewChipLabel(e.currentTarget.value)}
-          />
-          <Select
-            size="xs"
-            value={newChipCat}
-            onChange={(v) => setNewChipCat((v as QuickChipCategory) || 'prep')}
-            data={[
-              { value: 'sauce', label: 'רוטב / שמן' },
-              { value: 'prep', label: 'הכנה / מצב' },
-              { value: 'portion', label: 'כמות / משקל' },
-              { value: 'drink', label: 'שתייה / צד' },
-              { value: 'source', label: 'מקור המנה' },
-            ]}
-          />
-          <button
-            type="button"
-            disabled={savingChip || !newChipLabel.trim()}
-            onClick={handleSaveNewPersonalChip}
-            className="btn-volt"
-            style={{ padding: '6px 10px', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
-          >
-            שמור
-          </button>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  aria-label="צ׳יפ אישי"
+                  autoFocus
+                  placeholder="צ׳יפ אישי (למשל: חמאת בוטנים 10g)"
+                  value={newChipLabel}
+                  onChange={(e) => setNewChipLabel(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void handleSaveNewPersonalChip();
+                    }
+                  }}
+                  style={{ flex: 1, minWidth: 0, height: 48, borderRadius: 999, border: '1px solid var(--line-2)', background: 'transparent', color: 'var(--text)', fontFamily: 'inherit', fontSize: 16, padding: '0 16px', outline: 'none' }}
+                />
+                <button
+                  type="button"
+                  disabled={savingChip || !newChipLabel.trim()}
+                  onClick={handleSaveNewPersonalChip}
+                  className="glass"
+                  style={{ height: 48, padding: '0 18px', borderRadius: 999, fontFamily: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  הוסף
+                </button>
+              </div>
+              <SegmentedPill
+                ariaLabel="קטגוריית הצ׳יפ"
+                size="sm"
+                value={newChipCat}
+                onChange={(v) => setNewChipCat((v as QuickChipCategory) || 'prep')}
+                options={[
+                  { value: 'sauce', label: 'רוטב' },
+                  { value: 'prep', label: 'הכנה' },
+                  { value: 'portion', label: 'כמות' },
+                  { value: 'drink', label: 'שתייה' },
+                  { value: 'source', label: 'מקור' },
+                ]}
+              />
+            </div>
+          )}
         </div>
       )}
 
-      {/* שדות פירוט מורחב (מתקפל כדי לשמור על UI נקי) */}
+      {/* Extended details */}
       <Collapse in={detailsOpen}>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: 8,
-            paddingTop: 6,
-            borderTop: '1px solid var(--line)',
-          }}
-        >
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10, paddingTop: 4 }}>
           <TextInput
-            size="xs"
             label="שומן נסתר / רטבים (ברירת מחדל: ללא)"
             placeholder="ללא (או למשל: כף שמן זית)"
             value={contextParams.saucesAndOils || ''}
-            onChange={(e) =>
-              onChangeContextParams({
-                ...contextParams,
-                saucesAndOils: e.currentTarget.value,
-              })
-            }
+            onChange={(e) => onChangeContextParams({ ...contextParams, saucesAndOils: e.currentTarget.value })}
           />
           <TextInput
-            size="xs"
             label="כמויות / משקל אמיתי"
             placeholder="למשל: 180 גרם אורז מבושל"
             value={contextParams.portionOrGrams || ''}
-            onChange={(e) =>
-              onChangeContextParams({
-                ...contextParams,
-                portionOrGrams: e.currentTarget.value,
-              })
-            }
+            onChange={(e) => onChangeContextParams({ ...contextParams, portionOrGrams: e.currentTarget.value })}
           />
           <TextInput
-            size="xs"
             label="מצב בישול / חיתוך"
             placeholder="למשל: מבושל / חזה עוף / פרגית"
             value={contextParams.prepState || ''}
-            onChange={(e) =>
-              onChangeContextParams({
-                ...contextParams,
-                prepState: e.currentTarget.value,
-              })
-            }
+            onChange={(e) => onChangeContextParams({ ...contextParams, prepState: e.currentTarget.value })}
           />
           <TextInput
-            size="xs"
             label="שתייה ותוספות בצד (ברירת מחדל: ללא)"
             placeholder="ללא (או קפה הפוך / קולה זירו)"
             value={contextParams.drinksAndSides || ''}
-            onChange={(e) =>
-              onChangeContextParams({
-                ...contextParams,
-                drinksAndSides: e.currentTarget.value,
-              })
-            }
+            onChange={(e) => onChangeContextParams({ ...contextParams, drinksAndSides: e.currentTarget.value })}
           />
         </div>
       </Collapse>
