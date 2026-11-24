@@ -403,6 +403,60 @@ export function TraineeMobileView({
   }
 
   const weekDays = getWeekDaysAroundDate(selectedDate, todayIso);
+  // Weekly summary shared by the check-in stats grid and the WhatsApp report (same numbers as before).
+  const buildWeeklySummary = () => {
+    const actTargets = trainee.activityTargets || {
+      weeklyWorkoutsTarget: 4,
+      weeklyCardioTarget: 3,
+      dailySleepTargetHours: 7.5,
+      dailyStepsTarget: 8000,
+    };
+    const workoutsDone = weekDays.filter((wd) => trainee.logs[wd.iso]?.workoutLog?.completed).length;
+    const cardioDone = weekDays.filter((wd) => trainee.logs[wd.iso]?.cardioLog?.completed).length;
+    const sleepDays = weekDays
+      .map((wd) => trainee.logs[wd.iso]?.sleepHours)
+      .filter((v): v is number => typeof v === 'number' && v > 0);
+    const avgSleep = sleepDays.length > 0 ? (sleepDays.reduce((a, b) => a + b, 0) / sleepDays.length).toFixed(1) : '—';
+    const hasAutoSyncedWeek = weekDays.some((wd) => {
+      const src = trainee.logs[wd.iso]?.stepsSource;
+      return Boolean(src && src !== 'manual');
+    });
+    const stepDays = weekDays
+      .map((wd) => trainee.logs[wd.iso]?.steps)
+      .filter((v): v is number => typeof v === 'number' && v > 0);
+    const avgSteps =
+      stepDays.length > 0
+        ? Math.round(stepDays.reduce((a, b) => a + b, 0) / stepDays.length).toLocaleString()
+        : '—';
+    const stepsGoal = actTargets.dailyStepsTarget ?? 8000;
+    return {
+      stats: [
+        { label: 'אימונים', value: `${workoutsDone}/${actTargets.weeklyWorkoutsTarget}` },
+        { label: 'הליכות / ריצות', value: `${cardioDone}/${actTargets.weeklyCardioTarget}` },
+        { label: 'שינה ממוצעת', value: avgSleep },
+        { label: 'צעדים ממוצע', value: avgSteps },
+        { label: 'משקל נוכחי', value: String(trainee.currentWeight) },
+        { label: 'משקל יעד', value: String(trainee.targetWeight) },
+      ],
+      report: (note: string) =>
+        [
+          `📊 *דו"ח סיכום שבועי SPOT - ${trainee.name}* (${todayIso})`,
+          `• משקל נוכחי: ${trainee.currentWeight} ק"ג (יעד: ${trainee.targetWeight} ק"ג)`,
+          `• אימונים השבוע: ${workoutsDone}/${actTargets.weeklyWorkoutsTarget}`,
+          hasAutoSyncedWeek ? `• ממוצע צעדים יומי: ${avgSteps} (יעד: ${stepsGoal.toLocaleString()})` : '',
+          `• הליכות/ריצות השבוע: ${cardioDone}/${actTargets.weeklyCardioTarget}`,
+          `• ממוצע שעות שינה: ${avgSleep} שעות (יעד: ${actTargets.dailySleepTargetHours})`,
+          latestMeasurement
+            ? `• היקפים אחרונים: חזה ${latestMeasurement.chestCm || '—'} | בטן ${latestMeasurement.waistNavelCm || '—'} | זרוע ${latestMeasurement.armCm || '—'} | ירך ${latestMeasurement.thighCm || '—'} ס"מ`
+            : '',
+          `• הרגשה שבועית (1-5): אנרגיה ${energyLevel}/5 | שובע ${hungerLevel}/5 | איכות שינה ${sleepQuality}/5`,
+          note ? `• הערת מתאמן: ${note}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+    };
+  };
+
   const prevWeekAnchor = addDaysIso(selectedDate, -7);
   const nextWeekAnchor = addDaysIso(selectedDate, 7);
   const canPrevWeek = getWeekDaysAroundDate(prevWeekAnchor, todayIso).some((d) =>
@@ -2659,246 +2713,136 @@ export function TraineeMobileView({
               )}
             </div>
 
-            {/* כרטיס צ'ק-אין שבועי וייצוא דו"ח סיכום לוואטסאפ */}
-            <div className="pro-card" style={{ padding: 18 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: 10,
-                  marginBottom: 12,
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 800 }}>
-                    📋 צ׳ק-אין שבועי ודו״ח סיכום למאמן
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                    עדכן מדדי הרגשה שבועיים או העתק דו״ח התקדמות מלא
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const actTargets = trainee.activityTargets || {
-                      weeklyWorkoutsTarget: 4,
-                      weeklyCardioTarget: 3,
-                      dailySleepTargetHours: 7.5,
-                      dailyStepsTarget: 8000,
-                    };
-                    const workoutsDone = weekDays.filter(
-                      (wd) => trainee.logs[wd.iso]?.workoutLog?.completed
-                    ).length;
-                    const cardioDone = weekDays.filter(
-                      (wd) => trainee.logs[wd.iso]?.cardioLog?.completed
-                    ).length;
-                    const sleepDays = weekDays
-                      .map((wd) => trainee.logs[wd.iso]?.sleepHours)
-                      .filter((s): s is number => typeof s === 'number' && s > 0);
-                    const avgSleep =
-                      sleepDays.length > 0
-                        ? (
-                            sleepDays.reduce((a, b) => a + b, 0) /
-                            sleepDays.length
-                          ).toFixed(1)
-                        : '—';
-                    const hasAutoSyncedWeek = weekDays.some((wd) => {
-                      const s = trainee.logs[wd.iso]?.stepsSource;
-                      return Boolean(s && s !== 'manual');
-                    });
-                    const stepDays = weekDays
-                      .map((wd) => trainee.logs[wd.iso]?.steps)
-                      .filter((s): s is number => typeof s === 'number' && s > 0);
-                    const avgSteps =
-                      stepDays.length > 0
-                        ? Math.round(
-                            stepDays.reduce((a, b) => a + b, 0) / stepDays.length
-                          ).toLocaleString()
-                        : '—';
-                    const stepsGoal = actTargets.dailyStepsTarget ?? 8000;
-
-                    const reportLines = [
-                      `📊 *דו"ח סיכום שבועי SPOT - ${trainee.name}* (${todayIso})`,
-                      `• משקל נוכחי: ${trainee.currentWeight} ק"ג (יעד: ${trainee.targetWeight} ק"ג)`,
-                      `• אימונים השבוע: ${workoutsDone}/${actTargets.weeklyWorkoutsTarget}`,
-                      hasAutoSyncedWeek
-                        ? `• ממוצע צעדים יומי: ${avgSteps} (יעד: ${stepsGoal.toLocaleString()})`
-                        : '',
-                      `• הליכות/ריצות השבוע: ${cardioDone}/${actTargets.weeklyCardioTarget}`,
-                      `• ממוצע שעות שינה: ${avgSleep} שעות (יעד: ${actTargets.dailySleepTargetHours})`,
-                      latestMeasurement
-                        ? `• היקפים אחרונים: חזה ${latestMeasurement.chestCm || '—'} | בטן ${latestMeasurement.waistNavelCm || '—'} | זרוע ${latestMeasurement.armCm || '—'} | ירך ${latestMeasurement.thighCm || '—'} ס"מ`
-                        : '',
-                      `• הרגשה שבועית (1-5): אנרגיה ${energyLevel}/5 | שובע ${hungerLevel}/5 | איכות שינה ${sleepQuality}/5`,
-                      checkInNote ? `• הערת מתאמן: ${checkInNote}` : '',
-                    ]
-                      .filter(Boolean)
-                      .join('\n');
-
-                    setReportCopyError(false);
-                    try {
-                      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-                        await navigator.clipboard.writeText(reportLines);
-                      } else if (typeof document !== 'undefined') {
-                        const ta = document.createElement('textarea');
-                        ta.value = reportLines;
-                        ta.style.position = 'fixed';
-                        ta.style.opacity = '0';
-                        document.body.appendChild(ta);
-                        ta.select();
-                        document.execCommand('copy');
-                        document.body.removeChild(ta);
-                      } else {
-                        throw new Error('Clipboard unavailable');
-                      }
-                      setReportCopiedBanner(true);
-                      setTimeout(() => setReportCopiedBanner(false), 3500);
-                    } catch {
-                      setReportCopyError(true);
-                      setTimeout(() => setReportCopyError(false), 4000);
-                    }
-                  }}
-                  className="btn-surface"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '7px 12px',
-                    fontSize: 11,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    color: 'var(--accent-volt)',
-                    borderColor: 'var(--line-2)',
-                  }}
-                >
-                  <Share2 size={13} />
-                  <span>העתק דו״ח לוואטסאפ</span>
-                </button>
+            {/* צ'ק-אין שבועי + דו"ח סיכום (design: CheckIn) */}
+            <section aria-label="צ׳ק-אין שבועי" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>צ׳ק-אין שבועי</h2>
+                <span style={{ fontSize: 13, color: 'var(--text-2)' }}>סיכום השבוע · נשלח למאמן</span>
               </div>
 
-              {reportCopiedBanner && (
-                <div
-                  style={{
-                    marginBottom: 12,
-                    padding: '8px 12px',
-                    borderRadius: 10,
-                    background: 'var(--surface-2)',
-                    border: '1px solid var(--line-2)',
-                    color: 'var(--accent-volt)',
-                    fontSize: 11,
-                    fontWeight: 700,
-                  }}
-                >
-                  ✓ הדו״ח השבועי הועתק ללוח! ניתן להדביק ישירות בוואטסאפ למאמן.
-                </div>
-              )}
-
-              {reportCopyError && (
-                <div
-                  style={{
-                    marginBottom: 12,
-                    padding: '8px 12px',
-                    borderRadius: 10,
-                    background: 'rgba(239, 68, 68, 0.12)',
-                    border: '1px solid rgba(239, 68, 68, 0.35)',
-                    color: 'var(--danger-text)',
-                    fontSize: 11,
-                    fontWeight: 700,
-                  }}
-                >
-                  לא ניתן להעתיק ללוח בדפדפן זה – בדוק הרשאות העתקה.
-                </div>
-              )}
+              <div
+                aria-label="סיכום השבוע"
+                style={{
+                  background: 'var(--card)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 26,
+                  padding: 16,
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                  rowGap: 14,
+                  columnGap: 8,
+                  boxShadow: 'var(--card-shadow)',
+                }}
+              >
+                {buildWeeklySummary().stats.map((s) => (
+                  <div key={s.label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 20, fontWeight: 700 }}>
+                      {s.value}
+                    </bdi>
+                    <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{s.label}</span>
+                  </div>
+                ))}
+              </div>
 
               <div
+                aria-label="הרגשה שבועית"
                 style={{
+                  background: 'var(--card)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 26,
+                  padding: 16,
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 10,
+                  gap: 16,
+                  boxShadow: 'var(--card-shadow)',
                 }}
               >
                 {[
-                  {
-                    label: 'רמת אנרגיה באימונים וביום-יום (1-5)',
-                    val: energyLevel,
-                    setVal: setEnergyLevel,
-                  },
-                  {
-                    label: 'תחושת שובע ונוחות עם התפריט (1-5)',
-                    val: hungerLevel,
-                    setVal: setHungerLevel,
-                  },
-                  {
-                    label: 'איכות השינה וההתאוששות השבוע (1-5)',
-                    val: sleepQuality,
-                    setVal: setSleepQuality,
-                  },
+                  { label: 'רמת אנרגיה באימונים וביום-יום', val: energyLevel, setVal: setEnergyLevel },
+                  { label: 'תחושת שובע ונוחות עם התפריט', val: hungerLevel, setVal: setHungerLevel },
+                  { label: 'איכות השינה וההתאוששות השבוע', val: sleepQuality, setVal: setSleepQuality },
                 ].map((row) => (
-                  <div
-                    key={row.label}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      flexWrap: 'wrap',
-                      gap: 8,
-                      background: 'var(--bg-surface-2)',
-                      padding: '8px 12px',
-                      borderRadius: 10,
-                    }}
-                  >
-                    <span style={{ fontSize: 12, fontWeight: 700 }}>
-                      {row.label}
-                    </span>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      {[1, 2, 3, 4, 5].map((num) => (
-                        <button
-                          key={num}
-                          type="button"
-                          onClick={() => row.setVal(num)}
-                          className="num-mono"
-                          style={{
-                            width: 26,
-                            height: 26,
-                            borderRadius: 7,
-                            border:
-                              row.val === num ? '1px solid var(--sel-bg)'
-                                : '1px solid var(--border-subtle)',
-                            background:
-                              row.val === num ? 'var(--sel-bg)'
-                                : 'var(--bg-surface-1)',
-                            color:
-                              row.val === num ? 'var(--sel-text)'
-                                : 'var(--text-secondary)',
-                            fontSize: 12,
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {num}
-                        </button>
-                      ))}
+                  <div key={row.label} role="radiogroup" aria-label={row.label} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <span style={{ fontSize: 14, fontWeight: 500 }}>{row.label}</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6 }}>
+                      {[1, 2, 3, 4, 5].map((num) => {
+                        const on = row.val === num;
+                        return (
+                          <button
+                            key={num}
+                            type="button"
+                            role="radio"
+                            aria-checked={on}
+                            onClick={() => row.setVal(num)}
+                            className="num-mono"
+                            style={{
+                              height: 44,
+                              borderRadius: 14,
+                              border: `1px solid ${on ? 'var(--sel-bg)' : 'var(--line-2)'}`,
+                              background: on ? 'var(--sel-bg)' : 'transparent',
+                              color: on ? 'var(--sel-text)' : 'var(--text)',
+                              fontSize: 16,
+                              fontWeight: on ? 700 : 600,
+                              cursor: 'pointer',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            {num}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
+              </div>
 
-                <input
-                  type="text"
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label htmlFor="ci-note" style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                  הערה למאמן
+                </label>
+                <textarea
+                  id="ci-note"
+                  rows={2}
                   placeholder="סיכום קצר או שאלה למאמן לקראת השבוע הבא..."
                   value={checkInNote}
                   onChange={(e) => setCheckInNote(e.target.value)}
                   style={{
-                    background: 'var(--bg-surface-2)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 10,
-                    padding: '9px 12px',
-                    color: 'var(--text-primary)',
-                    fontSize: 12,
+                    font: 'inherit',
+                    fontSize: 16,
+                    color: 'var(--text)',
+                    background: 'var(--card)',
+                    border: '1px solid var(--line-2)',
+                    borderRadius: 20,
+                    padding: '12px 14px',
+                    resize: 'none',
+                    outline: 'none',
                   }}
                 />
+              </div>
 
+              {reportCopiedBanner && (
+                <div
+                  role="status"
+                  style={{ padding: '10px 14px', borderRadius: 16, background: 'var(--surface-2)', fontSize: 13, fontWeight: 600 }}
+                >
+                  ✓ הדו״ח השבועי הועתק! ניתן להדביק ישירות בוואטסאפ למאמן.
+                </div>
+              )}
+              {reportCopyError && (
+                <div
+                  role="alert"
+                  style={{ padding: '10px 14px', borderRadius: 16, background: 'var(--surface-2)', color: 'var(--danger-text)', fontSize: 13, fontWeight: 600 }}
+                >
+                  לא ניתן להעתיק ללוח בדפדפן זה – בדוק הרשאות העתקה.
+                </div>
+              )}
+              {checkInSavedBanner && (
+                <div role="status" style={{ fontSize: 13, color: 'var(--ok-text)', fontWeight: 700, textAlign: 'center' }}>
+                  ✓ הצ׳ק-אין השבועי נשמר ונשלח למאמן!
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <button
                   type="button"
                   disabled={savingCheckIn}
@@ -2925,42 +2869,46 @@ export function TraineeMobileView({
                     }
                   }}
                   className="btn-volt"
-                  style={{
-                    padding: '10px',
-                    fontSize: 12,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    cursor: 'pointer',
-                  }}
+                  style={{ height: 56, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer' }}
                 >
-                  {savingCheckIn ? (
-                    <Loader2 size={15} className="spot-spinner" />
-                  ) : (
-                    <Check size={15} />
-                  )}
-                  <span>
-                    {savingCheckIn
-                      ? 'שומר צ׳ק-אין למאמן...'
-                      : 'שמור צ׳ק-אין שבועי למאמן'}
-                  </span>
+                  {savingCheckIn ? <Loader2 size={18} className="spot-spinner" /> : <Check size={18} />}
+                  <span>{savingCheckIn ? 'שומר צ׳ק-אין...' : 'שמור צ׳ק-אין למאמן'}</span>
                 </button>
-
-                {checkInSavedBanner && (
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: 'var(--ok-text)',
-                      fontWeight: 700,
-                      textAlign: 'center',
-                    }}
-                  >
-                    ✓ הצ׳ק-אין השבועי נשמר ונשלח למאמן!
-                  </div>
-                )}
+                <button
+                  type="button"
+                  className="glass"
+                  onClick={async () => {
+                    const lines = buildWeeklySummary().report(checkInNote);
+                    setReportCopyError(false);
+                    try {
+                      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+                        await navigator.clipboard.writeText(lines);
+                      } else if (typeof document !== 'undefined') {
+                        const ta = document.createElement('textarea');
+                        ta.value = lines;
+                        ta.style.position = 'fixed';
+                        ta.style.opacity = '0';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(ta);
+                      } else {
+                        throw new Error('Clipboard unavailable');
+                      }
+                      setReportCopiedBanner(true);
+                      setTimeout(() => setReportCopiedBanner(false), 3500);
+                    } catch {
+                      setReportCopyError(true);
+                      setTimeout(() => setReportCopyError(false), 4000);
+                    }
+                  }}
+                  style={{ height: 52, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}
+                >
+                  <Share2 size={18} />
+                  <span>העתק דו״ח לוואטסאפ</span>
+                </button>
               </div>
-            </div>
+            </section>
           </motion.div>
         ) : (
           /* טאב פרופיל: הארוחות שלי, סטטיסטיקות, הגדרות פושים ושינוי שם */
