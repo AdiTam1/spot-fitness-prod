@@ -8,12 +8,9 @@ import {
   Button,
   Group,
   TextInput,
-  Badge,
   Alert,
-  Loader,
-  SimpleGrid,
 } from '@mantine/core';
-import { Barcode, Camera, Check, Search, Sparkles, AlertCircle } from 'lucide-react';
+import { Barcode, Camera, Check, Image as ImageIcon, Search, AlertCircle } from 'lucide-react';
 import { FoodCatalogItem } from '@/types/nutrition';
 
 interface BarcodeScannerModalProps {
@@ -21,15 +18,6 @@ interface BarcodeScannerModalProps {
   onClose: () => void;
   onProductFound: (item: FoodCatalogItem) => void;
 }
-
-const QUICK_ISRAELI_BARCODES = [
-  { label: 'קרמבו שטראוס', code: '7290000066318' },
-  { label: "קוטג' תנובה 5%", code: '7290004127329' },
-  { label: 'יוגורט דנונה PRO 20g', code: '7290107645058' },
-  { label: 'במבה אסם', code: '7290000068787' },
-  { label: 'טחינה גולמית בארכה', code: '7290000181509' },
-  { label: 'טונה סטארקיסט במים', code: '7290000120836' },
-];
 
 export function BarcodeScannerModal({
   opened,
@@ -89,7 +77,7 @@ export function BarcodeScannerModal({
           );
         } catch {
           setCameraActive(false);
-          setError('לא ניתן לגשת למצלמה בדפדפן זה. ניתן להקליד או לבחור ברקוד לדוגמה למטה.');
+          setError('לא ניתן לגשת למצלמה בדפדפן זה. ניתן להעלות תמונה מהגלריה או להזין ברקוד ידנית.');
         }
       }, 150);
     } catch {
@@ -109,6 +97,62 @@ export function BarcodeScannerModal({
     }
     scannerRef.current = null;
     setCameraActive(false);
+  };
+
+  const handleScanFromGalleryFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || lookingUpRef.current) return;
+    await stopCamera();
+    setError(null);
+    setLoading(true);
+    try {
+      let decoded: string | null = null;
+      if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+        try {
+          const BarcodeDetectorCtor = (window as unknown as {
+            BarcodeDetector: new (opts?: { formats?: string[] }) => {
+              detect: (img: ImageBitmapSource) => Promise<Array<{ rawValue?: string }>>;
+            };
+          }).BarcodeDetector;
+          const detector = new BarcodeDetectorCtor({
+            formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf', 'qr_code'],
+          });
+          const bitmap = await createImageBitmap(file);
+          try {
+            const hits = await detector.detect(bitmap);
+            decoded = hits.find((h) => Boolean(h.rawValue?.trim()))?.rawValue?.trim() || null;
+          } finally {
+            bitmap.close?.();
+          }
+        } catch {
+          // fallback to html5-qrcode
+        }
+      }
+      if (!decoded) {
+        const { Html5Qrcode } = await import('html5-qrcode');
+        const fileScanner = new Html5Qrcode('spot-barcode-file-reader', false);
+        try {
+          decoded = (await fileScanner.scanFile(file, false))?.trim() || null;
+        } finally {
+          try {
+            fileScanner.clear();
+          } catch {
+            // ignore cleanup error
+          }
+        }
+      }
+      if (!decoded) {
+        setError('לא זוהה ברקוד בתמונה שנבחרה. נסה תמונה ברורה יותר או הקלד את המספר ידנית.');
+        return;
+      }
+      setManualCode(decoded);
+      await lookupBarcode(decoded);
+    } catch {
+      setError('לא הצלחנו לפענח ברקוד מהתמונה שנבחרה. נסה לצלם מקרוב או להזין ידנית.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -135,7 +179,7 @@ export function BarcodeScannerModal({
       title={
         <Group gap="xs">
           <Barcode size={20} color="currentColor" />
-          <Text fw={700}>סריקת ברקוד מוצר (OpenFoodFacts + מאגר ישראלי)</Text>
+          <Text fw={700}>סריקת ברקוד מוצר</Text>
         </Group>
       }
       centered
@@ -213,16 +257,47 @@ export function BarcodeScannerModal({
               <Text size="sm" style={{ color: 'rgba(255,255,255,.8)' }}>
                 כוון את מצלמת הטלפון לברקוד שעל אריזת המוצר לטעינה אוטומטית של הקלוריות והמאקרו
               </Text>
-              <Button
-                className="btn-volt"
-                radius="xl"
-                size="md"
-                leftSection={<Camera size={16} />}
-                onClick={startCamera}
-                style={{ minHeight: 44 }}
-              >
-                הפעל מצלמה לסריקת ברקוד
-              </Button>
+              <Group gap="xs" justify="center" wrap="wrap">
+                <Button
+                  className="btn-volt"
+                  radius="xl"
+                  size="md"
+                  leftSection={<Camera size={16} />}
+                  onClick={startCamera}
+                  disabled={loading}
+                  style={{ minHeight: 44 }}
+                >
+                  הפעל מצלמה לסריקת ברקוד
+                </Button>
+                <label
+                  style={{
+                    minHeight: 44,
+                    padding: '0 16px',
+                    borderRadius: 999,
+                    background: 'rgba(255, 255, 255, 0.14)',
+                    border: '1px solid rgba(255, 255, 255, 0.24)',
+                    color: '#ffffff',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    opacity: loading ? 0.6 : 1,
+                  }}
+                >
+                  <ImageIcon size={16} />
+                  <span>העלה תמונה מהגלריה</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={loading}
+                    onChange={handleScanFromGalleryFile}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+              </Group>
             </>
           ) : (
             <Stack gap="xs" style={{ width: '100%' }}>
@@ -236,6 +311,7 @@ export function BarcodeScannerModal({
             </Stack>
           )}
         </div>
+        <div id="spot-barcode-file-reader" style={{ display: 'none' }} aria-hidden />
 
         <Group align="flex-end" gap="xs">
           <TextInput
@@ -271,42 +347,6 @@ export function BarcodeScannerModal({
             {error}
           </Alert>
         )}
-
-        <Stack gap={6}>
-          <Group gap={6}>
-            <Sparkles size={14} color="var(--accent-orange-bright)" />
-            <Text size="xs" fw={600} c="dimmed">
-              בדיקה מהירה – לחץ על ברקוד של מוצר ישראלי מוכר:
-            </Text>
-          </Group>
-          <SimpleGrid cols={2} spacing="xs">
-            {QUICK_ISRAELI_BARCODES.map((b) => (
-              <Button
-                key={b.code}
-                variant="default"
-                size="xs"
-                radius="md"
-                justify="space-between"
-                disabled={loading}
-                rightSection={
-                  loading ? <Loader size={12} /> : <Check size={12} color="var(--text-3)" />
-                }
-                onClick={() => lookupBarcode(b.code)}
-                styles={{
-                  root: { height: 'auto', padding: '8px 10px' },
-                  label: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start' },
-                }}
-              >
-                <Text size="xs" fw={600}>
-                  {b.label}
-                </Text>
-                <Badge size="xs" variant="outline" color="gray" styles={{ label: { direction: 'ltr', unicodeBidi: 'isolate' } }}>
-                  {b.code}
-                </Badge>
-              </Button>
-            ))}
-          </SimpleGrid>
-        </Stack>
       </Stack>
       )}
     </Modal>

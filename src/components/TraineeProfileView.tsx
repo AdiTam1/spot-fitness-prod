@@ -21,6 +21,8 @@ import {
   PlusSquare,
   Globe,
   Sliders,
+  ClipboardCheck,
+  ChevronLeft,
 } from 'lucide-react';
 import { Switch } from '@mantine/core';
 import { Pencil, Palette } from 'lucide-react';
@@ -56,6 +58,7 @@ interface TraineeProfileViewProps {
   isCoachPreview?: boolean;
   onRenameProfile: (name: string) => Promise<{ error?: string }>;
   onOpenMealFromHistory: (date: string, mealSlotId: string) => void;
+  onOpenOnboarding?: () => void;
   onPushPreferencesUpdated?: (prefs: TraineePushPreferences) => void;
   onUpdateMealShortcuts?: (
     traineeId: string,
@@ -69,6 +72,7 @@ export function TraineeProfileView({
   isCoachPreview = false,
   onRenameProfile,
   onOpenMealFromHistory,
+  onOpenOnboarding,
   onPushPreferencesUpdated,
   onUpdateMealShortcuts,
 }: TraineeProfileViewProps) {
@@ -538,6 +542,56 @@ export function TraineeProfileView({
         </div>
         <ThemeToggle />
       </section>
+
+      {/* שאלון התאמה אישית והעדפות (הועבר מכותרת הדף הראשי) */}
+      {onOpenOnboarding && (
+        <section
+          className="pro-card"
+          aria-label="שאלון התאמה והעדפות אישיות"
+          style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <ClipboardCheck size={18} />
+              <span style={{ fontSize: 15, fontWeight: 700 }}>שאלון התאמה והעדפות אישיות</span>
+            </div>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: trainee.onboarding?.completed ? 'var(--ok-text)' : 'var(--warn-text)',
+              }}
+            >
+              {trainee.onboarding?.completed ? 'הושלם' : 'טרם הושלם'}
+            </span>
+          </div>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-2)', lineHeight: 1.55 }}>
+            ערוך בכל עת את הפרטים האישיים שלך, יעד המשקל, אורח החיים, מדידות ההיקפים והעדפות התזונה — כדי שהתפריט ויעדי הקלוריות יישארו מותאמים אליך במדויק.
+          </p>
+          <button
+            type="button"
+            onClick={onOpenOnboarding}
+            className="btn-surface"
+            style={{
+              height: 44,
+              padding: '0 16px',
+              borderRadius: 999,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              fontSize: 13.5,
+              fontWeight: 700,
+              fontFamily: 'inherit',
+              cursor: 'pointer',
+              alignSelf: 'flex-start',
+            }}
+          >
+            <span>{trainee.onboarding?.completed ? 'פתח ועדכן שאלון התאמה' : 'מלא שאלון התאמה'}</span>
+            <ChevronLeft size={16} />
+          </button>
+        </section>
+      )}
 
       {/* 2. מיני-דשבורד סטטיסטיקות (7 ימים אחרונים) */}
       <div style={{ display: 'flex', flexDirection: 'column' }}>

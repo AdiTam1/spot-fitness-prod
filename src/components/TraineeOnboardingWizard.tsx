@@ -22,6 +22,7 @@ import { useSpotUnsavedEditing } from '@/lib/webVersionGuard';
 
 interface TraineeOnboardingWizardProps {
   trainee: TraineeProfile;
+  onCancel?: () => void;
   onCompleteOnboarding: (data: {
     name: string;
     currentWeight: number;
@@ -136,6 +137,7 @@ function calculateEstimatedBmrAndTdee(params: {
 
 export function TraineeOnboardingWizard({
   trainee,
+  onCancel,
   onCompleteOnboarding,
 }: TraineeOnboardingWizardProps) {
   const existing = trainee.onboarding;
@@ -341,11 +343,12 @@ export function TraineeOnboardingWizard({
             style={{
               display: 'flex',
               justifyContent: 'space-between',
-              alignItems: 'center',
+              alignItems: 'flex-start',
+              gap: 10,
               marginBottom: 8,
             }}
           >
-            <div>
+            <div style={{ minWidth: 0, flex: 1 }}>
               <span
                 style={{
                   fontSize: 13,
@@ -364,6 +367,30 @@ export function TraineeOnboardingWizard({
                 {step === 6 && 'רגישויות ודגשים למאמן'}
               </div>
             </div>
+            {onCancel && (
+              <button
+                type="button"
+                onClick={onCancel}
+                className="glass"
+                style={{
+                  height: 38,
+                  padding: '0 12px',
+                  borderRadius: 999,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: 'var(--text)',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  fontFamily: 'inherit',
+                }}
+              >
+                <ChevronRight size={16} />
+                <span>חזרה לפרופיל</span>
+              </button>
+            )}
           </div>
 
           <div

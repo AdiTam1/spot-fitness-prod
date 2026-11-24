@@ -13,7 +13,7 @@ interface GlassDockProps<T extends string = string> {
   tabs: DockTab<T>[];
   active: T;
   onChange: (id: T) => void;
-  /** Round orange-tinted action next to the dock (e.g. add meal). */
+  /** Compact round primary action button next to the dock (e.g. add meal). */
   action?: {
     label: string;
     onClick: () => void;
@@ -86,24 +86,24 @@ export function GlassDock<T extends string = string>({
         {action && (
           <button
             type="button"
-            className="glass glass-tint"
+            className="btn-volt"
             aria-label={action.label}
             title={action.label}
             disabled={action.disabled}
             onClick={action.onClick}
             style={{
-              width: 66,
-              height: 66,
+              width: 54,
+              height: 54,
               borderRadius: 999,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               flex: 'none',
+              boxShadow: '0 8px 22px -6px rgba(0, 0, 0, 0.35)',
               cursor: action.disabled ? 'not-allowed' : 'pointer',
-              opacity: action.disabled ? 0.5 : 1,
             }}
           >
-            {action.icon ?? <Plus size={28} strokeWidth={2.4} />}
+            {action.icon ?? <Plus size={24} strokeWidth={2.3} />}
           </button>
         )}
       </div>

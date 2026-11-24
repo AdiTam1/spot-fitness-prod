@@ -2862,13 +2862,7 @@ export default function HomePage() {
         </div>
       )}
 
-      <main
-        style={{
-          maxWidth: 1180,
-          margin: '0 auto',
-          padding: '20px 16px',
-        }}
-      >
+      <main className="spot-main-content">
         {shouldShowCoachOnboarding ? (
           <CoachOnboardingWizard
             coachName={myCoachProfile?.name || currentUser.name}

@@ -17,6 +17,15 @@
   --sa-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
 }
 
+/* Native Android app when status/navigation bars sit outside the WebView:
+   zero out injected insets so headers and docks don't get double padding. */
+:root[data-spot-android-inset-mode='external'] {
+  --sa-top: 0px !important;
+  --sa-right: 0px !important;
+  --sa-bottom: 0px !important;
+  --sa-left: 0px !important;
+}
+
 :root,
 :root[data-mantine-color-scheme='dark'] {
   color-scheme: dark;
@@ -470,6 +479,33 @@ a:focus-visible {
   background: linear-gradient(to top, var(--bg), transparent);
   pointer-events: none;
   z-index: 89;
+}
+
+.spot-main-content {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 20px 16px;
+}
+
+@media (max-width: 768px) {
+  .spot-main-content {
+    padding: 10px 16px 14px;
+  }
+}
+
+/* Real Android Capacitor app: keep header and floating dock tighter at top & bottom */
+:root[data-spot-android-app='1'] .spot-sticky-header {
+  padding-top: calc(var(--sa-top) + 4px);
+  padding-bottom: 6px;
+}
+:root[data-spot-android-app='1'] .mobile-bottom-dock {
+  bottom: calc(10px + var(--sa-bottom));
+}
+:root[data-spot-android-app='1'] .mobile-dock-fade {
+  height: calc(96px + var(--sa-bottom));
+}
+:root[data-spot-android-app='1'] .spot-main-content {
+  padding-top: 8px;
 }
 
 @media (max-width: 768px) {

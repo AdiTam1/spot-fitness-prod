@@ -202,7 +202,9 @@ export function AddMealDrawer({
   onStartBackgroundAiAnalysis,
 }: AddMealDrawerProps) {
   useSpotUnsavedEditing('add-meal-drawer', opened);
-  const [activeTab, setActiveTab] = useState<string>(initialTab);
+  const [activeTab, setActiveTab] = useState<string>(initialTab || 'hub');
+  const [tabHistory, setTabHistory] = useState<string[]>([initialTab || 'hub']);
+  const barcodeStandaloneRef = useRef(false);
   const isDesignHeader = activeTab === 'ai-recommend' || activeTab === 'saved-meals';
   const [items, setItems] = useState<LoggedFoodItem[]>([]);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | undefined>(
@@ -291,6 +293,34 @@ export function AddMealDrawer({
   const recLockRef = useRef(false);
   const prefLockRef = useRef(false);
   const saveLockRef = useRef(false);
+
+  const navigateTab = (nextTab: string, options?: { replace?: boolean }) => {
+    setTabHistory((prev) => {
+      if (options?.replace) {
+        return prev.length > 0 ? [...prev.slice(0, -1), nextTab] : [nextTab];
+      }
+      const top = prev[prev.length - 1];
+      if (top === nextTab) return prev;
+      return [...prev, nextTab];
+    });
+    setActiveTab(nextTab);
+  };
+
+  const handleDrawerBack = () => {
+    if (savingMeal) return;
+    if (activeTab === 'hub' && searchQuery.trim().length > 0) {
+      setSearchQuery('');
+      return;
+    }
+    if (tabHistory.length > 1) {
+      const nextHistory = tabHistory.slice(0, -1);
+      const prevTab = nextHistory[nextHistory.length - 1] || 'hub';
+      setTabHistory(nextHistory);
+      setActiveTab(prevTab);
+      return;
+    }
+    onClose();
+  };
 
   const stopVoiceRecording = (commit = false) => {
     const ctrl = voiceControllerRef.current;
@@ -383,10 +413,15 @@ export function AddMealDrawer({
         setEditingItemId(null);
         setAiSummary(null);
         if (initialTab === 'barcode') {
+          barcodeStandaloneRef.current = true;
+          setTabHistory(['hub']);
           setActiveTab('hub');
           setBarcodeModalOpen(true);
         } else {
-          setActiveTab(initialTab || 'hub');
+          const startTab = initialTab || 'hub';
+          barcodeStandaloneRef.current = false;
+          setTabHistory([startTab]);
+          setActiveTab(startTab);
         }
         stopVoiceRecording(false);
       } else {
@@ -419,6 +454,7 @@ export function AddMealDrawer({
       }
     } else if (!opened) {
       lastOpenedKeyRef.current = '';
+      barcodeStandaloneRef.current = false;
       stopVoiceRecording(false);
     }
     return () => {
@@ -719,7 +755,7 @@ export function AddMealDrawer({
       });
       setCameraChooserOpen(false);
       if (!options?.stayOnTab) {
-        setActiveTab('ai-photo');
+        navigateTab('ai-photo');
       }
     } catch {
       setAiSummary({ msg: 'לא ניתן לקרוא את התמונה – נסה לצלם שוב', isError: true });
@@ -1206,14 +1242,11 @@ export function AddMealDrawer({
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-              {(activeTab !== 'hub' || trimmedQuery.length > 0) && activeTab !== 'ai-recommend' && (
+              {(activeTab !== 'hub' || trimmedQuery.length > 0 || tabHistory.length > 1) && activeTab !== 'ai-recommend' && (
                 <GlassButton
                   label="חזרה"
                   size={40}
-                  onClick={() => {
-                    if (trimmedQuery) setSearchQuery('');
-                    setActiveTab('hub');
-                  }}
+                  onClick={handleDrawerBack}
                 >
                   <ChevronRight size={18} />
                 </GlassButton>
@@ -1301,7 +1334,7 @@ export function AddMealDrawer({
               </div>
             </div>
             {activeTab === 'ai-recommend' ? (
-              <GlassButton label="חזרה" onClick={() => setActiveTab('hub')}>
+              <GlassButton label="חזרה" onClick={handleDrawerBack}>
                 <ChevronLeft size={18} />
               </GlassButton>
             ) : activeTab === 'saved-meals' ? (
@@ -1466,7 +1499,7 @@ export function AddMealDrawer({
                       setFreeTextPrompt(trimmedQuery);
                       void runAiAnalysis('text', trimmedQuery);
                     } else {
-                      setActiveTab('ai-text');
+                      navigateTab('ai-text');
                     }
                   }}
                   style={{
@@ -1788,7 +1821,7 @@ export function AddMealDrawer({
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('ai-photo')}
+                  onClick={() => navigateTab('ai-photo')}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -1832,8 +1865,12 @@ export function AddMealDrawer({
                       key={t.id}
                       type="button"
                       onClick={() => {
-                        if (t.id === 'barcode-action') setBarcodeModalOpen(true);
-                        else setActiveTab(t.id);
+                        if (t.id === 'barcode-action') {
+                          barcodeStandaloneRef.current = false;
+                          setBarcodeModalOpen(true);
+                        } else {
+                          navigateTab(t.id);
+                        }
                       }}
                       style={{
                         minHeight: 86,
@@ -1866,7 +1903,7 @@ export function AddMealDrawer({
                   <button
                     type="button"
                     className="glass"
-                    onClick={() => setActiveTab('saved-meals')}
+                    onClick={() => navigateTab('saved-meals')}
                     style={{
                       height: 34,
                       padding: '0 12px',
@@ -2305,7 +2342,10 @@ export function AddMealDrawer({
                   </span>
                   <button
                     type="button"
-                    onClick={() => setBarcodeModalOpen(true)}
+                    onClick={() => {
+                      barcodeStandaloneRef.current = false;
+                      setBarcodeModalOpen(true);
+                    }}
                     className="btn-surface"
                     style={{
                       display: 'inline-flex',
@@ -2533,7 +2573,7 @@ export function AddMealDrawer({
                 {items.length > 0 && photoItems.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setActiveTab('meal-items')}
+                    onClick={() => navigateTab('meal-items')}
                     className="glass"
                     style={{
                       minHeight: 48,
@@ -3092,7 +3132,7 @@ export function AddMealDrawer({
                     <div style={{ marginTop: 10 }}>
                       <button
                         type="button"
-                        onClick={() => setActiveTab('catalog')}
+                        onClick={() => navigateTab('catalog')}
                         className="btn-volt"
                         style={{ padding: '7px 14px', fontSize: 12, cursor: 'pointer' }}
                       >
@@ -3264,14 +3304,18 @@ export function AddMealDrawer({
                   </span>
                   <button
                     type="button"
-                    onClick={() => setActiveTab('hub')}
-                    className="btn-surface"
+                    onClick={() => navigateTab('hub')}
                     style={{
-                      padding: '5px 11px',
+                      padding: '8px 14px',
                       borderRadius: 999,
-                      fontSize: 12.5,
+                      border: 'none',
+                      background: 'var(--btn-primary)',
+                      color: 'var(--btn-primary-text)',
+                      fontSize: 13,
                       fontWeight: 700,
+                      fontFamily: 'inherit',
                       cursor: 'pointer',
+                      whiteSpace: 'nowrap',
                     }}
                   >
                     + הוסף עוד פריטים
@@ -3285,23 +3329,21 @@ export function AddMealDrawer({
                     <img
                       src={allMealPhotos[0]}
                       alt="תמונת הארוחה"
-                      onClick={() => setActiveTab('ai-photo')}
+                      onClick={() => navigateTab('ai-photo')}
                       style={{ display: 'block', width: '100%', height: 'calc(300px + var(--sa-top, 0px))', objectFit: 'cover', cursor: 'pointer' }}
                     />
                     <div style={{ position: 'absolute', insetBlockStart: 'calc(var(--sa-top, 0px) + 12px)', insetInline: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <GlassButton
-                        label="סגירה"
+                        label="חזרה"
                         data-autofocus
-                        onClick={() => {
-                          if (!savingMeal) onClose();
-                        }}
+                        onClick={handleDrawerBack}
                       >
-                        <X size={18} strokeWidth={2.2} />
+                        <ChevronRight size={18} strokeWidth={2.2} />
                       </GlassButton>
                       <button
                         type="button"
                         className="glass"
-                        onClick={() => setActiveTab('ai-photo')}
+                        onClick={() => navigateTab('ai-photo')}
                         style={{ height: 44, padding: '0 16px', borderRadius: 999, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
                       >
                         <Camera size={15} />
@@ -3431,14 +3473,18 @@ export function AddMealDrawer({
                     </span>
                     <button
                       type="button"
-                      onClick={() => setActiveTab('hub')}
-                      className="btn-surface"
+                      onClick={() => navigateTab('hub')}
                       style={{
-                        padding: '5px 11px',
+                        padding: '8px 14px',
                         borderRadius: 999,
-                        fontSize: 12.5,
+                        border: 'none',
+                        background: 'var(--btn-primary)',
+                        color: 'var(--btn-primary-text)',
+                        fontSize: 13,
                         fontWeight: 700,
+                        fontFamily: 'inherit',
                         cursor: 'pointer',
+                        whiteSpace: 'nowrap',
                       }}
                     >
                       + הוסף עוד פריטים
@@ -3853,7 +3899,7 @@ export function AddMealDrawer({
               <button
                 type="button"
                 className="glass"
-                onClick={() => setActiveTab('meal-items')}
+                onClick={() => navigateTab('meal-items')}
                 aria-label={`עריכת מרכיבי הארוחה (${items.length})`}
                 style={{
                   height: 56,
@@ -4294,8 +4340,16 @@ export function AddMealDrawer({
 
       <BarcodeScannerModal
         opened={barcodeModalOpen}
-        onClose={() => setBarcodeModalOpen(false)}
+        onClose={() => {
+          setBarcodeModalOpen(false);
+          if (barcodeStandaloneRef.current) {
+            barcodeStandaloneRef.current = false;
+            onClose();
+          }
+        }}
         onProductFound={(product) => {
+          const wasStandalone = barcodeStandaloneRef.current;
+          barcodeStandaloneRef.current = false;
           void handleSelectCatalogFood(product, false);
           const defaultUnit = product.units[0] || {
             label: '100 גרם',
@@ -4320,6 +4374,12 @@ export function AddMealDrawer({
             },
           ]);
           setAiSummary({ msg: `נוסף מסורק ברקוד: ${product.name}` });
+          if (wasStandalone) {
+            setTabHistory(['meal-items']);
+            setActiveTab('meal-items');
+          } else {
+            navigateTab('meal-items');
+          }
         }}
       />
     </>

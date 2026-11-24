@@ -17,7 +17,6 @@ import {
   MessageSquare,
   Ruler,
   Eye,
-  ClipboardCheck,
   Lightbulb,
   Share2,
   Check,
@@ -305,6 +304,10 @@ export function TraineeMobileView({
     null
   );
   const [drawerTab, setDrawerTab] = useState<string>('hub');
+  const [drawerReturnTarget, setDrawerReturnTarget] = useState<{
+    section: 'journal' | 'metrics' | 'profile';
+    date: string;
+  } | null>(null);
   const [timeEditSlot, setTimeEditSlot] = useState<MealTemplateSlot | null>(null);
   const [draftMealTime, setDraftMealTime] = useState<string>('12:00');
   const [savingMealTime, setSavingMealTime] = useState(false);
@@ -362,6 +365,7 @@ export function TraineeMobileView({
       return;
     }
     lastHandledMealNonceRef.current = externalOpenMealRequest.nonce;
+    setDrawerReturnTarget(null);
     setMobileSection('journal');
     setSelectedDate(externalOpenMealRequest.date);
     const targetSlot = findTraineeMealSlotById(
@@ -410,11 +414,20 @@ export function TraineeMobileView({
     (!trainee.onboarding?.completed && !isCoachPreview) ||
     editingOnboarding
   ) {
+    const canReturnToProfile = Boolean(trainee.onboarding?.completed || isCoachPreview);
     return (
       <TraineeOnboardingWizard
         trainee={trainee}
-        onCompleteOnboarding={(data) => {
-          onCompleteOnboarding(trainee.id, data);
+        onCancel={
+          canReturnToProfile
+            ? () => {
+                setEditingOnboarding(false);
+                setMobileSection('profile');
+              }
+            : undefined
+        }
+        onCompleteOnboarding={async (data) => {
+          await onCompleteOnboarding(trainee.id, data);
           setEditingOnboarding(false);
         }}
       />
@@ -553,6 +566,7 @@ export function TraineeMobileView({
 
   const openMealDrawer = (slot: MealTemplateSlot, tab = 'hub') => {
     if (isBlockedDay) return;
+    setDrawerReturnTarget(null);
     setActiveMealSlot(slot);
     setDrawerTab(tab);
   };
@@ -565,7 +579,7 @@ export function TraineeMobileView({
       style={{
         maxWidth: 460,
         margin: '0 auto',
-        paddingBottom: 130,
+        paddingBottom: 'calc(104px + var(--sa-bottom))',
       }}
     >
       {isCoachPreview && onExitCoachPreview && (
@@ -738,9 +752,6 @@ export function TraineeMobileView({
                 </span>
               </div>
             </div>
-            <GlassButton label="עדכון שאלון פרופיל והעדפות" onClick={() => setEditingOnboarding(true)}>
-              <ClipboardCheck size={20} />
-            </GlassButton>
           </header>
         );
       })()}
@@ -2005,30 +2016,32 @@ export function TraineeMobileView({
                           );
                         })}
 
-                      {!hasItems && (
-                        <button
-                          type="button"
-                          disabled={isBlockedDay}
-                          onClick={() => openMealDrawer(slot, 'hub')}
-                          className="btn-volt"
-                          style={{
-                            flex: '1 1 auto',
-                            minWidth: 0,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: 5,
-                            padding: '9px 10px',
-                            fontSize: 13,
-                            whiteSpace: 'nowrap',
-                            opacity: isBlockedDay ? 0.45 : 1,
-                            cursor: isBlockedDay ? 'not-allowed' : 'pointer',
-                          }}
-                        >
-                          <Plus size={14} style={{ flexShrink: 0 }} />
-                          <span>הזן ארוחה</span>
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        disabled={isBlockedDay}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openMealDrawer(slot, hasItems ? 'meal-items' : 'hub');
+                        }}
+                        className={hasItems ? 'btn-surface' : 'btn-volt'}
+                        style={{
+                          flex: '1 1 auto',
+                          minWidth: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 5,
+                          padding: '9px 10px',
+                          fontSize: 13,
+                          fontWeight: hasItems ? 700 : undefined,
+                          whiteSpace: 'nowrap',
+                          opacity: isBlockedDay ? 0.45 : 1,
+                          cursor: isBlockedDay ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        {!hasItems && <Plus size={14} style={{ flexShrink: 0 }} />}
+                        <span>{hasItems ? 'פתח' : 'הזן ארוחה'}</span>
+                      </button>
                     </div>
                   </div>
                 );
@@ -2582,7 +2595,9 @@ export function TraineeMobileView({
               }
               onPushPreferencesUpdated={onPushPreferencesUpdated}
               onUpdateMealShortcuts={onUpdateMealShortcuts}
+              onOpenOnboarding={() => setEditingOnboarding(true)}
               onOpenMealFromHistory={(date, mealSlotId) => {
+                setDrawerReturnTarget({ section: mobileSection, date: selectedDate });
                 setMobileSection('journal');
                 setSelectedDate(date);
                 const targetSlot = findTraineeMealSlotById(trainee, mealSlotId);
@@ -2670,7 +2685,14 @@ export function TraineeMobileView({
 
       <AddMealDrawer
         opened={Boolean(activeMealSlot)}
-        onClose={() => setActiveMealSlot(null)}
+        onClose={() => {
+          setActiveMealSlot(null);
+          if (drawerReturnTarget) {
+            setMobileSection(drawerReturnTarget.section);
+            setSelectedDate(drawerReturnTarget.date);
+            setDrawerReturnTarget(null);
+          }
+        }}
         mealSlot={activeMealSlot}
         mealSlotOptions={activeTemplate.meals}
         onChangeMealSlot={(slot) => setActiveMealSlot(slot)}
