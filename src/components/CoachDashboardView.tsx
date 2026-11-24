@@ -513,6 +513,7 @@ export function CoachDashboardView({
     typeof window !== 'undefined' && window.innerWidth < 768 ? 'cards' : 'table'
   );
   const [rosterViewPinned, setRosterViewPinned] = useState(false);
+  const [inspTab, setInspTab] = useState<'data' | 'plan' | 'journal'>('data');
   const [tplScope, setTplScope] = useState<'all' | 'system' | 'mine'>('all');
 
   useEffect(() => {
@@ -2454,6 +2455,35 @@ export function CoachDashboardView({
       {activeSection === 'inspector' && selectedTrainee && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           {/* כרטיס עליון: נתוני Onboarding, היקפים, BMR/TDEE וניהול ימי תשקיף */}
+          {/* Header + tabs (design: CoachTrainee) */}
+          <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, lineHeight: 1.2 }}>{selectedTrainee.name}</h1>
+              <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                {groups.find((g) => g.id === selectedTrainee.groupId)?.name || 'ללא קבוצה'}
+              </span>
+            </span>
+            <button
+              type="button"
+              className="glass"
+              aria-label="שלח פוש אישי למתאמן"
+              onClick={() => openPushModalForTrainee(selectedTrainee.id)}
+              style={{ width: 44, height: 44, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flex: 'none' }}
+            >
+              <Bell size={18} />
+            </button>
+          </header>
+          <SegmentedPill
+            ariaLabel="אזור בפרופיל המתאמן"
+            value={inspTab}
+            onChange={(v) => setInspTab(v as 'data' | 'plan' | 'journal')}
+            options={[
+              { value: 'data', label: 'נתונים ויעדים' },
+              { value: 'plan', label: 'תפריט' },
+              { value: 'journal', label: 'יומן' },
+            ]}
+          />
+          <div hidden={inspTab !== 'data'}>
           <div className="pro-card" style={{ padding: 20 }}>
             <div
               style={{
@@ -3889,7 +3919,9 @@ export function CoachDashboardView({
               </div>
             </div>
           </div>
+          </div>
 
+          <div hidden={inspTab !== 'plan'}>
           <div
             style={{
               display: 'grid',
@@ -4165,8 +4197,10 @@ export function CoachDashboardView({
               </div>
             </div>
           </div>
+          </div>
+          </div>
 
-          <div className="pro-card" style={{ padding: 22 }}>
+          <div className="pro-card" hidden={inspTab !== 'journal'} style={{ padding: 22 }}>
             <div
               style={{
                 display: 'flex',
@@ -4364,7 +4398,6 @@ export function CoachDashboardView({
                 );
               })}
             </div>
-          </div>
           </div>
         </div>
       )}
