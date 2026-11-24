@@ -136,12 +136,14 @@ export function BodyMeasurementGuide({
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: 5,
-          background: 'var(--bg-surface-2)',
+          gap: 4,
+          background: 'var(--card)',
           padding: 4,
-          borderRadius: 12,
-          border: '1px solid var(--border-subtle)',
+          borderRadius: 999,
+          border: '1px solid var(--line)',
         }}
+        role="tablist"
+        aria-label="אזור מדידה"
       >
         {(['chest', 'waistNavel', 'arm', 'thigh'] as MeasurementZone[]).map(
           (z) => {
@@ -157,18 +159,21 @@ export function BodyMeasurementGuide({
                 key={z}
                 type="button"
                 onClick={() => setActiveZone(z)}
+                role="tab"
+                aria-selected={active}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: 4,
-                  padding: compact ? '7px 4px' : '9px 6px',
-                  borderRadius: 9,
+                  height: 40,
+                  padding: '0 4px',
+                  borderRadius: 999,
                   border: 'none',
                   background: active ? 'var(--sel-bg)' : 'transparent',
-                  color: active ? '#ffffff' : 'var(--text-secondary)',
-                  fontSize: compact ? 11 : 12,
-                  fontWeight: 800,
+                  color: active ? 'var(--sel-text)' : 'var(--text-2)',
+                  fontSize: 14,
+                  fontWeight: active ? 700 : 500,
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
                 }}
@@ -177,7 +182,7 @@ export function BodyMeasurementGuide({
                 {hasVal && (
                   <CheckCircle2
                     size={12}
-                    color={active ? '#ffffff' : 'var(--accent-volt)'}
+                    color={active ? 'var(--sel-text)' : 'var(--text-2)'}
                   />
                 )}
               </button>
@@ -190,14 +195,15 @@ export function BodyMeasurementGuide({
       <div
         className="pro-card"
         style={{
-          padding: compact ? 10 : 16,
+          borderRadius: 26,
+          padding: compact ? 12 : 16,
           display: 'grid',
           gridTemplateColumns: compact
             ? '98px 1fr'
             : 'repeat(auto-fit, minmax(170px, 1fr))',
           gap: compact ? 10 : 16,
           alignItems: 'center',
-          background: 'var(--fill-1)',
+          background: 'var(--card)',
         }}
       >
         {/* איור גוף וקטורי עם הנפשת סרט מדידה חי */}
@@ -224,20 +230,20 @@ export function BodyMeasurementGuide({
                 cy="24"
                 r="13"
                 fill="none"
-                stroke="#4b5563"
+                stroke="var(--text-3)"
                 strokeWidth="2"
               />
               <path
                 d="M32 52 C40 44, 90 44, 98 52 L106 95 L92 95 L88 68 L86 155 L44 155 L42 68 L38 95 L24 95 Z"
                 fill="var(--fill-1)"
-                stroke="#64748b"
+                stroke="var(--text-3)"
                 strokeWidth="2"
               />
               {/* קו חזה פנימי */}
               <path
                 d="M44 78 Q55 83 65 78 Q75 83 86 78"
                 fill="none"
-                stroke="#475569"
+                stroke="var(--text-3)"
                 strokeWidth="1.5"
               />
               {/* סרט מדידה מונפש על החזה */}
@@ -297,13 +303,13 @@ export function BodyMeasurementGuide({
                 cy="22"
                 r="12"
                 fill="none"
-                stroke="#4b5563"
+                stroke="var(--text-3)"
                 strokeWidth="2"
               />
               <path
                 d="M34 50 C42 44, 88 44, 96 50 L88 158 L42 158 Z"
                 fill="var(--fill-1)"
-                stroke="#64748b"
+                stroke="var(--text-3)"
                 strokeWidth="2"
               />
               {/* סימון הטבור (פופיק) */}
@@ -357,7 +363,7 @@ export function BodyMeasurementGuide({
               <path
                 d="M25 135 L25 90 C25 75, 42 75, 52 84 C64 70, 82 70, 92 84 L96 42 L110 42 L110 104 L46 104 L46 135 Z"
                 fill="var(--fill-1)"
-                stroke="#64748b"
+                stroke="var(--text-3)"
                 strokeWidth="2"
               />
               {/* סרט מדידה אנכי סביב שיא שריר הזרוע */}
@@ -384,7 +390,7 @@ export function BodyMeasurementGuide({
                 x="65"
                 y="165"
                 textAnchor="middle"
-                fill="#94a3b8"
+                fill="var(--text-3)"
                 fontSize="10"
               >
                 זווית 90° וכיווץ שיא
@@ -408,7 +414,7 @@ export function BodyMeasurementGuide({
               <path
                 d="M36 28 L94 28 L98 62 L86 156 L72 156 L68 78 L62 78 L58 156 L44 156 L32 62 Z"
                 fill="var(--fill-1)"
-                stroke="#64748b"
+                stroke="var(--text-3)"
                 strokeWidth="2"
               />
               {/* סרט מדידה מונפש על הירך העליונה */}
@@ -451,7 +457,7 @@ export function BodyMeasurementGuide({
             style={{
               fontSize: compact ? 13 : 15,
               fontWeight: 800,
-              color: 'var(--accent-volt)',
+              color: 'var(--text)',
               display: 'flex',
               alignItems: 'center',
               gap: 6,
@@ -466,7 +472,7 @@ export function BodyMeasurementGuide({
               display: 'flex',
               flexDirection: 'column',
               gap: compact ? 3 : 5,
-              fontSize: compact ? 11 : 12,
+              fontSize: 13,
               color: 'var(--text-primary)',
               lineHeight: compact ? 1.35 : 1.45,
             }}
@@ -475,7 +481,7 @@ export function BodyMeasurementGuide({
               <div key={i} style={{ display: 'flex', gap: 5 }}>
                 <span
                   className="num-mono"
-                  style={{ color: 'var(--accent-volt)', fontWeight: 800 }}
+                  style={{ color: 'var(--text)', fontWeight: 800 }}
                 >
                   {i + 1}.
                 </span>
