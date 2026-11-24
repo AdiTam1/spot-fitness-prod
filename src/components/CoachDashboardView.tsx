@@ -1191,7 +1191,7 @@ export function CoachDashboardView({
                     gap: 8,
                     padding: '9px 15px',
                     borderRadius: 18,
-                    border: active ? '1px solid var(--sel-bg)'
+                    border: active ? '1px solid var(--sel-border)'
                       : '1px solid transparent',
                     background: active ? 'var(--sel-bg)'
                       : 'transparent',
@@ -1393,7 +1393,7 @@ export function CoachDashboardView({
                   padding: '6px 12px',
                   borderRadius: 999,
                   border:
-                    selectedGroupFilter === 'all' ? '1px solid var(--sel-bg)'
+                    selectedGroupFilter === 'all' ? '1px solid var(--sel-border)'
                       : '1px solid var(--line-2)',
                   background:
                     selectedGroupFilter === 'all' ? 'var(--sel-bg)'
@@ -1424,7 +1424,7 @@ export function CoachDashboardView({
                       gap: 6,
                       padding: '6px 12px',
                       borderRadius: 999,
-                      border: active ? '1px solid var(--sel-bg)' : '1px solid var(--line-2)',
+                      border: active ? '1px solid var(--sel-border)' : '1px solid var(--line-2)',
                       background: active ? 'var(--sel-bg)' : 'transparent',
                       color: active ? 'var(--sel-text)' : 'var(--text)',
                       fontSize: 13,
@@ -1453,7 +1453,7 @@ export function CoachDashboardView({
                   padding: '6px 12px',
                   borderRadius: 999,
                   border:
-                    selectedGroupFilter === 'unassigned' ? '1px solid var(--sel-bg)'
+                    selectedGroupFilter === 'unassigned' ? '1px solid var(--sel-border)'
                       : '1px solid var(--line-2)',
                   background:
                     selectedGroupFilter === 'unassigned' ? 'var(--sel-bg)'
@@ -2846,7 +2846,7 @@ export function CoachDashboardView({
                             style={{
                               padding: '5px 10px',
                               borderRadius: 999,
-                              border: active ? '1px solid var(--sel-bg)'
+                              border: active ? '1px solid var(--sel-border)'
                                 : '1px solid var(--line)',
                               background: active ? 'var(--sel-bg)'
                                 : 'var(--card)',

@@ -55,6 +55,7 @@
 
 :root[data-mantine-color-scheme='light'] {
   color-scheme: light;
+  --sel-border: var(--btn-primary);
 
   --bg: #f2f2f4;
   --card: #ffffff;
@@ -97,6 +98,8 @@
 
   /* Selected state for chips / segmented controls (never orange). */
   --sel-bg: var(--btn-primary);
+  /* Outline of a selected control: a faint light ring in dark so the gray fill reads on dark cards. */
+  --sel-border: rgba(255, 255, 255, 0.34);
   --sel-text: var(--btn-primary-text);
 
   /* Macro colours — reserved for nutrition only. */

@@ -296,7 +296,7 @@ export function CalendarSheet({
                     cursor: 'pointer',
                     background: on ? 'var(--sel-bg)' : 'transparent',
                     color: on ? 'var(--sel-text)' : act ? 'var(--text)' : 'var(--text-3)',
-                    border: `1px solid ${on ? 'var(--sel-bg)' : act ? 'var(--line-2)' : 'var(--line)'}`,
+                    border: `1px solid ${on ? 'var(--sel-border)' : act ? 'var(--line-2)' : 'var(--line)'}`,
                   }}
                 >
                   {name}

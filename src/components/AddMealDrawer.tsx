@@ -2417,7 +2417,7 @@ export function AddMealDrawer({
                           padding: '4px 10px',
                           borderRadius: 999,
                           cursor: 'pointer',
-                          border: active ? '1px solid var(--sel-bg)'
+                          border: active ? '1px solid var(--sel-border)'
                             : '1px solid var(--border-subtle)',
                           background: active ? 'var(--sel-bg)'
                             : 'var(--bg-surface-2)',
@@ -3965,7 +3965,7 @@ export function AddMealDrawer({
                       style={{
                         padding: '6px 11px',
                         borderRadius: 999,
-                        border: active ? '1px solid var(--sel-bg)'
+                        border: active ? '1px solid var(--sel-border)'
                           : uOpt.isUser
                           ? '1px solid rgba(56, 189, 248, 0.38)'
                           : '1px solid var(--border-subtle)',

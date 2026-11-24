@@ -223,7 +223,7 @@ export function AiQuickContextPanel({
     display: 'inline-flex',
     alignItems: 'center',
     gap: 5,
-    border: `1px solid ${active ? 'var(--sel-bg)' : 'var(--line-2)'}`,
+    border: `1px solid ${active ? 'var(--sel-border)' : 'var(--line-2)'}`,
     background: active ? 'var(--sel-bg)' : 'transparent',
     color: active ? 'var(--sel-text)' : 'var(--text)',
   });

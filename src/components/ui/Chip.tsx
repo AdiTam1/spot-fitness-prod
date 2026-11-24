@@ -40,7 +40,7 @@ export function Chip({
         fontWeight: selected ? 700 : 500,
         background: selected ? 'var(--sel-bg)' : 'transparent',
         color: selected ? 'var(--sel-text)' : 'var(--text)',
-        border: `1px solid ${selected ? 'var(--sel-bg)' : 'var(--line-2)'}`,
+        border: `1px solid ${selected ? 'var(--sel-border)' : 'var(--line-2)'}`,
         display: 'inline-flex',
         alignItems: 'center',
         gap: 6,

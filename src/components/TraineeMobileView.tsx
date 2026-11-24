@@ -552,73 +552,94 @@ export function TraineeMobileView({
     >
       {isCoachPreview && onExitCoachPreview && (
         <div
+          role="status"
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '10px 14px',
-            borderRadius: 14,
-            background: 'var(--surface-2)',
-            border: '1px solid var(--line-2)',
+            flexWrap: 'wrap',
+            gap: 10,
+            padding: '12px 16px',
+            borderRadius: 24,
+            background: 'var(--card)',
+            border: '1px solid var(--line)',
+            boxShadow: 'var(--card-shadow)',
             marginBottom: 14,
           }}
         >
-          <span
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: 'var(--accent-volt)',
-            }}
-          >
-            תצוגת מאמן: צופה באפליקציה של {trainee.name}
+          <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>תצוגת מאמן</span>
+            <span style={{ fontSize: 16, fontWeight: 700 }}>צופה באפליקציה של {trainee.name}</span>
           </span>
           <button
+            type="button"
             onClick={onExitCoachPreview}
             className="btn-volt"
-            style={{
-              padding: '5px 12px',
-              fontSize: 12,
-              cursor: 'pointer',
-            }}
+            style={{ height: 44, padding: '0 18px', fontSize: 15, cursor: 'pointer', flex: 'none' }}
           >
-            חזרה לדשבורד מאמן
+            חזרה לדשבורד
           </button>
         </div>
       )}
 
       {/* תזכורת להשלמת מדידת היקפים אם המתאמן דילג עליה ב-Onboarding */}
       {!trainee.onboarding?.measurementsCompleted && !latestMeasurement && (
-        <div
+        <button
+          type="button"
           onClick={() => setMeasurementModalOpen(true)}
           style={{
+            width: '100%',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '10px 14px',
-            borderRadius: 14,
-            background: 'var(--surface-2)',
-            border: '1px solid var(--line-2)',
-            marginBottom: 12,
+            gap: 12,
+            padding: '12px 14px',
+            borderRadius: 24,
+            background: 'var(--card)',
+            border: '1px solid var(--line)',
+            boxShadow: 'var(--card-shadow)',
+            marginBottom: 14,
             cursor: 'pointer',
+            fontFamily: 'inherit',
+            color: 'var(--text)',
+            textAlign: 'start',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Ruler size={16} color="var(--text-2)" />
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#38bdf8' }}>
-              טרם השלמת מדידת היקפים ראשונית – לחץ להדרכה מונפשת
-            </span>
-          </div>
           <span
+            aria-hidden
             style={{
-              fontSize: 12,
-              fontWeight: 800,
-              color: '#38bdf8',
-              textDecoration: 'underline',
+              width: 44,
+              height: 44,
+              borderRadius: 16,
+              background: 'var(--surface-2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flex: 'none',
             }}
           >
-            השלם כעת
+            <Ruler size={20} />
           </span>
-        </div>
+          <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 15, fontWeight: 600 }}>מדידת היקפים ראשונית</span>
+            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>טרם הושלמה · הדרכה מונפשת</span>
+          </span>
+          <span
+            style={{
+              height: 36,
+              padding: '0 14px',
+              borderRadius: 999,
+              background: 'var(--btn-primary)',
+              color: 'var(--btn-primary-text)',
+              fontSize: 14,
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              flex: 'none',
+            }}
+          >
+            השלם
+          </span>
+        </button>
       )}
 
       {/* Journal & metrics share the date header + week strip; profile has its own header */}
@@ -1442,7 +1463,7 @@ export function TraineeMobileView({
                             style={{
                               padding: '5px 10px',
                               borderRadius: 999,
-                              border: isSelected ? '1px solid var(--sel-bg)'
+                              border: isSelected ? '1px solid var(--sel-border)'
                                 : '1px solid var(--border-subtle)',
                               background: isSelected ? 'var(--sel-bg)'
                                 : 'var(--bg-surface-1)',
@@ -1558,7 +1579,7 @@ export function TraineeMobileView({
                             style={{
                               padding: '5px 10px',
                               borderRadius: 999,
-                              border: isSelected ? '1px solid var(--sel-bg)'
+                              border: isSelected ? '1px solid var(--sel-border)'
                                 : '1px solid var(--border-subtle)',
                               background: isSelected ? 'var(--sel-bg)'
                                 : 'var(--bg-surface-1)',
@@ -1650,7 +1671,7 @@ export function TraineeMobileView({
                             style={{
                               padding: '6px 2px',
                               borderRadius: 8,
-                              border: isSelected ? '1px solid var(--sel-bg)'
+                              border: isSelected ? '1px solid var(--sel-border)'
                                 : '1px solid var(--border-subtle)',
                               background: isSelected ? 'var(--sel-bg)'
                                 : 'var(--bg-surface-1)',
@@ -1685,7 +1706,7 @@ export function TraineeMobileView({
                             style={{
                               padding: '6px 2px',
                               borderRadius: 8,
-                              border: isSelected ? '1px solid var(--sel-bg)'
+                              border: isSelected ? '1px solid var(--sel-border)'
                                 : '1px solid var(--border-subtle)',
                               background: isSelected ? 'var(--sel-bg)'
                                 : 'var(--bg-surface-1)',
@@ -2736,7 +2757,7 @@ export function TraineeMobileView({
                 }}
               >
                 {buildWeeklySummary().stats.map((s) => (
-                  <div key={s.label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div key={s.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
                     <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 20, fontWeight: 700 }}>
                       {s.value}
                     </bdi>
@@ -2779,7 +2800,7 @@ export function TraineeMobileView({
                             style={{
                               height: 44,
                               borderRadius: 14,
-                              border: `1px solid ${on ? 'var(--sel-bg)' : 'var(--line-2)'}`,
+                              border: `1px solid ${on ? 'var(--sel-border)' : 'var(--line-2)'}`,
                               background: on ? 'var(--sel-bg)' : 'transparent',
                               color: on ? 'var(--sel-text)' : 'var(--text)',
                               fontSize: 16,

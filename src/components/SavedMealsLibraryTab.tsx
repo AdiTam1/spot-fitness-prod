@@ -486,7 +486,7 @@ export function SavedMealsLibraryTab({
               cursor: 'pointer',
               flex: 'none',
               whiteSpace: 'nowrap',
-              border: `1px solid ${filterMode === f.id ? 'var(--sel-bg)' : 'var(--line-2)'}`,
+              border: `1px solid ${filterMode === f.id ? 'var(--sel-border)' : 'var(--line-2)'}`,
               background: filterMode === f.id ? 'var(--sel-bg)' : 'transparent',
               color: filterMode === f.id ? 'var(--sel-text)' : 'var(--text)',
             }}
