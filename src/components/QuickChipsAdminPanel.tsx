@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Select, TextInput } from '@mantine/core';
-import { Loader2, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { Loader2, Plus, Sparkles, X } from 'lucide-react';
 import { QuickChipCategory, QuickContextChip } from '@/types/nutrition';
 
 interface QuickChipsAdminPanelProps {
@@ -85,59 +85,48 @@ export function QuickChipsAdminPanel({
   };
 
   return (
-    <div
-      style={{
-        background: 'var(--bg-surface-2)',
-        border: '1px solid rgba(56, 189, 248, 0.25)',
-        borderRadius: 14,
-        padding: '12px 14px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 10,
-      }}
-    >
-      <div>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            fontSize: 13,
-            fontWeight: 800,
-            color: 'var(--info-text)',
-          }}
-        >
-          <Sparkles size={14} color="currentColor" />
-          <span>{title}</span>
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-          {subtitle}
-        </div>
+    <section style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, lineHeight: 1.2, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Sparkles size={18} color="var(--text-2)" />
+          {title}
+        </h2>
+        <span style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 2 }}>{subtitle}</span>
       </div>
 
       {errMsg && (
-        <div style={{ fontSize: 12, color: 'var(--danger-text)', fontWeight: 600 }}>{errMsg}</div>
+        <div role="alert" style={{ fontSize: 13, color: 'var(--danger-text)', fontWeight: 600 }}>
+          {errMsg}
+        </div>
       )}
 
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: '1.4fr 0.9fr auto',
-          gap: 8,
-          alignItems: 'end',
+          background: 'var(--card)',
+          border: '1px solid var(--line)',
+          borderRadius: 24,
+          padding: 16,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
         }}
       >
         <TextInput
-          size="xs"
-          label="טקסט הצ׳יפ המהיר"
-          placeholder="למשל: בלי רוטב / פסטה מבושלת / טחינה כף"
+          label="טקסט הצ׳יפ"
+          placeholder="למשל: בלי רוטב / טחינה כף"
           value={label}
           onChange={(e) => setLabel(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void handleAdd();
+            }
+          }}
         />
         <Select
-          size="xs"
           label="קטגוריה"
           value={category}
+          allowDeselect={false}
           onChange={(v) => setCategory((v as QuickChipCategory) || 'prep')}
           data={CHIP_CAT_OPTIONS}
         />
@@ -146,64 +135,65 @@ export function QuickChipsAdminPanel({
           disabled={busy || !label.trim()}
           onClick={handleAdd}
           className="btn-volt"
-          style={{
-            padding: '7px 12px',
-            fontSize: 12,
-            fontWeight: 800,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 5,
-            cursor: 'pointer',
-          }}
+          style={{ height: 48, fontSize: 15, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer' }}
         >
-          {busy ? <Loader2 size={13} className="spot-spinner" /> : <Plus size={13} />}
+          {busy ? <Loader2 size={15} className="spot-spinner" /> : <Plus size={15} />}
           <span>הוסף צ׳יפ</span>
         </button>
       </div>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {chips.length === 0 ? (
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            טרם הוגדרו צ׳יפים ברמה זו.
-          </span>
-        ) : (
-          chips.map((c) => (
-            <span
-              key={c.id}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '4px 10px',
-                borderRadius: 999,
-                background: 'var(--bg-surface-1)',
-                border: '1px solid var(--border-subtle)',
-                fontSize: 12,
-                fontWeight: 700,
-              }}
-            >
-              <span>{c.label}</span>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>({c.category})</span>
-              <button
-                type="button"
-                title="הסר צ׳יפ"
-                disabled={busy}
-                onClick={() => handleDelete(c.id)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  padding: 0,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-              >
-                <Trash2 size={11} color="var(--danger-text)" />
-              </button>
-            </span>
-          ))
-        )}
-      </div>
-    </div>
+      {chips.length === 0 ? (
+        <span style={{ fontSize: 13, color: 'var(--text-3)' }}>טרם הוגדרו צ׳יפים ברמה זו.</span>
+      ) : (
+        CHIP_CAT_OPTIONS.map((cat) => {
+          const inCat = chips.filter((c) => c.category === cat.value);
+          if (inCat.length === 0) return null;
+          return (
+            <div key={cat.value} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{cat.label}</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {inCat.map((c) => (
+                  <span
+                    key={c.id}
+                    style={{
+                      height: 36,
+                      padding: '0 4px 0 14px',
+                      borderRadius: 999,
+                      border: '1px solid var(--line-2)',
+                      fontSize: 14,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                    }}
+                  >
+                    {c.label}
+                    <button
+                      type="button"
+                      aria-label={`הסר צ׳יפ ${c.label}`}
+                      disabled={busy}
+                      onClick={() => handleDelete(c.id)}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 999,
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--text-2)',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <X size={13} strokeWidth={2.4} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        })
+      )}
+    </section>
   );
 }

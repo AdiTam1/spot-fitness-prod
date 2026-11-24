@@ -202,9 +202,7 @@ export function AdminScrapersPanel({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* כותרת ופעולות מהירות */}
       <div
-        className="pro-card"
         style={{
-          padding: 20,
           display: 'flex',
           flexDirection: 'column',
           gap: 16,
@@ -222,7 +220,7 @@ export function AdminScrapersPanel({
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Globe size={20} color="currentColor" />
-              <h2 style={{ fontSize: 18, fontWeight: 900, margin: 0 }}>
+              <h2 style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.25, margin: 0 }}>
                 סופרים ישראליים, חנויות טבע וניטור אוטומטי ({results.length || 12} מקורות)
               </h2>
             </div>
@@ -249,9 +247,10 @@ export function AdminScrapersPanel({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
-                padding: '9px 16px',
-                fontSize: 13,
-                fontWeight: 800,
+                height: 52,
+                padding: '0 20px',
+                fontSize: 15,
+                fontWeight: 700,
                 cursor: 'pointer',
               }}
             >
@@ -276,9 +275,10 @@ export function AdminScrapersPanel({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
-                padding: '9px 15px',
-                fontSize: 13,
-                fontWeight: 700,
+                height: 52,
+                padding: '0 18px',
+                fontSize: 15,
+                fontWeight: 600,
                 cursor: 'pointer',
                 borderColor: 'var(--line-2)',
               }}
@@ -302,17 +302,17 @@ export function AdminScrapersPanel({
           <div
             style={{
               padding: '12px 14px',
-              borderRadius: 12,
-              background: 'rgba(255, 94, 126, 0.12)',
-              border: '1px solid rgba(255, 94, 126, 0.45)',
+              borderRadius: 18,
+              background: 'var(--surface-2)',
+              border: '1px solid var(--line-2)',
               display: 'flex',
               alignItems: 'flex-start',
               gap: 10,
             }}
           >
-            <ShieldAlert size={18} color="#ff5e7e" style={{ flexShrink: 0, marginTop: 2 }} />
+            <ShieldAlert size={18} color="var(--danger-text)" style={{ flexShrink: 0, marginTop: 2 }} />
             <div style={{ fontSize: 12.5, lineHeight: 1.55 }}>
-              <strong style={{ color: '#ff8da3' }}>
+              <strong style={{ color: 'var(--danger-text)' }}>
                 התראת תחזוקה: {brokenList.length} מתוך {results.length} הסקרייפרים נכשלו בבדיקה ודורשים עדכון!
               </strong>
               <div style={{ color: 'var(--text-secondary)', marginTop: 2 }}>
@@ -347,21 +347,21 @@ export function AdminScrapersPanel({
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
             gap: 10,
           }}
         >
           <div
             style={{
-              padding: 12,
-              borderRadius: 12,
-              background: 'var(--bg-surface-2)',
-              border: '1px solid var(--border-subtle)',
+              padding: 16,
+              borderRadius: 22,
+              background: 'var(--card)',
+              border: '1px solid var(--line)',
             }}
           >
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>סטטוס סקרייפרים</div>
-            <div className="num-mono" style={{ fontSize: 20, fontWeight: 900, marginTop: 4 }}>
-              <span style={{ color: 'var(--ok-text)' }}>{report?.totalHealthy ?? 0}</span>
+            <div className="num-mono" style={{ fontSize: 26, fontWeight: 700, marginTop: 4 }}>
+              <span>{report?.totalHealthy ?? 0}</span>
               <span style={{ color: 'var(--text-muted)', fontSize: 14 }}> / {results.length || 12} תקינים</span>
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
@@ -371,16 +371,16 @@ export function AdminScrapersPanel({
 
           <div
             style={{
-              padding: 12,
-              borderRadius: 12,
-              background: 'var(--bg-surface-2)',
-              border: '1px solid var(--border-subtle)',
+              padding: 16,
+              borderRadius: 22,
+              background: 'var(--card)',
+              border: '1px solid var(--line)',
             }}
           >
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>מוצרים שמורים במאגר</div>
             <div
               className="num-mono"
-              style={{ fontSize: 20, fontWeight: 900, marginTop: 4, color: 'var(--accent-volt)' }}
+              style={{ fontSize: 26, fontWeight: 700, marginTop: 4 }}
             >
               {Math.max(
                 report?.totalScrapedCatalogItems ?? 0,
@@ -396,10 +396,10 @@ export function AdminScrapersPanel({
 
           <div
             style={{
-              padding: 12,
-              borderRadius: 12,
-              background: 'var(--bg-surface-2)',
-              border: '1px solid var(--border-subtle)',
+              padding: 16,
+              borderRadius: 22,
+              background: 'var(--card)',
+              border: '1px solid var(--line)',
             }}
           >
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>בדיקה אוטומטית אחרונה</div>
@@ -418,10 +418,10 @@ export function AdminScrapersPanel({
 
           <div
             style={{
-              padding: 12,
-              borderRadius: 12,
-              background: 'var(--bg-surface-2)',
-              border: '1px solid var(--border-subtle)',
+              padding: 16,
+              borderRadius: 22,
+              background: 'var(--card)',
+              border: '1px solid var(--line)',
             }}
           >
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>לוח בדיקה אוטומטית</div>

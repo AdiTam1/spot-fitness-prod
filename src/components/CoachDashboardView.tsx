@@ -5353,6 +5353,10 @@ export function CoachDashboardView({
       {/* ===================================================================== */}
       {activeSection === 'coaches' && isSuperAdmin && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <header style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>מנהל ראשי</span>
+            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, lineHeight: 1.2 }}>ניהול מאמנים</h1>
+          </header>
           <div
             className="pro-card"
             style={{
@@ -5702,7 +5706,7 @@ export function CoachDashboardView({
           </div>
 
           {onUpdateAppPolicy && (
-            <div className="pro-card" style={{ padding: 20 }}>
+            <div className="pro-card" style={{ padding: 20, borderRadius: 28 }}>
               <div
                 style={{
                   display: 'flex',
@@ -5716,8 +5720,8 @@ export function CoachDashboardView({
                 <div>
                   <div
                     style={{
-                      fontSize: 16,
-                      fontWeight: 800,
+                      fontSize: 20,
+                      fontWeight: 700,
                       display: 'flex',
                       alignItems: 'center',
                       gap: 8,
