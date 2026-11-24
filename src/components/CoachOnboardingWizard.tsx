@@ -471,7 +471,7 @@ export function CoachOnboardingWizard({
                         minHeight: 40,
                         padding: '0 14px',
                         borderRadius: 999,
-                        border: selected ? '1px solid var(--sel-bg)'
+                        border: selected ? '1px solid var(--sel-border)'
                           : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)'
                           : 'var(--bg-surface-1)',
@@ -584,7 +584,7 @@ export function CoachOnboardingWizard({
                       padding: '0 4px',
                       borderRadius: 14,
                       border:
-                        defaultObservationDays === opt.days ? '1px solid var(--sel-bg)'
+                        defaultObservationDays === opt.days ? '1px solid var(--sel-border)'
                           : '1px solid var(--line-2)',
                       background:
                         defaultObservationDays === opt.days ? 'var(--sel-bg)'
@@ -637,7 +637,7 @@ export function CoachOnboardingWizard({
                     padding: '0 6px',
                     borderRadius: 14,
                     border: !defaultCountObservationInStats
-                      ? '1px solid var(--sel-bg)'
+                      ? '1px solid var(--sel-border)'
                       : '1px solid var(--line-2)',
                     background: !defaultCountObservationInStats
                       ? 'var(--sel-bg)'
@@ -660,7 +660,7 @@ export function CoachOnboardingWizard({
                     padding: '0 6px',
                     borderRadius: 14,
                     border: defaultCountObservationInStats
-                      ? '1px solid var(--sel-bg)'
+                      ? '1px solid var(--sel-border)'
                       : '1px solid var(--line-2)',
                     background: defaultCountObservationInStats
                       ? 'var(--sel-bg)'
@@ -708,7 +708,7 @@ export function CoachOnboardingWizard({
                         padding: '0 2px',
                         borderRadius: 14,
                         border:
-                          defaultTolerancePercent === pct ? '1px solid var(--sel-bg)'
+                          defaultTolerancePercent === pct ? '1px solid var(--sel-border)'
                             : '1px solid var(--line-2)',
                         background:
                           defaultTolerancePercent === pct ? 'var(--sel-bg)'
@@ -751,7 +751,7 @@ export function CoachOnboardingWizard({
                         borderRadius: 14,
                         border:
                           defaultWaterGoal === cups
-                            ? '1px solid var(--sel-bg)'
+                            ? '1px solid var(--sel-border)'
                             : '1px solid var(--line-2)',
                         background: defaultWaterGoal === cups ? 'var(--sel-bg)' : 'transparent',
                         color: defaultWaterGoal === cups ? 'var(--sel-text)' : 'var(--text)',
@@ -942,7 +942,7 @@ export function CoachOnboardingWizard({
                           fontSize: 12,
                           fontWeight: 700,
                           cursor: 'pointer',
-                          border: selected ? '1px solid var(--sel-bg)'
+                          border: selected ? '1px solid var(--sel-border)'
                             : '1px solid var(--line-2)',
                           background: selected ? 'var(--sel-bg)'
                             : 'var(--bg-surface-1)',
@@ -1138,7 +1138,7 @@ export function CoachOnboardingWizard({
                       style={{
                         padding: '6px 11px',
                         borderRadius: 999,
-                        border: selected ? '1px solid var(--sel-bg)'
+                        border: selected ? '1px solid var(--sel-border)'
                           : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)'
                           : 'var(--bg-surface-1)',

@@ -582,7 +582,7 @@ export function TraineeOnboardingWizard({
                         minHeight: 40,
                         padding: '0 14px',
                         borderRadius: 999,
-                        border: selected ? '1px solid var(--sel-bg)'
+                        border: selected ? '1px solid var(--sel-border)'
                           : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)'
                           : 'transparent',
@@ -631,7 +631,7 @@ export function TraineeOnboardingWizard({
                         minHeight: 40,
                         padding: '0 14px',
                         borderRadius: 999,
-                        border: selected ? '1px solid var(--sel-bg)'
+                        border: selected ? '1px solid var(--sel-border)'
                           : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)'
                           : 'transparent',
@@ -736,7 +736,7 @@ export function TraineeOnboardingWizard({
                         minHeight: 40,
                         padding: '0 14px',
                         borderRadius: 999,
-                        border: selected ? '1px solid var(--sel-bg)'
+                        border: selected ? '1px solid var(--sel-border)'
                           : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)'
                           : 'transparent',
@@ -798,7 +798,7 @@ export function TraineeOnboardingWizard({
                         padding: '0 14px',
                         borderRadius: 999,
                         border: selected
-                          ? '1px solid var(--sel-bg)'
+                          ? '1px solid var(--sel-border)'
                           : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)' : 'transparent',
                         color: selected ? 'var(--sel-text)' : 'var(--text)',
@@ -987,7 +987,7 @@ export function TraineeOnboardingWizard({
                         minHeight: 40,
                         padding: '0 14px',
                         borderRadius: 999,
-                        border: selected ? '1px solid var(--sel-bg)'
+                        border: selected ? '1px solid var(--sel-border)'
                           : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)'
                           : 'transparent',
@@ -1044,7 +1044,7 @@ export function TraineeOnboardingWizard({
                         minHeight: 40,
                         padding: '0 14px',
                         borderRadius: 999,
-                        border: selected ? '1px solid var(--sel-bg)'
+                        border: selected ? '1px solid var(--sel-border)'
                           : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)'
                           : 'transparent',
@@ -1147,7 +1147,7 @@ export function TraineeOnboardingWizard({
                         minHeight: 40,
                         padding: '0 14px',
                         borderRadius: 999,
-                        border: selected ? '1px solid var(--sel-bg)'
+                        border: selected ? '1px solid var(--sel-border)'
                           : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)'
                           : 'var(--bg-surface-1)',
@@ -1203,7 +1203,7 @@ export function TraineeOnboardingWizard({
                         minHeight: 40,
                         padding: '0 14px',
                         borderRadius: 999,
-                        border: selected ? '1px solid var(--sel-bg)' : '1px solid var(--line-2)',
+                        border: selected ? '1px solid var(--sel-border)' : '1px solid var(--line-2)',
                         background: selected ? 'var(--sel-bg)' : 'transparent',
                         color: selected ? 'var(--sel-text)' : 'var(--text)',
                         fontSize: 14,

@@ -34,6 +34,7 @@ import {
   X,
   ChevronRight,
   ChevronLeft,
+  SlidersHorizontal,
   Utensils,
   FolderOpen,
   CalendarDays,
@@ -201,6 +202,7 @@ export function AddMealDrawer({
 }: AddMealDrawerProps) {
   useSpotUnsavedEditing('add-meal-drawer', opened);
   const [activeTab, setActiveTab] = useState<string>(initialTab);
+  const isDesignHeader = activeTab === 'ai-recommend' || activeTab === 'saved-meals';
   const [items, setItems] = useState<LoggedFoodItem[]>([]);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | undefined>(
     undefined
@@ -302,6 +304,7 @@ export function AddMealDrawer({
     }
   };
 
+  const hadInitialItemsRef = useRef(false);
   const lastOpenedKeyRef = useRef<string>('');
   const slotBgProcessingJob =
     opened && mealSlot
@@ -343,6 +346,7 @@ export function AddMealDrawer({
 
       if (lastOpenedKeyRef.current !== openKey) {
         lastOpenedKeyRef.current = openKey;
+        hadInitialItemsRef.current = Boolean(existingEntry?.items?.length);
         setItems(existingEntry?.items ? [...existingEntry.items] : []);
         setPhotoDataUrl(entryPhotos[0] || existingEntry?.photoDataUrl);
         setPhotoItems(
@@ -503,7 +507,7 @@ export function AddMealDrawer({
     for (const t of customServingTools) {
       const g = Number(t.defaultFoodGrams || t.volumeMl || 0);
       if (g > 0) {
-        pushUnit(`🍽️ ${t.name} (${Math.round(g)} גרם)`, Math.round(g), true);
+        pushUnit(`${t.name} (${Math.round(g)} גרם)`, Math.round(g), true);
       }
     }
     if (!out.some((u) => u.grams === 100)) {
@@ -1135,6 +1139,8 @@ export function AddMealDrawer({
     : [];
 
   const dateInfo = formatDrawerDateLabel(selectedDate);
+  const fullScreen = activeTab !== 'hub' && activeTab !== 'catalog';
+  const heroScreen = activeTab === 'meal-items' && allMealPhotos.length > 0;
 
   return (
     <>
@@ -1144,8 +1150,9 @@ export function AddMealDrawer({
           if (!savingMeal) onClose();
         }}
         position="bottom"
-        size="93%"
+        size={fullScreen ? '100%' : '93%'}
         zIndex={200}
+        classNames={{ content: fullScreen ? (heroScreen ? 'add-meal-full add-meal-hero' : 'add-meal-full') : undefined }}
         overlayProps={{ backgroundOpacity: 0.55, blur: 3 }}
         withCloseButton={false}
         styles={{
@@ -1157,7 +1164,7 @@ export function AddMealDrawer({
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            maxHeight: '94dvh',
+            maxHeight: fullScreen ? '100dvh' : '94dvh',
           },
           body: {
             padding: 0,
@@ -1172,26 +1179,27 @@ export function AddMealDrawer({
         {/* Fixed (non-scrolling) top: grabber, title, meal time, search */}
         <div
           style={{
-            padding: '10px 20px 12px',
-            borderBottom: activeTab === 'hub' && !trimmedQuery ? 'none' : '1px solid var(--border-subtle)',
-            background: 'var(--card)',
+            padding: fullScreen ? 'calc(var(--sa-top, 0px) + 12px) 20px 12px' : '10px 20px 12px',
+            borderBottom: (activeTab === 'hub' && !trimmedQuery) || fullScreen ? 'none' : '1px solid var(--border-subtle)',
+            background: fullScreen ? 'transparent' : 'var(--card)',
+            ...(heroScreen ? { position: 'absolute' as const, insetInline: 0, insetBlockStart: 0, zIndex: 3, padding: 0 } : {}),
             display: 'flex',
             flexDirection: 'column',
             gap: 12,
             flexShrink: 0,
           }}
         >
-          <div className="sheet-grabber" aria-hidden />
+          {!fullScreen && <div className="sheet-grabber" aria-hidden />}
           <div
             style={{
-              display: 'flex',
+              display: activeTab === 'meal-items' && allMealPhotos.length > 0 ? 'none' : 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: 10,
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-              {(activeTab !== 'hub' || trimmedQuery.length > 0) && (
+              {(activeTab !== 'hub' || trimmedQuery.length > 0) && activeTab !== 'ai-recommend' && (
                 <GlassButton
                   label="חזרה"
                   size={40}
@@ -1207,7 +1215,7 @@ export function AddMealDrawer({
                 <h2
                   style={{
                     margin: 0,
-                    fontSize: activeTab === 'hub' ? 24 : 19,
+                    fontSize: activeTab === 'hub' || isDesignHeader ? 24 : 19,
                     fontWeight: 700,
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
@@ -1215,8 +1223,20 @@ export function AddMealDrawer({
                     color: 'var(--text)',
                   }}
                 >
-                  {activeTab === 'hub' ? 'מה אכלת?' : mealSlot.name}
+                  {activeTab === 'hub'
+                    ? 'מה אכלת?'
+                    : activeTab === 'ai-recommend'
+                    ? 'מה לאכול?'
+                    : activeTab === 'saved-meals'
+                    ? 'ארוחות שמורות'
+                    : mealSlot.name}
                 </h2>
+                {activeTab === 'ai-recommend' && (
+                  <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                    {mealSlot.name} · המלצות המאמן וה-AI
+                  </div>
+                )}
+                {activeTab !== 'ai-recommend' && activeTab !== 'saved-meals' && (
                 <div
                   style={{
                     display: 'flex',
@@ -1270,8 +1290,24 @@ export function AddMealDrawer({
                     )}
                   </span>
                 </div>
+                )}
               </div>
             </div>
+            {activeTab === 'ai-recommend' ? (
+              <GlassButton label="חזרה" onClick={() => setActiveTab('hub')}>
+                <ChevronLeft size={18} />
+              </GlassButton>
+            ) : activeTab === 'saved-meals' ? (
+              <GlassButton
+                label="ניהול כלים ויחידות מידה"
+                onClick={() => {
+                  setToolsInitialSection('tools');
+                  setToolsModalOpen(true);
+                }}
+              >
+                <SlidersHorizontal size={18} />
+              </GlassButton>
+            ) : (
             <GlassButton
               label="סגירה"
               data-autofocus
@@ -1281,6 +1317,7 @@ export function AddMealDrawer({
             >
               <X size={18} strokeWidth={2.2} />
             </GlassButton>
+            )}
           </div>
 
           {/* Meal type — preselected by time, switches the slot being logged */}
@@ -1640,13 +1677,13 @@ export function AddMealDrawer({
             flex: 1,
             minHeight: 0,
             overflowY: 'auto',
-            padding: '14px 16px 20px',
+            padding: heroScreen ? '0 16px 20px' : '14px 16px 20px',
             display: 'flex',
             flexDirection: 'column',
             gap: 14,
           }}
         >
-          {aiSummary && (
+          {aiSummary && !heroScreen && (
             <div
               style={{
                 padding: '10px 14px',
@@ -1679,7 +1716,7 @@ export function AddMealDrawer({
                 {aiSummary.engine && (
                   <div style={{ marginTop: 4, fontSize: 12, opacity: 0.95 }}>
                     {aiSummary.isFallback
-                      ? `⚠️ תג תחקור: לא AI פיענח (${aiSummary.engine})${
+                      ? `תג תחקור: לא AI פיענח (${aiSummary.engine})${
                           aiSummary.fallbackReason
                             ? ` · סיבה: ${aiSummary.fallbackReason}`
                             : ''
@@ -1995,350 +2032,252 @@ export function AddMealDrawer({
 
           {/* לשונית מיוחדת: 💡 מה לאכול? (המלצות המאמן + Smart Macro Finisher + למידת העדפות ללא צ'אט) */}
           {activeTab === 'ai-recommend' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* אופציות מומלצות של המאמן לארוחה זו */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {/* Coach options (design: AiRecommend) */}
                 {mealSlot.recommendedOptions && mealSlot.recommendedOptions.length > 0 && (
-                  <div
-                    style={{
-                      background: 'var(--bg-surface-2)',
-                      border: '1px solid var(--line-2)',
-                      borderRadius: 14,
-                      padding: 12,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 800,
-                        color: 'var(--accent-volt)',
-                        marginBottom: 8,
-                      }}
-                    >
-                      ⭐ אופציות מומלצות של המאמן ל{mealSlot.name} (הוספה בקליק):
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {mealSlot.recommendedOptions.map((optText, idx) => (
-                        <div
-                          key={idx}
+                  <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <span style={{ fontSize: 13, color: 'var(--text-2)' }}>אופציות של המאמן לארוחה זו</span>
+                    {mealSlot.recommendedOptions.map((optText, idx) => (
+                      <article
+                        key={idx}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                          padding: '14px 16px',
+                          borderRadius: 22,
+                          background: 'var(--card)',
+                          border: '1px solid var(--line)',
+                          boxShadow: 'var(--card-shadow)',
+                        }}
+                      >
+                        <span style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 600, lineHeight: 1.35 }}>{optText}</span>
+                        <button
+                          type="button"
+                          disabled={aiLoading}
+                          onClick={() => runAiAnalysis('text', optText, idx)}
+                          className="btn-surface"
                           style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
+                            height: 44,
+                            padding: '0 16px',
+                            borderRadius: 999,
+                            fontFamily: 'inherit',
+                            fontSize: 14,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            flex: 'none',
+                            display: 'inline-flex',
                             alignItems: 'center',
-                            gap: 8,
-                            padding: '8px 10px',
-                            borderRadius: 10,
-                            background: 'var(--fill-1)',
-                            border: '1px solid var(--border-subtle)',
-                          }}
-                        >
-                          <span style={{ fontSize: 12, fontWeight: 600 }}>{optText}</span>
-                          <button
-                            disabled={aiLoading}
-                            onClick={() => runAiAnalysis('text', optText, idx)}
-                            className="btn-surface"
-                            style={{
-                              padding: '5px 10px',
-                              fontSize: 12,
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap',
-                              color: 'var(--accent-volt)',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 4,
-                            }}
-                          >
-                            {addingOptionIdx === idx && (
-                              <Loader2 size={12} className="spot-spinner" />
-                            )}
-                            <span>
-                              {addingOptionIdx === idx ? 'מנתח ומוסיף...' : '+ בחר והוסף'}
-                            </span>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* כפתור Smart Macro Finisher */}
-                <div
-                  style={{
-                    background: 'var(--bg-surface-2)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 14,
-                    padding: 14,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      flexWrap: 'wrap',
-                      gap: 8,
-                      marginBottom: 10,
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 800 }}>
-                        🤖 השלמת מאקרו חכמה (Smart Macro Finisher)
-                      </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                        יתרה להשלמה בארוחה זו:{' '}
-                        <b className="num-mono" style={{ color: 'var(--accent-volt)' }}>
-                          {Math.max(0, mealSlot.targets.calories - currentTotals.calories)} קק״ל · ח׳{' '}
-                          {Math.max(0, Math.round(mealSlot.targets.protein - currentTotals.protein))}g
-                        </b>
-                      </div>
-                    </div>
-
-                    <button
-                      disabled={aiRecLoading}
-                      onClick={fetchAiRecommendations}
-                      className="btn-volt"
-                      style={{
-                        padding: '8px 14px',
-                        fontSize: 12,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {aiRecLoading ? (
-                        <Loader2 size={14} className="spot-spinner" />
-                      ) : (
-                        <Sparkles size={14} />
-                      )}
-                      <span>
-                        {aiRecLoading ? 'בונה 3 הצעות מותאמות...' : 'הצע לי 3 ארוחות ליתרה'}
-                      </span>
-                    </button>
-                  </div>
-
-                  {/* הצגת העדפות שכבר נלמדו */}
-                  {learnedPreferences.length > 0 && (
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: 'var(--text-secondary)',
-                        background: 'var(--fill-1)',
-                        padding: '6px 10px',
-                        borderRadius: 8,
-                        marginBottom: 10,
-                      }}
-                    >
-                      <span style={{ color: 'var(--accent-volt)', fontWeight: 700 }}>
-                        🧠 העדפות שנלמדו בחשבון שלך:{' '}
-                      </span>
-                      {learnedPreferences.join(' · ')}
-                    </div>
-                  )}
-
-                  {/* רשימת 3 ההצעות מה-AI */}
-                  {aiRecommendations.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-                      {aiRecDebug?.engine && (
-                        <div
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 700,
-                            padding: '5px 10px',
-                            borderRadius: 8,
-                            background: aiRecDebug.isFallback
-                              ? 'rgba(245, 158, 11, 0.14)'
-                              : 'var(--fill-1)',
-                            border: aiRecDebug.isFallback
-                              ? '1px solid rgba(245, 158, 11, 0.35)'
-                              : '1px solid var(--line-2)',
-                            color: aiRecDebug.isFallback ? 'var(--warn-text)' : 'var(--accent-volt)',
-                          }}
-                        >
-                          {aiRecDebug.isFallback
-                            ? `⚠️ נוצר ע״י מנוע כללים מקומי (לא AI · ${aiRecDebug.engine})${
-                                aiRecDebug.fallbackReason
-                                  ? ` · סיבה לתחקור: ${aiRecDebug.fallbackReason}`
-                                  : ''
-                              }`
-                            : `✨ נוצר ע״י AI (${aiRecDebug.engine})`}
-                        </div>
-                      )}
-                      {aiRecommendations.map((option) => (
-                        <div
-                          key={option.id}
-                          style={{
-                            padding: 12,
-                            borderRadius: 12,
-                            background: 'var(--fill-1)',
-                            border: '1px solid var(--line-2)',
-                            display: 'flex',
-                            flexDirection: 'column',
                             gap: 6,
                           }}
                         >
-                          <div
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              gap: 8,
+                          {addingOptionIdx === idx && <Loader2 size={14} className="spot-spinner" />}
+                          {addingOptionIdx === idx ? 'מנתח…' : 'בחר והוסף'}
+                        </button>
+                      </article>
+                    ))}
+                  </section>
+                )}
+
+                {/* Smart macro finisher */}
+                <section
+                  style={{
+                    background: 'var(--card)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 26,
+                    padding: 16,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 14,
+                    boxShadow: 'var(--card-shadow)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                    <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                      <span style={{ fontSize: 17, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        השלמת מאקרו חכמה
+                        <Sparkles size={15} color="var(--accent)" />
+                      </span>
+                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>יתרה להשלמה בארוחה זו</span>
+                    </span>
+                    <span
+                      className="num-mono"
+                      style={{
+                        height: 32,
+                        padding: '0 12px',
+                        borderRadius: 999,
+                        background: 'var(--accent)',
+                        color: 'var(--on-accent)',
+                        fontSize: 14,
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        flex: 'none',
+                      }}
+                    >
+                      <bdi dir="ltr" className="ltr-num">
+                        {Math.max(0, mealSlot.targets.calories - currentTotals.calories)}
+                      </bdi>{' '}
+                      קק״ל · ח׳{' '}
+                      <bdi dir="ltr" className="ltr-num">
+                        {Math.max(0, Math.round(mealSlot.targets.protein - currentTotals.protein))}
+                      </bdi>
+                    </span>
+                  </div>
+
+                  {aiRecommendations.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {aiRecDebug?.engine && (
+                        <span style={{ fontSize: 13, color: aiRecDebug.isFallback ? 'var(--warn-text)' : 'var(--text-2)' }}>
+                          {aiRecDebug.isFallback
+                            ? `נוצר ע״י מנוע כללים מקומי (לא AI · ${aiRecDebug.engine})${
+                                aiRecDebug.fallbackReason ? ` · ${aiRecDebug.fallbackReason}` : ''
+                              }`
+                            : `נוצר ע״י AI (${aiRecDebug.engine})`}
+                        </span>
+                      )}
+                      {aiRecommendations.map((option) => (
+                        <div key={option.id} style={{ borderTop: '1px solid var(--line)', paddingTop: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <button
+                            type="button"
+                            aria-label={`הוסף את ${option.title} לארוחה`}
+                            onClick={() => {
+                              setItems((prev) => [...prev, ...option.items]);
+                              setAiSummary({ msg: `נוספה לארוחה ההצעה: "${option.title}"` });
                             }}
+                            className="glass"
+                            style={{ width: 44, height: 44, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flex: 'none' }}
                           >
-                            <div style={{ fontSize: 13, fontWeight: 800 }}>
-                              {option.title}
-                            </div>
-                            <button
-                              onClick={() => {
-                                setItems((prev) => [...prev, ...option.items]);
-                                setAiSummary({
-                                  msg: `נוספה לארוחה ההצעה: "${option.title}"`,
-                                });
-                              }}
-                              className="btn-volt"
-                              style={{
-                                padding: '5px 12px',
-                                fontSize: 12,
-                                cursor: 'pointer',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              + הוסף ארוחה זו
-                            </button>
-                          </div>
-                          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                            {option.whyItFits}
-                          </div>
-                          <div
-                            className="num-mono"
-                            style={{
-                              fontSize: 12,
-                              color: 'var(--accent-volt)',
-                              fontWeight: 700,
-                            }}
-                          >
-                            {option.totals.calories} קק״ל · חלבון {option.totals.protein}g · פחמימה{' '}
-                            {option.totals.carbs}g · שומן {option.totals.fat}g
-                          </div>
+                            <Plus size={20} strokeWidth={2.2} />
+                          </button>
+                          <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <span style={{ fontSize: 15, fontWeight: 600 }}>{option.title}</span>
+                            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{option.whyItFits}</span>
+                            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                              <bdi dir="ltr" className="num-mono ltr-num">{option.totals.calories}</bdi> קק״ל · ח׳{' '}
+                              <bdi dir="ltr" className="ltr-num">{option.totals.protein}</bdi> · פ׳{' '}
+                              <bdi dir="ltr" className="ltr-num">{option.totals.carbs}</bdi> · ש׳{' '}
+                              <bdi dir="ltr" className="ltr-num">{option.totals.fat}</bdi>
+                            </span>
+                          </span>
                         </div>
                       ))}
                     </div>
                   )}
 
-                  {/* תיבת פידבק ללמידה שקטה ללא צ'אט */}
-                  <div
+                  <button
+                    type="button"
+                    disabled={aiRecLoading}
+                    onClick={fetchAiRecommendations}
+                    className="glass"
                     style={{
-                      marginTop: 12,
-                      paddingTop: 12,
-                      borderTop: '1px solid var(--border-subtle)',
+                      height: 50,
+                      borderRadius: 999,
+                      fontFamily: 'inherit',
+                      fontSize: 15,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
                     }}
                   >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        fontSize: 12,
-                        fontWeight: 800,
-                        marginBottom: 4,
-                      }}
-                    >
-                      <Brain size={14} color="currentColor" />
-                      <span>משהו בהצעות לא מתאים לך?</span>
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: 'var(--text-secondary)',
-                        marginBottom: 8,
-                      }}
-                    >
-                      רשום העדפה או הגבלה (למשל: &quot;אני לא אוכל גבינות חוץ מגבינה צהובה&quot; או &quot;אני לא אוכל גלוטן&quot;) כדי שנזכור אותה בהצעות הבאות.
-                    </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <TextInput
-                        style={{ flex: 1 }}
-                        size="xs"
-                        placeholder="למשל: אני לא אוכל גבינות חוץ מגבינה צהובה..."
-                        value={preferenceFeedbackText}
-                        onChange={(e) => setPreferenceFeedbackText(e.currentTarget.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && preferenceFeedbackText.trim() && !learningPrefLoading) {
-                            e.preventDefault();
-                            handleLearnPreference();
-                          }
-                        }}
-                      />
-                      <button
-                        disabled={learningPrefLoading || !preferenceFeedbackText.trim()}
-                        onClick={handleLearnPreference}
-                        className="btn-surface"
-                        style={{
-                          padding: '0 12px',
-                          fontSize: 12,
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          color: 'var(--accent-volt)',
-                          whiteSpace: 'nowrap',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 5,
-                        }}
-                      >
-                        {learningPrefLoading && (
-                          <Loader2 size={12} className="spot-spinner" />
-                        )}
-                        <span>
-                          {learningPrefLoading ? 'לומד ושומר...' : 'שמור העדפה לעתיד'}
+                    {aiRecLoading ? <Loader2 size={16} className="spot-spinner" /> : <Sparkles size={16} />}
+                    {aiRecLoading ? 'בונה 3 הצעות מותאמות…' : aiRecommendations.length > 0 ? 'הצע 3 אחרות' : 'הצע לי 3 ארוחות ליתרה'}
+                  </button>
+                </section>
+
+                {/* Learned preferences + silent-learning feedback */}
+                <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <span style={{ fontSize: 13, color: 'var(--text-2)' }}>העדפות שנלמדו בחשבון שלך</span>
+                  {learnedPreferences.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {learnedPreferences.map((pref) => (
+                        <span
+                          key={pref}
+                          style={{
+                            minHeight: 36,
+                            padding: '0 14px',
+                            borderRadius: 999,
+                            border: '1px solid var(--line-2)',
+                            fontSize: 14,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                          }}
+                        >
+                          {pref}
                         </span>
-                      </button>
+                      ))}
                     </div>
-                    {learnedFeedbackBanner && (
-                      <div
-                        style={{
-                          marginTop: 8,
-                          padding: '7px 10px',
-                          borderRadius: 8,
-                          background: learnedFeedbackBanner.isError
-                            ? 'rgba(239, 68, 68, 0.14)'
-                            : 'rgba(34, 197, 94, 0.12)',
-                          border: learnedFeedbackBanner.isError
-                            ? '1px solid rgba(239, 68, 68, 0.35)'
-                            : '1px solid rgba(34, 197, 94, 0.35)',
-                          color: learnedFeedbackBanner.isError
-                            ? 'var(--danger-text)'
-                            : 'var(--ok-text)',
-                          fontSize: 12,
-                          fontWeight: 700,
-                        }}
-                      >
-                        <div>
-                          {learnedFeedbackBanner.isError
-                            ? learnedFeedbackBanner.msg
-                            : `✓ ${learnedFeedbackBanner.msg}`}
-                        </div>
-                        {!learnedFeedbackBanner.isError && learnedFeedbackBanner.engine && (
-                          <div
-                            style={{
-                              marginTop: 4,
-                              fontSize: 12,
-                              color: learnedFeedbackBanner.isFallback
-                                ? 'var(--warn-text)'
-                                : 'var(--text-secondary)',
-                            }}
-                          >
-                            {learnedFeedbackBanner.isFallback
-                              ? `⚠️ נשמר ע״י מנגנון מקומי (לא AI · ${learnedFeedbackBanner.engine})${
-                                  learnedFeedbackBanner.fallbackReason
-                                    ? ` · סיבה: ${learnedFeedbackBanner.fallbackReason}`
-                                    : ''
-                                }`
-                              : `✨ נותח ע״י AI (${learnedFeedbackBanner.engine})`}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                  )}
+                  <span style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.45 }}>
+                    משהו בהצעות לא מתאים? רשום העדפה או הגבלה כדי שנזכור אותה בהצעות הבאות.
+                  </span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      aria-label="העדפה או הגבלה"
+                      placeholder="העדפה או הגבלה (למשל: אני לא אוכל גבינות)"
+                      value={preferenceFeedbackText}
+                      onChange={(e) => setPreferenceFeedbackText(e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && preferenceFeedbackText.trim() && !learningPrefLoading) {
+                          e.preventDefault();
+                          handleLearnPreference();
+                        }
+                      }}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        height: 52,
+                        borderRadius: 999,
+                        border: '1px solid var(--line-2)',
+                        background: 'transparent',
+                        color: 'var(--text)',
+                        fontFamily: 'inherit',
+                        fontSize: 16,
+                        padding: '0 18px',
+                        outline: 'none',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={learningPrefLoading || !preferenceFeedbackText.trim()}
+                      onClick={handleLearnPreference}
+                      className="btn-volt"
+                      style={{ height: 52, padding: '0 20px', fontSize: 15, flex: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    >
+                      {learningPrefLoading && <Loader2 size={14} className="spot-spinner" />}
+                      {learningPrefLoading ? 'שומר…' : 'שמור'}
+                    </button>
                   </div>
-                </div>
+                  {learnedFeedbackBanner && (
+                    <div
+                      role="status"
+                      style={{
+                        padding: '10px 14px',
+                        borderRadius: 18,
+                        background: 'var(--surface-2)',
+                        color: learnedFeedbackBanner.isError ? 'var(--danger-text)' : 'var(--text)',
+                        fontSize: 14,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {learnedFeedbackBanner.isError ? learnedFeedbackBanner.msg : `✓ ${learnedFeedbackBanner.msg}`}
+                      {!learnedFeedbackBanner.isError && learnedFeedbackBanner.engine && (
+                        <div style={{ marginTop: 4, fontSize: 13, fontWeight: 500, color: learnedFeedbackBanner.isFallback ? 'var(--warn-text)' : 'var(--text-2)' }}>
+                          {learnedFeedbackBanner.isFallback
+                            ? `נשמר ע״י מנגנון מקומי (לא AI · ${learnedFeedbackBanner.engine})${
+                                learnedFeedbackBanner.fallbackReason ? ` · ${learnedFeedbackBanner.fallbackReason}` : ''
+                              }`
+                            : `נותח ע״י AI (${learnedFeedbackBanner.engine})`}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </section>
               </div>
             )}
 
@@ -2354,7 +2293,7 @@ export function AddMealDrawer({
                     gap: 6,
                   }}
                 >
-                  <span style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text-secondary)' }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text-2)' }}>
                     תוצאות מהמאגר הישראלי והסופרים:
                   </span>
                   <button
@@ -2367,7 +2306,7 @@ export function AddMealDrawer({
                       gap: 5,
                       padding: '4px 10px',
                       borderRadius: 999,
-                      fontSize: 12,
+                      fontSize: 13,
                       cursor: 'pointer',
                     }}
                   >
@@ -2410,17 +2349,17 @@ export function AddMealDrawer({
                         onClick={() => setSourceFilter(src.id)}
                         style={{
                           flexShrink: 0,
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: 700,
                           padding: '4px 10px',
                           borderRadius: 999,
                           cursor: 'pointer',
-                          border: active ? '1px solid var(--sel-bg)'
+                          border: active ? '1px solid var(--sel-border)'
                             : '1px solid var(--border-subtle)',
                           background: active ? 'var(--sel-bg)'
                             : 'var(--bg-surface-2)',
                           color: active ? 'var(--sel-text)'
-                            : 'var(--text-secondary)',
+                            : 'var(--text-2)',
                         }}
                       >
                         {src.label}
@@ -2433,7 +2372,7 @@ export function AddMealDrawer({
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
-                    fontSize: 12.5,
+                    fontSize: 13.5,
                     color: 'var(--text-muted)',
                   }}
                 >
@@ -2450,11 +2389,11 @@ export function AddMealDrawer({
                     style={{
                       padding: 18,
                       textAlign: 'center',
-                      borderRadius: 12,
-                      background: 'var(--bg-surface-2)',
+                      borderRadius: 18,
+                      background: 'var(--surface-2)',
                       border: '1px solid var(--border-subtle)',
-                      color: 'var(--text-secondary)',
-                      fontSize: 12,
+                      color: 'var(--text-2)',
+                      fontSize: 13,
                     }}
                   >
                     לא נמצאו מוצרים המתאימים ל־&ldquo;{searchQuery}&rdquo;. אפשר ללחוץ על כפתור <b>✨</b> בשורת החיפוש למעלה לפיענוח ב-AI!
@@ -2476,7 +2415,7 @@ export function AddMealDrawer({
                           onClick={() => void handleSelectCatalogFood(food)}
                           style={{
                             padding: '10px 12px',
-                            borderRadius: 12,
+                            borderRadius: 18,
                             cursor: 'pointer',
                             border: isSelected ? '1px solid var(--text-3)'
                               : '1px solid var(--border-subtle)',
@@ -2503,8 +2442,8 @@ export function AddMealDrawer({
                             <div
                               className="num-mono"
                               style={{
-                                fontSize: 12,
-                                color: 'var(--text-secondary)',
+                                fontSize: 13,
+                                color: 'var(--text-2)',
                               }}
                             >
                               {food.per100g.calories} קק״ל · ח:{food.per100g.protein} פ:{food.per100g.carbs} ש:{food.per100g.fat}
@@ -2513,7 +2452,7 @@ export function AddMealDrawer({
                               <div
                                 style={{
                                   marginTop: 2,
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   display: 'flex',
                                   alignItems: 'center',
                                   flexWrap: 'wrap',
@@ -2541,8 +2480,8 @@ export function AddMealDrawer({
                                       padding: '0 5px',
                                       borderRadius: 6,
                                       background: 'var(--line)',
-                                      color: 'var(--text-secondary)',
-                                      fontSize: 12.5,
+                                      color: 'var(--text-2)',
+                                      fontSize: 13.5,
                                     }}
                                   >
                                     <Barcode size={9} />
@@ -2583,125 +2522,73 @@ export function AddMealDrawer({
 
             {/* לשונית 2: צילום ארוחה / טבלת ערכים תזונתיים + פענוח AI */}
             {activeTab === 'ai-photo' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {items.length > 0 && photoItems.length > 0 && (
                   <button
                     type="button"
                     onClick={() => setActiveTab('meal-items')}
+                    className="glass"
                     style={{
+                      minHeight: 48,
+                      padding: '0 16px',
+                      borderRadius: 999,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      padding: '9px 12px',
-                      borderRadius: 12,
-                      background: 'var(--surface-2)',
-                      border: '1px solid var(--line-2)',
-                      color: 'var(--text)',
-                      fontSize: 12,
-                      fontWeight: 800,
+                      gap: 8,
+                      fontFamily: 'inherit',
+                      fontSize: 14,
+                      fontWeight: 600,
                       cursor: 'pointer',
                     }}
                   >
                     <span>
-                      ✨ זוהו {items.length} מרכיבים מצילום זה ({currentTotals.calories} קק״ל)
+                      זוהו <bdi className="ltr-num">{items.length}</bdi> מרכיבים ·{' '}
+                      <bdi className="ltr-num">{currentTotals.calories}</bdi> קק״ל
                     </span>
-                    <span style={{ color: 'var(--accent-orange-bright)' }}>
-                      צפה וערוך מרכיבים ←
-                    </span>
+                    <span style={{ color: 'var(--text-2)' }}>צפה וערוך ←</span>
                   </button>
                 )}
 
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: 6,
-                    background: 'var(--bg-surface-2)',
-                    padding: 4,
-                    borderRadius: 12,
-                    border: '1px solid var(--border-subtle)',
-                  }}
-                >
-                  <button
-                    onClick={() => setPhotoMode('plate')}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      padding: '8px',
-                      borderRadius: 8,
-                      border: 'none',
-                      background:
-                        photoMode === 'plate' ? 'var(--sel-bg)' : 'transparent',
-                      color:
-                        photoMode === 'plate' ? 'var(--sel-text)' : 'var(--text-secondary)',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <Camera size={14} />
-                    <span>צילום ארוחה / צלחת</span>
-                  </button>
-                  <button
-                    onClick={() => setPhotoMode('nutrition-label')}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      padding: '8px',
-                      borderRadius: 8,
-                      border: 'none',
-                      background:
-                        photoMode === 'nutrition-label' ? 'var(--sel-bg)'
-                          : 'transparent',
-                      color:
-                        photoMode === 'nutrition-label'
-                          ? 'var(--sel-text)'
-                          : 'var(--text-secondary)',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <FileText size={14} />
-                    <span>טבלת ערכים תזונתיים מאריזה</span>
-                  </button>
-                </div>
+                <SegmentedPill
+                  ariaLabel="סוג צילום"
+                  value={photoMode}
+                  onChange={(v) => setPhotoMode(v as 'plate' | 'nutrition-label')}
+                  options={[
+                    { value: 'plate', label: 'צלחת / ארוחה', icon: <Camera size={15} /> },
+                    { value: 'nutrition-label', label: 'טבלת ערכים', icon: <FileText size={15} /> },
+                  ]}
+                />
 
+                {/* Capture area */}
                 <div
                   style={{
-                    background: 'var(--bg-surface-2)',
-                    border: '1px dashed var(--line-2)',
-                    borderRadius: 16,
+                    background: 'var(--surface-2)',
+                    borderRadius: 26,
                     padding: 16,
-                    textAlign: 'center',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'stretch',
+                    gap: 14,
                   }}
                 >
                   {photoItems.length > 0 ? (
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: 10,
-                      }}
-                    >
-                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+                    <>
+                      <div data-h-scroll style={{ display: 'flex', gap: 10, paddingBottom: 2 }}>
                         {photoItems.map((im, idx) => (
                           <div
                             key={idx}
                             style={{
                               position: 'relative',
-                              width: photoItems.length === 1 ? 168 : 102,
-                              height: photoItems.length === 1 ? 140 : 102,
-                              borderRadius: 12,
+                              flex: 'none',
+                              width: photoItems.length === 1 ? '100%' : 132,
+                              height: photoItems.length === 1 ? 190 : 132,
+                              borderRadius: 22,
                               overflow: 'hidden',
-                              border: '1px solid var(--line-2)',
+                              background: 'var(--surface-3)',
                             }}
                           >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={im.dataUrl}
                               alt={`צילום ארוחה ${idx + 1}`}
@@ -2709,7 +2596,8 @@ export function AddMealDrawer({
                             />
                             <button
                               type="button"
-                              title="הסר תמונה"
+                              className="glass"
+                              aria-label={`הסר תמונה ${idx + 1}`}
                               onClick={() => {
                                 setPhotoItems((prev) => {
                                   const next = prev.filter((_, i) => i !== idx);
@@ -2720,24 +2608,23 @@ export function AddMealDrawer({
                               }}
                               style={{
                                 position: 'absolute',
-                                top: 4,
-                                right: 4,
-                                width: 20,
-                                height: 20,
-                                borderRadius: '50%',
-                                background: 'rgba(0,0,0,0.75)',
-                                border: 'none',
-                                color: '#fff',
+                                insetBlockStart: 8,
+                                insetInlineStart: 8,
+                                width: 36,
+                                height: 36,
+                                borderRadius: 999,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 cursor: 'pointer',
                               }}
                             >
-                              <X size={12} />
+                              <X size={16} strokeWidth={2.4} />
                             </button>
                             <button
                               type="button"
+                              className="glass"
+                              aria-label="החלף סוג זווית"
                               onClick={() => {
                                 setPhotoItems((prev) =>
                                   prev.map((x, i) =>
@@ -2757,16 +2644,14 @@ export function AddMealDrawer({
                               }}
                               style={{
                                 position: 'absolute',
-                                bottom: 3,
-                                left: 3,
-                                right: 3,
-                                fontSize: 12,
-                                fontWeight: 700,
-                                borderRadius: 5,
-                                border: 'none',
-                                background: 'rgba(0,0,0,0.78)',
-                                color: 'var(--accent-volt)',
-                                padding: '2px 4px',
+                                insetBlockEnd: 8,
+                                insetInlineEnd: 8,
+                                height: 32,
+                                padding: '0 12px',
+                                borderRadius: 999,
+                                fontFamily: 'inherit',
+                                fontSize: 13,
+                                fontWeight: 600,
                                 cursor: 'pointer',
                               }}
                             >
@@ -2774,84 +2659,90 @@ export function AddMealDrawer({
                                 ? 'מלמעלה 90°'
                                 : im.angle === 'side-45'
                                 ? 'מהצד ~45°'
-                                : 'תווית / אחר'}{' '}
-                              · {im.sizeKB}KB
+                                : 'תווית / אחר'}
                             </button>
                           </div>
                         ))}
                       </div>
                       {photoSizeKB && (
-                        <span
-                          style={{
-                            fontSize: 12,
-                            color: 'var(--accent-volt)',
-                            fontWeight: 700,
-                          }}
-                        >
-                          {photoItems.length}/3 תמונות נבחרו ({photoFormatLabel} דחוס מהיר)
+                        <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                          <bdi className="ltr-num">{photoItems.length}/3</bdi> תמונות נבחרו · {photoFormatLabel}
                         </span>
                       )}
-                    </div>
+                    </>
                   ) : (
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: 6,
-                        marginBottom: 10,
-                      }}
-                    >
-                      {photoMode === 'nutrition-label' ? (
-                        <FileText size={32} color="currentColor" />
-                      ) : (
-                        <Camera size={32} color="currentColor" />
-                      )}
-                      <div style={{ fontSize: 14, fontWeight: 700 }}>
-                        {photoMode === 'nutrition-label'
-                          ? 'צילום טבלת ערכים תזונתיים מאריזת מוצר'
-                          : 'העלאה או צילום ארוחה לפענוח AI (עד 3 תמונות)'}
-                      </div>
-                      <div
-                        style={{ fontSize: 12, color: 'var(--text-secondary)', maxWidth: 360 }}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, textAlign: 'center', padding: '8px 0' }}>
+                      <span
+                        aria-hidden
+                        style={{
+                          width: 64,
+                          height: 64,
+                          borderRadius: 22,
+                          background: 'var(--card)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
                       >
+                        {photoMode === 'nutrition-label' ? <FileText size={28} /> : <Camera size={28} />}
+                      </span>
+                      <span style={{ fontSize: 17, fontWeight: 700 }}>
+                        {photoMode === 'nutrition-label' ? 'צלם את טבלת הערכים מהאריזה' : 'צלם את הצלחת'}
+                      </span>
+                      <span style={{ fontSize: 13, color: 'var(--text-2)', maxWidth: 320, lineHeight: 1.45 }}>
                         {photoMode === 'nutrition-label'
-                          ? 'ה-AI יקרא את הטבלה שעל האריזה (ל-100 גרם או למנה) ויוסיף לארוחה'
-                          : '💡 לדיוק מרבי בקלוריות ובנפח: צלם או העלה 2 תמונות — אחת מלמעלה (90°) ואחת מהצד (~45°), עם שולי הצלחת בפריים'}
-                      </div>
+                          ? 'ה-AI יקרא את הטבלה (ל-100 גרם או למנה) ויוסיף לארוחה'
+                          : 'עד 3 תמונות. לדיוק מרבי: אחת מלמעלה (90°) ואחת מהצד (~45°)'}
+                      </span>
                     </div>
                   )}
 
                   {photoItems.length < 3 && (
-                    <div
-                      style={{
-                        display: 'flex',
-                        gap: 8,
-                        justifyContent: 'center',
-                        flexWrap: 'wrap',
-                        marginTop: 10,
-                      }}
-                    >
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <label
-                        className="btn-surface"
+                        className="btn-volt"
                         style={{
+                          flex: '1 1 160px',
+                          height: 52,
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: 6,
-                          padding: '8px 14px',
-                          fontSize: 12,
+                          justifyContent: 'center',
+                          gap: 8,
+                          fontSize: 15,
                           cursor: photoUploading ? 'wait' : 'pointer',
                           opacity: photoUploading ? 0.65 : 1,
-                          borderColor: 'rgba(56, 189, 248, 0.35)',
                         }}
                       >
-                        <ImageIcon size={14} color="var(--text-2)" />
+                        <Camera size={18} />
+                        <span>{photoItems.length === 0 ? 'צלם עכשיו' : 'צלם זווית נוספת'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          hidden
+                          disabled={photoUploading}
+                          onChange={(e) => handlePhotoUpload(e, photoItems.length === 0 ? 'top-down' : 'side-45')}
+                        />
+                      </label>
+                      <label
+                        className="glass"
+                        style={{
+                          flex: '1 1 160px',
+                          height: 52,
+                          borderRadius: 999,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8,
+                          fontSize: 15,
+                          fontWeight: 600,
+                          cursor: photoUploading ? 'wait' : 'pointer',
+                          opacity: photoUploading ? 0.65 : 1,
+                        }}
+                      >
+                        <ImageIcon size={18} />
                         <span>
-                          {photoUploading
-                            ? 'מכווץ ומעבד...'
-                            : photoItems.length > 0
-                            ? 'הוסף תמונה מהגלריה'
-                            : 'בחר מהגלריה / קובץ'}
+                          {photoUploading ? 'מכווץ ומעבד...' : photoItems.length > 0 ? 'הוסף מהגלריה' : 'מהגלריה / קובץ'}
                         </span>
                         <input
                           type="file"
@@ -2860,38 +2751,6 @@ export function AddMealDrawer({
                           hidden
                           disabled={photoUploading}
                           onChange={(e) => handlePhotoUpload(e)}
-                        />
-                      </label>
-
-                      <label
-                        className="btn-surface"
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          padding: '8px 14px',
-                          fontSize: 12,
-                          cursor: photoUploading ? 'wait' : 'pointer',
-                          opacity: photoUploading ? 0.65 : 1,
-                          borderColor: 'var(--line-2)',
-                        }}
-                      >
-                        <Camera size={14} color="currentColor" />
-                        <span>
-                          {photoItems.length === 0 ? 'צלם עכשיו במצלמה' : 'צלם זווית נוספת'}
-                        </span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          hidden
-                          disabled={photoUploading}
-                          onChange={(e) =>
-                            handlePhotoUpload(
-                              e,
-                              photoItems.length === 0 ? 'top-down' : 'side-45'
-                            )
-                          }
                         />
                       </label>
                     </div>
@@ -2914,56 +2773,71 @@ export function AddMealDrawer({
                   onManageQuickChips={onManageQuickChips}
                 />
 
-                <Textarea
-                  label={
-                    photoMode === 'nutrition-label'
-                      ? 'שם המוצר וכמות שאכלת (למשל: חטיף חלבון - יחידה אחת 60 גרם)'
-                      : 'הקשר נוסף לצילום עבור ה-AI (אופציונלי)'
-                  }
-                  placeholder={
-                    photoMode === 'nutrition-label'
-                      ? 'למשל: חטיף חלבון 60 גרם...'
-                      : 'למשל: 180 גרם פסטה מבושלת, ללא תוספת שמן...'
-                  }
-                  value={photoNote}
-                  onChange={(e) => setPhotoNote(e.currentTarget.value)}
-                  minRows={2}
-                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label htmlFor="photo-note" style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                    {photoMode === 'nutrition-label'
+                      ? 'שם המוצר וכמות שאכלת'
+                      : 'הקשר נוסף לצילום (אופציונלי)'}
+                  </label>
+                  <textarea
+                    id="photo-note"
+                    rows={2}
+                    placeholder={
+                      photoMode === 'nutrition-label'
+                        ? 'למשל: חטיף חלבון - יחידה אחת 60 גרם'
+                        : 'למשל: 180 גרם פסטה מבושלת, ללא תוספת שמן'
+                    }
+                    value={photoNote}
+                    onChange={(e) => setPhotoNote(e.currentTarget.value)}
+                    style={{
+                      font: 'inherit',
+                      fontSize: 16,
+                      color: 'var(--text)',
+                      background: 'var(--card)',
+                      border: '1px solid var(--line-2)',
+                      borderRadius: 20,
+                      padding: '12px 14px',
+                      resize: 'none',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
 
-                <button
-                  disabled={
-                    isSlotBgProcessing ||
-                    aiLoading ||
-                    photoUploading ||
-                    (photoItems.length === 0 && !photoDataUrl && !photoNote.trim())
-                  }
-                  onClick={() => runAiAnalysis('photo')}
-                  className="btn-volt"
-                  style={{
-                    padding: '12px',
-                    fontSize: 13,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {isSlotBgProcessing || aiLoading ? (
-                    <Loader2 size={16} className="spot-spinner" />
-                  ) : (
-                    <Wand2 size={16} />
-                  )}
-                  <span>
-                    {isSlotBgProcessing || aiLoading
-                      ? progressTicker.currentStepText
-                      : photoMode === 'nutrition-label'
-                      ? 'חלץ ערכים תזונתיים מהאריזה (AI)'
-                      : photoItems.length > 1
-                      ? `פענח ${photoItems.length} תמונות ברקע (AI)`
-                      : 'פענח תמונה באמצעות AI'}
-                  </span>
-                </button>
+                {/* Pinned analyse action (design: "נתח את הצלחת") */}
+                <div className="wizard-nav" style={{ marginTop: 0, background: 'linear-gradient(to top, var(--bg) 70%, transparent)' }}>
+                  <button
+                    type="button"
+                    disabled={
+                      isSlotBgProcessing ||
+                      aiLoading ||
+                      photoUploading ||
+                      (photoItems.length === 0 && !photoDataUrl && !photoNote.trim())
+                    }
+                    onClick={() => runAiAnalysis('photo')}
+                    className="btn-volt"
+                    style={{
+                      flex: 1,
+                      height: 56,
+                      fontSize: 16,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {isSlotBgProcessing || aiLoading ? <Loader2 size={18} className="spot-spinner" /> : <Wand2 size={18} />}
+                    <span>
+                      {isSlotBgProcessing || aiLoading
+                        ? progressTicker.currentStepText
+                        : photoMode === 'nutrition-label'
+                        ? 'חלץ ערכים מהאריזה'
+                        : photoItems.length > 1
+                        ? `נתח ${photoItems.length} תמונות`
+                        : 'נתח את הצלחת'}
+                    </span>
+                  </button>
+                </div>
               </div>
             )}
 
@@ -3300,7 +3174,7 @@ export function AddMealDrawer({
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div
                   style={{
-                    display: 'flex',
+                    display: heroScreen ? 'none' : 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     gap: 8,
@@ -3327,14 +3201,34 @@ export function AddMealDrawer({
 
                 {/* Result header (design: PhotoResult) — photo hero + totals vs meal target */}
                 {allMealPhotos.length > 0 && (
-                  <div style={{ position: 'relative', borderRadius: 28, overflow: 'hidden', background: 'var(--surface-2)' }}>
+                  <div style={{ position: 'relative', margin: '0 -16px', overflow: 'hidden', background: 'var(--surface-2)' }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={allMealPhotos[0]}
                       alt="תמונת הארוחה"
                       onClick={() => setActiveTab('ai-photo')}
-                      style={{ display: 'block', width: '100%', height: 190, objectFit: 'cover', cursor: 'pointer' }}
+                      style={{ display: 'block', width: '100%', height: 'calc(300px + var(--sa-top, 0px))', objectFit: 'cover', cursor: 'pointer' }}
                     />
+                    <div style={{ position: 'absolute', insetBlockStart: 'calc(var(--sa-top, 0px) + 12px)', insetInline: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <GlassButton
+                        label="סגירה"
+                        data-autofocus
+                        onClick={() => {
+                          if (!savingMeal) onClose();
+                        }}
+                      >
+                        <X size={18} strokeWidth={2.2} />
+                      </GlassButton>
+                      <button
+                        type="button"
+                        className="glass"
+                        onClick={() => setActiveTab('ai-photo')}
+                        style={{ height: 44, padding: '0 16px', borderRadius: 999, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
+                      >
+                        <Camera size={15} />
+                        צלם שוב
+                      </button>
+                    </div>
                     {allMealPhotos.length > 1 && (
                       <span
                         className="glass"
@@ -3356,13 +3250,13 @@ export function AddMealDrawer({
                     )}
                   </div>
                 )}
+                {allMealPhotos.length > 0 && (
+                  <div aria-hidden style={{ height: 42, margin: '-52px -16px 0', borderRadius: '28px 28px 0 0', background: 'var(--card)', position: 'relative', flexShrink: 0 }} />
+                )}
 
                 <div
                   style={{
-                    background: 'var(--card)',
-                    border: '1px solid var(--line)',
-                    borderRadius: 26,
-                    padding: 16,
+                    padding: '4px 2px',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 14,
@@ -3414,6 +3308,34 @@ export function AddMealDrawer({
                   </div>
                 </div>
 
+                {heroScreen && (
+                <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <span style={{ fontSize: 17, fontWeight: 700 }}>
+                      מרכיבי הארוחה הנוכחית ({items.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('hub')}
+                      className="btn-surface"
+                      style={{
+                        padding: '5px 11px',
+                        borderRadius: 999,
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      + הוסף עוד פריטים
+                    </button>
+                  </div>
+                  )}
                 {items.length === 0 ? (
                   <div
                     style={{
@@ -3428,19 +3350,15 @@ export function AddMealDrawer({
                     טרם נוספו פריטים לארוחה זו.
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                     {items.map((item) => {
                       const isEditing = editingItemId === item.id;
                       return (
                         <div
                           key={item.id}
                           style={{
-                            background: 'var(--card)',
-                            border: isEditing
-                              ? '1px solid var(--line-2)'
-                              : '1px solid var(--border-subtle)',
-                            borderRadius: 20,
-                            padding: '14px 16px',
+                            borderBottom: '1px solid var(--line)',
+                            padding: '8px 2px',
                           }}
                         >
                           <div
@@ -3448,133 +3366,22 @@ export function AddMealDrawer({
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center',
-                              gap: 8,
+                              gap: 10,
                             }}
                           >
-                            <div style={{ minWidth: 0, flex: 1 }}>
-                              <div
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 6,
-                                  flexWrap: 'wrap',
-                                }}
-                              >
-                                <span style={{ fontSize: 15, fontWeight: 600 }}>
-                                  {item.name}
-                                </span>
-                                <span
-                                  style={{
-                                    fontSize: 12,
-                                    padding: '1px 7px',
-                                    borderRadius: 999,
-                                    background: 'var(--line)',
-                                    color: 'var(--text-secondary)',
-                                  }}
-                                >
-                                  {item.unitLabel}
-                                </span>
-                                {(item.isAiFallback || item.aiEngine) && (
-                                  <span
-                                    title={
-                                      item.fallbackReason
-                                        ? `סיבת גיבוי: ${item.fallbackReason}`
-                                        : item.aiEngine
-                                    }
-                                    style={{
-                                      fontSize: 12,
-                                      padding: '1px 6px',
-                                      borderRadius: 999,
-                                      fontWeight: 800,
-                                      background: item.isAiFallback
-                                        ? 'rgba(245, 158, 11, 0.16)'
-                                        : 'var(--surface-2)',
-                                      border: item.isAiFallback
-                                        ? '1px solid rgba(245, 158, 11, 0.38)'
-                                        : '1px solid var(--line-2)',
-                                      color: item.isAiFallback
-                                        ? 'var(--warn-text)'
-                                        : 'var(--accent-orange-bright)',
-                                    }}
-                                  >
-                                    {item.isAiFallback
-                                      ? `לא AI · ${item.aiEngine || 'Fallback'}`
-                                      : `AI · ${item.aiEngine}`}
-                                  </span>
-                                )}
+                            <button
+                              type="button"
+                              aria-label={isEditing ? 'סגור עריכה' : `ערוך ${item.name}`}
+                              aria-expanded={isEditing}
+                              onClick={() => setEditingItemId(isEditing ? null : item.id)}
+                              style={{ minWidth: 0, flex: 1, background: 'transparent', border: 0, padding: 0, textAlign: 'start', color: 'inherit', fontFamily: 'inherit', cursor: 'pointer', minHeight: 44 }}
+                            >
+                              <div style={{ fontSize: 16, fontWeight: 600 }}>{item.name}</div>
+                              <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                                <bdi dir="ltr" className="num-mono ltr-num">{item.macros.calories}</bdi> קק״ל
+                                {item.isAiFallback ? ' · לא AI' : item.aiEngine ? ' · AI' : ''}
                               </div>
-                              <div
-                                className="num-mono"
-                                style={{
-                                  fontSize: 12,
-                                  color: 'var(--text-secondary)',
-                                  marginTop: 2,
-                                }}
-                              >
-                                <b style={{ color: 'var(--text-primary)' }}>
-                                  {item.macros.calories} קק״ל
-                                </b>{' '}
-                                · ח׳ {item.macros.protein}g · פ׳ {item.macros.carbs}
-                                g · ש׳ {item.macros.fat}g
-                              </div>
-                            </div>
-
-                            <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
-                              <button
-                                type="button"
-                                aria-label={isEditing ? 'סגור עריכה' : `ערוך ${item.name}`}
-                                aria-expanded={isEditing}
-                                onClick={() => setEditingItemId(isEditing ? null : item.id)}
-                                style={{
-                                  width: 44,
-                                  height: 44,
-                                  padding: 0,
-                                  borderRadius: 999,
-                                  border: '1px solid var(--line-2)',
-                                  background: isEditing ? 'var(--sel-bg)' : 'transparent',
-                                  color: isEditing ? 'var(--sel-text)' : 'var(--text-2)',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                <Edit3 size={16} />
-                              </button>
-                              <button
-                                type="button"
-                                aria-label={`הסר ${item.name}`}
-                                onClick={() => removeItem(item.id)}
-                                style={{
-                                  width: 44,
-                                  height: 44,
-                                  padding: 0,
-                                  borderRadius: 999,
-                                  border: '1px solid var(--line-2)',
-                                  background: 'transparent',
-                                  color: 'var(--danger-text)',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Quick gram stepper (design: PhotoResult rows) */}
-                          <div
-                            style={{
-                              marginTop: 10,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              gap: 8,
-                            }}
-                          >
-                            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>כמות</span>
+                            </button>
                             <span
                               style={{
                                 display: 'inline-flex',
@@ -3583,6 +3390,7 @@ export function AddMealDrawer({
                                 padding: 3,
                                 borderRadius: 999,
                                 background: 'var(--surface-2)',
+                                flex: 'none',
                               }}
                             >
                               <button
@@ -3593,7 +3401,7 @@ export function AddMealDrawer({
                               >
                                 <Minus size={16} strokeWidth={2.2} />
                               </button>
-                              <bdi dir="ltr" className="num-mono ltr-num" style={{ minWidth: 64, textAlign: 'center', fontSize: 14, fontWeight: 600 }}>
+                              <bdi dir="ltr" className="num-mono ltr-num" style={{ minWidth: 56, textAlign: 'center', fontSize: 14, fontWeight: 600 }}>
                                 {Math.round(item.grams)} ג׳
                               </bdi>
                               <button
@@ -3702,6 +3510,15 @@ export function AddMealDrawer({
                                   }
                                 />
                               </div>
+                              <button
+                                type="button"
+                                aria-label={`הסר ${item.name}`}
+                                onClick={() => removeItem(item.id)}
+                                style={{ alignSelf: 'flex-start', minHeight: 44, display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: 0, padding: 0, color: 'var(--danger-text)', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+                              >
+                                <Trash2 size={15} />
+                                הסר מרכיב
+                              </button>
                             </div>
                           </Collapse>
                         </div>
@@ -3729,7 +3546,7 @@ export function AddMealDrawer({
                       onChange={(e) => setSaveAsPreset(e.currentTarget.checked)}
                       label={
                         <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-secondary)' }}>
-                          📌 שמור מנה זו גם ב&quot;הארוחות שלי&quot; לשימוש חוזר
+                          שמור מנה זו גם ב&quot;הארוחות שלי&quot; לשימוש חוזר
                         </span>
                       }
                     />
@@ -3749,175 +3566,107 @@ export function AddMealDrawer({
                   </div>
                 )}
 
-                <button
-                  disabled={savingMeal}
-                  onClick={() => void handleSaveMealAndClose()}
-                  className="btn-volt"
-                  style={{
-                    padding: '12px 18px',
-                    fontSize: 13.5,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {savingMeal ? (
-                    <Loader2 size={16} className="spot-spinner" />
-                  ) : (
-                    <Check size={16} />
-                  )}
-                  <span>
-                    {savingMeal
-                      ? 'שומר ארוחה...'
-                      : `שמור ארוחה (${currentTotals.calories} קק״ל)`}
-                  </span>
-                </button>
               </div>
             )}
         </div>
 
-        {/* אזור תחתון קבוע תמיד (Persistent Current Meal Summary Card + שמירה מהירה) */}
-        {activeTab !== 'meal-items' && (
+        {activeTab === 'meal-items' && (
           <div
             style={{
               flexShrink: 0,
-              background: 'var(--card)',
-              borderTop: '1px solid var(--line)',
-              padding: '10px 14px calc(10px + var(--sa-bottom))',
+              background: heroScreen ? 'var(--card)' : 'var(--bg)',
+              padding: '10px 16px calc(var(--sa-bottom) + 12px)',
+              display: 'flex',
+            }}
+          >
+            <button
+              disabled={savingMeal}
+              onClick={() => void handleSaveMealAndClose()}
+              className="btn-volt"
+              style={{
+                flex: 1,
+                height: 56,
+                fontSize: 16,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                cursor: 'pointer',
+              }}
+            >
+              {savingMeal ? <Loader2 size={16} className="spot-spinner" /> : <Check size={16} />}
+              <span>{savingMeal ? 'שומר ארוחה...' : `שמור ארוחה (${currentTotals.calories} קק״ל)`}</span>
+            </button>
+          </div>
+        )}
+
+        {/* Pinned action bar (design): one primary save button carrying the meal total, plus a
+            glass pill that opens the meal's items. Hidden while there is nothing to save. */}
+        {activeTab !== 'meal-items' && (items.length > 0 || hadInitialItemsRef.current) && (
+          <div
+            style={{
+              flexShrink: 0,
+              background: fullScreen ? 'var(--bg)' : 'var(--card)',
+              padding: '10px 16px calc(var(--sa-bottom) + 12px)',
               display: 'flex',
               alignItems: 'center',
               gap: 10,
             }}
           >
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => setActiveTab('meal-items')}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  setActiveTab('meal-items');
-                }
-              }}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '7px 10px',
-                borderRadius: 14,
-                background: 'var(--bg-surface-2)',
-                border: '1px solid var(--border-subtle)',
-                cursor: 'pointer',
-              }}
-            >
-              {mealThumbnailUrl ? (
-                <img
-                  src={mealThumbnailUrl}
-                  alt={mealSlot.name}
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 10,
-                    objectFit: 'cover',
-                    flexShrink: 0,
-                    border: '1px solid var(--line-2)',
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 10,
-                    background: 'var(--surface-3)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Utensils size={16} color="var(--text)" />
-                </div>
-              )}
-
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 6,
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 800,
-                      color: 'var(--text)',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    בארוחה: {items.length} מרכיבים
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: 'var(--accent-orange-bright)',
-                      whiteSpace: 'nowrap',
-                      flexShrink: 0,
-                    }}
-                  >
-                    לעריכה ופירוט ⌄
-                  </span>
-                </div>
-                <div
-                  className="num-mono"
-                  style={{
-                    fontSize: 12,
-                    color: 'var(--text-secondary)',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    marginTop: 2,
-                  }}
-                >
-                  <span dir="ltr">
-                    <b style={{ color: 'var(--text)' }}>{currentTotals.calories}</b> / {mealSlot.targets.calories}
-                  </span>{' '}
-                  קק״ל · ח׳ {currentTotals.protein} · פ׳ {currentTotals.carbs} · ש׳ {currentTotals.fat}
-                </div>
-              </div>
-            </div>
-
+            {items.length > 0 && (
+              <button
+                type="button"
+                className="glass"
+                onClick={() => setActiveTab('meal-items')}
+                aria-label={`עריכת מרכיבי הארוחה (${items.length})`}
+                style={{
+                  height: 56,
+                  padding: '0 18px',
+                  borderRadius: 999,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontFamily: 'inherit',
+                  fontSize: 15,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  flex: 'none',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {mealThumbnailUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={mealThumbnailUrl}
+                    alt=""
+                    style={{ width: 30, height: 30, borderRadius: 9, objectFit: 'cover' }}
+                  />
+                ) : (
+                  <Utensils size={18} />
+                )}
+                <bdi className="ltr-num">{items.length}</bdi> מרכיבים
+              </button>
+            )}
             <button
               type="button"
               disabled={savingMeal}
               onClick={() => void handleSaveMealAndClose()}
               className="btn-volt"
               style={{
-                padding: '11px 16px',
-                fontSize: 12.5,
-                display: 'inline-flex',
+                flex: 1,
+                height: 56,
+                fontSize: 16,
+                display: 'flex',
                 alignItems: 'center',
-                gap: 5,
+                justifyContent: 'center',
+                gap: 8,
                 cursor: 'pointer',
-                flexShrink: 0,
-                whiteSpace: 'nowrap',
               }}
             >
-              {savingMeal ? (
-                <Loader2 size={14} className="spot-spinner" />
-              ) : (
-                <Check size={14} />
-              )}
-              <span>שמור</span>
+              {savingMeal ? <Loader2 size={18} className="spot-spinner" /> : <Check size={18} />}
+              <span>
+                שמור · <bdi dir="ltr" className="ltr-num">{currentTotals.calories}</bdi> קק״ל
+              </span>
             </button>
           </div>
         )}
@@ -4101,7 +3850,7 @@ export function AddMealDrawer({
                       style={{
                         padding: '6px 11px',
                         borderRadius: 999,
-                        border: active ? '1px solid var(--sel-bg)'
+                        border: active ? '1px solid var(--sel-border)'
                           : uOpt.isUser
                           ? '1px solid rgba(56, 189, 248, 0.38)'
                           : '1px solid var(--border-subtle)',

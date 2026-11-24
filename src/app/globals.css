@@ -55,10 +55,14 @@
 
 :root[data-mantine-color-scheme='light'] {
   color-scheme: light;
+  --sel-border: var(--btn-primary);
+  --btn-surface-bg: #ffffff;
 
   --bg: #f2f2f4;
   --card: #ffffff;
-  --surface-2: #f2f2f4;
+  /* Objects (buttons, fields, chips, inner panels) are white in light mode; only the page itself is #f2f2f4. */
+  --surface-2: #ffffff;
+  --shadow-raise: 0 1px 2px rgba(0, 0, 0, 0.06), 0 6px 14px -4px rgba(0, 0, 0, 0.12), 0 14px 28px -10px rgba(0, 0, 0, 0.12);
   --surface-3: #e5e5e8;
   --line: rgba(0, 0, 0, 0.06);
   --line-2: rgba(0, 0, 0, 0.1);
@@ -76,7 +80,7 @@
   --glass-hi: rgba(255, 255, 255, 1);
   --glass-shadow: 0 14px 34px -12px rgba(0, 0, 0, 0.22);
   --scrim: rgba(20, 20, 22, 0.28);
-  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 22px -8px rgba(0, 0, 0, 0.14);
   --sheet-shadow: 0 -20px 50px -20px rgba(0, 0, 0, 0.18);
 
   /* Darker orange for orange *text* on light surfaces (contrast). */
@@ -97,6 +101,9 @@
 
   /* Selected state for chips / segmented controls (never orange). */
   --sel-bg: var(--btn-primary);
+  --btn-surface-bg: var(--surface-2);
+  /* Outline of a selected control: a faint light ring in dark so the gray fill reads on dark cards. */
+  --sel-border: rgba(255, 255, 255, 0.34);
   --sel-text: var(--btn-primary-text);
 
   /* Macro colours — reserved for nutrition only. */
@@ -182,7 +189,7 @@ button,
 
 button:focus-visible,
 a:focus-visible {
-  outline: 2px solid var(--accent) !important;
+  outline: 2px solid var(--text) !important;
   outline-offset: 2px;
 }
 
@@ -259,10 +266,13 @@ a:focus-visible {
 }
 
 .btn-surface {
-  background: var(--surface-2) !important;
+  /* Light: pure white (per spec). Dark: the elevated surface so text stays readable. */
+  background: var(--btn-surface-bg) !important;
   color: var(--text) !important;
   border: 1px solid var(--line) !important;
   border-radius: 999px !important;
+  box-shadow: var(--shadow-raise, 1px 6px 7px rgba(0, 0, 0, 0.04));
+  font-size: 14px !important;
   font-weight: 600 !important;
   transition: background-color 0.15s ease, border-color 0.15s ease !important;
 }
@@ -634,7 +644,7 @@ a:focus-visible {
 
 /* Keyboard focus ring on every focusable control (not only buttons/links). */
 :where([role='button'], [role='tab'], [role='radio'], [role='switch'], input, select, textarea, summary):focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--text);
   outline-offset: 2px;
 }
 
@@ -979,4 +989,93 @@ a.glass {
   padding: 10px 0 calc(var(--sa-bottom) + 8px);
   background: linear-gradient(to top, var(--bg) 70%, transparent);
   z-index: 5;
+}
+
+/* Long coach form blocks: header on top, controls full width on phones. */
+@media (max-width: 768px) {
+  .coach-form-block {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .coach-form-block > div:last-child {
+    width: 100%;
+  }
+  .coach-form-block button:not(.glass) {
+    min-height: 44px;
+  }
+  /* Action buttons share the row evenly instead of ragged right-aligned pills. */
+  .coach-form-block > div:last-child > button {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+  .coach-form-block > div:last-child > div {
+    flex: 1 1 100%;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .coach-form-actions {
+    width: 100%;
+  }
+  .coach-form-actions > button {
+    flex: 1 1 100%;
+    justify-content: center;
+    min-height: 44px;
+  }
+  .coach-form-actions > div {
+    flex: 1 1 100%;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+}
+
+/* ---------- Light mode: white objects lift off the #f2f2f4 page with a stronger shadow ---------- */
+:root[data-mantine-color-scheme='light'] [style*='background: var(--surface-2)'],
+:root[data-mantine-color-scheme='light'] [style*='background: var(--bg-surface-2)'],
+:root[data-mantine-color-scheme='light'] [style*='background-color: var(--surface-2)'],
+:root[data-mantine-color-scheme='light'] .mantine-Input-input,
+:root[data-mantine-color-scheme='light'] .mantine-Select-dropdown,
+:root[data-mantine-color-scheme='light'] .mantine-Popover-dropdown {
+  box-shadow: var(--shadow-raise);
+}
+:root[data-mantine-color-scheme='light'] .btn-surface:hover {
+  box-shadow: var(--shadow-raise);
+  background: #ffffff !important;
+  border-color: var(--line-2) !important;
+}
+:root[data-mantine-color-scheme='light'] .pro-card,
+:root[data-mantine-color-scheme='light'] .pro-card-elevated {
+  box-shadow: var(--card-shadow);
+}
+
+/* Light: outlined "transparent" chips / pill fields would show the #f2f2f4 page through them. Make them white. */
+:root[data-mantine-color-scheme='light'] button[style*='background: transparent'][style*='solid'],
+:root[data-mantine-color-scheme='light'] label[style*='background: transparent'][style*='solid'],
+:root[data-mantine-color-scheme='light'] input[style*='background: transparent'][style*='solid'],
+:root[data-mantine-color-scheme='light'] textarea[style*='background: transparent'][style*='solid'] {
+  background: #ffffff !important;
+  box-shadow: var(--shadow-raise);
+}
+
+
+/* Add-meal sub-screens are full-screen pages in the design (not bottom sheets). */
+.mantine-Drawer-content.add-meal-full {
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  background-color: var(--bg) !important;
+  max-width: none !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  margin: 0 !important;
+}
+
+.mantine-Drawer-content.add-meal-hero {
+  background-color: var(--card) !important;
+}
+
+.mantine-Drawer-content.add-meal-full .mantine-Drawer-body {
+  padding-bottom: 0 !important;
 }
