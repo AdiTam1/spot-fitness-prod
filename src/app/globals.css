@@ -182,7 +182,7 @@ button,
 
 button:focus-visible,
 a:focus-visible {
-  outline: 2px solid var(--accent) !important;
+  outline: 2px solid var(--text) !important;
   outline-offset: 2px;
 }
 
@@ -634,7 +634,7 @@ a:focus-visible {
 
 /* Keyboard focus ring on every focusable control (not only buttons/links). */
 :where([role='button'], [role='tab'], [role='radio'], [role='switch'], input, select, textarea, summary):focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--text);
   outline-offset: 2px;
 }
 

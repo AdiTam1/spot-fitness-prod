@@ -302,6 +302,7 @@ export function AddMealDrawer({
     }
   };
 
+  const hadInitialItemsRef = useRef(false);
   const lastOpenedKeyRef = useRef<string>('');
   const slotBgProcessingJob =
     opened && mealSlot
@@ -343,6 +344,7 @@ export function AddMealDrawer({
 
       if (lastOpenedKeyRef.current !== openKey) {
         lastOpenedKeyRef.current = openKey;
+        hadInitialItemsRef.current = Boolean(existingEntry?.items?.length);
         setItems(existingEntry?.items ? [...existingEntry.items] : []);
         setPhotoDataUrl(entryPhotos[0] || existingEntry?.photoDataUrl);
         setPhotoItems(
@@ -3778,146 +3780,73 @@ export function AddMealDrawer({
             )}
         </div>
 
-        {/* אזור תחתון קבוע תמיד (Persistent Current Meal Summary Card + שמירה מהירה) */}
-        {activeTab !== 'meal-items' && (
+        {/* Pinned action bar (design): one primary save button carrying the meal total, plus a
+            glass pill that opens the meal's items. Hidden while there is nothing to save. */}
+        {activeTab !== 'meal-items' && (items.length > 0 || hadInitialItemsRef.current) && (
           <div
             style={{
               flexShrink: 0,
               background: 'var(--card)',
-              borderTop: '1px solid var(--line)',
-              padding: '10px 14px calc(10px + var(--sa-bottom))',
+              padding: '10px 16px calc(var(--sa-bottom) + 12px)',
               display: 'flex',
               alignItems: 'center',
               gap: 10,
             }}
           >
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => setActiveTab('meal-items')}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  setActiveTab('meal-items');
-                }
-              }}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '7px 10px',
-                borderRadius: 14,
-                background: 'var(--bg-surface-2)',
-                border: '1px solid var(--border-subtle)',
-                cursor: 'pointer',
-              }}
-            >
-              {mealThumbnailUrl ? (
-                <img
-                  src={mealThumbnailUrl}
-                  alt={mealSlot.name}
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 10,
-                    objectFit: 'cover',
-                    flexShrink: 0,
-                    border: '1px solid var(--line-2)',
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 10,
-                    background: 'var(--surface-3)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Utensils size={16} color="var(--text)" />
-                </div>
-              )}
-
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 6,
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 800,
-                      color: 'var(--text)',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    בארוחה: {items.length} מרכיבים
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: 'var(--accent-orange-bright)',
-                      whiteSpace: 'nowrap',
-                      flexShrink: 0,
-                    }}
-                  >
-                    לעריכה ופירוט ⌄
-                  </span>
-                </div>
-                <div
-                  className="num-mono"
-                  style={{
-                    fontSize: 12,
-                    color: 'var(--text-secondary)',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    marginTop: 2,
-                  }}
-                >
-                  <span dir="ltr">
-                    <b style={{ color: 'var(--text)' }}>{currentTotals.calories}</b> / {mealSlot.targets.calories}
-                  </span>{' '}
-                  קק״ל · ח׳ {currentTotals.protein} · פ׳ {currentTotals.carbs} · ש׳ {currentTotals.fat}
-                </div>
-              </div>
-            </div>
-
+            {items.length > 0 && (
+              <button
+                type="button"
+                className="glass"
+                onClick={() => setActiveTab('meal-items')}
+                aria-label={`עריכת מרכיבי הארוחה (${items.length})`}
+                style={{
+                  height: 56,
+                  padding: '0 18px',
+                  borderRadius: 999,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontFamily: 'inherit',
+                  fontSize: 15,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  flex: 'none',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {mealThumbnailUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={mealThumbnailUrl}
+                    alt=""
+                    style={{ width: 30, height: 30, borderRadius: 9, objectFit: 'cover' }}
+                  />
+                ) : (
+                  <Utensils size={18} />
+                )}
+                <bdi className="ltr-num">{items.length}</bdi> מרכיבים
+              </button>
+            )}
             <button
               type="button"
               disabled={savingMeal}
               onClick={() => void handleSaveMealAndClose()}
               className="btn-volt"
               style={{
-                padding: '11px 16px',
-                fontSize: 12.5,
-                display: 'inline-flex',
+                flex: 1,
+                height: 56,
+                fontSize: 16,
+                display: 'flex',
                 alignItems: 'center',
-                gap: 5,
+                justifyContent: 'center',
+                gap: 8,
                 cursor: 'pointer',
-                flexShrink: 0,
-                whiteSpace: 'nowrap',
               }}
             >
-              {savingMeal ? (
-                <Loader2 size={14} className="spot-spinner" />
-              ) : (
-                <Check size={14} />
-              )}
-              <span>שמור</span>
+              {savingMeal ? <Loader2 size={18} className="spot-spinner" /> : <Check size={18} />}
+              <span>
+                שמור · <bdi dir="ltr" className="ltr-num">{currentTotals.calories}</bdi> קק״ל
+              </span>
             </button>
           </div>
         )}

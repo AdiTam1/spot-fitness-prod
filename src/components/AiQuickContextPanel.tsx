@@ -341,14 +341,15 @@ export function AiQuickContextPanel({
             type="button"
             onClick={() => setAddingChipOpen((p) => !p)}
             style={{
-              padding: '4px 8px',
+              minHeight: 36,
+              padding: '0 14px',
               borderRadius: 999,
-              fontSize: 12,
-              fontWeight: 700,
+              fontSize: 13,
+              fontWeight: 600,
               cursor: 'pointer',
               border: '1px dashed var(--line-2)',
               background: 'transparent',
-              color: 'var(--accent-volt)',
+              color: 'var(--text)',
               display: 'flex',
               alignItems: 'center',
               gap: 3,
