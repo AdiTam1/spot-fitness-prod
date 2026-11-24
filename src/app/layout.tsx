@@ -95,6 +95,8 @@ const theme = createTheme({
     Button: { defaultProps: { radius: 'xl' } },
     Badge: { defaultProps: { radius: 'xl' } },
     SegmentedControl: { defaultProps: { radius: 'xl' } },
+    // Decimal keypad everywhere numbers are typed (weights like 68.4 need the separator).
+    NumberInput: { defaultProps: { inputMode: 'decimal', hideControls: true } },
     // Overlays slide up like native bottom sheets (Modals are restyled as sheets on phones).
     Modal: { defaultProps: { transitionProps: { transition: 'slide-up', duration: 220 } } },
   },

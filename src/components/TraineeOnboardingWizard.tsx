@@ -335,10 +335,7 @@ export function TraineeOnboardingWizard({
         padding: '6px 0 calc(28px + env(safe-area-inset-bottom, 0px))',
       }}
     >
-      <div
-        className="pro-card-elevated"
-        style={{ width: '100%', padding: '18px 16px' }}
-      >
+      <div style={{ width: '100%', padding: '14px 4px 0' }}>
         {/* כותרת ופס התקדמות קומפקטי */}
         <div style={{ marginBottom: 14 }}>
           <div
@@ -352,14 +349,14 @@ export function TraineeOnboardingWizard({
             <div>
               <span
                 style={{
-                  fontSize: 11,
-                  fontWeight: 800,
-                  color: 'var(--accent-volt)',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: 'var(--text-2)',
                 }}
               >
-                התאמת הפרופיל האישי · שלב {step} מתוך 6
+                התאמת הפרופיל האישי · שלב <bdi className="ltr-num">{step}</bdi> מתוך <bdi className="ltr-num">6</bdi>
               </span>
-              <div style={{ fontSize: 17, fontWeight: 900, marginTop: 1 }}>
+              <div style={{ fontSize: 26, fontWeight: 700, marginTop: 8, lineHeight: 1.2 }}>
                 {step === 1 && 'פרטים אישיים ויעד משקל'}
                 {step === 2 && 'שגרה יומית ושעות שינה'}
                 {step === 3 && 'אימוני כוח והליכות'}
@@ -387,10 +384,10 @@ export function TraineeOnboardingWizard({
                   aria-label={`שלב ${s}`}
                   onClick={() => setStep(s as 1 | 2 | 3 | 4 | 5 | 6)}
                   style={{
-                    height: 6,
+                    height: 4,
                     borderRadius: 999,
                     border: 'none',
-                    background: active ? 'var(--accent-volt)'
+                    background: active ? 'var(--accent)'
                       : done
                       ? 'var(--surface-2)'
                       : 'var(--bg-surface-3)',
@@ -815,12 +812,10 @@ export function TraineeOnboardingWizard({
                         padding: '5px 10px',
                         borderRadius: 999,
                         border: selected
-                          ? '1px solid #38bdf8'
-                          : '1px solid var(--border-subtle)',
-                        background: selected
-                          ? 'rgba(56, 189, 248, 0.15)'
-                          : 'var(--bg-surface-1)',
-                        color: selected ? '#38bdf8' : 'var(--text-secondary)',
+                          ? '1px solid var(--sel-bg)'
+                          : '1px solid var(--line-2)',
+                        background: selected ? 'var(--sel-bg)' : 'transparent',
+                        color: selected ? 'var(--sel-text)' : 'var(--text)',
                         fontSize: 11,
                         fontWeight: 700,
                         cursor: 'pointer',
@@ -1234,13 +1229,9 @@ export function TraineeOnboardingWizard({
                       style={{
                         padding: '5px 10px',
                         borderRadius: 999,
-                        border: selected
-                          ? '1px solid var(--warn-text)'
-                          : '1px solid var(--border-subtle)',
-                        background: selected
-                          ? 'rgba(255, 184, 0, 0.14)'
-                          : 'var(--bg-surface-1)',
-                        color: selected ? 'var(--warn-text)' : 'var(--text-secondary)',
+                        border: selected ? '1px solid var(--sel-bg)' : '1px solid var(--line-2)',
+                        background: selected ? 'var(--sel-bg)' : 'transparent',
+                        color: selected ? 'var(--sel-text)' : 'var(--text)',
                         fontSize: 11,
                         fontWeight: 700,
                         cursor: 'pointer',

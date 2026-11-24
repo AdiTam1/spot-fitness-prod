@@ -360,8 +360,10 @@ a:focus-visible {
   background-color: var(--surface-2) !important;
   border: 1px solid var(--line-2) !important;
   color: var(--text) !important;
-  border-radius: 14px !important;
-  min-height: 44px;
+  border-radius: 16px !important;
+  min-height: 52px;
+  /* 16px prevents iOS from zooming the page when an input is focused. */
+  font-size: 16px !important;
   transition: border-color 0.15s ease !important;
 }
 
@@ -667,4 +669,16 @@ a.glass {
   content: '';
   position: absolute;
   inset: calc(var(--hy, 0px) * -1) calc(var(--hx, 0px) * -1);
+}
+
+/* Numeric steppers are replaced by plain typing (design has none). */
+.mantine-NumberInput-controls {
+  display: none !important;
+}
+.mantine-NumberInput-input {
+  padding-inline-end: 12px !important;
+}
+.mantine-Textarea-input {
+  min-height: 52px;
+  padding-block: 14px !important;
 }
