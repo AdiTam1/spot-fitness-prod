@@ -260,7 +260,7 @@ export function AuthGateView({
               borderRadius: 9,
               border: 'none',
               background:
-                mode === 'login' ? 'var(--accent-volt)' : 'transparent',
+                mode === 'login' ? 'var(--sel-bg)' : 'transparent',
               color: mode === 'login' ? 'var(--text)' : 'var(--text-secondary)',
               fontSize: 13,
               fontWeight: 700,
@@ -290,7 +290,7 @@ export function AuthGateView({
               borderRadius: 9,
               border: 'none',
               background:
-                mode === 'register' ? 'var(--accent-volt)' : 'transparent',
+                mode === 'register' ? 'var(--sel-bg)' : 'transparent',
               color: mode === 'register' ? 'var(--text)' : 'var(--text-secondary)',
               fontSize: 13,
               fontWeight: 700,

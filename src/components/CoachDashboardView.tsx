@@ -1357,16 +1357,13 @@ export function CoachDashboardView({
                   padding: '6px 12px',
                   borderRadius: 999,
                   border:
-                    selectedGroupFilter === 'all'
-                      ? '1px solid var(--accent-volt)'
+                    selectedGroupFilter === 'all' ? '1px solid var(--sel-bg)'
                       : '1px solid var(--border-subtle)',
                   background:
-                    selectedGroupFilter === 'all'
-                      ? 'rgba(214, 125, 9, 0.12)'
+                    selectedGroupFilter === 'all' ? 'var(--sel-bg)'
                       : 'var(--bg-surface-2)',
                   color:
-                    selectedGroupFilter === 'all'
-                      ? 'var(--accent-volt)'
+                    selectedGroupFilter === 'all' ? 'var(--sel-text)'
                       : 'var(--text-secondary)',
                   fontSize: 12,
                   fontWeight: 700,
@@ -1424,16 +1421,13 @@ export function CoachDashboardView({
                   padding: '6px 12px',
                   borderRadius: 999,
                   border:
-                    selectedGroupFilter === 'unassigned'
-                      ? '1px solid var(--accent-volt)'
+                    selectedGroupFilter === 'unassigned' ? '1px solid var(--sel-bg)'
                       : '1px solid var(--border-subtle)',
                   background:
-                    selectedGroupFilter === 'unassigned'
-                      ? 'rgba(214, 125, 9, 0.12)'
+                    selectedGroupFilter === 'unassigned' ? 'var(--sel-bg)'
                       : 'var(--bg-surface-2)',
                   color:
-                    selectedGroupFilter === 'unassigned'
-                      ? 'var(--accent-volt)'
+                    selectedGroupFilter === 'unassigned' ? 'var(--sel-text)'
                       : 'var(--text-secondary)',
                   fontSize: 12,
                   fontWeight: 700,
@@ -1699,7 +1693,7 @@ export function CoachDashboardView({
                   borderRadius: 7,
                   border: 'none',
                   background:
-                    rosterViewMode === 'cards' ? 'var(--accent-volt)' : 'transparent',
+                    rosterViewMode === 'cards' ? 'var(--sel-bg)' : 'transparent',
                   color:
                     rosterViewMode === 'cards' ? 'var(--text)' : 'var(--text-secondary)',
                   fontSize: 11,
@@ -1724,7 +1718,7 @@ export function CoachDashboardView({
                   borderRadius: 7,
                   border: 'none',
                   background:
-                    rosterViewMode === 'table' ? 'var(--accent-volt)' : 'transparent',
+                    rosterViewMode === 'table' ? 'var(--sel-bg)' : 'transparent',
                   color:
                     rosterViewMode === 'table' ? 'var(--text)' : 'var(--text-secondary)',
                   fontSize: 11,
