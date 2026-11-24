@@ -359,12 +359,12 @@ export function AdminScrapersPanel({
               border: '1px solid var(--border-subtle)',
             }}
           >
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>סטטוס סקרייפרים</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>סטטוס סקרייפרים</div>
             <div className="num-mono" style={{ fontSize: 20, fontWeight: 900, marginTop: 4 }}>
               <span style={{ color: 'var(--ok-text)' }}>{report?.totalHealthy ?? 0}</span>
               <span style={{ color: 'var(--text-muted)', fontSize: 14 }}> / {results.length || 12} תקינים</span>
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
               שבורים: {report?.totalBroken ?? 0} · ממתינים/אזהרה: {report?.totalWarning ?? 0}
             </div>
           </div>
@@ -377,7 +377,7 @@ export function AdminScrapersPanel({
               border: '1px solid var(--border-subtle)',
             }}
           >
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>מוצרים שמורים במאגר</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>מוצרים שמורים במאגר</div>
             <div
               className="num-mono"
               style={{ fontSize: 20, fontWeight: 900, marginTop: 4, color: 'var(--accent-volt)' }}
@@ -387,7 +387,7 @@ export function AdminScrapersPanel({
                 report?.sqlCatalogStats?.totalCount ?? 0
               ).toLocaleString('he-IL')}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
               {report?.sqlCatalogStats?.available
                 ? `טבלת SQL מאונדקסת (${report.sqlCatalogStats.totalCount.toLocaleString('he-IL')} שורות) + חיפוש חי`
                 : '+ חיפוש חי על 25,000+ פריטים בזמן אמת'}
@@ -402,11 +402,11 @@ export function AdminScrapersPanel({
               border: '1px solid var(--border-subtle)',
             }}
           >
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>בדיקה אוטומטית אחרונה</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>בדיקה אוטומטית אחרונה</div>
             <div className="num-mono" style={{ fontSize: 14, fontWeight: 800, marginTop: 6 }}>
               {formatHeDateTime(report?.lastCheckedAt)}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
               טריגר:{' '}
               {report?.trigger === 'auto'
                 ? 'אוטומטי בדשבורד'
@@ -424,11 +424,11 @@ export function AdminScrapersPanel({
               border: '1px solid var(--border-subtle)',
             }}
           >
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>לוח בדיקה אוטומטית</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>לוח בדיקה אוטומטית</div>
             <div className="num-mono" style={{ fontSize: 14, fontWeight: 800, marginTop: 6 }}>
               כל 6 שעות + Cron יומי
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
               הבאה החל מ: {formatHeDateTime(report?.nextAutoCheckAt)}
             </div>
           </div>
@@ -458,7 +458,7 @@ export function AdminScrapersPanel({
             </strong>
             <span
               style={{
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 800,
                 padding: '2px 8px',
                 borderRadius: 999,
@@ -471,7 +471,7 @@ export function AdminScrapersPanel({
               {report?.sqlCatalogStats?.available ? 'מחובר ופעיל' : 'ממתין להרצת SQL ב-Supabase'}
             </span>
           </div>
-          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 6, lineHeight: 1.55 }}>
+          <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 6, lineHeight: 1.55 }}>
             {report?.sqlCatalogStats?.available ? (
               <>
                 סה״כ שמור בטבלת SQL (ללא עומס RAM):{' '}
@@ -495,7 +495,7 @@ export function AdminScrapersPanel({
               </>
             )}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
             להזנה מלאה של אלפי מוצרים (שופרסל, משרד הבריאות 4,624+, Fuder וברקודים):{' '}
             <code dir="ltr" style={{ color: 'var(--accent-volt)' }}>
               node --use-system-ca scripts/seed-shufersal.mjs --full
@@ -600,7 +600,7 @@ export function AdminScrapersPanel({
                     <span
                       className="num-mono"
                       style={{
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: 800,
                         padding: '1px 6px',
                         borderRadius: 6,
@@ -618,7 +618,7 @@ export function AdminScrapersPanel({
                       target="_blank"
                       rel="noreferrer"
                       style={{
-                        fontSize: 11.5,
+                        fontSize: 12.5,
                         color: 'var(--accent-volt)',
                         textDecoration: 'none',
                         display: 'inline-flex',
@@ -629,14 +629,14 @@ export function AdminScrapersPanel({
                       <span>{item.domain}</span>
                       <ExternalLink size={11} />
                     </a>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>· {item.category}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>· {item.category}</span>
                   </div>
                 </div>
 
                 <span
                   style={{
                     flexShrink: 0,
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: 800,
                     padding: '4px 9px',
                     borderRadius: 999,
@@ -659,7 +659,7 @@ export function AdminScrapersPanel({
                 </span>
               </div>
 
-              <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+              <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
                 {item.description}
               </div>
 
@@ -670,7 +670,7 @@ export function AdminScrapersPanel({
                   display: 'flex',
                   flexWrap: 'wrap',
                   gap: 8,
-                  fontSize: 11,
+                  fontSize: 12,
                   padding: '8px 10px',
                   borderRadius: 10,
                   background: 'var(--bg-surface-2)',
@@ -691,7 +691,7 @@ export function AdminScrapersPanel({
                     borderRadius: 10,
                     background: 'var(--fill-1)',
                     border: '1px solid var(--line-2)',
-                    fontSize: 11.5,
+                    fontSize: 12.5,
                   }}
                 >
                   <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
@@ -718,7 +718,7 @@ export function AdminScrapersPanel({
                       item.status === 'broken'
                         ? '1px solid rgba(255, 94, 126, 0.35)'
                         : '1px solid rgba(250, 204, 21, 0.3)',
-                    fontSize: 11.5,
+                    fontSize: 12.5,
                     color: item.status === 'broken' ? '#ff9db1' : 'var(--warn-text)',
                     display: 'flex',
                     gap: 6,
@@ -739,7 +739,7 @@ export function AdminScrapersPanel({
                   className="btn-surface"
                   style={{
                     padding: '6px 10px',
-                    fontSize: 11.5,
+                    fontSize: 12.5,
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 5,
@@ -761,7 +761,7 @@ export function AdminScrapersPanel({
                   className="btn-surface"
                   style={{
                     padding: '6px 10px',
-                    fontSize: 11.5,
+                    fontSize: 12.5,
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 5,
@@ -784,7 +784,7 @@ export function AdminScrapersPanel({
                   className="btn-surface"
                   style={{
                     padding: '6px 10px',
-                    fontSize: 11.5,
+                    fontSize: 12.5,
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 5,
@@ -831,7 +831,7 @@ export function AdminScrapersPanel({
                       disabled={testingId === item.id}
                       onClick={() => handleRunTestSearch(item.id)}
                       className="btn-volt"
-                      style={{ padding: '6px 12px', fontSize: 11.5, cursor: 'pointer' }}
+                      style={{ padding: '6px 12px', fontSize: 12.5, cursor: 'pointer' }}
                     >
                       {testingId === item.id ? 'שולף...' : 'הרץ'}
                     </button>
@@ -842,7 +842,7 @@ export function AdminScrapersPanel({
                         <div
                           key={tr.id}
                           style={{
-                            fontSize: 11,
+                            fontSize: 12,
                             padding: '5px 8px',
                             borderRadius: 6,
                             background: 'var(--bg-surface-1)',
@@ -878,7 +878,7 @@ export function AdminScrapersPanel({
                 key={`${h.checkedAt}-${i}`}
                 className="num-mono"
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   padding: '6px 10px',
                   borderRadius: 8,
                   background: 'var(--bg-surface-2)',

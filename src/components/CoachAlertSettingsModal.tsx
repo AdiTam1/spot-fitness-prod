@@ -351,7 +351,7 @@ export function CoachAlertSettingsModal({
 
             <span
               style={{
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 800,
                 padding: '3px 9px',
                 borderRadius: 999,
@@ -459,7 +459,7 @@ export function CoachAlertSettingsModal({
             <div style={{ fontSize: 13, fontWeight: 800 }}>
               הפעל קבלת התראות אוטומטיות
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
               מתקבל פוש מיידי ברגע שמתאמן/ת שנבחרו מזינים נתונים חדשים
             </div>
           </div>
@@ -531,7 +531,7 @@ export function CoachAlertSettingsModal({
                     </div>
                     <div
                       style={{
-                        fontSize: 10.5,
+                        fontSize: 12.5,
                         color: 'var(--text-secondary)',
                         marginTop: 2,
                       }}
@@ -599,7 +599,7 @@ export function CoachAlertSettingsModal({
                   background: 'transparent',
                   border: 'none',
                   color: 'var(--accent-volt)',
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: 700,
                   cursor: 'pointer',
                 }}
@@ -627,7 +627,7 @@ export function CoachAlertSettingsModal({
                       padding: '6px 11px',
                       borderRadius: 999,
                       cursor: 'pointer',
-                      fontSize: 11.5,
+                      fontSize: 12.5,
                       fontWeight: 700,
                       border: isSelected
                         ? `1px solid ${grp.color || 'var(--accent-volt)'}`
@@ -688,7 +688,7 @@ export function CoachAlertSettingsModal({
                   background: 'transparent',
                   border: 'none',
                   color: 'var(--accent-volt)',
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: 700,
                   cursor: 'pointer',
                 }}
@@ -705,7 +705,7 @@ export function CoachAlertSettingsModal({
                   background: 'transparent',
                   border: 'none',
                   color: 'var(--text-muted)',
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: 700,
                   cursor: 'pointer',
                 }}
@@ -785,7 +785,7 @@ export function CoachAlertSettingsModal({
                         {grpName && (
                           <div
                             style={{
-                              fontSize: 10.5,
+                              fontSize: 12.5,
                               color: viaGroup
                                 ? 'var(--accent-volt)'
                                 : 'var(--text-secondary)',

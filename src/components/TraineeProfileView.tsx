@@ -543,7 +543,7 @@ export function TraineeProfileView({
           <span style={{ fontSize: 14, fontWeight: 800 }}>
             סטטיסטיקות שבוע אחרון
           </span>
-          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
             {stats.activeDays} ימים מתועדים • {stats.mealsLoggedCount} ארוחות
           </span>
         </div>
@@ -567,7 +567,7 @@ export function TraineeProfileView({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 5,
-                fontSize: 11,
+                fontSize: 12,
                 color: 'var(--text-secondary)',
                 marginBottom: 4,
               }}
@@ -578,7 +578,7 @@ export function TraineeProfileView({
             <div className="num-mono" style={{ fontSize: 16, fontWeight: 900 }}>
               {stats.avgCalories.toLocaleString()} קק״ל
             </div>
-            <div style={{ fontSize: 11, color: 'var(--macro-protein)', fontWeight: 700 }}>
+            <div style={{ fontSize: 12, color: 'var(--macro-protein)', fontWeight: 700 }}>
               ממוצע {stats.avgProtein}g חלבון ליום
             </div>
           </div>
@@ -598,7 +598,7 @@ export function TraineeProfileView({
                   display: 'flex',
                   alignItems: 'center',
                   gap: 5,
-                  fontSize: 11,
+                  fontSize: 12,
                   color: 'var(--text-secondary)',
                   marginBottom: 4,
                 }}
@@ -609,7 +609,7 @@ export function TraineeProfileView({
               <div className="num-mono" style={{ fontSize: 16, fontWeight: 900 }}>
                 {stats.avgSteps.toLocaleString()}
               </div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                 יעד:{' '}
                 {(trainee.activityTargets?.dailyStepsTarget ?? 8000).toLocaleString()}
               </div>
@@ -628,7 +628,7 @@ export function TraineeProfileView({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 5,
-                fontSize: 11,
+                fontSize: 12,
                 color: 'var(--text-secondary)',
                 marginBottom: 4,
               }}
@@ -639,7 +639,7 @@ export function TraineeProfileView({
             <div className="num-mono" style={{ fontSize: 16, fontWeight: 900 }}>
               {stats.avgWater} כוסות
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               יעד יומי: ~12 כוסות
             </div>
           </div>
@@ -656,7 +656,7 @@ export function TraineeProfileView({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 5,
-                fontSize: 11,
+                fontSize: 12,
                 color: 'var(--text-secondary)',
                 marginBottom: 4,
               }}
@@ -667,7 +667,7 @@ export function TraineeProfileView({
             <div className="num-mono" style={{ fontSize: 16, fontWeight: 900 }}>
               {trainee.currentWeight} ק״ג
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               {stats.weightDelta === null
                 ? `יעד: ${trainee.targetWeight} ק״ג`
                 : (
@@ -709,7 +709,7 @@ export function TraineeProfileView({
           {(pushStatus?.isNativeAndroid || webStatus?.webPushSupported) && (
             <span
               style={{
-                fontSize: 10.5,
+                fontSize: 12.5,
                 fontWeight: 800,
                 padding: '3px 8px',
                 borderRadius: 999,
@@ -742,7 +742,7 @@ export function TraineeProfileView({
                   border: '1px solid rgba(245, 158, 11, 0.3)',
                   borderRadius: 10,
                   padding: '8px 10px',
-                  fontSize: 11.5,
+                  fontSize: 12.5,
                   color: 'var(--warn-text)',
                   display: 'flex',
                   alignItems: 'center',
@@ -828,7 +828,7 @@ export function TraineeProfileView({
             {pushFeedback && (
               <div
                 style={{
-                  fontSize: 11.5,
+                  fontSize: 12.5,
                   fontWeight: 700,
                   color: pushFeedback.ok ? 'var(--ok-text)' : 'var(--danger-text)',
                 }}
@@ -866,7 +866,7 @@ export function TraineeProfileView({
             {webStatus.isIosInAppBrowser && (
               <div
                 style={{
-                  fontSize: 11.5,
+                  fontSize: 12.5,
                   fontWeight: 700,
                   color: 'var(--warn-text)',
                   background: 'rgba(245, 158, 11, 0.12)',
@@ -918,7 +918,7 @@ export function TraineeProfileView({
           >
             <div
               style={{
-                fontSize: 11.5,
+                fontSize: 12.5,
                 color: 'var(--text-secondary)',
                 display: 'flex',
                 alignItems: 'center',
@@ -936,7 +936,7 @@ export function TraineeProfileView({
                   border: '1px solid rgba(245, 158, 11, 0.3)',
                   borderRadius: 10,
                   padding: '8px 10px',
-                  fontSize: 11.5,
+                  fontSize: 12.5,
                   color: 'var(--warn-text)',
                   display: 'flex',
                   alignItems: 'center',
@@ -957,7 +957,7 @@ export function TraineeProfileView({
                   border: '1px solid rgba(239, 68, 68, 0.3)',
                   borderRadius: 10,
                   padding: '8px 10px',
-                  fontSize: 11.5,
+                  fontSize: 12.5,
                   color: 'var(--danger-text)',
                 }}
               >
@@ -1022,7 +1022,7 @@ export function TraineeProfileView({
             {pushFeedback && (
               <div
                 style={{
-                  fontSize: 11.5,
+                  fontSize: 12.5,
                   fontWeight: 700,
                   color: pushFeedback.ok ? 'var(--ok-text)' : 'var(--danger-text)',
                 }}
@@ -1074,7 +1074,7 @@ export function TraineeProfileView({
               <div style={{ fontSize: 12.5, fontWeight: 700 }}>
                 סיום זיהוי ארוחה ב־AI ברקע
               </div>
-              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                 שולח התראה עם שם המנה והקלוריות רק אם יצאת מהאפליקציה בזמן הטעינה
               </div>
             </div>
@@ -1106,7 +1106,7 @@ export function TraineeProfileView({
               <div style={{ fontSize: 12.5, fontWeight: 700 }}>
                 הודעות ותזכורות מהמאמן
               </div>
-              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                 קבלת תזכורות אישיות ומעבר ישיר לארוחה שהמאמן ביקש
               </div>
             </div>
@@ -1152,7 +1152,7 @@ export function TraineeProfileView({
             <span
               className="num-mono"
               style={{
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 800,
                 color: 'var(--accent-orange-bright)',
               }}
@@ -1162,7 +1162,7 @@ export function TraineeProfileView({
           </div>
           <div
             style={{
-              fontSize: 11.5,
+              fontSize: 12.5,
               color: 'var(--text-secondary)',
               marginBottom: 10,
             }}
@@ -1219,7 +1219,7 @@ export function TraineeProfileView({
             <Utensils size={15} color="currentColor" />
             <span>הארוחות שלי ({loggedMealsList.length})</span>
           </span>
-          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
             לחץ על ארוחה לפתיחה ביומן
           </span>
         </div>
@@ -1315,7 +1315,7 @@ export function TraineeProfileView({
                 </div>
                 <div
                   style={{
-                    fontSize: 11.5,
+                    fontSize: 12.5,
                     color: 'var(--text-secondary)',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',

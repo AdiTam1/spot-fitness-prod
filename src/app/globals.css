@@ -356,12 +356,22 @@ a:focus-visible {
 }
 
 /* ---------- Mantine inputs ---------- */
+/* Mantine sizes inputs through --input-height; override it for every size. */
+.mantine-InputWrapper-root,
+.mantine-Input-wrapper,
 .mantine-Input-input {
+  --input-height-xs: 52px;
+  --input-height-sm: 52px;
+  --input-height-md: 52px;
+  --input-height: 52px;
+}
+.mantine-Input-input {
+  height: 52px;
   background-color: var(--surface-2) !important;
   border: 1px solid var(--line-2) !important;
   color: var(--text) !important;
   border-radius: 16px !important;
-  min-height: 52px;
+  min-height: 52px !important;
   /* 16px prevents iOS from zooming the page when an input is focused. */
   font-size: 16px !important;
   transition: border-color 0.15s ease !important;

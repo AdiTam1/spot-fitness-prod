@@ -207,7 +207,7 @@ export function CoachPushModal({
         <div>
           <div
             style={{
-              fontSize: 11.5,
+              fontSize: 12.5,
               fontWeight: 700,
               color: 'var(--text-secondary)',
               marginBottom: 6,
@@ -229,7 +229,7 @@ export function CoachPushModal({
                 className="btn-surface"
                 style={{
                   padding: '5px 9px',
-                  fontSize: 11,
+                  fontSize: 12,
                   cursor: 'pointer',
                 }}
               >
@@ -339,7 +339,7 @@ export function CoachPushModal({
           >
             <div
               style={{
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 700,
                 color: 'var(--text-secondary)',
                 marginBottom: 6,
@@ -352,7 +352,7 @@ export function CoachPushModal({
                 <div
                   key={h.id}
                   style={{
-                    fontSize: 11,
+                    fontSize: 12,
                     background: 'var(--bg-surface-2)',
                     padding: '6px 9px',
                     borderRadius: 8,

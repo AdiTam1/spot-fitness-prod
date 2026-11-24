@@ -110,13 +110,13 @@ export function QuickChipsAdminPanel({
           <Sparkles size={14} color="currentColor" />
           <span>{title}</span>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
           {subtitle}
         </div>
       </div>
 
       {errMsg && (
-        <div style={{ fontSize: 11, color: 'var(--danger-text)', fontWeight: 600 }}>{errMsg}</div>
+        <div style={{ fontSize: 12, color: 'var(--danger-text)', fontWeight: 600 }}>{errMsg}</div>
       )}
 
       <div
@@ -148,7 +148,7 @@ export function QuickChipsAdminPanel({
           className="btn-volt"
           style={{
             padding: '7px 12px',
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: 800,
             display: 'inline-flex',
             alignItems: 'center',
@@ -163,7 +163,7 @@ export function QuickChipsAdminPanel({
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         {chips.length === 0 ? (
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             טרם הוגדרו צ׳יפים ברמה זו.
           </span>
         ) : (
@@ -178,12 +178,12 @@ export function QuickChipsAdminPanel({
                 borderRadius: 999,
                 background: 'var(--bg-surface-1)',
                 border: '1px solid var(--border-subtle)',
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 700,
               }}
             >
               <span>{c.label}</span>
-              <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>({c.category})</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>({c.category})</span>
               <button
                 type="button"
                 title="הסר צ׳יפ"

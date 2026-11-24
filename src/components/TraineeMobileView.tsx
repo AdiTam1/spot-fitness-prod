@@ -576,7 +576,7 @@ export function TraineeMobileView({
             className="btn-volt"
             style={{
               padding: '5px 12px',
-              fontSize: 11,
+              fontSize: 12,
               cursor: 'pointer',
             }}
           >
@@ -609,7 +609,7 @@ export function TraineeMobileView({
           </div>
           <span
             style={{
-              fontSize: 11,
+              fontSize: 12,
               fontWeight: 800,
               color: '#38bdf8',
               textDecoration: 'underline',
@@ -956,7 +956,7 @@ export function TraineeMobileView({
                     <div
                       style={{
                         marginTop: 3,
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: 700,
                         color: 'var(--info-text)',
                         display: 'inline-flex',
@@ -1249,7 +1249,7 @@ export function TraineeMobileView({
                           ? 'יעד הושלם ✓'
                           : `נותרו ${remainingWorkouts}`}
                       </div>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 700 }}>
                         אימונים ({workoutsThisWeek}/{actTargets.weeklyWorkoutsTarget})
                       </div>
                     </div>
@@ -1287,7 +1287,7 @@ export function TraineeMobileView({
                           ? 'יעד הושלם ✓'
                           : `נותרו ${remainingCardio}`}
                       </div>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 700 }}>
                         הליכה/ריצה ({cardioThisWeek}/{actTargets.weeklyCardioTarget})
                       </div>
                     </div>
@@ -1326,7 +1326,7 @@ export function TraineeMobileView({
                             ? 'יעד הושלם ✓'
                             : `נותרו ${remainingSteps.toLocaleString()}`}
                         </div>
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 700 }}>
                           צעדים ({currentSteps.toLocaleString()})
                         </div>
                       </div>
@@ -1389,7 +1389,7 @@ export function TraineeMobileView({
                       <span
                         className="num-mono"
                         style={{
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: 800,
                           color:
                             workoutsThisWeek >= actTargets.weeklyWorkoutsTarget
@@ -1447,7 +1447,7 @@ export function TraineeMobileView({
                                 : 'var(--bg-surface-1)',
                               color: isSelected ? 'var(--sel-text)'
                                 : 'var(--text-secondary)',
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: 700,
                               opacity: isBlockedDay ? 0.45 : 1,
                               cursor: isBlockedDay ? 'not-allowed' : 'pointer',
@@ -1497,7 +1497,7 @@ export function TraineeMobileView({
                       <span
                         className="num-mono"
                         style={{
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: 800,
                           color:
                             cardioThisWeek >= actTargets.weeklyCardioTarget
@@ -1563,7 +1563,7 @@ export function TraineeMobileView({
                                 : 'var(--bg-surface-1)',
                               color: isSelected ? 'var(--sel-text)'
                                 : 'var(--text-secondary)',
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: 700,
                               cursor: isBlockedDay ? 'not-allowed' : 'pointer',
                               opacity: isBlockedDay ? 0.45 : 1,
@@ -1610,7 +1610,7 @@ export function TraineeMobileView({
                       <span
                         className="num-mono"
                         style={{
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: 800,
                           color:
                             (todaySleep || 0) >=
@@ -1655,7 +1655,7 @@ export function TraineeMobileView({
                                 : 'var(--bg-surface-1)',
                               color: isSelected ? 'var(--sel-text)'
                                 : 'var(--text-secondary)',
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: 800,
                               cursor: isBlockedDay ? 'not-allowed' : 'pointer',
                               opacity: isBlockedDay ? 0.45 : 1,
@@ -1690,7 +1690,7 @@ export function TraineeMobileView({
                                 : 'var(--bg-surface-1)',
                               color: isSelected ? 'var(--sel-text)'
                                 : 'var(--text-secondary)',
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: 800,
                               cursor: isBlockedDay ? 'not-allowed' : 'pointer',
                               opacity: isBlockedDay ? 0.45 : 1,
@@ -1751,7 +1751,7 @@ export function TraineeMobileView({
                           className="btn-volt"
                           style={{
                             padding: '6px 12px',
-                            fontSize: 11.5,
+                            fontSize: 12.5,
                             cursor: 'pointer',
                           }}
                         >
@@ -1779,7 +1779,7 @@ export function TraineeMobileView({
                 </span>
                 <span
                   style={{
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: 700,
                     padding: '2px 8px',
                     borderRadius: 999,
@@ -1807,7 +1807,7 @@ export function TraineeMobileView({
                     style={{
                       padding: '5px 10px',
                       borderRadius: 999,
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: 700,
                       display: 'flex',
                       alignItems: 'center',
@@ -1829,7 +1829,7 @@ export function TraineeMobileView({
                       <span
                         className="num-mono"
                         style={{
-                          fontSize: 10,
+                          fontSize: 12,
                           padding: '1px 5px',
                           borderRadius: 999,
                           background: 'var(--surface-2)',
@@ -1929,7 +1929,7 @@ export function TraineeMobileView({
                             className="num-mono"
                             style={{
                               position: 'absolute',
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: 800,
                               color: hasItems
                                 ? isObservationDay
@@ -1989,7 +1989,7 @@ export function TraineeMobileView({
                                     ? 'var(--text)'
                                     : 'var(--text-secondary)',
                                   minHeight: 26,
-                                  fontSize: 11,
+                                  fontSize: 12,
                                   fontWeight: 700,
                                   opacity: isBlockedDay ? 0.5 : 1,
                                   cursor:
@@ -2068,7 +2068,7 @@ export function TraineeMobileView({
                         </div>
                         <div
                           style={{
-                            fontSize: 10,
+                            fontSize: 12,
                             color: 'var(--text-muted)',
                           }}
                         >
@@ -2111,7 +2111,7 @@ export function TraineeMobileView({
                             <div style={{ flex: 1 }}>
                               <div
                                 style={{
-                                  fontSize: 11,
+                                  fontSize: 12,
                                   fontWeight: 700,
                                   color: 'var(--accent-volt)',
                                 }}
@@ -2121,7 +2121,7 @@ export function TraineeMobileView({
                               {entry.photoNote && (
                                 <div
                                   style={{
-                                    fontSize: 11,
+                                    fontSize: 12,
                                     color: 'var(--text-secondary)',
                                   }}
                                 >
@@ -2165,7 +2165,7 @@ export function TraineeMobileView({
                               </div>
                               <div
                                 style={{
-                                  fontSize: 11,
+                                  fontSize: 12,
                                   color: 'var(--text-muted)',
                                 }}
                               >
@@ -2186,7 +2186,7 @@ export function TraineeMobileView({
                               {item.macros.calories}{' '}
                               <span
                                 style={{
-                                  fontSize: 10,
+                                  fontSize: 12,
                                   color: 'var(--text-muted)',
                                   fontWeight: 500,
                                 }}
@@ -2310,7 +2310,7 @@ export function TraineeMobileView({
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: 4,
-                                fontSize: 11.5,
+                                fontSize: 12.5,
                                 fontWeight: 700,
                                 whiteSpace: 'nowrap',
                                 flexShrink: 0,
@@ -2449,7 +2449,7 @@ export function TraineeMobileView({
                         {item.val ? `${item.val}` : '—'}
                       </div>
                       <div
-                        style={{ fontSize: 11, color: 'var(--text-secondary)' }}
+                        style={{ fontSize: 12, color: 'var(--text-secondary)' }}
                       >
                         {item.label} (ס״מ)
                       </div>
@@ -2625,7 +2625,7 @@ export function TraineeMobileView({
                     >
                       {w.weight}
                     </div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                       {w.date}
                     </div>
                   </div>
@@ -2703,7 +2703,7 @@ export function TraineeMobileView({
                 <div
                   style={{
                     marginTop: 8,
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: 700,
                     color: weightFeedback.isError ? 'var(--danger-text)' : 'var(--ok-text)',
                   }}
@@ -3157,7 +3157,7 @@ export function TraineeMobileView({
                 );
               }}
               className="btn-surface"
-              style={{ padding: '7px 8px', fontSize: 11.5, cursor: 'pointer' }}
+              style={{ padding: '7px 8px', fontSize: 12.5, cursor: 'pointer' }}
             >
               -15 דק׳
             </button>
@@ -3172,7 +3172,7 @@ export function TraineeMobileView({
                 );
               }}
               className="btn-surface"
-              style={{ padding: '7px 8px', fontSize: 11.5, cursor: 'pointer' }}
+              style={{ padding: '7px 8px', fontSize: 12.5, cursor: 'pointer' }}
             >
               +15 דק׳
             </button>
@@ -3189,7 +3189,7 @@ export function TraineeMobileView({
                 setDraftMealTime(`${hh}:${mm}`);
               }}
               className="btn-surface"
-              style={{ flex: 1, padding: '8px', fontSize: 11.5, cursor: 'pointer' }}
+              style={{ flex: 1, padding: '8px', fontSize: 12.5, cursor: 'pointer' }}
             >
               עכשיו
             </button>
@@ -3204,7 +3204,7 @@ export function TraineeMobileView({
                   );
                 }}
                 className="btn-surface"
-                style={{ flex: 1, padding: '8px', fontSize: 11.5, cursor: 'pointer' }}
+                style={{ flex: 1, padding: '8px', fontSize: 12.5, cursor: 'pointer' }}
               >
                 תבנית ({timeEditSlot.timeHint})
               </button>

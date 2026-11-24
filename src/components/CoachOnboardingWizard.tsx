@@ -305,10 +305,7 @@ export function CoachOnboardingWizard({
         padding: '6px 0 calc(28px + env(safe-area-inset-bottom, 0px))',
       }}
     >
-      <div
-        className="pro-card-elevated"
-        style={{ width: '100%', padding: '18px 16px' }}
-      >
+      <div style={{ width: '100%', padding: '14px 4px 0' }}>
         <div style={{ marginBottom: 14 }}>
           <div
             style={{
@@ -321,14 +318,14 @@ export function CoachOnboardingWizard({
             <div>
               <span
                 style={{
-                  fontSize: 11,
-                  fontWeight: 800,
-                  color: 'var(--accent-volt)',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: 'var(--text-2)',
                 }}
               >
-                הגדרת פרופיל מאמן · שלב {step} מתוך 5
+                הגדרת פרופיל מאמן · שלב <bdi className="ltr-num">{step}</bdi> מתוך <bdi className="ltr-num">5</bdi>
               </span>
-              <div style={{ fontSize: 17, fontWeight: 900, marginTop: 1 }}>
+              <div style={{ fontSize: 26, fontWeight: 700, marginTop: 8, lineHeight: 1.2 }}>
                 {step === 1 && 'פרטים אישיים'}
                 {step === 2 && 'התמחויות ומסר פתיחה'}
                 {step === 3 && 'ימי תשקיף והגדרות ברירת מחדל'}
@@ -344,7 +341,7 @@ export function CoachOnboardingWizard({
                 className="btn-surface"
                 style={{
                   padding: '6px 12px',
-                  fontSize: 11,
+                  fontSize: 12,
                   cursor: 'pointer',
                 }}
               >
@@ -370,7 +367,7 @@ export function CoachOnboardingWizard({
                   aria-label={`שלב ${s}`}
                   onClick={() => setStep(s as 1 | 2 | 3 | 4 | 5)}
                   style={{
-                    height: 6,
+                    height: 4,
                     borderRadius: 999,
                     border: 'none',
                     background: active ? 'var(--accent-volt)'
@@ -482,7 +479,7 @@ export function CoachOnboardingWizard({
                           : 'var(--bg-surface-1)',
                         color: selected ? 'var(--sel-text)'
                           : 'var(--text-secondary)',
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: 700,
                         cursor: 'pointer',
                       }}
@@ -562,7 +559,7 @@ export function CoachOnboardingWizard({
               </div>
               <div
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   color: 'var(--text-secondary)',
                   marginBottom: 8,
                 }}
@@ -599,7 +596,7 @@ export function CoachOnboardingWizard({
                       color:
                         defaultObservationDays === opt.days ? 'var(--sel-text)'
                           : 'var(--text-secondary)',
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: 800,
                       cursor: 'pointer',
                     }}
@@ -656,7 +653,7 @@ export function CoachOnboardingWizard({
                     color: !defaultCountObservationInStats
                       ? 'var(--accent-volt)'
                       : 'var(--text-secondary)',
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: 800,
                     cursor: 'pointer',
                   }}
@@ -678,7 +675,7 @@ export function CoachOnboardingWizard({
                     color: defaultCountObservationInStats
                       ? 'var(--accent-volt)'
                       : 'var(--text-secondary)',
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: 800,
                     cursor: 'pointer',
                   }}
@@ -703,7 +700,7 @@ export function CoachOnboardingWizard({
                   border: '1px solid var(--border-subtle)',
                 }}
               >
-                <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 6 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
                   גמישות קלורית:
                 </div>
                 <div style={{ display: 'flex', gap: 5 }}>
@@ -725,7 +722,7 @@ export function CoachOnboardingWizard({
                         color:
                           defaultTolerancePercent === pct ? 'var(--sel-text)'
                             : 'var(--text-secondary)',
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: 800,
                         cursor: 'pointer',
                       }}
@@ -744,7 +741,7 @@ export function CoachOnboardingWizard({
                   border: '1px solid var(--border-subtle)',
                 }}
               >
-                <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 6 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
                   יעד מים (כוסות):
                 </div>
                 <div style={{ display: 'flex', gap: 5 }}>
@@ -769,7 +766,7 @@ export function CoachOnboardingWizard({
                           defaultWaterGoal === cups
                             ? '#38bdf8'
                             : 'var(--text-secondary)',
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: 800,
                         cursor: 'pointer',
                       }}
@@ -805,7 +802,7 @@ export function CoachOnboardingWizard({
               </div>
               <div
                 style={{
-                  fontSize: 10.5,
+                  fontSize: 12.5,
                   color: 'var(--text-secondary)',
                   marginBottom: 8,
                 }}
@@ -903,7 +900,7 @@ export function CoachOnboardingWizard({
                       background: 'transparent',
                       border: 'none',
                       color: 'var(--text-muted)',
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: 700,
                       cursor: 'pointer',
                     }}
@@ -914,7 +911,7 @@ export function CoachOnboardingWizard({
               </div>
               <div
                 style={{
-                  fontSize: 10.5,
+                  fontSize: 12.5,
                   color: 'var(--text-secondary)',
                   marginBottom: 8,
                 }}
@@ -963,7 +960,7 @@ export function CoachOnboardingWizard({
                         style={{
                           padding: '4px 9px',
                           borderRadius: 999,
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: 700,
                           cursor: 'pointer',
                           border: selected ? '1px solid var(--sel-bg)'
@@ -1066,7 +1063,7 @@ export function CoachOnboardingWizard({
                             </div>
                             <div
                               style={{
-                                fontSize: 11,
+                                fontSize: 12,
                                 color: 'var(--text-secondary)',
                               }}
                             >

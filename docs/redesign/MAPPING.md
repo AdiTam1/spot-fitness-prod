@@ -18,20 +18,20 @@
 | 16 | `Metrics` | מדדים | `TraineeMobileView` (metrics section) | Partial | Week strip kept (edits past days); card order differs from design |
 | 17 | `CheckIn` | מדדים · צ׳ק-אין שבועי | `TraineeMobileView` (check-in section) | Done | Weekly stats grid, 44px rating tiles, textarea, pinned actions; selection stays gray per color rules (design shows orange) |
 | 18 | `StepsCard` | מד צעדים יומי | `DailyStepsCard` | Partial | Neutral buttons/tokens; layout unchanged |
-| 19 | `MeasureGuide` | מדריך מדידת היקפים | `BodyMeasurementGuide` | Partial | Tokens only |
+| 19 | `MeasureGuide` | מדריך מדידת היקפים | `BodyMeasurementGuide` | Partial | Pill zone tabs + neutral palette; per-region cards of the design not built |
 | 20 | `Profile` | פרופיל | `TraineeProfileView` + `ui/ThemeToggle` | Partial | Theme toggle (system/dark/light) present; layout partially restyled |
 | 21 | `AuthLogin` | התחברות | `AuthGateView` | Done | Redesigned earlier on main |
 | 22 | `AuthRegister` | הרשמת מתאמן | `AuthGateView` | Partial | Same view; not re-verified |
 | 23 | `AuthPending` | ממתין לאישור מאמן | `PendingApprovalView` (new, used by `app/page.tsx`) | Done | "בדוק שוב" re-fetches; paused accounts get their own copy |
-| 24 | `ForceUpdate` | עדכון חובה | `AndroidForceUpdateGate` | Partial | Tokens only; native-only, not renderable in browser |
+| 24 | `ForceUpdate` | עדכון חובה | `AndroidForceUpdateGate` | Done | Full-screen layout, version cards, pinned actions (verified via temporary preview route, removed) |
 | 25 | `OnboardingPersonal` | שאלון · פרטים אישיים | `TraineeOnboardingWizard` (step 1) | Done | Full-screen layout, 52px inputs |
 | 26 | `OnbLifestyle` | שאלון · שגרה ושינה | `TraineeOnboardingWizard` (step 2) | Partial | Shares wrapper restyle; step not individually verified |
 | 27 | `OnbTraining` | שאלון · אימונים והליכות | `TraineeOnboardingWizard` (step 3) | Partial | Shares wrapper restyle; step not individually verified |
 | 28 | `OnbMeasure` | שאלון · היקפים | `TraineeOnboardingWizard` (step 4) | Partial | Shares wrapper restyle; step not individually verified |
 | 29 | `OnboardingNutrition` | שאלון · סגנון תזונה | `TraineeOnboardingWizard` (step 5) | Partial | Neutral selections; not individually verified |
 | 30 | `OnbSensitivities` | שאלון · רגישויות והערות | `TraineeOnboardingWizard` (step 6) | Partial | Neutral selections; not individually verified |
-| 31 | `Coach` | מאמן · מצבת מתאמנים | `CoachDashboardView` | Partial | Dock from earlier work; section nav is now flat scrollable chip rows; trainee cards/filters still the old layout |
-| 32 | `CoachTrainee` | מאמן · תפריט ויומן של מתאמן | `CoachDashboardView` | Not restructured | Color rules only |
+| 31 | `Coach` | מאמן · מצבת מתאמנים | `CoachDashboardView` | Done | Trainee cards per design (avatar, badge, progress, glass actions); nav/filter header still legacy |
+| 32 | `CoachTrainee` | מאמן · תפריט ויומן של מתאמן | `CoachDashboardView` | Partial | Neutral headings/type scale; structure (tabs, activity steppers) not rebuilt |
 | 33 | `CoachMenu` | מאמן · תפריט מתאמן | `CoachDashboardView` | Not restructured | Color rules only |
 | 34 | `CoachJournal` | מאמן · יומן אכילה ופידבק | `CoachDashboardView` | Not restructured | Color rules only |
 | 35 | `CoachAccess` | מאמן · עריכת פרטי גישה | `CoachDashboardView` | Not restructured | Color rules only |
@@ -45,11 +45,11 @@
 | 43 | `CoachAiPrefs` | מאמן · הנחיות AI וצ׳ק-אין | `CoachDashboardView` | Not restructured | Color rules only |
 | 44 | `CoachAlerts` | מאמן · התראות בזמן אמת | `CoachAlertSettingsModal` | Partial | Bottom sheet; neutral checkbox |
 | 45 | `CoachPush` | מאמן · שליחת פוש | `CoachPushModal` | Partial | Modal is now a bottom sheet |
-| 46 | `CoachOnb1` | מאמן · הגדרה 1 | `CoachOnboardingWizard` | Not restructured | Color rules only |
-| 47 | `CoachOnb2` | מאמן · הגדרה 2 | `CoachOnboardingWizard` | Not restructured | Color rules only |
-| 48 | `CoachOnb3` | מאמן · הגדרה 3 | `CoachOnboardingWizard` | Not restructured | Color rules only |
-| 49 | `CoachOnb4` | מאמן · הגדרה 4 | `CoachOnboardingWizard` | Not restructured | Color rules only |
-| 50 | `CoachOnb5` | מאמן · הגדרה 5 | `CoachOnboardingWizard` | Not restructured | Color rules only |
+| 46 | `CoachOnb1` | מאמן · הגדרה 1 | `CoachOnboardingWizard` | Partial | Shared wrapper per design (full-screen, 26px title, thin progress); step 1 verified, 2–5 not individually checked |
+| 47 | `CoachOnb2` | מאמן · הגדרה 2 | `CoachOnboardingWizard` | Partial | Shared wrapper per design (full-screen, 26px title, thin progress); step 1 verified, 2–5 not individually checked |
+| 48 | `CoachOnb3` | מאמן · הגדרה 3 | `CoachOnboardingWizard` | Partial | Shared wrapper per design (full-screen, 26px title, thin progress); step 1 verified, 2–5 not individually checked |
+| 49 | `CoachOnb4` | מאמן · הגדרה 4 | `CoachOnboardingWizard` | Partial | Shared wrapper per design (full-screen, 26px title, thin progress); step 1 verified, 2–5 not individually checked |
+| 50 | `CoachOnb5` | מאמן · הגדרה 5 | `CoachOnboardingWizard` | Partial | Shared wrapper per design (full-screen, 26px title, thin progress); step 1 verified, 2–5 not individually checked |
 | 51 | `AdminApprovals` | מנהל · ממתינים לאישור | `CoachDashboardView` (pending queue) | Partial | Rebuilt as cards per design; not screenshot-verified (needs pending-trainee fixture) |
 | 52 | `AdminCoaches` | מנהל · ניהול מאמנים | `CoachDashboardView` (admin section) | Partial | Table renders as stacked cards on phones; header/actions not rebuilt |
 | 53 | `AdminChips` | מנהל · צ׳יפים גלובליים | `QuickChipsAdminPanel` | Not restructured | Color rules only |
