@@ -435,3 +435,19 @@ a:focus-visible {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-3);
 }
+
+/* Responsive helpers */
+@media (min-width: 769px) {
+  .only-mobile {
+    display: none !important;
+  }
+}
+@media (max-width: 768px) {
+  .only-desktop {
+    display: none !important;
+  }
+  /* Room for the floating coach dock. */
+  .coach-dashboard-root {
+    padding-bottom: 120px;
+  }
+}

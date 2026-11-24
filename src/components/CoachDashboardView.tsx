@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import React, { useState, useEffect } from 'react';
+import { GlassDock } from './ui/GlassDock';
 import {
   Modal,
   TextInput,
@@ -987,7 +988,7 @@ export function CoachDashboardView({
   const activeGroupObj = groups.find((g) => g.id === selectedGroupFilter);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="coach-dashboard-root" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* תור אישור מתאמנים שנרשמו ללא קוד מאמן (גלוי למנהל הראשי בלבד) */}
       {pendingTrainees.length > 0 && (
         <div
@@ -1282,6 +1283,25 @@ export function CoachDashboardView({
         </div>
       </div>
 
+      {/* Mobile-only floating coach dock (desktop keeps the top navigation) */}
+      <div className="only-mobile">
+        <GlassDock
+          ariaLabel="ניווט מאמן"
+          tabs={[
+            { id: 'roster', label: 'מתאמנים', icon: <Users size={22} strokeWidth={1.8} /> },
+            { id: 'templates', label: 'טמפלייטים', icon: <LayoutTemplate size={22} strokeWidth={1.8} /> },
+            { id: 'users', label: 'חשבונות', icon: <ShieldCheck size={22} strokeWidth={1.8} /> },
+          ]}
+          active={activeSection}
+          onChange={(id) => setActiveSection(id as 'roster' | 'templates' | 'users')}
+          action={{
+            label: 'מתאמן חדש',
+            icon: <UserPlus size={26} strokeWidth={2.2} />,
+            onClick: () => setNewTraineeModal(true),
+          }}
+        />
+      </div>
+
       {toastMessage && (
         <div
           role="status"
@@ -1295,19 +1315,17 @@ export function CoachDashboardView({
             maxWidth: 'calc(100% - 32px)',
             padding: '12px 18px',
             borderRadius: 14,
-            background: toastIsError
-              ? 'rgba(60, 14, 14, 0.96)'
-              : 'rgba(22, 28, 8, 0.96)',
+            background: 'var(--card)',
             border: toastIsError
               ? '1px solid rgba(239, 68, 68, 0.55)'
-              : '1px solid rgba(214, 125, 9, 0.45)',
-            color: toastIsError ? '#f87171' : 'var(--accent-volt)',
+              : '1px solid var(--line-2)',
+            color: toastIsError ? 'var(--status-danger)' : 'var(--text)',
             fontSize: 13,
             fontWeight: 700,
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            boxShadow: '0 12px 30px rgba(0,0,0,0.6)',
+            boxShadow: 'var(--glass-shadow)',
           }}
         >
           {toastIsError ? <AlertTriangle size={16} /> : <Check size={16} />}
