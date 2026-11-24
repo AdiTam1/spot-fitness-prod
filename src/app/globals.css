@@ -682,3 +682,44 @@ a.glass {
   min-height: 52px;
   padding-block: 14px !important;
 }
+
+/* ---------- Coach dashboard navigation on phones: flat, scrollable chip rows ---------- */
+@media (max-width: 768px) {
+  .coach-dashboard-root {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .coach-nav-card {
+    min-width: 0;
+    max-width: 100%;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+  .coach-nav-tabs {
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin-inline: -4px;
+    padding: 2px 4px;
+  }
+  .coach-nav-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .coach-nav-tabs > button {
+    flex: none;
+    white-space: nowrap;
+    min-height: 44px;
+    border-radius: 999px !important;
+    border: 1px solid var(--line-2);
+  }
+}

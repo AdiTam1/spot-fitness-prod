@@ -1091,7 +1091,7 @@ export function CoachDashboardView({
 
       {/* סרגל ניווט ראשי של הדשבורד */}
       <div
-        className="pro-card"
+        className="pro-card coach-nav-card"
         style={{
           padding: '14px 20px',
           display: 'flex',
@@ -1102,6 +1102,7 @@ export function CoachDashboardView({
         }}
       >
         <div
+          className="coach-nav-tabs"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -1200,7 +1201,7 @@ export function CoachDashboardView({
             })}
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="coach-nav-tabs" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
             type="button"
             onClick={() => setCoachAlertsModalOpen(true)}
@@ -1244,7 +1245,7 @@ export function CoachDashboardView({
                 cursor: 'pointer',
               }}
             >
-              <Sliders size={14} color="#38bdf8" />
+              <Sliders size={14} />
               <span>הגדרות פרופיל מאמן</span>
             </button>
           )}

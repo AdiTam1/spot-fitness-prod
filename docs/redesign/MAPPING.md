@@ -7,7 +7,7 @@
 | 5 | `AddMeal` | הוספת ארוחה | `AddMealDrawer` (hub) | Done | Keeps existing search bar and draft footer |
 | 6 | `PhotoResult` | ניתוח תמונה AI | `AddMealDrawer` (photo tab) | Partial | Color rules/tokens; layout is the old tabbed sheet, not the full-screen photo-first layout |
 | 7 | `AiQuickContext` | דיוק מהיר לניתוח AI | `AiQuickContextPanel` | Partial | Neutral tints; layout unchanged |
-| 8 | `QuickLog` | תיאור במילים / קול | `AddMealDrawer` (text/voice tab) | Partial | Color rules; layout unchanged |
+| 8 | `QuickLog` | תיאור במילים / קול | `AddMealDrawer` (text/voice tab) | Done | Large borderless field, sample chips, CTA + orange mic FAB; the design's live item preview is not implemented |
 | 9 | `Barcode` | סריקת ברקוד | `BarcodeScannerModal` | Done | Viewfinder + neutral controls. Result stepper from the design is not in this modal (result goes to the draft as before) |
 | 10 | `SavedMeals` | ארוחות שמורות והיסטוריה | `SavedMealsLibraryTab` | Partial | Neutral tints; layout unchanged |
 | 11 | `AiRecommend` | מה לאכול? | `AddMealDrawer` (recommend tab) | Partial | Color rules; layout unchanged |
@@ -16,7 +16,7 @@
 | 14 | `ServingTools` | כלים ויחידות מידה | `ServingToolsManagerModal` | Partial | Modal is now a bottom sheet; layout unchanged |
 | 15 | `AiSync` | ניתוח AI ברקע | `BackgroundAiSyncBanner` | Partial | Neutral tints |
 | 16 | `Metrics` | מדדים | `TraineeMobileView` (metrics section) | Partial | Week strip kept (edits past days); card order differs from design |
-| 17 | `CheckIn` | מדדים · צ׳ק-אין שבועי | `TraineeMobileView` (check-in sheet) | Partial | Color rules only |
+| 17 | `CheckIn` | מדדים · צ׳ק-אין שבועי | `TraineeMobileView` (check-in section) | Done | Weekly stats grid, 44px rating tiles, textarea, pinned actions; selection stays gray per color rules (design shows orange) |
 | 18 | `StepsCard` | מד צעדים יומי | `DailyStepsCard` | Partial | Neutral buttons/tokens; layout unchanged |
 | 19 | `MeasureGuide` | מדריך מדידת היקפים | `BodyMeasurementGuide` | Partial | Tokens only |
 | 20 | `Profile` | פרופיל | `TraineeProfileView` + `ui/ThemeToggle` | Partial | Theme toggle (system/dark/light) present; layout partially restyled |
@@ -30,7 +30,7 @@
 | 28 | `OnbMeasure` | שאלון · היקפים | `TraineeOnboardingWizard` (step 4) | Partial | Shares wrapper restyle; step not individually verified |
 | 29 | `OnboardingNutrition` | שאלון · סגנון תזונה | `TraineeOnboardingWizard` (step 5) | Partial | Neutral selections; not individually verified |
 | 30 | `OnbSensitivities` | שאלון · רגישויות והערות | `TraineeOnboardingWizard` (step 6) | Partial | Neutral selections; not individually verified |
-| 31 | `Coach` | מאמן · מצבת מתאמנים | `CoachDashboardView` | Not restructured | Dock + tokens from earlier work; list layout still the old multi-section dashboard |
+| 31 | `Coach` | מאמן · מצבת מתאמנים | `CoachDashboardView` | Partial | Dock from earlier work; section nav is now flat scrollable chip rows; trainee cards/filters still the old layout |
 | 32 | `CoachTrainee` | מאמן · תפריט ויומן של מתאמן | `CoachDashboardView` | Not restructured | Color rules only |
 | 33 | `CoachMenu` | מאמן · תפריט מתאמן | `CoachDashboardView` | Not restructured | Color rules only |
 | 34 | `CoachJournal` | מאמן · יומן אכילה ופידבק | `CoachDashboardView` | Not restructured | Color rules only |
