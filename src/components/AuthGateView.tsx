@@ -261,7 +261,7 @@ export function AuthGateView({
               border: 'none',
               background:
                 mode === 'login' ? 'var(--sel-bg)' : 'transparent',
-              color: mode === 'login' ? 'var(--text)' : 'var(--text-secondary)',
+              color: mode === 'login' ? 'var(--sel-text)' : 'var(--text-secondary)',
               fontSize: 13,
               fontWeight: 700,
               cursor: loading ? 'not-allowed' : 'pointer',
@@ -291,7 +291,7 @@ export function AuthGateView({
               border: 'none',
               background:
                 mode === 'register' ? 'var(--sel-bg)' : 'transparent',
-              color: mode === 'register' ? 'var(--text)' : 'var(--text-secondary)',
+              color: mode === 'register' ? 'var(--sel-text)' : 'var(--text-secondary)',
               fontSize: 13,
               fontWeight: 700,
               cursor: loading ? 'not-allowed' : 'pointer',

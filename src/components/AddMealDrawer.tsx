@@ -2636,7 +2636,7 @@ export function AddMealDrawer({
                       background:
                         photoMode === 'plate' ? 'var(--sel-bg)' : 'transparent',
                       color:
-                        photoMode === 'plate' ? 'var(--text)' : 'var(--text-secondary)',
+                        photoMode === 'plate' ? 'var(--sel-text)' : 'var(--text-secondary)',
                       fontSize: 12,
                       fontWeight: 700,
                       cursor: 'pointer',
@@ -2660,7 +2660,7 @@ export function AddMealDrawer({
                           : 'transparent',
                       color:
                         photoMode === 'nutrition-label'
-                          ? 'var(--text)'
+                          ? 'var(--sel-text)'
                           : 'var(--text-secondary)',
                       fontSize: 12,
                       fontWeight: 700,

@@ -635,7 +635,7 @@ export function CoachAlertSettingsModal({
                       background: isSelected ? 'var(--sel-bg)'
                         : 'var(--bg-surface-2)',
                       color: isSelected
-                        ? 'var(--text-primary)'
+                        ? 'var(--sel-text)'
                         : 'var(--text-secondary)',
                     }}
                   >

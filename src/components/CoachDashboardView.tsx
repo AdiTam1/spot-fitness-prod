@@ -1695,7 +1695,7 @@ export function CoachDashboardView({
                   background:
                     rosterViewMode === 'cards' ? 'var(--sel-bg)' : 'transparent',
                   color:
-                    rosterViewMode === 'cards' ? 'var(--text)' : 'var(--text-secondary)',
+                    rosterViewMode === 'cards' ? 'var(--sel-text)' : 'var(--text-secondary)',
                   fontSize: 11,
                   fontWeight: 700,
                   cursor: 'pointer',
@@ -1720,7 +1720,7 @@ export function CoachDashboardView({
                   background:
                     rosterViewMode === 'table' ? 'var(--sel-bg)' : 'transparent',
                   color:
-                    rosterViewMode === 'table' ? 'var(--text)' : 'var(--text-secondary)',
+                    rosterViewMode === 'table' ? 'var(--sel-text)' : 'var(--text-secondary)',
                   fontSize: 11,
                   fontWeight: 700,
                   cursor: 'pointer',
