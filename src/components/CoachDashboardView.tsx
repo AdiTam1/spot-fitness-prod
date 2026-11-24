@@ -1424,13 +1424,9 @@ export function CoachDashboardView({
                       gap: 6,
                       padding: '6px 12px',
                       borderRadius: 999,
-                      border: active
-                        ? `1px solid ${grp.color}`
-                        : '1px solid var(--line-2)',
-                      background: active
-                        ? 'var(--line)'
-                        : 'transparent',
-                      color: active ? 'var(--text)' : 'var(--text-secondary)',
+                      border: active ? '1px solid var(--sel-bg)' : '1px solid var(--line-2)',
+                      background: active ? 'var(--sel-bg)' : 'transparent',
+                      color: active ? 'var(--sel-text)' : 'var(--text)',
                       fontSize: 12,
                       fontWeight: 700,
                       cursor: 'pointer',
@@ -1506,11 +1502,12 @@ export function CoachDashboardView({
           {/* סרגל פעולות קבוצתיות (מופיע כשנבחרה קבוצה ספציפית) */}
           {activeGroupObj && (
             <div
-              className="pro-card"
+              className="pro-card coach-group-actions"
               style={{
-                padding: '14px 18px',
+                padding: 16,
+                borderRadius: 26,
                 borderColor: activeGroupObj.color,
-                background: 'var(--fill-1)',
+                background: 'var(--card)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
@@ -1535,6 +1532,7 @@ export function CoachDashboardView({
               </div>
 
               <div
+                className="coach-group-controls"
                 style={{
                   display: 'flex',
                   alignItems: 'flex-end',

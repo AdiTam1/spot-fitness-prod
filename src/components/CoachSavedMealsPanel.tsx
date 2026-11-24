@@ -90,10 +90,10 @@ export function CoachSavedMealsPanel({
   return (
     <div
       style={{
-        background: 'var(--bg-surface-2)',
-        padding: 14,
-        borderRadius: 14,
-        border: '1px solid var(--border-subtle)',
+        background: 'var(--card)',
+        padding: 16,
+        borderRadius: 26,
+        border: '1px solid var(--line)',
         display: 'flex',
         flexDirection: 'column',
         gap: 12,
@@ -114,12 +114,12 @@ export function CoachSavedMealsPanel({
               display: 'flex',
               alignItems: 'center',
               gap: 6,
-              fontSize: 13,
-              fontWeight: 800,
-              color: 'var(--accent-volt)',
+              fontSize: 17,
+              fontWeight: 700,
+              color: 'var(--text)',
             }}
           >
-            <Bookmark size={14} />
+            <Bookmark size={16} />
             <span>
               ספריית ארוחות, שאלות מתאמן וכלים מוגדרים ({sortedMeals.length})
             </span>
@@ -164,7 +164,7 @@ export function CoachSavedMealsPanel({
             background: banner.isError
               ? 'rgba(239, 68, 68, 0.14)'
               : 'var(--fill-1)',
-            color: banner.isError ? 'var(--danger-text)' : 'var(--accent-volt)',
+            color: banner.isError ? 'var(--danger-text)' : 'var(--text)',
           }}
         >
           {banner.msg}
@@ -185,12 +185,10 @@ export function CoachSavedMealsPanel({
               <div
                 key={m.id}
                 style={{
-                  background: 'var(--bg-surface-1)',
-                  border: isPending
-                    ? '1px solid rgba(56, 189, 248, 0.5)'
-                    : '1px solid var(--border-subtle)',
-                  borderRadius: 12,
-                  padding: '10px 12px',
+                  background: 'var(--surface-2)',
+                  border: isPending ? '1px solid var(--text-3)' : '1px solid var(--line)',
+                  borderRadius: 22,
+                  padding: '14px 16px',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 8,
@@ -212,7 +210,7 @@ export function CoachSavedMealsPanel({
                   )}
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 13, fontWeight: 800 }}>{m.title}</span>
+                      <span style={{ fontSize: 15, fontWeight: 600 }}>{m.title}</span>
                       {m.useCount > 0 && (
                         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                           נבחר {m.useCount}×
@@ -228,7 +226,7 @@ export function CoachSavedMealsPanel({
                             background: m.isAiFallback
                               ? 'rgba(245, 158, 11, 0.16)'
                               : 'var(--surface-2)',
-                            color: m.isAiFallback ? 'var(--warn-text)' : 'var(--accent-volt)',
+                            color: m.isAiFallback ? 'var(--warn-text)' : 'var(--text-2)',
                           }}
                         >
                           {m.isAiFallback
@@ -242,8 +240,8 @@ export function CoachSavedMealsPanel({
                             fontSize: 12,
                             padding: '1px 7px',
                             borderRadius: 999,
-                            background: 'rgba(56, 189, 248, 0.2)',
-                            color: 'var(--info-text)',
+                            background: 'var(--surface-3)',
+                            color: 'var(--text)',
                             fontWeight: 800,
                           }}
                         >
@@ -267,17 +265,17 @@ export function CoachSavedMealsPanel({
                     style={{
                       padding: '8px 10px',
                       borderRadius: 10,
-                      background: 'rgba(56, 189, 248, 0.08)',
-                      border: '1px solid rgba(56, 189, 248, 0.25)',
+                      background: 'var(--card)',
+                      border: '1px solid var(--line)',
                       fontSize: 12,
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontWeight: 700 }}>
-                      <MessageCircle size={12} color="#38bdf8" />
+                      <MessageCircle size={14} />
                       <span>שאלת המתאמן: {q.question}</span>
                     </div>
                     {q.reply && (
-                      <div style={{ marginTop: 4, color: 'var(--accent-volt)' }}>
+                      <div style={{ marginTop: 4, color: 'var(--text-2)' }}>
                         <Check size={11} style={{ marginLeft: 4 }} />
                         <b>תשובה שנשלחה ({q.repliedBy || 'מאמן'}):</b> {q.reply}
                         {q.recommendedPromoted && (

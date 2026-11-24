@@ -5,13 +5,13 @@
 | 3 | `JournalActivity` | יומן · פעילות וכרטיסי ארוחה | `TraineeMobileView` (activity + meal cards) | Partial | Tokens, color rules, hit areas; card layout not re-verified against design |
 | 4 | `JournalStates` | יומן · יום חסום / תשקיף / תזכורות | `TraineeMobileView` | Partial | Tokens + color rules; not re-verified |
 | 5 | `AddMeal` | הוספת ארוחה | `AddMealDrawer` (hub) | Done | Keeps existing search bar and draft footer |
-| 6 | `PhotoResult` | ניתוח תמונה AI | `AddMealDrawer` (photo tab) | Partial | Color rules/tokens; layout is the old tabbed sheet, not the full-screen photo-first layout |
+| 6 | `PhotoResult` | ניתוח תמונה AI | `AddMealDrawer` (photo tab) | Done | Result stage (meal-items): photo hero, totals + macro bars, items with gram steppers, 44px actions. Analysis itself (pending-job flow) unchanged; tested with search-added items, not a live AI call |
 | 7 | `AiQuickContext` | דיוק מהיר לניתוח AI | `AiQuickContextPanel` | Partial | Neutral tints; layout unchanged |
 | 8 | `QuickLog` | תיאור במילים / קול | `AddMealDrawer` (text/voice tab) | Done | Large borderless field, sample chips, CTA + orange mic FAB; the design's live item preview is not implemented |
-| 9 | `Barcode` | סריקת ברקוד | `BarcodeScannerModal` | Done | Viewfinder + neutral controls. Result stepper from the design is not in this modal (result goes to the draft as before) |
+| 9 | `Barcode` | סריקת ברקוד | `BarcodeScannerModal` | Done | Viewfinder + result stage (product, kcal/macros, add / scan another). Per-unit stepper not included (quantity is edited in the meal items step) |
 | 10 | `SavedMeals` | ארוחות שמורות והיסטוריה | `SavedMealsLibraryTab` | Partial | Neutral tints; layout unchanged |
 | 11 | `AiRecommend` | מה לאכול? | `AddMealDrawer` (recommend tab) | Partial | Color rules; layout unchanged |
-| 12 | `MealItems` | מרכיבי הארוחה | `AddMealDrawer` (items step) | Partial | Color rules; layout unchanged |
+| 12 | `MealItems` | מרכיבי הארוחה | `AddMealDrawer` (items step) | Done | Same result stage as PhotoResult |
 | 13 | `MealTime` | שעת ארוחה | `TraineeMobileView` (meal-time sheet) | Partial | Wheel/snap behavior not changed |
 | 14 | `ServingTools` | כלים ויחידות מידה | `ServingToolsManagerModal` | Partial | Modal is now a bottom sheet; layout unchanged |
 | 15 | `AiSync` | ניתוח AI ברקע | `BackgroundAiSyncBanner` | Partial | Neutral tints |
@@ -30,18 +30,18 @@
 | 28 | `OnbMeasure` | שאלון · היקפים | `TraineeOnboardingWizard` (step 4) | Partial | Shares wrapper restyle; step not individually verified |
 | 29 | `OnboardingNutrition` | שאלון · סגנון תזונה | `TraineeOnboardingWizard` (step 5) | Partial | Neutral selections; not individually verified |
 | 30 | `OnbSensitivities` | שאלון · רגישויות והערות | `TraineeOnboardingWizard` (step 6) | Partial | Neutral selections; not individually verified |
-| 31 | `Coach` | מאמן · מצבת מתאמנים | `CoachDashboardView` | Done | Trainee cards per design (avatar, badge, progress, glass actions); nav/filter header still legacy |
-| 32 | `CoachTrainee` | מאמן · תפריט ויומן של מתאמן | `CoachDashboardView` | Partial | Neutral headings/type scale; structure (tabs, activity steppers) not rebuilt |
+| 31 | `Coach` | מאמן · מצבת מתאמנים | `CoachDashboardView` | Done | Header, flat group chips, search, cards per design |
+| 32 | `CoachTrainee` | מאמן · תפריט ויומן של מתאמן | `CoachDashboardView` | Partial | Header + tabs (data / menu / journal) per design; inner cards are the original ones (neutral headings) |
 | 33 | `CoachMenu` | מאמן · תפריט מתאמן | `CoachDashboardView` | Not restructured | Color rules only |
-| 34 | `CoachJournal` | מאמן · יומן אכילה ופידבק | `CoachDashboardView` | Not restructured | Color rules only |
+| 34 | `CoachJournal` | מאמן · יומן אכילה ופידבק | `CoachDashboardView` | Partial | Reachable as the "יומן" tab of the trainee inspector; original journal cards |
 | 35 | `CoachAccess` | מאמן · עריכת פרטי גישה | `CoachDashboardView` | Not restructured | Color rules only |
-| 36 | `CoachAccounts` | מאמן · חשבונות ושיתוף | `CoachDashboardView` | Not restructured | Color rules only |
+| 36 | `CoachAccounts` | מאמן · חשבונות ושיתוף | `CoachDashboardView` | Partial | Header + invite-code card per design; trainee list stays as stacked cards with the original actions |
 | 37 | `CoachShare` | מאמן · שיתוף מתאמן | `CoachDashboardView` | Not restructured | Color rules only |
 | 38 | `CoachNewTrainee` | מאמן · פתיחת מתאמן חדש | `CoachDashboardView` | Not restructured | Modal is now a bottom sheet |
 | 39 | `CoachNewGroup` | מאמן · קבוצה חדשה | `CoachDashboardView` | Not restructured | Modal is now a bottom sheet |
-| 40 | `CoachGroupActions` | מאמן · פעולות קבוצתיות | `CoachDashboardView` | Not restructured | Color rules only |
-| 41 | `CoachTemplates` | מאמן · ספריית טמפלייטים | `CoachDashboardView` | Not restructured | Color rules only |
-| 42 | `CoachLibrary` | מאמן · ספריית ארוחות ושאלות | `CoachSavedMealsPanel` | Not restructured | Neutral tints |
+| 40 | `CoachGroupActions` | מאמן · פעולות קבוצתיות | `CoachDashboardView` | Partial | Controls stack full-width on phones, neutral card; original controls |
+| 41 | `CoachTemplates` | מאמן · ספריית טמפלייטים | `CoachDashboardView` | Partial | Library cards with system/mine filter; editor below is the original form |
+| 42 | `CoachLibrary` | מאמן · ספריית ארוחות ושאלות | `CoachSavedMealsPanel` | Partial | Neutral cards / type scale; original reply flow |
 | 43 | `CoachAiPrefs` | מאמן · הנחיות AI וצ׳ק-אין | `CoachDashboardView` | Not restructured | Color rules only |
 | 44 | `CoachAlerts` | מאמן · התראות בזמן אמת | `CoachAlertSettingsModal` | Partial | Bottom sheet; neutral checkbox |
 | 45 | `CoachPush` | מאמן · שליחת פוש | `CoachPushModal` | Partial | Modal is now a bottom sheet |
@@ -51,7 +51,7 @@
 | 49 | `CoachOnb4` | מאמן · הגדרה 4 | `CoachOnboardingWizard` | Partial | Shared wrapper per design (full-screen, 26px title, thin progress); step 1 verified, 2–5 not individually checked |
 | 50 | `CoachOnb5` | מאמן · הגדרה 5 | `CoachOnboardingWizard` | Partial | Shared wrapper per design (full-screen, 26px title, thin progress); step 1 verified, 2–5 not individually checked |
 | 51 | `AdminApprovals` | מנהל · ממתינים לאישור | `CoachDashboardView` (pending queue) | Partial | Rebuilt as cards per design; not screenshot-verified (needs pending-trainee fixture) |
-| 52 | `AdminCoaches` | מנהל · ניהול מאמנים | `CoachDashboardView` (admin section) | Partial | Table renders as stacked cards on phones; header/actions not rebuilt |
-| 53 | `AdminChips` | מנהל · צ׳יפים גלובליים | `QuickChipsAdminPanel` | Not restructured | Color rules only |
-| 54 | `AdminScrapers` | מנהל · סקרייפרים ומאגר מזון | `AdminScrapersPanel` | Not restructured | Neutral tints |
-| 55 | `AdminVersions` | מנהל · בקרת גרסאות | `CoachDashboardView` (admin section) | Not restructured | Color rules only |
+| 52 | `AdminCoaches` | מנהל · ניהול מאמנים | `CoachDashboardView` (admin section) | Partial | Header + table as stacked cards; original actions |
+| 53 | `AdminChips` | מנהל · צ׳יפים גלובליים | `QuickChipsAdminPanel` | Done | Cards grouped by category, 52px inputs, removable chips |
+| 54 | `AdminScrapers` | מנהל · סקרייפרים ומאגר מזון | `AdminScrapersPanel` | Partial | 2×2 KPI grid, 52px actions, neutral banners; source rows unchanged |
+| 55 | `AdminVersions` | מנהל · בקרת גרסאות | `CoachDashboardView` (admin section) | Partial | Header/type scale; original policy form |
