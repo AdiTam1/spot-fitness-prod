@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Check, Loader2, Sparkles, X, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Check, Sparkles, X, AlertTriangle } from 'lucide-react';
 import { PendingAiMealJob } from '@/types/nutrition';
 import { isAiJobActivelyProcessing } from '@/lib/aiJobs';
 
@@ -80,270 +80,196 @@ export function BackgroundAiSyncBanner({
 
   if (!activeProcessing && finishedJobs.length === 0) return null;
 
+  // Heuristic progress (the server reports stages, not a percentage): eases towards 95%.
+  const pct = Math.min(95, Math.round(100 * (1 - Math.exp(-ticker.elapsedSec / 25))));
+  const slow = !isLiveOnDevice && ticker.elapsedSec >= 90;
+
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 64,
-        left: 14,
-        right: 14,
-        maxWidth: 520,
-        margin: '0 auto',
-        zIndex: 150,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 8,
-        pointerEvents: 'none',
-      }}
-    >
-      {activeProcessing && (
+    <>
+      {/* Finished jobs: glass card at the top (design: AiSync) */}
+      {finishedJobs.length > 0 && (
         <div
           style={{
-            pointerEvents: 'auto',
-            background: 'rgba(13, 16, 22, 0.96)',
-            backdropFilter: 'blur(14px)',
-            border: '1px solid var(--line-2)',
-            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.55)',
-            borderRadius: 16,
-            padding: '11px 14px',
+            position: 'fixed',
+            top: 'calc(var(--sa-top, 0px) + 12px)',
+            left: 14,
+            right: 14,
+            maxWidth: 520,
+            margin: '0 auto',
+            zIndex: 150,
             display: 'flex',
-            alignItems: 'flex-start',
-            gap: 10,
+            flexDirection: 'column',
+            gap: 8,
+            pointerEvents: 'none',
           }}
         >
-          <Loader2
-            size={18}
-            color="var(--accent-volt)"
-            className="spot-spinner"
-            style={{ marginTop: 2, flexShrink: 0 }}
-          />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 8,
-                flexWrap: 'wrap',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--accent-volt)' }}>
-                  AI מנתח ברקע ({activeProcessing.mealSlotName})
-                </span>
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    padding: '2px 7px',
-                    borderRadius: 999,
-                    background: isLiveOnDevice
-                      ? 'rgba(34, 197, 94, 0.14)'
-                      : ticker.elapsedSec >= 90
-                      ? 'rgba(245, 158, 11, 0.14)'
-                      : 'var(--surface-2)',
-                    color: isLiveOnDevice
-                      ? 'var(--ok-text)'
-                      : ticker.elapsedSec >= 90
-                      ? 'var(--warn-text)'
-                      : 'var(--text-secondary)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {isLiveOnDevice ? '● פעיל במכשיר' : 'ממתין לשרת'}
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                <span
-                  className="num-mono"
-                  style={{
-                    fontSize: 12,
-                    padding: '2px 7px',
-                    borderRadius: 999,
-                    background: 'var(--surface-2)',
-                    color: 'var(--accent-volt)',
-                    fontWeight: 800,
-                  }}
-                >
-                  {ticker.formattedElapsed}
-                </span>
-                {onCancelJob && (
-                  <button
-                    type="button"
-                    title="בטל פענוח זה"
-                    aria-label="בטל פענוח"
-                    onClick={() => onCancelJob(activeProcessing.id)}
-                    style={{
-                      padding: '3px 9px',
-                      minHeight: 26,
-                      borderRadius: 999,
-                      border: '1px solid rgba(239, 68, 68, 0.45)',
-                      background: 'rgba(239, 68, 68, 0.12)',
-                      color: 'var(--danger-text)',
-                      fontSize: 11,
-                      fontWeight: 800,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 3,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <X size={12} />
-                    <span>בטל</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginTop: 4 }}>
-              {activeProcessing.stageText ||
-                (isLiveOnDevice
-                  ? ticker.currentStepText
-                  : 'הפענוח ממשיך ברקע בשרת — ממתין לעדכון...')}
-            </div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 3 }}>
-              {lastHbAgeSec !== null && !isLiveOnDevice
-                ? `עדכון שרת אחרון לפני ${lastHbAgeSec} שנ׳ · `
-                : ''}
-              {!isLiveOnDevice && ticker.elapsedSec >= 90
-                ? 'לוקח זמן מהרגיל או שהחיבור התנתק — אפשר להמתין עוד רגע או ללחוץ ביטול ולנסות שוב.'
-                : 'אפשר להמשיך באפליקציה או לבטל בכל רגע — הפריטים יסתנכרנו אוטומטית בסיום.'}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {finishedJobs.slice(0, 2).map((job) => {
-        const isOk = job.status === 'completed';
-        return (
-          <div
-            key={job.id}
-            role={isOk && onOpenJobMeal ? 'button' : undefined}
-            tabIndex={isOk && onOpenJobMeal ? 0 : undefined}
-            onClick={() => {
+          {finishedJobs.slice(0, 2).map((job) => {
+            const isOk = job.status === 'completed';
+            const open = () => {
               if (isOk && onOpenJobMeal) {
                 onOpenJobMeal(job);
                 onAcknowledgeJob(job.id);
               }
-            }}
-            onKeyDown={(e) => {
-              if ((e.key === 'Enter' || e.key === ' ') && isOk && onOpenJobMeal) {
-                e.preventDefault();
-                onOpenJobMeal(job);
-                onAcknowledgeJob(job.id);
-              }
-            }}
-            style={{
-              pointerEvents: 'auto',
-              background: isOk
-                ? 'rgba(28, 16, 10, 0.97)'
-                : 'rgba(48, 14, 14, 0.97)',
-              backdropFilter: 'blur(14px)',
-              border: isOk
-                ? '1px solid var(--line-2)'
-                : '1px solid rgba(239, 68, 68, 0.5)',
-              boxShadow: '0 10px 30px rgba(0, 0, 0, 0.55)',
-              borderRadius: 16,
-              padding: '10px 14px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 10,
-              cursor: isOk && onOpenJobMeal ? 'pointer' : 'default',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0, flex: 1 }}>
-              {isOk && job.photoDataUrls?.[0] ? (
-                <img
-                  src={job.photoDataUrls[0]}
-                  alt={job.mealSlotName}
-                  style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: 9,
-                    objectFit: 'cover',
-                    border: '1px solid var(--line-2)',
-                    flexShrink: 0,
-                  }}
-                />
-              ) : isOk ? (
-                <Sparkles size={16} color="currentColor" style={{ flexShrink: 0 }} />
-              ) : (
-                <AlertTriangle size={16} color="var(--danger-text)" style={{ flexShrink: 0 }} />
-              )}
-              <div style={{ minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 800,
-                    color: isOk ? 'var(--accent-orange-bright)' : 'var(--danger-text)',
-                  }}
-                >
-                  {isOk
-                    ? `הושלם וסונכרן ל${job.mealSlotName}! (${job.itemsCount || 1} מרכיבים)`
-                    : `פענוח ה-AI ל${job.mealSlotName} נכשל`}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  {isOk
-                    ? job.mode === 'photo'
-                      ? 'לחץ לפתיחת הפענוח והתמונה'
-                      : 'לחץ לפתיחת הפענוח ביומן'
-                    : job.errorMsg || 'נסה שוב או הוסף ידנית מהמאגר'}
-                </div>
-              </div>
-            </div>
-
-            <div
-              style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {isOk && onOpenJobMeal && (
+            };
+            return (
+              <div
+                key={job.id}
+                className="glass"
+                role="status"
+                style={{
+                  pointerEvents: 'auto',
+                  borderRadius: 26,
+                  padding: '12px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  borderColor: isOk ? undefined : 'var(--danger-text)',
+                }}
+              >
                 <button
                   type="button"
-                  onClick={() => {
-                    onOpenJobMeal(job);
-                    onAcknowledgeJob(job.id);
-                  }}
-                  className="btn-volt"
+                  aria-label="אשר וסגור"
+                  onClick={() => onAcknowledgeJob(job.id)}
+                  className="hit-44"
                   style={{
-                    padding: '5px 10px',
-                    fontSize: 12,
-                    fontWeight: 800,
-                    display: 'inline-flex',
+                    width: 40,
+                    height: 40,
+                    flex: 'none',
+                    borderRadius: 999,
+                    border: 0,
+                    background: 'transparent',
+                    color: isOk ? 'var(--text)' : 'var(--danger-text)',
+                    display: 'flex',
                     alignItems: 'center',
-                    gap: 4,
+                    justifyContent: 'center',
                     cursor: 'pointer',
                   }}
                 >
-                  <ExternalLink size={11} />
-                  <span>צפה</span>
+                  {isOk ? <Check size={20} strokeWidth={2.2} /> : <AlertTriangle size={20} />}
+                </button>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: isOk ? 'var(--text)' : 'var(--danger-text)' }}>
+                    {isOk ? `הושלם וסונכרן ל${job.mealSlotName}` : `פענוח ה-AI ל${job.mealSlotName} נכשל`}
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                    {isOk
+                      ? `${job.itemsCount || 1} מרכיבים`
+                      : job.errorMsg || 'נסה שוב או הוסף ידנית מהמאגר'}
+                  </div>
+                </div>
+                {isOk && onOpenJobMeal && (
+                  <button
+                    type="button"
+                    onClick={open}
+                    className="btn-surface"
+                    style={{ height: 40, padding: '0 16px', flex: 'none', cursor: 'pointer' }}
+                  >
+                    צפה
+                  </button>
+                )}
+                <button
+                  type="button"
+                  aria-label="סגור"
+                  onClick={() => onAcknowledgeJob(job.id)}
+                  className="hit-44"
+                  style={{
+                    width: 36,
+                    height: 36,
+                    flex: 'none',
+                    borderRadius: 999,
+                    border: 0,
+                    background: 'transparent',
+                    color: 'var(--text-2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* In-progress job: glass card above the dock (design: AiSync) */}
+      {activeProcessing && (
+        <div
+          className="glass"
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            bottom: 'calc(var(--sa-bottom, 0px) + 100px)',
+            left: 14,
+            right: 14,
+            maxWidth: 520,
+            margin: '0 auto',
+            zIndex: 150,
+            borderRadius: 26,
+            padding: '14px 16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 15, fontWeight: 700 }}>
+              <Sparkles size={15} color="var(--accent)" />
+              מנתח ברקע · {activeProcessing.mealSlotName}
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+              {onCancelJob && (
+                <button
+                  type="button"
+                  aria-label="בטל פענוח"
+                  onClick={() => onCancelJob(activeProcessing.id)}
+                  className="hit-44"
+                  style={{
+                    minHeight: 32,
+                    padding: '0 4px',
+                    border: 0,
+                    background: 'transparent',
+                    color: 'var(--text-2)',
+                    fontFamily: 'inherit',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  בטל
                 </button>
               )}
-              <button
-                type="button"
-                title="אשר וסגור"
-                onClick={() => onAcknowledgeJob(job.id)}
-                className="btn-surface"
-                style={{
-                  width: 28,
-                  height: 28,
-                  padding: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                }}
-              >
-                {isOk ? <Check size={13} color="var(--accent-volt)" /> : <X size={13} color="var(--danger-text)" />}
-              </button>
-            </div>
+              <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                {pct}%
+              </bdi>
+            </span>
           </div>
-        );
-      })}
-    </div>
+          <div style={{ height: 4, borderRadius: 9, background: 'var(--surface-3)', overflow: 'hidden' }}>
+            <div
+              style={{
+                height: '100%',
+                width: `${pct}%`,
+                background: 'var(--accent)',
+                borderRadius: 9,
+                transition: 'width .8s ease',
+                marginInlineStart: 'auto',
+              }}
+            />
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>
+            {activeProcessing.stageText ||
+              (isLiveOnDevice ? ticker.currentStepText : 'הפענוח ממשיך ברקע בשרת, ממתין לעדכון…')}
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
+            {slow
+              ? 'לוקח זמן מהרגיל או שהחיבור התנתק. אפשר להמתין עוד רגע או ללחוץ בטל ולנסות שוב.'
+              : 'אפשר להמשיך באפליקציה או לסגור. הפריטים יסתנכרנו אוטומטית ליומן.'}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
