@@ -60,13 +60,13 @@ function getSourceBadge(source?: StepsSyncSource): {
     case 'play-services-local':
       return {
         label: 'מד צעדים (רקע מערכת)',
-        color: '#38bdf8',
-        bg: 'rgba(56, 189, 248, 0.14)',
+        color: 'var(--info-text)',
+        bg: 'var(--surface-2)',
       };
     case 'device-sensor':
       return {
         label: 'חיישן מכשיר',
-        color: '#d67d09',
+        color: 'var(--text-2)',
         bg: 'var(--surface-2)',
       };
     case 'manual':
@@ -205,7 +205,7 @@ export function DailyStepsCard({
             fontWeight: 800,
           }}
         >
-          <Footprints size={14} color="#22c55e" />
+          <Footprints size={14} color="var(--accent)" />
           <span>מד צעדים יומי</span>
           <span
             style={{
@@ -339,26 +339,26 @@ export function DailyStepsCard({
                   gap: 8,
                   padding: '7px 10px',
                   borderRadius: 9,
-                  background: 'rgba(56, 189, 248, 0.08)',
-                  border: '1px solid rgba(56, 189, 248, 0.25)',
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--line)',
                   fontSize: 10.5,
                   color: 'var(--text-secondary)',
                 }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <Watch size={13} color="#38bdf8" />
+                  <Watch size={13} color="var(--text-2)" />
                   משתמש בשעון חכם? התקן/עדכן Health Connect לחיבור מלא
                 </span>
                 <button
                   type="button"
                   onClick={() => void installOrOpenHealthConnect()}
                   style={{
-                    background: '#38bdf8',
-                    color: '#08090c',
+                    background: 'var(--btn-primary)',
+                    color: 'var(--btn-primary-text)',
                     border: 'none',
                     borderRadius: 7,
-                    padding: '4px 8px',
-                    fontSize: 10.5,
+                    padding: '4px 10px',
+                    fontSize: 12,
                     fontWeight: 800,
                     cursor: 'pointer',
                     flexShrink: 0,
@@ -398,8 +398,8 @@ export function DailyStepsCard({
                   type="button"
                   onClick={() => void openAndroidAppSettings()}
                   style={{
-                    background: '#f59e0b',
-                    color: '#08090c',
+                    background: 'var(--btn-primary)',
+                    color: 'var(--btn-primary-text)',
                     border: 'none',
                     borderRadius: 7,
                     padding: '5px 9px',
