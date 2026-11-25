@@ -1,6 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import { DEFAULT_TEMPLATES } from '@/data/israeliFoodCatalog';
+import {
+  DEFAULT_TEMPLATES,
+  stripLegacySeededRecommendedOptionsFromTemplate,
+  stripLegacySeededRecommendedOptionsFromTrainee,
+} from '@/data/israeliFoodCatalog';
 import {
   AppReleasePolicy,
   AuthSessionUser,
@@ -199,14 +203,21 @@ export async function getServerDbState(): Promise<ServerDatabaseState> {
       }
     }
 
+    const cleanedTemplates = templates.map(
+      (tpl) => stripLegacySeededRecommendedOptionsFromTemplate(tpl).template
+    );
+    const cleanedTrainees = remote.trainees.map(
+      (t) => stripLegacySeededRecommendedOptionsFromTrainee(t).trainee
+    );
+
     return {
       coachEmail,
       coachPasswordHash,
       coachInviteCode,
       coaches: remote.coaches,
       groups,
-      templates,
-      trainees: remote.trainees,
+      templates: cleanedTemplates,
+      trainees: cleanedTrainees,
       globalQuickChips: remote.globalQuickChips || [],
       globalCustomFoods: remote.globalCustomFoods || [],
       coachCustomFoods: remote.coachCustomFoods || {},
@@ -221,6 +232,12 @@ export async function getServerDbState(): Promise<ServerDatabaseState> {
   const localState = loadLocalServerFile();
   localState.coachEmail = coachEmail;
   localState.coachPasswordHash = coachPasswordHash;
+  localState.templates = (localState.templates || []).map(
+    (tpl) => stripLegacySeededRecommendedOptionsFromTemplate(tpl).template
+  );
+  localState.trainees = (localState.trainees || []).map(
+    (t) => stripLegacySeededRecommendedOptionsFromTrainee(t).trainee
+  );
   if (!localState.appReleasePolicy) {
     localState.appReleasePolicy = { androidBlockedUpToVersionCode: 0 };
   }
@@ -308,10 +325,16 @@ export async function getSingleTraineeFromServer(
   traineeId: string
 ): Promise<TraineeProfile | null> {
   if (isSupabaseConfigured) {
-    return await loadSingleTraineeFromSupabase(traineeId);
+    const found = await loadSingleTraineeFromSupabase(traineeId);
+    return found
+      ? stripLegacySeededRecommendedOptionsFromTrainee(found).trainee
+      : null;
   }
   const state = await getServerDbState();
-  return state.trainees.find((t) => t.id === traineeId) || null;
+  const found = state.trainees.find((t) => t.id === traineeId);
+  return found
+    ? stripLegacySeededRecommendedOptionsFromTrainee(found).trainee
+    : null;
 }
 
 export async function getSingleCoachFromServer(

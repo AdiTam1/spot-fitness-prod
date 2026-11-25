@@ -273,6 +273,7 @@ export function AddMealDrawer({
   const [toolsModalOpen, setToolsModalOpen] = useState(false);
   const [customFoodModalOpen, setCustomFoodModalOpen] = useState(false);
   const [customFoodInitialName, setCustomFoodInitialName] = useState('');
+  const [editingCustomFood, setEditingCustomFood] = useState<CustomFoodItem | null>(null);
   const [customFoodsManagerOpen, setCustomFoodsManagerOpen] = useState(false);
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const [correctionText, setCorrectionText] = useState('');
@@ -298,6 +299,7 @@ export function AddMealDrawer({
     engine?: string;
     isFallback?: boolean;
     fallbackReason?: string;
+    appliedContextSummary?: string;
   } | null>(null);
   const [aiRecLoading, setAiRecLoading] = useState(false);
   const [preferenceFeedbackText, setPreferenceFeedbackText] = useState('');
@@ -670,6 +672,24 @@ export function AddMealDrawer({
         lastGrams,
       }),
     }).catch(() => undefined);
+  };
+
+  const customFoodById = useMemo(() => {
+    const m = new Map<string, CustomFoodItem>();
+    for (const cf of customFoods) {
+      if (cf?.id) m.set(cf.id, cf);
+    }
+    return m;
+  }, [customFoods]);
+
+  const getFoodImageThumb = (food?: Pick<FoodCatalogItem, 'id' | 'imageDataUrl'> | null) =>
+    food?.imageDataUrl || (food?.id ? customFoodById.get(food.id)?.imageDataUrl : undefined);
+
+  const canEditCustomFood = (cf?: CustomFoodItem) => {
+    if (!cf) return false;
+    if (actorRole === 'admin') return true;
+    if (actorRole === 'trainee') return cf.scope === 'trainee';
+    return cf.scope !== 'global';
   };
 
   const customCatalogItems = useMemo(
@@ -1337,6 +1357,7 @@ export function AddMealDrawer({
               : undefined,
           textPrompt: promptToUse,
           contextParams: fullContextParams,
+          traineeId,
           customApiKey: geminiApiKey,
         }),
       });
@@ -1474,6 +1495,7 @@ export function AddMealDrawer({
           engine: data.engine,
           isFallback: Boolean(data.isAiFallback),
           fallbackReason: data.fallbackReason,
+          appliedContextSummary: data.appliedContextSummary,
         });
       } else {
         setAiRecDebug(null);
@@ -3130,13 +3152,20 @@ export function AddMealDrawer({
                   {aiRecommendations.length > 0 && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                       {aiRecDebug?.engine && (
-                        <span style={{ fontSize: 13, color: aiRecDebug.isFallback ? 'var(--warn-text)' : 'var(--text-2)' }}>
-                          {aiRecDebug.isFallback
-                            ? `נוצר ע״י מנוע כללים מקומי (לא AI · ${aiRecDebug.engine})${
-                                aiRecDebug.fallbackReason ? ` · ${aiRecDebug.fallbackReason}` : ''
-                              }`
-                            : `נוצר ע״י AI (${aiRecDebug.engine})`}
-                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <span style={{ fontSize: 13, color: aiRecDebug.isFallback ? 'var(--warn-text)' : 'var(--text-2)' }}>
+                            {aiRecDebug.isFallback
+                              ? `נוצר ע״י מנוע כללים מקומי (לא AI · ${aiRecDebug.engine})${
+                                  aiRecDebug.fallbackReason ? ` · ${aiRecDebug.fallbackReason}` : ''
+                                }`
+                              : `נוצר ע״י AI (${aiRecDebug.engine})`}
+                          </span>
+                          {aiRecDebug.appliedContextSummary && (
+                            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                              הותאם לפי: {aiRecDebug.appliedContextSummary}
+                            </span>
+                          )}
+                        </div>
                       )}
                       {aiRecommendations.map((option) => (
                         <div key={option.id} style={{ borderTop: '1px solid var(--line)', paddingTop: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -3412,6 +3441,7 @@ export function AddMealDrawer({
                     <button
                       type="button"
                       onClick={() => {
+                        setEditingCustomFood(null);
                         setCustomFoodInitialName(trimmedQuery);
                         setCustomFoodModalOpen(true);
                       }}
@@ -3534,6 +3564,7 @@ export function AddMealDrawer({
                     <button
                       type="button"
                       onClick={() => {
+                        setEditingCustomFood(null);
                         setCustomFoodInitialName(trimmedQuery);
                         setCustomFoodModalOpen(true);
                       }}
@@ -3632,8 +3663,27 @@ export function AddMealDrawer({
                                 cursor: 'pointer',
                                 color: 'inherit',
                                 fontFamily: 'inherit',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 10,
                               }}
                             >
+                              {getFoodImageThumb(food) && (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={getFoodImageThumb(food)}
+                                  alt={food.name}
+                                  style={{
+                                    width: 40,
+                                    height: 40,
+                                    borderRadius: 11,
+                                    objectFit: 'cover',
+                                    flexShrink: 0,
+                                    border: '1px solid var(--line)',
+                                  }}
+                                />
+                              )}
+                              <div style={{ minWidth: 0, flex: 1 }}>
                               <div
                                 style={{
                                   fontSize: 13,
@@ -3726,6 +3776,7 @@ export function AddMealDrawer({
                                   )}
                                 </div>
                               )}
+                              </div>
                             </button>
                             <button
                               type="button"
@@ -4404,6 +4455,7 @@ export function AddMealDrawer({
                     <button
                       type="button"
                       onClick={() => {
+                        setEditingCustomFood(null);
                         setCustomFoodInitialName('');
                         setCustomFoodModalOpen(true);
                       }}
@@ -4511,8 +4563,27 @@ export function AddMealDrawer({
                                 cursor: 'pointer',
                                 color: 'inherit',
                                 fontFamily: 'inherit',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
                               }}
                             >
+                              {getFoodImageThumb(food) && (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={getFoodImageThumb(food)}
+                                  alt={food.name}
+                                  style={{
+                                    width: 36,
+                                    height: 36,
+                                    borderRadius: 10,
+                                    objectFit: 'cover',
+                                    flexShrink: 0,
+                                    border: '1px solid var(--line)',
+                                  }}
+                                />
+                              )}
+                              <div style={{ minWidth: 0, flex: 1 }}>
                               <div
                                 style={{
                                   fontSize: 13,
@@ -4533,6 +4604,7 @@ export function AddMealDrawer({
                               >
                                 {defaultUnit.label} · {macros.calories} קק״ל
                                 {food.useCount ? ` · ×${food.useCount}` : ''}
+                              </div>
                               </div>
                             </button>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
@@ -5015,28 +5087,35 @@ export function AddMealDrawer({
                               gap: 10,
                             }}
                           >
-                            <button
-                              type="button"
-                              aria-label={isEditing ? 'סגור עריכה' : `ערוך ${item.name}`}
-                              aria-expanded={isEditing}
-                              onClick={() => setEditingItemId(isEditing ? null : item.id)}
-                              style={{ minWidth: 0, flex: 1, background: 'transparent', border: 0, padding: 0, textAlign: 'start', color: 'inherit', fontFamily: 'inherit', cursor: 'pointer', minHeight: 44 }}
-                            >
-                              <div style={{ fontSize: 16, fontWeight: 600 }}>{item.name}</div>
-                              <div style={{ fontSize: 13, color: 'var(--text-2)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                                <span>
+                            <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              <button
+                                type="button"
+                                aria-label={isEditing ? 'סגור עריכה' : `ערוך ${item.name}`}
+                                aria-expanded={isEditing}
+                                onClick={() => setEditingItemId(isEditing ? null : item.id)}
+                                style={{ minWidth: 0, background: 'transparent', border: 0, padding: 0, textAlign: 'start', color: 'inherit', fontFamily: 'inherit', cursor: 'pointer' }}
+                              >
+                                <div style={{ fontSize: 16, fontWeight: 600 }}>{item.name}</div>
+                              </button>
+                              <div style={{ fontSize: 13, color: 'var(--text-2)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                                <span
+                                  onClick={() => setEditingItemId(isEditing ? null : item.id)}
+                                  style={{ cursor: 'pointer' }}
+                                >
                                   <bdi dir="ltr" className="num-mono ltr-num">{item.macros.calories}</bdi> קק״ל
+                                  {item.isAiFallback ? ' · לא AI' : item.aiEngine ? ' · AI' : ''}
                                 </span>
-                                {item.itemTime ? (
-                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontWeight: 600 }}>
-                                    <span>·</span>
-                                    <Clock size={11} />
-                                    <bdi dir="ltr" className="num-mono ltr-num">{item.itemTime}</bdi>
-                                  </span>
-                                ) : null}
-                                {item.isAiFallback ? <span>· לא AI</span> : item.aiEngine ? <span>· AI</span> : null}
+                                <ItemTimePill
+                                  value={item.itemTime}
+                                  fallbackTime={mealTime || mealSlot.timeHint || '12:00'}
+                                  placeholderLabel="הוסף שעה"
+                                  ariaLabel={`שעה עבור ${item.name}`}
+                                  clearAriaLabel={`אפס שעה עבור ${item.name}`}
+                                  height={24}
+                                  onChange={(val) => updateLoggedItemTime(item.id, val)}
+                                />
                               </div>
-                            </button>
+                            </div>
                             <span
                               style={{
                                 display: 'inline-flex',
@@ -5558,6 +5637,22 @@ export function AddMealDrawer({
                 <X size={15} />
               </button>
 
+              {getFoodImageThumb(selectedFood) && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={getFoodImageThumb(selectedFood)}
+                  alt={selectedFood.name}
+                  style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 13,
+                    objectFit: 'cover',
+                    flexShrink: 0,
+                    border: '1px solid var(--line)',
+                  }}
+                />
+              )}
+
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 15.5, fontWeight: 900, lineHeight: 1.3 }}>
                   {selectedFood.name}
@@ -5596,6 +5691,39 @@ export function AddMealDrawer({
                   )}
                 </div>
               </div>
+
+              {(() => {
+                const matchedCustom = customFoodById.get(selectedFood.id);
+                if (!matchedCustom || !canEditCustomFood(matchedCustom)) return null;
+                return (
+                  <button
+                    type="button"
+                    aria-label="ערוך מוצר אישי"
+                    title="ערוך מוצר אישי / הוסף תמונה"
+                    onClick={() => {
+                      setEditingCustomFood(matchedCustom);
+                      setCustomFoodInitialName('');
+                      setCustomFoodModalOpen(true);
+                    }}
+                    className="btn-surface"
+                    style={{
+                      height: 32,
+                      padding: '0 10px',
+                      borderRadius: 999,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Edit3 size={13} />
+                    <span>ערוך</span>
+                  </button>
+                );
+              })()}
 
               <button
                 type="button"
@@ -6058,10 +6186,14 @@ export function AddMealDrawer({
 
       <CustomFoodModal
         opened={customFoodModalOpen}
-        onClose={() => setCustomFoodModalOpen(false)}
+        onClose={() => {
+          setCustomFoodModalOpen(false);
+          setEditingCustomFood(null);
+        }}
         actorRole={actorRole}
         traineeId={traineeId}
         traineeName={traineeName}
+        initialFood={editingCustomFood}
         initialName={customFoodInitialName}
         defaultScope="trainee"
         zIndex={280}
@@ -6069,12 +6201,25 @@ export function AddMealDrawer({
           onCustomFoodsUpdated?.(res);
           if (res.item) {
             const catItem = customFoodToCatalogItem(res.item);
-            void handleSelectCatalogFood(catItem);
-            notifications.show({
-              color: 'teal',
-              title: 'מוצר אישי נשמר',
-              message: `"${res.item.name}" נוצר — בחר משקל/כמות להוספה לארוחה!`,
-            });
+            const wasEdit = Boolean(editingCustomFood && editingCustomFood.id === res.item.id);
+            setEditingCustomFood(null);
+            if (wasEdit) {
+              if (selectedFood?.id === res.item.id) {
+                setSelectedFood(catItem);
+              }
+              notifications.show({
+                color: 'teal',
+                title: 'המוצר האישי עודכן',
+                message: `השינויים ב-"${res.item.name}" נשמרו!`,
+              });
+            } else {
+              void handleSelectCatalogFood(catItem);
+              notifications.show({
+                color: 'teal',
+                title: 'מוצר אישי נשמר',
+                message: `"${res.item.name}" נוצר — בחר משקל/כמות להוספה לארוחה!`,
+              });
+            }
           }
         }}
       />

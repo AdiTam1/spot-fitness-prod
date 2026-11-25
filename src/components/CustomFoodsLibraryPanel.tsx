@@ -248,22 +248,39 @@ export function CustomFoodsLibraryPanel({
                     gap: 8,
                   }}
                 >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--text)' }}>
-                      {item.name}
-                    </div>
-                    <div
-                      dir="ltr"
-                      className="num-mono ltr-num"
-                      style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}
-                    >
-                      100g: {item.per100g.calories} קק״ל · ח:{item.per100g.protein} · פ:{item.per100g.carbs} · ש:{item.per100g.fat}
-                    </div>
-                    {item.defaultServingLabel && item.defaultServingGrams && (
-                      <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-                        יחידה מוגדרת: {item.defaultServingLabel} ({item.defaultServingGrams} גרם)
-                      </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+                    {item.imageDataUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.imageDataUrl}
+                        alt={item.name}
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 11,
+                          objectFit: 'cover',
+                          flexShrink: 0,
+                          border: '1px solid var(--line)',
+                        }}
+                      />
                     )}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--text)' }}>
+                        {item.name}
+                      </div>
+                      <div
+                        dir="ltr"
+                        className="num-mono ltr-num"
+                        style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}
+                      >
+                        100g: {item.per100g.calories} קק״ל · ח:{item.per100g.protein} · פ:{item.per100g.carbs} · ש:{item.per100g.fat}
+                      </div>
+                      {item.defaultServingLabel && item.defaultServingGrams && (
+                        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+                          יחידה מוגדרת: {item.defaultServingLabel} ({item.defaultServingGrams} גרם)
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <span
                     style={{

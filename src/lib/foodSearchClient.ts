@@ -332,6 +332,7 @@ export function mergeLocalAndRemoteFoodResults(
       byKey.set(k, {
         ...prev,
         barcode: prev.barcode || l.barcode,
+        imageDataUrl: prev.imageDataUrl || l.imageDataUrl,
         actionKind: l.actionKind || prev.actionKind,
         useCount: l.useCount || prev.useCount,
         lastUnitLabel: l.lastUnitLabel || prev.lastUnitLabel,

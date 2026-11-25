@@ -114,6 +114,7 @@ export interface FoodCatalogItem {
   brand?: string;
   category: string;
   barcode?: string;
+  imageDataUrl?: string;
   per100g: MacroTargets;
   units: FoodUnit[];
   isPopular?: boolean;
@@ -139,6 +140,7 @@ export interface CustomFoodItem {
   brand?: string;
   category?: string;
   barcode?: string;
+  imageDataUrl?: string;
   per100g: MacroTargets;
   units: FoodUnit[];
   inputMode?: 'per100g' | 'serving';
@@ -299,6 +301,7 @@ export interface AiMealSuggestionOption {
 export interface TraineeOnboardingData {
   completed: boolean;
   measurementsCompleted: boolean;
+  goal?: string;
   age?: number;
   birthDate?: string; // YYYY-MM-DD — משמש לחישוב גיל אוטומטי בכל שנה
   gender?: 'male' | 'female';

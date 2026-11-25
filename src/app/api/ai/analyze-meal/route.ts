@@ -48,6 +48,7 @@ import {
 import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
 import { finalizeAiRouteResponse } from '@/lib/telemetry/aiTelemetry';
 import { resolveVisibleCustomCatalogForActor } from '@/lib/customFoodsServer';
+import { buildCompactAnalyzeContext } from '@/lib/aiTraineeContext';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -1099,10 +1100,22 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
         );
       }
 
-      const priorityCustomCatalog = await resolveVisibleCustomCatalogForActor(
-        sessionUser,
-        backgroundJob?.traineeId || bodyTraineeId
-      );
+      const effectiveTraineeId =
+        sessionUser.role === 'trainee'
+          ? sessionUser.id
+          : backgroundJob?.traineeId || bodyTraineeId;
+      const [priorityCustomCatalog, targetTrainee] = await Promise.all([
+        resolveVisibleCustomCatalogForActor(sessionUser, effectiveTraineeId),
+        effectiveTraineeId
+          ? getSingleTraineeFromServer(effectiveTraineeId).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+      const traineeProfileContext =
+        targetTrainee &&
+        (sessionUser.role === 'trainee' ||
+          canCoachAccessTrainee(sessionUser, targetTrainee))
+          ? buildCompactAnalyzeContext(targetTrainee)
+          : '';
       const customFoodsHint =
         priorityCustomCatalog.length > 0
           ? `\nמוצרים אישיים מוגדרים של המשתמש (עדיפות עליונה לשם ולערכים ל-100 גרם אם מוזכרים!): ${priorityCustomCatalog
@@ -1123,7 +1136,7 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
 ${JSON.stringify(cleanBaseItems)}
 
 ${cleanAdjustment ? `הוראת התיקון של המתאמן (עובדה מחייבת — עדיפות עליונה!): "${cleanAdjustment}"` : ''}
-${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : ''}${customFoodsHint}
+${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : ''}${traineeProfileContext ? `\n\n${traineeProfileContext}` : ''}${customFoodsHint}
 
 כללי חובה להבנת כוונת התיקון (החלפה / הסרה / שימור):
 1. אתה מחזיר במערך "items" את **הרשימה המלאה והסופית של כל הארוחה אחרי התיקון** (לעולם אל תשכפל פריטים!).
@@ -1251,10 +1264,22 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
     // =========================================================================
     // מצב C (ברירת מחדל): ניתוח תמונות מרובות + הקשר מדויק + טקסט
     // =========================================================================
-    const priorityCustomCatalog = await resolveVisibleCustomCatalogForActor(
-      sessionUser,
-      backgroundJob?.traineeId || bodyTraineeId
-    );
+    const effectiveTraineeIdC =
+      sessionUser.role === 'trainee'
+        ? sessionUser.id
+        : backgroundJob?.traineeId || bodyTraineeId;
+    const [priorityCustomCatalog, targetTraineeC] = await Promise.all([
+      resolveVisibleCustomCatalogForActor(sessionUser, effectiveTraineeIdC),
+      effectiveTraineeIdC
+        ? getSingleTraineeFromServer(effectiveTraineeIdC).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+    const traineeProfileContextC =
+      targetTraineeC &&
+      (sessionUser.role === 'trainee' ||
+        canCoachAccessTrainee(sessionUser, targetTraineeC))
+        ? buildCompactAnalyzeContext(targetTraineeC)
+        : '';
     const contextBlock = formatContextParamsPrompt(contextParams);
     const hasUserText = Boolean(textPrompt && textPrompt.trim().length >= 2);
     const strictUserList = Boolean(contextParams?.strictUserList);
@@ -1315,6 +1340,9 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
       }
       if (contextBlock) {
         parts.push({ text: `פרמטרי דיוק שנבחרו ע"י המתאמן:\n${contextBlock}` });
+      }
+      if (traineeProfileContextC) {
+        parts.push({ text: traineeProfileContextC });
       }
       if (priorityCustomCatalog.length > 0) {
         parts.push({

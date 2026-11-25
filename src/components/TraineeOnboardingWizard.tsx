@@ -26,12 +26,19 @@ interface TraineeOnboardingWizardProps {
   onCancel?: () => void;
   onCompleteOnboarding: (data: {
     name: string;
+    goal?: string;
     currentWeight: number;
     targetWeight: number;
     onboarding: TraineeOnboardingData;
     measurement?: BodyMeasurementEntry;
   }) => void | Promise<void>;
 }
+
+const GOAL_OPTIONS = [
+  'חיטוב וירידה באחוזי שומן',
+  'עלייה במסת שריר',
+  'שמירה ואורח חיים בריא',
+];
 
 const NEAT_OPTIONS = [
   'יושבני / עבודה משרדית',
@@ -152,6 +159,9 @@ export function TraineeOnboardingWizard({
 
   // שלב 1: פרטים אישיים, אורח חיים, אימונים והליכה
   const [name, setName] = useState(trainee.name || '');
+  const [goal, setGoal] = useState<string>(
+    existing?.goal || trainee.goal || GOAL_OPTIONS[0]
+  );
   const [gender, setGender] = useState<'male' | 'female'>(
     existing?.gender || 'male'
   );
@@ -297,6 +307,7 @@ export function TraineeOnboardingWizard({
       const onboardingData: TraineeOnboardingData = {
         completed: true,
         measurementsCompleted: hasAnyMeasurement,
+        goal: goal.trim() || trainee.goal || GOAL_OPTIONS[0],
         age: computedAge,
         birthDate,
         gender,
@@ -333,6 +344,7 @@ export function TraineeOnboardingWizard({
 
       await onCompleteOnboarding({
         name: name.trim() || trainee.name,
+        goal: goal.trim() || trainee.goal || GOAL_OPTIONS[0],
         currentWeight: safeCurrentWeight,
         targetWeight: safeTargetWeight,
         onboarding: onboardingData,
@@ -454,6 +466,45 @@ export function TraineeOnboardingWizard({
               onChange={(e) => setName(e.currentTarget.value)}
               required
             />
+
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                מה המטרה התזונתית שלך? (משפיע ישירות על המלצות ה-AI)
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 6,
+                }}
+              >
+                {GOAL_OPTIONS.map((opt) => {
+                  const selected = goal === opt;
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setGoal(opt)}
+                      style={{
+                        minHeight: 38,
+                        padding: '0 13px',
+                        borderRadius: 999,
+                        border: selected
+                          ? '1px solid var(--sel-border)'
+                          : '1px solid var(--line-2)',
+                        background: selected ? 'var(--sel-bg)' : 'transparent',
+                        color: selected ? 'var(--sel-text)' : 'var(--text)',
+                        fontSize: 13.5,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {opt}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             <div>
               <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>

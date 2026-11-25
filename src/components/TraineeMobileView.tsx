@@ -70,8 +70,9 @@ import {
   isTodayObservationRestricted,
 } from '@/lib/dateUtils';
 import { isNativeAndroidApp } from '@/lib/capacitorSteps';
-import { parseOptionalDecimal, sanitizeDecimalInput } from '@/lib/numericInput';
+import { parseOptionalDecimal, sanitizeDecimalInput, normalizeHhMmTime } from '@/lib/numericInput';
 import { AddMealDrawer } from './AddMealDrawer';
+import { ItemTimePill } from './ui/ItemTimePill';
 import { TraineeOnboardingWizard } from './TraineeOnboardingWizard';
 import { BodyMeasurementGuide } from './BodyMeasurementGuide';
 import { DailyStepsCard } from './DailyStepsCard';
@@ -111,6 +112,13 @@ interface TraineeMobileViewProps {
     mealSlotId: string,
     mealTime: string
   ) => void | Promise<void>;
+  onUpdateItemTime?: (
+    traineeId: string,
+    date: string,
+    mealSlotId: string,
+    itemId: string,
+    itemTime: string
+  ) => void | Promise<void>;
   onUpdateWater: (traineeId: string, date: string, cups: number) => void | Promise<void>;
   onUpdateWeight: (traineeId: string, date: string, weightKg: number) => void | Promise<void>;
   onToggleFavorite: (traineeId: string, foodId: string) => void;
@@ -118,6 +126,7 @@ interface TraineeMobileViewProps {
     traineeId: string,
     data: {
       name: string;
+      goal?: string;
       currentWeight: number;
       targetWeight: number;
       onboarding: TraineeOnboardingData;
@@ -266,6 +275,7 @@ export function TraineeMobileView({
   onUpdateDayType,
   onSaveMeal,
   onUpdateMealTime,
+  onUpdateItemTime,
   onUpdateWater,
   onUpdateWeight,
   onToggleFavorite,
@@ -2130,7 +2140,7 @@ export function TraineeMobileView({
                                       borderBottom: i < loggedItems.length - 1 ? '1px solid var(--line)' : 'none',
                                     }}
                                   >
-                                    <div style={{ minWidth: 0 }}>
+                                    <div style={{ minWidth: 0, flex: 1 }}>
                                       <div
                                         style={{
                                           fontSize: 13,
@@ -2144,23 +2154,47 @@ export function TraineeMobileView({
                                         {item.name}
                                       </div>
                                       <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
-                                        {item.itemTime ? (
-                                          <>
-                                            <bdi dir="ltr" className="num-mono ltr-num">
-                                              {item.itemTime}
-                                            </bdi>
-                                            {' · '}
-                                          </>
-                                        ) : null}
                                         {item.unitLabel} · ח׳ {item.macros.protein}g · פ׳ {item.macros.carbs}g · ש׳ {item.macros.fat}g
                                       </div>
                                     </div>
                                     <div
-                                      className="num-mono"
-                                      style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 6,
+                                        flexShrink: 0,
+                                      }}
                                     >
-                                      {item.macros.calories}{' '}
-                                      <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 500 }}>קק״ל</span>
+                                      {!isBlockedDay && onUpdateItemTime ? (
+                                        <ItemTimePill
+                                          value={item.itemTime}
+                                          fallbackTime={entry?.mealTime || slot.timeHint || '12:00'}
+                                          placeholderLabel="שעה"
+                                          ariaLabel={`שינוי שעה עבור ${item.name}`}
+                                          clearAriaLabel={`אפס שעה עבור ${item.name}`}
+                                          height={24}
+                                          onChange={(val) =>
+                                            onUpdateItemTime(
+                                              trainee.id,
+                                              selectedDate,
+                                              slot.id,
+                                              item.id,
+                                              normalizeHhMmTime(val) || ''
+                                            )
+                                          }
+                                        />
+                                      ) : item.itemTime ? (
+                                        <span dir="ltr" className="num-mono ltr-num" style={{ fontSize: 12, color: 'var(--text-2)' }}>
+                                          {item.itemTime}
+                                        </span>
+                                      ) : null}
+                                      <div
+                                        className="num-mono"
+                                        style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}
+                                      >
+                                        {item.macros.calories}{' '}
+                                        <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 500 }}>קק״ל</span>
+                                      </div>
                                     </div>
                                   </div>
                                 ))}

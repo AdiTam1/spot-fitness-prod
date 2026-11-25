@@ -24,14 +24,18 @@ export function ItemTimePill({
   onChange,
 }: ItemTimePillProps) {
   const hasValue = Boolean(value);
+  const compact = height <= 26;
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}
+    >
       <label
         style={{
           position: 'relative',
           height,
-          padding: '0 10px',
-          borderRadius: 10,
+          padding: compact ? '0 8px' : '0 10px',
+          borderRadius: compact ? 8 : 10,
           background: hasValue ? 'var(--sel-bg)' : 'var(--surface-2)',
           border: hasValue
             ? '1px solid var(--sel-border)'
@@ -40,14 +44,14 @@ export function ItemTimePill({
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 5,
-          fontSize: 12,
+          gap: compact ? 4 : 5,
+          fontSize: compact ? 11.5 : 12,
           fontWeight: hasValue ? 700 : 600,
           cursor: 'pointer',
           whiteSpace: 'nowrap',
         }}
       >
-        <Clock size={12} />
+        <Clock size={compact ? 11 : 12} />
         <bdi dir="ltr" className="num-mono ltr-num">
           {value || placeholderLabel}
         </bdi>
@@ -71,11 +75,14 @@ export function ItemTimePill({
         <button
           type="button"
           aria-label={clearAriaLabel}
-          onClick={() => onChange('')}
+          onClick={(e) => {
+            e.stopPropagation();
+            onChange('');
+          }}
           style={{
             width: height,
             height,
-            borderRadius: 10,
+            borderRadius: compact ? 8 : 10,
             border: '1px solid var(--line-2)',
             background: 'var(--surface-2)',
             color: 'var(--text-2)',
@@ -86,7 +93,7 @@ export function ItemTimePill({
             padding: 0,
           }}
         >
-          <X size={12} />
+          <X size={compact ? 11 : 12} />
         </button>
       )}
     </div>

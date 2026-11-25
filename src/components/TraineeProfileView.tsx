@@ -227,7 +227,9 @@ export function TraineeProfileView({
         if (!entry || !entry.items || entry.items.length === 0) continue;
         const m = sumMacros(entry.items.map((item) => item.macros));
         const slotName = slotNames.get(slotId) || slotId;
-        const summary = entry.items.map((i) => i.name).join(', ');
+        const summary = entry.items
+          .map((i) => (i.itemTime ? `${i.name} (${i.itemTime})` : i.name))
+          .join(', ');
         rows.push({
           id: `${date}-${slotId}`,
           date,

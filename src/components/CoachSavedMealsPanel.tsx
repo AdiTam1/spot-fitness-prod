@@ -290,7 +290,12 @@ export function CoachSavedMealsPanel({
                 </div>
 
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                  {m.items.map((it) => `${it.name} (${it.unitLabel})`).join(' · ')}
+                  {m.items
+                    .map(
+                      (it) =>
+                        `${it.itemTime ? `${it.itemTime} · ` : ''}${it.name} (${it.unitLabel})`
+                    )
+                    .join(' · ')}
                 </div>
 
                 {q && (

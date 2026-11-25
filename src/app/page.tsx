@@ -94,6 +94,7 @@ import {
   initClientTelemetry,
   trackClientEvent,
 } from '@/lib/telemetry/clientTracker';
+import { normalizeHhMmTime } from '@/lib/numericInput';
 import {
   PushDeepLinkTarget,
   getAndroidPushStatus,
@@ -1151,6 +1152,7 @@ export default function HomePage() {
     traineeId: string,
     data: {
       name: string;
+      goal?: string;
       currentWeight: number;
       targetWeight: number;
       onboarding: TraineeOnboardingData;
@@ -1164,6 +1166,7 @@ export default function HomePage() {
       return {
         ...t,
         name: data.name || t.name,
+        goal: data.goal?.trim() || data.onboarding.goal?.trim() || t.goal,
         currentWeight: data.currentWeight,
         targetWeight: data.targetWeight,
         onboarding: data.onboarding,
@@ -1306,26 +1309,55 @@ export default function HomePage() {
       enableWorkoutRestSplit?: boolean;
       coachAiNotes?: string;
       aiLearnedPreferences?: string[];
+      goal?: string;
+      onboardingOverrides?: {
+        dietaryPreferences?: string[];
+        dietaryPreferencesNote?: string;
+        favoriteMustHaveFoods?: string[];
+        favoriteMustHaveFoodsNote?: string;
+        dislikedOrAllergies?: string[];
+        dislikedOrAllergiesNote?: string;
+        eatingChallenges?: string[];
+        scheduleAndNotes?: string;
+      };
     }
   ): Promise<{ error?: string }> => {
     if (!currentUser || currentUser.role === 'trainee') return {};
     setTrainees((prev) =>
-      prev.map((t) =>
-        t.id === traineeId
-          ? {
-              ...t,
-              ...(payload.enableWorkoutRestSplit !== undefined
-                ? { enableWorkoutRestSplit: payload.enableWorkoutRestSplit }
-                : {}),
-              ...(payload.coachAiNotes !== undefined
-                ? { coachAiNotes: payload.coachAiNotes }
-                : {}),
-              ...(payload.aiLearnedPreferences !== undefined
-                ? { aiLearnedPreferences: payload.aiLearnedPreferences }
-                : {}),
-            }
-          : t
-      )
+      prev.map((t) => {
+        if (t.id !== traineeId) return t;
+        const nextGoal = payload.goal?.trim() ? payload.goal.trim() : t.goal;
+        const baseOb = t.onboarding || {
+          completed: false,
+          measurementsCompleted: false,
+          dietaryPreferences: [],
+          favoriteMustHaveFoods: [],
+          dislikedOrAllergies: [],
+          eatingChallenges: [],
+        };
+        const nextOnboarding =
+          payload.onboardingOverrides || payload.goal !== undefined
+            ? {
+                ...baseOb,
+                ...(nextGoal ? { goal: nextGoal } : {}),
+                ...(payload.onboardingOverrides || {}),
+              }
+            : t.onboarding;
+        return {
+          ...t,
+          ...(payload.enableWorkoutRestSplit !== undefined
+            ? { enableWorkoutRestSplit: payload.enableWorkoutRestSplit }
+            : {}),
+          ...(payload.coachAiNotes !== undefined
+            ? { coachAiNotes: payload.coachAiNotes }
+            : {}),
+          ...(payload.aiLearnedPreferences !== undefined
+            ? { aiLearnedPreferences: payload.aiLearnedPreferences }
+            : {}),
+          goal: nextGoal,
+          onboarding: nextOnboarding,
+        };
+      })
     );
     const res = await postDataAction({
       action: 'coach-update-ai-notes-and-split',
@@ -1335,6 +1367,24 @@ export default function HomePage() {
     if (!res || !res.ok) {
       await fetchAuthorizedData();
       return { error: await extractApiError(res, 'שגיאה בשמירת הנחיות AI') };
+    }
+    const json = await res.json().catch(() => null);
+    if (json && json.ok) {
+      setTrainees((prev) =>
+        prev.map((t) =>
+          t.id === traineeId
+            ? {
+                ...t,
+                ...(json.goal !== undefined ? { goal: json.goal } : {}),
+                ...(json.onboarding !== undefined ? { onboarding: json.onboarding } : {}),
+                ...(json.coachAiNotes !== undefined ? { coachAiNotes: json.coachAiNotes } : {}),
+                ...(Array.isArray(json.aiLearnedPreferences)
+                  ? { aiLearnedPreferences: json.aiLearnedPreferences }
+                  : {}),
+              }
+            : t
+        )
+      );
     }
     return {};
   };
@@ -1956,6 +2006,46 @@ export default function HomePage() {
               [mealSlotId]: {
                 ...existingMeal,
                 mealTime: clean,
+              },
+            },
+          },
+        },
+      };
+    });
+  };
+
+  const handleUpdateMealItemTime = async (
+    traineeId: string,
+    date: string,
+    mealSlotId: string,
+    itemId: string,
+    itemTime: string
+  ) => {
+    if (currentUser?.role === 'trainee' && currentUser.id !== traineeId) {
+      return;
+    }
+    const clean = normalizeHhMmTime(itemTime);
+    await commitTraineeMutation(traineeId, (t) => {
+      const currentLog = t.logs[date];
+      if (!currentLog) return t;
+      const existingMeal = currentLog.meals?.[mealSlotId];
+      if (!existingMeal || !Array.isArray(existingMeal.items)) return t;
+      const nextItems = existingMeal.items.map((it) => {
+        if (it.id !== itemId) return it;
+        const { itemTime: _old, ...rest } = it;
+        return clean ? { ...rest, itemTime: clean } : rest;
+      });
+      return {
+        ...t,
+        logs: {
+          ...t.logs,
+          [date]: {
+            ...currentLog,
+            meals: {
+              ...currentLog.meals,
+              [mealSlotId]: {
+                ...existingMeal,
+                items: nextItems,
               },
             },
           },
@@ -3037,6 +3127,7 @@ export default function HomePage() {
             onUpdateDayType={handleUpdateDayType}
             onSaveMeal={handleSaveMeal}
             onUpdateMealTime={handleUpdateMealTime}
+            onUpdateItemTime={handleUpdateMealItemTime}
             onUpdateWater={handleUpdateWater}
             onUpdateWeight={handleUpdateWeight}
             onToggleFavorite={handleToggleFavorite}
@@ -3078,6 +3169,7 @@ export default function HomePage() {
             onUpdateDayType={handleUpdateDayType}
             onSaveMeal={handleSaveMeal}
             onUpdateMealTime={handleUpdateMealTime}
+            onUpdateItemTime={handleUpdateMealItemTime}
             onUpdateWater={handleUpdateWater}
             onUpdateWeight={handleUpdateWeight}
             onToggleFavorite={handleToggleFavorite}

@@ -1,11 +1,10 @@
-/**
- * דחיסת תמונות בצד הלקוח (Client-side WebP / JPEG Compression)
- * מקטינה תמונות מצלמה מ-4MB~ ל-80-250KB כדי לחסוך נפח ולהאיץ את השליחה ל-Gemini Vision API.
- */
-export async function compressMealImage(
+async function compressImageWithLimit(
   file: File,
-  maxWidth = 800,
-  quality = 0.72
+  maxWidth: number,
+  quality: number,
+  maxUrlLength: number,
+  fallbackWidth: number,
+  fallbackQuality: number
 ): Promise<{ dataUrl: string; sizeKB: number; formatLabel: 'WebP' | 'JPEG' }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -41,9 +40,8 @@ export async function compressMealImage(
           return;
         }
 
-        // אם התמונה עדיין גדולה מ-~450KB, נדחס צעד נוסף לשליחה מהירה ל-AI
-        if (result.url.length > 600_000) {
-          const smaller = encode(640, 0.58);
+        if (result.url.length > maxUrlLength) {
+          const smaller = encode(fallbackWidth, fallbackQuality);
           if (smaller) result = smaller;
         }
 
@@ -60,4 +58,25 @@ export async function compressMealImage(
     reader.onerror = () => reject(new Error('Failed to read file'));
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * דחיסת תמונות ארוחה בצד הלקוח (Client-side WebP / JPEG Compression)
+ * מקטינה תמונות מצלמה מ-4MB~ ל-80-250KB כדי לחסוך נפח ולהאיץ את השליחה ל-Gemini Vision API.
+ */
+export async function compressMealImage(
+  file: File,
+  maxWidth = 800,
+  quality = 0.72
+): Promise<{ dataUrl: string; sizeKB: number; formatLabel: 'WebP' | 'JPEG' }> {
+  return compressImageWithLimit(file, maxWidth, quality, 600_000, 640, 0.58);
+}
+
+/**
+ * דחיסת תמונת מוצר אישי מוקטנת ומהירה לשמירה בספריית המוצרים.
+ */
+export async function compressProductImage(
+  file: File
+): Promise<{ dataUrl: string; sizeKB: number; formatLabel: 'WebP' | 'JPEG' }> {
+  return compressImageWithLimit(file, 360, 0.74, 140_000, 240, 0.58);
 }

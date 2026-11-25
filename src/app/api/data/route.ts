@@ -1133,6 +1133,12 @@ async function handleDataPost(
           const updated: TraineeProfile = {
             ...existing,
             name: sanitizeText(traineeInput.name, 80) || existing.name,
+            goal:
+              typeof traineeInput.goal === 'string' && sanitizeText(traineeInput.goal, 120)
+                ? sanitizeText(traineeInput.goal, 120)
+                : traineeInput.onboarding?.goal && sanitizeText(traineeInput.onboarding.goal, 120)
+                ? sanitizeText(traineeInput.onboarding.goal, 120)
+                : existing.goal,
             currentWeight: todayBlocked ? existing.currentWeight : safeWeight,
             targetWeight: sanitizeNumber(
               traineeInput.targetWeight,
@@ -1362,6 +1368,73 @@ async function handleDataPost(
             .slice(-30)
         : target.aiLearnedPreferences;
 
+      const nextGoal =
+        typeof body.goal === 'string' && sanitizeText(body.goal, 120)
+          ? sanitizeText(body.goal, 120)
+          : target.goal;
+
+      const rawOverrides =
+        body.onboardingOverrides && typeof body.onboardingOverrides === 'object'
+          ? (body.onboardingOverrides as Record<string, unknown>)
+          : null;
+
+      let nextOnboarding = target.onboarding;
+      if (rawOverrides || typeof body.goal === 'string') {
+        const baseOb = target.onboarding || {
+          completed: false,
+          measurementsCompleted: false,
+          dietaryPreferences: [],
+          favoriteMustHaveFoods: [],
+          dislikedOrAllergies: [],
+          eatingChallenges: [],
+        };
+        const sanitizeArrayField = (val: unknown, fallback: string[]) =>
+          Array.isArray(val)
+            ? val.map((x) => sanitizeText(x, 80)).filter(Boolean).slice(0, 20)
+            : fallback;
+
+        nextOnboarding = {
+          ...baseOb,
+          ...(nextGoal ? { goal: nextGoal } : {}),
+          ...(rawOverrides
+            ? {
+                dietaryPreferences: sanitizeArrayField(
+                  rawOverrides.dietaryPreferences,
+                  baseOb.dietaryPreferences || []
+                ),
+                dietaryPreferencesNote:
+                  typeof rawOverrides.dietaryPreferencesNote === 'string'
+                    ? sanitizeText(rawOverrides.dietaryPreferencesNote, 300)
+                    : baseOb.dietaryPreferencesNote,
+                favoriteMustHaveFoods: sanitizeArrayField(
+                  rawOverrides.favoriteMustHaveFoods,
+                  baseOb.favoriteMustHaveFoods || []
+                ),
+                favoriteMustHaveFoodsNote:
+                  typeof rawOverrides.favoriteMustHaveFoodsNote === 'string'
+                    ? sanitizeText(rawOverrides.favoriteMustHaveFoodsNote, 300)
+                    : baseOb.favoriteMustHaveFoodsNote,
+                dislikedOrAllergies: sanitizeArrayField(
+                  rawOverrides.dislikedOrAllergies,
+                  baseOb.dislikedOrAllergies || []
+                ),
+                dislikedOrAllergiesNote:
+                  typeof rawOverrides.dislikedOrAllergiesNote === 'string'
+                    ? sanitizeText(rawOverrides.dislikedOrAllergiesNote, 300)
+                    : baseOb.dislikedOrAllergiesNote,
+                eatingChallenges: sanitizeArrayField(
+                  rawOverrides.eatingChallenges,
+                  baseOb.eatingChallenges || []
+                ),
+                scheduleAndNotes:
+                  typeof rawOverrides.scheduleAndNotes === 'string'
+                    ? sanitizeText(rawOverrides.scheduleAndNotes, 400)
+                    : baseOb.scheduleAndNotes,
+              }
+            : {}),
+        };
+      }
+
       await updateServerDbState((prev) => ({
         ...prev,
         trainees: prev.trainees.map((t) =>
@@ -1371,6 +1444,8 @@ async function handleDataPost(
                 enableWorkoutRestSplit,
                 coachAiNotes,
                 aiLearnedPreferences,
+                goal: nextGoal,
+                onboarding: nextOnboarding,
               }
             : t
         ),
@@ -1381,6 +1456,8 @@ async function handleDataPost(
         enableWorkoutRestSplit,
         coachAiNotes,
         aiLearnedPreferences,
+        goal: nextGoal,
+        onboarding: nextOnboarding,
       });
     }
 
@@ -1648,6 +1725,12 @@ async function handleDataPost(
           const nextT: TraineeProfile = {
             ...t,
             name: sanitizeText(traineeInput.name, 80) || t.name,
+            goal:
+              typeof traineeInput.goal === 'string' && sanitizeText(traineeInput.goal, 120)
+                ? sanitizeText(traineeInput.goal, 120)
+                : traineeInput.onboarding?.goal && sanitizeText(traineeInput.onboarding.goal, 120)
+                ? sanitizeText(traineeInput.onboarding.goal, 120)
+                : t.goal,
             logs: mergeLogsPreservingPendingAi(t, traineeInput.logs),
             currentWeight: traineeInput.currentWeight,
             targetWeight:

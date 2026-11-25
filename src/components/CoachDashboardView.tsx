@@ -85,6 +85,7 @@ import { CoachAlertSettingsModal } from './CoachAlertSettingsModal';
 import { AdminScrapersPanel } from './AdminScrapersPanel';
 import { AdminApkUploadPanel } from './AdminApkUploadPanel';
 import { AdminMonitoringPanel } from './AdminMonitoringPanel';
+import { buildTraineeAiContextLines } from '@/lib/aiTraineeContext';
 import {
   DEFAULT_TEMPLATES,
   getTodayIso,
@@ -177,6 +178,17 @@ interface CoachDashboardViewProps {
       enableWorkoutRestSplit?: boolean;
       coachAiNotes?: string;
       aiLearnedPreferences?: string[];
+      goal?: string;
+      onboardingOverrides?: {
+        dietaryPreferences?: string[];
+        dietaryPreferencesNote?: string;
+        favoriteMustHaveFoods?: string[];
+        favoriteMustHaveFoodsNote?: string;
+        dislikedOrAllergies?: string[];
+        dislikedOrAllergiesNote?: string;
+        eatingChallenges?: string[];
+        scheduleAndNotes?: string;
+      };
     }
   ) => Promise<{ error?: string }> | void;
   onOpenCoachOnboarding?: () => void;
@@ -601,6 +613,64 @@ export function CoachDashboardView({
     selectedTrainee?.activeDateRange?.pastDays,
     selectedTrainee?.activeDateRange?.futureDays,
   ]);
+
+  const [coachGoalDraft, setCoachGoalDraft] = useState<string>(
+    selectedTrainee?.onboarding?.goal || selectedTrainee?.goal || ''
+  );
+  const [coachAiNotesDraft, setCoachAiNotesDraft] = useState<string>(
+    selectedTrainee?.coachAiNotes || ''
+  );
+  const [prefDietNoteDraft, setPrefDietNoteDraft] = useState<string>(
+    selectedTrainee?.onboarding?.dietaryPreferencesNote || ''
+  );
+  const [prefFavNoteDraft, setPrefFavNoteDraft] = useState<string>(
+    selectedTrainee?.onboarding?.favoriteMustHaveFoodsNote || ''
+  );
+  const [prefAllergiesNoteDraft, setPrefAllergiesNoteDraft] = useState<string>(
+    selectedTrainee?.onboarding?.dislikedOrAllergiesNote || ''
+  );
+  const [prefScheduleNoteDraft, setPrefScheduleNoteDraft] = useState<string>(
+    selectedTrainee?.onboarding?.scheduleAndNotes || ''
+  );
+  const [newAiRuleDraft, setNewAiRuleDraft] = useState<string>('');
+  const [coachAiConfirmedAt, setCoachAiConfirmedAt] = useState<string | null>(null);
+  const [recOptionDrafts, setRecOptionDrafts] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setCoachGoalDraft(selectedTrainee?.onboarding?.goal || selectedTrainee?.goal || '');
+    setCoachAiNotesDraft(selectedTrainee?.coachAiNotes || '');
+    setPrefDietNoteDraft(selectedTrainee?.onboarding?.dietaryPreferencesNote || '');
+    setPrefFavNoteDraft(selectedTrainee?.onboarding?.favoriteMustHaveFoodsNote || '');
+    setPrefAllergiesNoteDraft(selectedTrainee?.onboarding?.dislikedOrAllergiesNote || '');
+    setPrefScheduleNoteDraft(selectedTrainee?.onboarding?.scheduleAndNotes || '');
+    setNewAiRuleDraft('');
+    setCoachAiConfirmedAt(null);
+    setRecOptionDrafts({});
+  }, [
+    selectedTrainee?.id,
+    selectedTrainee?.goal,
+    selectedTrainee?.coachAiNotes,
+    selectedTrainee?.onboarding?.goal,
+    selectedTrainee?.onboarding?.dietaryPreferencesNote,
+    selectedTrainee?.onboarding?.favoriteMustHaveFoodsNote,
+    selectedTrainee?.onboarding?.dislikedOrAllergiesNote,
+    selectedTrainee?.onboarding?.scheduleAndNotes,
+  ]);
+
+  const coachAiDirty = Boolean(
+    selectedTrainee &&
+      (coachGoalDraft.trim() !==
+        (selectedTrainee.onboarding?.goal || selectedTrainee.goal || '').trim() ||
+        coachAiNotesDraft.trim() !== (selectedTrainee.coachAiNotes || '').trim() ||
+        prefDietNoteDraft.trim() !==
+          (selectedTrainee.onboarding?.dietaryPreferencesNote || '').trim() ||
+        prefFavNoteDraft.trim() !==
+          (selectedTrainee.onboarding?.favoriteMustHaveFoodsNote || '').trim() ||
+        prefAllergiesNoteDraft.trim() !==
+          (selectedTrainee.onboarding?.dislikedOrAllergiesNote || '').trim() ||
+        prefScheduleNoteDraft.trim() !==
+          (selectedTrainee.onboarding?.scheduleAndNotes || '').trim())
+  );
 
   // אישור מתאמן Pending עם בחירת מאמן משויך
   const [pendingAssignCoachMap, setPendingAssignCoachMap] = useState<
@@ -3800,7 +3870,13 @@ export function CoachDashboardView({
                     marginBottom: 6,
                   }}
                 >
-                  העדפות תזונה ואוכל חשוב
+                  העדפות תזונה, מטרה ואוכל מהשאלון (משפיע ישירות על ה-AI)
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+                  <span style={{ color: 'var(--text-2)', flex: 'none' }}>מטרה פעילה</span>
+                  <span style={{ textAlign: 'end', minWidth: 0, fontWeight: 700 }}>
+                    {selectedTrainee.onboarding?.goal || selectedTrainee.goal || 'לא הוגדרה'}
+                  </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '6px 0', borderTop: '1px solid var(--line)' }}>
                   <span style={{ color: 'var(--text-2)', flex: 'none' }}>סגנון</span>
@@ -3840,7 +3916,7 @@ export function CoachDashboardView({
               </div>
             </div>
 
-            {/* פאנל הנחיות מאמן ל-AI + זיכרון העדפות נלמד של המתאמן + צ'ק-אין שבועי */}
+            {/* פאנל הנחיות מאמן, התאמת מטרה/שאלון ל-AI ואישור שליחה מפורש */}
             <div
               style={{
                 display: 'grid',
@@ -3852,53 +3928,250 @@ export function CoachDashboardView({
               <div
                 style={{
                   background: 'var(--surface-2)',
-                  padding: 14,
+                  padding: 16,
                   borderRadius: 20,
-                  border: '1px solid var(--line-2)',
+                  border: coachAiDirty
+                    ? '1.5px solid rgba(245, 158, 11, 0.55)'
+                    : '1px solid var(--line-2)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12,
                 }}
               >
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
                     gap: 8,
-                    fontSize: 13,
-                    fontWeight: 800,
-                    color: 'var(--text)',
-                    marginBottom: 6,
                   }}
                 >
-                  <Brain size={15} />
-                  <span>
-                    הנחיות מאמן ל-AI וזיכרון העדפות נלמד ({selectedTrainee.name})
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      fontSize: 14,
+                      fontWeight: 800,
+                      color: 'var(--text)',
+                    }}
+                  >
+                    <Brain size={16} />
+                    <span>
+                      מרכז הדרכה ושליחה ל-AI ({selectedTrainee.name})
+                    </span>
+                  </div>
+                  <span
+                    style={{
+                      padding: '3px 10px',
+                      borderRadius: 999,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      background: coachAiDirty
+                        ? 'rgba(245, 158, 11, 0.14)'
+                        : 'rgba(16, 185, 129, 0.14)',
+                      color: coachAiDirty ? 'var(--warn-text)' : 'var(--ok-text)',
+                      border: coachAiDirty
+                        ? '1px solid rgba(245, 158, 11, 0.35)'
+                        : '1px solid rgba(16, 185, 129, 0.35)',
+                    }}
+                  >
+                    {coachAiDirty
+                      ? '● יש שינויים שממתינים לאישור ושליחה ל-AI'
+                      : coachAiConfirmedAt
+                      ? `✓ נשמר ונשלח ל-AI (${coachAiConfirmedAt})`
+                      : '✓ שמור ומחובר ל-AI'}
                   </span>
                 </div>
+
                 <div
                   style={{
-                    fontSize: 13,
+                    padding: '8px 12px',
+                    borderRadius: 14,
+                    background: 'var(--card)',
+                    border: '1px solid var(--line)',
+                    fontSize: 12.5,
                     color: 'var(--text-secondary)',
-                    marginBottom: 8,
+                    lineHeight: 1.45,
                   }}
                 >
-                  כל מה שתכתוב כאן יוזרק אוטומטית לפרומפט כשמנוע ה-AI מציע למתאמן
-                  ארוחות להשלמת היתרה (למשל: &quot;ללא גלוטן, להעדיף חלבון רזה בערב&quot;).
+                  <strong style={{ color: 'var(--text)' }}>מה ה-AI מקבל כעת בפרומפט: </strong>
+                  {buildTraineeAiContextLines(selectedTrainee).summaryLine}
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                    בחיטוב, מאכלים אהובים משמינים מהשאלון מומרים אוטומטית לחלופות בריאות/כמות מדודה; במסה ניתנת עדיפות לצפיפות קלורית וחלבון.
+                  </div>
                 </div>
-                <Textarea
-                  size="xs"
-                  minRows={2}
-                  placeholder="למשל: המתאמן רגיש לגלוטן, מעדיף ארוחות בוקר קלות או חזה עוף/טונה בערב..."
-                  value={selectedTrainee.coachAiNotes || ''}
-                  onChange={(e) => {
-                    if (onUpdateAiNotesAndSplit) {
-                      onUpdateAiNotesAndSplit(selectedTrainee.id, {
-                        coachAiNotes: e.currentTarget.value,
-                      });
-                    }
-                  }}
-                />
 
-                {/* הצגת כללי ההעדפות שה-AI למד מתגובות המתאמן */}
-                <div style={{ marginTop: 10 }}>
+                {/* מטרת המתאמן עבור ה-AI */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>
+                    מטרת המתאמן ל-AI:
+                  </span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {[
+                      'חיטוב וירידה באחוזי שומן',
+                      'עלייה במסת שריר',
+                      'שמירה ואורח חיים בריא',
+                    ].map((gOpt) => {
+                      const active = coachGoalDraft.trim() === gOpt;
+                      return (
+                        <button
+                          key={gOpt}
+                          type="button"
+                          onClick={() => setCoachGoalDraft(gOpt)}
+                          style={{
+                            padding: '5px 11px',
+                            borderRadius: 999,
+                            border: active
+                              ? '1px solid var(--sel-border)'
+                              : '1px solid var(--line-2)',
+                            background: active ? 'var(--sel-bg)' : 'var(--card)',
+                            color: active ? 'var(--sel-text)' : 'var(--text)',
+                            fontSize: 12.5,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {gOpt}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <TextInput
+                    size="xs"
+                    placeholder="או כתוב מטרה מותאמת אישית..."
+                    value={coachGoalDraft}
+                    onChange={(e) => setCoachGoalDraft(e.currentTarget.value)}
+                  />
+                </div>
+
+                {/* דגשים משלימים ישירות לפרופיל ה-AI מהשאלון */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+                    gap: 8,
+                  }}
+                >
+                  <TextInput
+                    size="xs"
+                    label="סגנון / הגבלות תזונה ל-AI"
+                    placeholder="למשל: כשר, ללא לקטוז, ללא גלוטן"
+                    value={prefDietNoteDraft}
+                    onChange={(e) => setPrefDietNoteDraft(e.currentTarget.value)}
+                  />
+                  <TextInput
+                    size="xs"
+                    label="איסורים, אלרגיות ומה לא אוכל"
+                    placeholder="למשל: לא אוכל דגים, רגיש לבוטנים"
+                    value={prefAllergiesNoteDraft}
+                    onChange={(e) => setPrefAllergiesNoteDraft(e.currentTarget.value)}
+                  />
+                  <TextInput
+                    size="xs"
+                    label="מאכלים אהובים שה-AI יתחשב בהם"
+                    placeholder="למשל: שוקולד (יקבל חלופת חיטוב אם בחיטוב)"
+                    value={prefFavNoteDraft}
+                    onChange={(e) => setPrefFavNoteDraft(e.currentTarget.value)}
+                  />
+                  <TextInput
+                    size="xs"
+                    label="לו״ז אימונים והערות שגרה"
+                    placeholder="למשל: מתאמן ב-19:00, רעב בערב"
+                    value={prefScheduleNoteDraft}
+                    onChange={(e) => setPrefScheduleNoteDraft(e.currentTarget.value)}
+                  />
+                </div>
+
+                <div>
+                  <Textarea
+                    size="xs"
+                    minRows={2}
+                    label="הנחיות המאמן האישי ל-AI (עדיפות עליונה)"
+                    description="לדוגמה: להמליץ בערב על חלבון רזה ונפח גבוה, להימנע מהצעות חלביות אחרי בשר, או להעדיף תחליפי חיטוב דלי קלוריות."
+                    placeholder="למשל: המתאמן רגיש לגלוטן, מעדיף ארוחות בוקר קלות או חזה עוף/טונה בערב..."
+                    value={coachAiNotesDraft}
+                    onChange={(e) => setCoachAiNotesDraft(e.currentTarget.value)}
+                  />
+                </div>
+
+                {onUpdateAiNotesAndSplit && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: 10,
+                    }}
+                  >
+                    <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                      לחץ לאישור כדי לשמור ולעדכן את מנוע ההמלצות והפיענוח של ה-AI:
+                    </span>
+                    <button
+                      type="button"
+                      disabled={isBusy(`ai-ctx-${selectedTrainee.id}`)}
+                      onClick={() =>
+                        runBusy(
+                          `ai-ctx-${selectedTrainee.id}`,
+                          async () => {
+                            const res = await onUpdateAiNotesAndSplit(
+                              selectedTrainee.id,
+                              {
+                                coachAiNotes: coachAiNotesDraft,
+                                goal: coachGoalDraft.trim() || selectedTrainee.goal,
+                                onboardingOverrides: {
+                                  dietaryPreferencesNote: prefDietNoteDraft,
+                                  favoriteMustHaveFoodsNote: prefFavNoteDraft,
+                                  dislikedOrAllergiesNote: prefAllergiesNoteDraft,
+                                  scheduleAndNotes: prefScheduleNoteDraft,
+                                },
+                              }
+                            );
+                            if (!res || !res.error) {
+                              setCoachAiConfirmedAt(
+                                new Date().toLocaleTimeString('he-IL', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              );
+                            }
+                            return res;
+                          },
+                          'המידע נשמר בהצלחה ונשלח ישירות למנוע ה-AI!'
+                        )
+                      }
+                      className="btn-volt"
+                      style={{
+                        height: 44,
+                        padding: '0 20px',
+                        borderRadius: 999,
+                        fontSize: 14,
+                        fontWeight: 800,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {isBusy(`ai-ctx-${selectedTrainee.id}`) ? (
+                        <BusyIcon size={15} />
+                      ) : (
+                        <Send size={15} />
+                      )}
+                      <span>
+                        {isBusy(`ai-ctx-${selectedTrainee.id}`)
+                          ? 'שומר ושולח ל-AI…'
+                          : 'אשר ושמור שליחה ל-AI'}
+                      </span>
+                    </button>
+                  </div>
+                )}
+
+                {/* הצגת כללי ההעדפות שה-AI למד + הוספת כלל ישיר ע"י המאמן */}
+                <div style={{ marginTop: 4, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
                   <div
                     style={{
                       fontSize: 13,
@@ -3907,15 +4180,15 @@ export function CoachDashboardView({
                       marginBottom: 6,
                     }}
                   >
-                    כללים שהמערכת למדה מתגובות המתאמן להצעות AI (
+                    כללים קבועים שה-AI שומר עבור המתאמן (
                     {(selectedTrainee.aiLearnedPreferences || []).length}):
                   </div>
                   {(selectedTrainee.aiLearnedPreferences || []).length === 0 ? (
-                    <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                      טרם נלמדו כללים מתגובות המתאמן.
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
+                      טרם נלמדו או הוגדרו כללים קבועים.
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                       {(selectedTrainee.aiLearnedPreferences || []).map(
                         (rule, idx) => (
                           <span
@@ -3942,9 +4215,14 @@ export function CoachDashboardView({
                                   const nextRules = (
                                     selectedTrainee.aiLearnedPreferences || []
                                   ).filter((_, i) => i !== idx);
-                                  onUpdateAiNotesAndSplit(selectedTrainee.id, {
-                                    aiLearnedPreferences: nextRules,
-                                  });
+                                  void runBusy(
+                                    `ai-rule-del-${selectedTrainee.id}-${idx}`,
+                                    () =>
+                                      onUpdateAiNotesAndSplit(selectedTrainee.id, {
+                                        aiLearnedPreferences: nextRules,
+                                      }),
+                                    'הכלל הוסר ועודכן ב-AI'
+                                  );
                                 }
                               }}
                               style={{
@@ -3961,6 +4239,54 @@ export function CoachDashboardView({
                           </span>
                         )
                       )}
+                    </div>
+                  )}
+                  {onUpdateAiNotesAndSplit && (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <TextInput
+                        size="xs"
+                        style={{ flex: 1 }}
+                        placeholder="הוסף כלל ישיר ל-AI (למשל: לא אוהב טונה, לא אוכל אבוקדו)..."
+                        value={newAiRuleDraft}
+                        onChange={(e) => setNewAiRuleDraft(e.currentTarget.value)}
+                      />
+                      <button
+                        type="button"
+                        disabled={!newAiRuleDraft.trim() || isBusy(`ai-rule-add-${selectedTrainee.id}`)}
+                        onClick={() => {
+                          const rule = newAiRuleDraft.trim();
+                          if (!rule) return;
+                          const nextRules = Array.from(
+                            new Set([
+                              ...(selectedTrainee.aiLearnedPreferences || []),
+                              rule,
+                            ])
+                          ).slice(-30);
+                          void runBusy(
+                            `ai-rule-add-${selectedTrainee.id}`,
+                            async () => {
+                              const res = await onUpdateAiNotesAndSplit(selectedTrainee.id, {
+                                aiLearnedPreferences: nextRules,
+                              });
+                              if (!res || !res.error) setNewAiRuleDraft('');
+                              return res;
+                            },
+                            'הכלל נוסף ונשלח ל-AI!'
+                          );
+                        }}
+                        className="btn-surface"
+                        style={{
+                          height: 32,
+                          padding: '0 12px',
+                          borderRadius: 999,
+                          fontSize: 12.5,
+                          fontWeight: 700,
+                          cursor: newAiRuleDraft.trim() ? 'pointer' : 'not-allowed',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        + הוסף כלל ל-AI
+                      </button>
                     </div>
                   )}
                 </div>
@@ -4419,20 +4745,65 @@ export function CoachDashboardView({
                       }
                     />
                   </div>
-                  <div style={{ marginTop: 8 }}>
-                    <TextInput
-                      size="xs"
-                      label="אופציות ארוחה מומלצות למתאמן (מופרדות ב- | )"
-                      placeholder="למשל: 2 ביצים + חצי קוטג' + 2 פרוסות לחם | יוגורט חלבון + בננה + 10 שקדים"
-                      value={(meal.recommendedOptions || []).join(' | ')}
-                      onChange={(e) =>
-                        updateTraineeDirectMeal(
-                          meal.id,
-                          'recommendedOptions',
-                          e.currentTarget.value
-                        )
-                      }
-                    />
+                  <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                    {(() => {
+                      const savedOptsStr = (meal.recommendedOptions || []).join(' | ');
+                      const draftStr =
+                        recOptionDrafts[meal.id] !== undefined
+                          ? recOptionDrafts[meal.id]
+                          : savedOptsStr;
+                      const isRecDirty =
+                        recOptionDrafts[meal.id] !== undefined &&
+                        recOptionDrafts[meal.id].trim() !== savedOptsStr.trim();
+                      return (
+                        <>
+                          <TextInput
+                            size="xs"
+                            style={{ flex: '1 1 220px' }}
+                            label="אופציות ארוחה מומלצות למתאמן (מופרדות ב- | )"
+                            placeholder="למשל: 2 ביצים + חצי קוטג' + 2 פרוסות לחם | יוגורט חלבון + בננה + 10 שקדים"
+                            value={draftStr}
+                            onChange={(e) => {
+                              const v = e.currentTarget.value;
+                              setRecOptionDrafts((prev) => ({
+                                ...prev,
+                                [meal.id]: v,
+                              }));
+                            }}
+                          />
+                          <button
+                            type="button"
+                            disabled={!isRecDirty}
+                            onClick={() => {
+                              updateTraineeDirectMeal(
+                                meal.id,
+                                'recommendedOptions',
+                                draftStr
+                              );
+                              setRecOptionDrafts((prev) => {
+                                const next = { ...prev };
+                                delete next[meal.id];
+                                return next;
+                              });
+                              showToast(`האופציות המומלצות עבור "${meal.name}" נשמרו למתאמן!`);
+                            }}
+                            className={isRecDirty ? 'btn-volt' : 'btn-surface'}
+                            style={{
+                              height: 30,
+                              padding: '0 12px',
+                              borderRadius: 999,
+                              fontSize: 12,
+                              fontWeight: 700,
+                              cursor: isRecDirty ? 'pointer' : 'default',
+                              opacity: isRecDirty ? 1 : 0.7,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {isRecDirty ? 'שמור אופציות למתאמן' : '✓ שמור'}
+                          </button>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}

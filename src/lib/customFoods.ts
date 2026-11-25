@@ -73,6 +73,7 @@ export function customFoodToCatalogItem(cf: CustomFoodItem): FoodCatalogItem {
     brand: cf.brand || undefined,
     category: cf.category || 'מוצרים אישיים',
     barcode: cf.barcode || undefined,
+    ...(cf.imageDataUrl ? { imageDataUrl: cf.imageDataUrl } : {}),
     per100g: cf.per100g,
     units,
     isPopular: true,

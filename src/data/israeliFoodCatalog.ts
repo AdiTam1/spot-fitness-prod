@@ -592,6 +592,64 @@ export function sumMacros(list: MacroTargets[]): MacroTargets {
   );
 }
 
+export const LEGACY_SEEDED_RECOMMENDED_OPTIONS = new Set<string>([
+  "2 ביצים + חצי גביע קוטג' 5% + 2 פרוסות לחם כוסמין",
+  'יוגורט דנונה PRO + חצי כוס שיבולת שועל + בננה',
+  '150 גרם חזה עוף + 200 גרם אורז בסמטי + כפית שמן זית בסלט',
+  '160 גרם פילה סלמון + בטטה אפויה בינונית + סלט ירקות',
+  'סקופ אבקת חלבון + בננה + תפוח עץ',
+  'משקה חלבון GO + פרי + 10 שקדים',
+  'קופסת טונה במים + 2 פרוסות לחם כוסמין + כף טחינה גולמית + ביצה',
+  "גביע קוטג' 5% + 2 פרוסות גבינה צהובה 9% + 2 פרוסות לחם + חצי אבוקדו",
+]);
+
+/**
+ * מסיר אופציות ברירת מחדל מוקשחות שנשתלו אוטומטית בעבר (ולא הוזנו ע"י המאמן)
+ */
+export function stripLegacySeededRecommendedOptionsFromTemplate(
+  tpl: NutritionTemplate
+): { template: NutritionTemplate; changed: boolean } {
+  if (!tpl || !Array.isArray(tpl.meals)) {
+    return { template: tpl, changed: false };
+  }
+  let changed = false;
+  const nextMeals = tpl.meals.map((meal) => {
+    if (!Array.isArray(meal.recommendedOptions) || meal.recommendedOptions.length === 0) {
+      return meal;
+    }
+    const filtered = meal.recommendedOptions.filter(
+      (opt) => !LEGACY_SEEDED_RECOMMENDED_OPTIONS.has(String(opt || '').trim())
+    );
+    if (filtered.length === meal.recommendedOptions.length) {
+      return meal;
+    }
+    changed = true;
+    const { recommendedOptions: _removed, ...restMeal } = meal;
+    return filtered.length > 0
+      ? { ...restMeal, recommendedOptions: filtered }
+      : restMeal;
+  });
+  return changed ? { template: { ...tpl, meals: nextMeals }, changed: true } : { template: tpl, changed: false };
+}
+
+export function stripLegacySeededRecommendedOptionsFromTrainee(
+  trainee: TraineeProfile
+): { trainee: TraineeProfile; changed: boolean } {
+  const wRes = stripLegacySeededRecommendedOptionsFromTemplate(trainee.workoutTemplate);
+  const rRes = stripLegacySeededRecommendedOptionsFromTemplate(trainee.restTemplate);
+  if (!wRes.changed && !rRes.changed) {
+    return { trainee, changed: false };
+  }
+  return {
+    trainee: {
+      ...trainee,
+      workoutTemplate: wRes.template,
+      restTemplate: rRes.template,
+    },
+    changed: true,
+  };
+}
+
 export const DEFAULT_TEMPLATES: NutritionTemplate[] = [
   {
     id: 'tpl-cut-1850',
@@ -606,40 +664,24 @@ export const DEFAULT_TEMPLATES: NutritionTemplate[] = [
         name: 'ארוחת בוקר',
         timeHint: '08:00',
         targets: { calories: 420, protein: 35, carbs: 40, fat: 13 },
-        recommendedOptions: [
-          "2 ביצים + חצי גביע קוטג' 5% + 2 פרוסות לחם כוסמין",
-          'יוגורט דנונה PRO + חצי כוס שיבולת שועל + בננה',
-        ],
       },
       {
         id: 'meal-2',
         name: 'ארוחת צהריים (לפני אימון)',
         timeHint: '13:00',
         targets: { calories: 580, protein: 50, carbs: 65, fat: 13 },
-        recommendedOptions: [
-          '150 גרם חזה עוף + 200 גרם אורז בסמטי + כפית שמן זית בסלט',
-          '160 גרם פילה סלמון + בטטה אפויה בינונית + סלט ירקות',
-        ],
       },
       {
         id: 'meal-3',
         name: 'נשנוש / שייק אחרי אימון',
         timeHint: '17:00',
         targets: { calories: 300, protein: 30, carbs: 35, fat: 4 },
-        recommendedOptions: [
-          'סקופ אבקת חלבון + בננה + תפוח עץ',
-          'משקה חלבון GO + פרי + 10 שקדים',
-        ],
       },
       {
         id: 'meal-4',
         name: 'ארוחת ערב',
         timeHint: '20:30',
         targets: { calories: 550, protein: 45, carbs: 40, fat: 22 },
-        recommendedOptions: [
-          'קופסת טונה במים + 2 פרוסות לחם כוסמין + כף טחינה גולמית + ביצה',
-          "גביע קוטג' 5% + 2 פרוסות גבינה צהובה 9% + 2 פרוסות לחם + חצי אבוקדו",
-        ],
       },
     ],
   },

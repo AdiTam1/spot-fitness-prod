@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, TextInput } from '@mantine/core';
-import { Check, Loader2, Sparkles } from 'lucide-react';
+import { Camera, Check, Image as ImageIcon, Loader2, Sparkles, X } from 'lucide-react';
 import {
   CustomFoodItem,
   CustomFoodScope,
@@ -11,6 +11,7 @@ import {
 } from '@/types/nutrition';
 import { computePer100gFromServing } from '@/lib/customFoods';
 import { sanitizeDecimalInput } from '@/lib/numericInput';
+import { compressProductImage } from '@/utils/imageCompression';
 import { SegmentedPill } from './ui/SegmentedPill';
 
 export interface CustomFoodsMutationResult {
@@ -78,6 +79,8 @@ export function CustomFoodModal({
   const [optUnitGrams, setOptUnitGrams] = useState('');
 
   const [scope, setScope] = useState<CustomFoodScope>('trainee');
+  const [imageDataUrl, setImageDataUrl] = useState<string | undefined>(undefined);
+  const [imageUploading, setImageUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -89,6 +92,7 @@ export function CustomFoodModal({
       setBrand(initialFood.brand || '');
       setCategory(initialFood.category || 'מוצרים אישיים');
       setBarcode(initialFood.barcode || '');
+      setImageDataUrl(initialFood.imageDataUrl);
       setScope(initialFood.scope);
 
       const mode = initialFood.inputMode === 'serving' ? 'serving' : 'per100g';
@@ -123,6 +127,7 @@ export function CustomFoodModal({
     setBrand('');
     setCategory('מוצרים אישיים');
     setBarcode((initialBarcode || '').trim());
+    setImageDataUrl(undefined);
     setInputMode('per100g');
     setServingLabel('כוס מבושלת / מנה');
     setServingGrams('160');
@@ -206,6 +211,32 @@ export function CustomFoodModal({
     return opts;
   }, [actorRole, traineeId, traineeName]);
 
+  const handleProductImageUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('נא לבחור קובץ תמונה תקין (JPG, PNG, WebP)');
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setError('קובץ התמונה גדול מדי (מקסימום 20MB)');
+      return;
+    }
+    setImageUploading(true);
+    setError(null);
+    try {
+      const compressed = await compressProductImage(file);
+      setImageDataUrl(compressed.dataUrl);
+    } catch {
+      setError('שגיאה בעיבוד התמונה — נסה תמונה אחרת');
+    } finally {
+      setImageUploading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanName = name.trim();
@@ -245,6 +276,7 @@ export function CustomFoodModal({
           brand: brand.trim() || undefined,
           category,
           barcode: barcode.trim() || undefined,
+          imageDataUrl: imageDataUrl || null,
           inputMode,
           macros: parsedMacros,
           defaultServingLabel: resolvedServingLabel || undefined,
@@ -287,6 +319,164 @@ export function CustomFoodModal({
           value={name}
           onChange={(e) => setName(e.currentTarget.value)}
         />
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-2)' }}>
+            תמונת מוצר (אופציונלי)
+          </span>
+          {imageDataUrl ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: 8,
+                borderRadius: 16,
+                background: 'var(--surface-2, var(--card))',
+                border: '1px solid var(--line)',
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imageDataUrl}
+                alt={name || 'תמונת מוצר'}
+                style={{
+                  width: 58,
+                  height: 58,
+                  borderRadius: 12,
+                  objectFit: 'cover',
+                  flexShrink: 0,
+                  border: '1px solid var(--line)',
+                }}
+              />
+              <div style={{ display: 'flex', flex: 1, flexWrap: 'wrap', gap: 6 }}>
+                <label
+                  className="btn-surface"
+                  style={{
+                    height: 32,
+                    padding: '0 10px',
+                    borderRadius: 999,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    cursor: imageUploading ? 'wait' : 'pointer',
+                  }}
+                >
+                  <Camera size={13} />
+                  <span>צלם</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    hidden
+                    disabled={imageUploading}
+                    onChange={(e) => void handleProductImageUpload(e)}
+                  />
+                </label>
+                <label
+                  className="btn-surface"
+                  style={{
+                    height: 32,
+                    padding: '0 10px',
+                    borderRadius: 999,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    cursor: imageUploading ? 'wait' : 'pointer',
+                  }}
+                >
+                  <ImageIcon size={13} />
+                  <span>{imageUploading ? 'מעבד...' : 'החלף'}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    disabled={imageUploading}
+                    onChange={(e) => void handleProductImageUpload(e)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setImageDataUrl(undefined)}
+                  className="btn-surface"
+                  style={{
+                    height: 32,
+                    padding: '0 10px',
+                    borderRadius: 999,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: '#ef4444',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <X size={13} />
+                  <span>הסר</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <label
+                className="btn-surface"
+                style={{
+                  flex: 1,
+                  height: 38,
+                  borderRadius: 12,
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  cursor: imageUploading ? 'wait' : 'pointer',
+                }}
+              >
+                <Camera size={14} />
+                <span>{imageUploading ? 'מעבד...' : 'צלם מוצר'}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  hidden
+                  disabled={imageUploading}
+                  onChange={(e) => void handleProductImageUpload(e)}
+                />
+              </label>
+              <label
+                className="btn-surface"
+                style={{
+                  flex: 1,
+                  height: 38,
+                  borderRadius: 12,
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  cursor: imageUploading ? 'wait' : 'pointer',
+                }}
+              >
+                <ImageIcon size={14} />
+                <span>{imageUploading ? 'מעבד...' : 'העלה מגלריה'}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  disabled={imageUploading}
+                  onChange={(e) => void handleProductImageUpload(e)}
+                />
+              </label>
+            </div>
+          )}
+        </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-2)' }}>

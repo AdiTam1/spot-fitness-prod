@@ -135,6 +135,23 @@ function buildSanitizedCustomFood(
   const rawBarcode = typeof body.barcode === 'string' ? body.barcode.replace(/[^0-9]/g, '').slice(0, 20) : '';
   const barcode = rawBarcode.length >= 6 ? rawBarcode : undefined;
 
+  let imageDataUrl = opts.existingItem?.imageDataUrl;
+  if ('imageDataUrl' in body) {
+    const rawImg = body.imageDataUrl;
+    if (rawImg === null || rawImg === '') {
+      imageDataUrl = undefined;
+    } else if (typeof rawImg === 'string') {
+      const cleaned = rawImg.trim();
+      if (
+        cleaned.length > 260_000 ||
+        !/^data:image\/(?:jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/i.test(cleaned)
+      ) {
+        return { error: 'תמונת המוצר אינה תקינה או גדולה מדי (עד ~190KB)' };
+      }
+      imageDataUrl = cleaned;
+    }
+  }
+
   const units = sanitizeUnitsList(body.units, defaultServingLabel, defaultServingGrams);
   const nowIso = new Date().toISOString();
 
@@ -145,6 +162,7 @@ function buildSanitizedCustomFood(
       brand,
       category,
       barcode,
+      ...(imageDataUrl ? { imageDataUrl } : {}),
       per100g,
       units,
       inputMode,
