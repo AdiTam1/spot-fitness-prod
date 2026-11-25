@@ -2890,7 +2890,7 @@ export function TraineeMobileView({
             </section>
           </motion.div>
         ) : (
-          /* טאב פרופיל: הארוחות שלי, סטטיסטיקות, הגדרות פושים ושינוי שם */
+          /* טאב פרופיל: היסטוריית ארוחות, סטטיסטיקות, הגדרות פושים ושינוי שם */
           <motion.div
             key="profile"
             initial={{ opacity: 0, y: 8 }}

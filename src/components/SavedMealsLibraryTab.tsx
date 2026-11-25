@@ -53,6 +53,7 @@ interface SavedMealsLibraryTabProps {
   traineeLogs?: Record<string, DailyLog>;
   geminiApiKey?: string;
   initialSearchQuery?: string;
+  initialFilterMode?: 'all' | 'history' | 'questions';
   contextParams?: AiContextParams;
   onAddItemsToMeal: (items: LoggedFoodItem[], photoDataUrl?: string) => void;
   onOpenToolsModal: () => void;
@@ -75,6 +76,7 @@ export function SavedMealsLibraryTab({
   traineeLogs = {},
   geminiApiKey,
   initialSearchQuery = '',
+  initialFilterMode = 'all',
   contextParams,
   onAddItemsToMeal,
   onOpenToolsModal,
@@ -82,12 +84,17 @@ export function SavedMealsLibraryTab({
 }: SavedMealsLibraryTabProps) {
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [filterMode, setFilterMode] = useState<
-    'all' | 'pinned' | 'popular' | 'history' | 'questions'
-  >('all');
+    'all' | 'history' | 'questions'
+  >(initialFilterMode);
   const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
   const [voiceState, setVoiceState] = useState<VoiceCaptureState>('idle');
   const voiceControllerRef = useRef<VoiceCaptureController | null>(null);
   const recordingSearchVoice = voiceState !== 'idle';
+
+  useEffect(() => {
+    setFilterMode(initialFilterMode);
+    setSelectedDetailId(null);
+  }, [initialFilterMode]);
 
   useEffect(() => {
     return () => {
@@ -120,9 +127,7 @@ export function SavedMealsLibraryTab({
   const sortedSavedMeals = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     let list = [...savedMeals];
-    if (filterMode === 'pinned') {
-      list = list.filter((m) => m.isPinned || m.isFavorite);
-    } else if (filterMode === 'questions') {
+    if (filterMode === 'questions') {
       list = list.filter((m) => Boolean(m.coachQuestion));
     }
     if (q) {
@@ -133,8 +138,11 @@ export function SavedMealsLibraryTab({
       );
     }
     return list.sort((a, b) => {
-      if (filterMode !== 'popular' && a.isPinned !== b.isPinned) {
+      if (Boolean(a.isPinned) !== Boolean(b.isPinned)) {
         return a.isPinned ? -1 : 1;
+      }
+      if (Boolean(a.isFavorite) !== Boolean(b.isFavorite)) {
+        return a.isFavorite ? -1 : 1;
       }
       if ((b.useCount || 0) !== (a.useCount || 0)) {
         return (b.useCount || 0) - (a.useCount || 0);
@@ -480,14 +488,15 @@ export function SavedMealsLibraryTab({
 
       </div>
 
-      {/* צ׳יפים לסינון */}
+      {/* 3 צ׳יפים פשוטים וברורים: שמורות / היסטוריית ארוחות / התייעצות מאמן */}
       <div data-h-scroll style={{ display: 'flex', gap: 6, paddingBottom: 2 }}>
         {[
-          { id: 'all', label: `הכל (${savedMeals.length})` },
-          { id: 'pinned', label: 'נעוצות / מועדפות' },
-          { id: 'popular', label: 'פופולריות' },
-          { id: 'history', label: `היסטוריה (${historicalMeals.length})` },
-          { id: 'questions', label: 'התייעצות מאמן' },
+          { id: 'all', label: `ארוחות שמורות (${savedMeals.length})` },
+          { id: 'history', label: `היסטוריית ארוחות (${historicalMeals.length})` },
+          {
+            id: 'questions',
+            label: `שאלות למאמן (${savedMeals.filter((m) => Boolean(m.coachQuestion)).length})`,
+          },
         ].map((f) => (
           <button
             key={f.id}
@@ -599,7 +608,12 @@ export function SavedMealsLibraryTab({
                   </div>
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  {entry.items.map((it) => `${it.name} (${it.unitLabel})`).join(' · ')}
+                  {entry.items
+                    .map(
+                      (it) =>
+                        `${it.itemTime ? `${it.itemTime} · ` : ''}${it.name} (${it.unitLabel})`
+                    )
+                    .join(' · ')}
                 </div>
               </div>
             ))
@@ -619,7 +633,7 @@ export function SavedMealsLibraryTab({
                 color: 'var(--text-muted)',
               }}
             >
-              עדיין אין ארוחות שמורות בגלריה. בסיום הוספת ארוחה סמן <b>״שמור גם ב&apos;ארוחות שלי&apos;״</b> או שמור מתוך ההיסטוריה.
+              עדיין אין ארוחות שמורות בגלריה. בסיום הוספת ארוחה סמן <b>״שמור גם ב&apos;ארוחות שמורות&apos;״</b> או טען מהיסטוריית הארוחות.
             </div>
           ) : !detailPreset ? (
             /* גלריית כרטיסים צבעונית (2 עמודות בהשראת Apple Shortcuts Gallery) */

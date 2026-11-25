@@ -1,7 +1,7 @@
 import { ISRAELI_FOOD_CATALOG } from '@/data/israeliFoodCatalog';
 import { FoodCatalogItem, UserFoodHistoryItem } from '@/types/nutrition';
 
-export type SemanticSourceGroup = 'all' | 'favorites_recent' | 'retail' | 'moh_gov';
+export type SemanticSourceGroup = 'all' | 'favorites_recent' | 'custom_only' | 'retail' | 'moh_gov';
 
 export interface SearchCachePayload {
   items: FoodCatalogItem[];
@@ -19,6 +19,7 @@ export const SEMANTIC_SOURCE_TABS: ReadonlyArray<{
 }> = [
   { id: 'all', label: 'הכל' },
   { id: 'favorites_recent', label: 'מועדפים והיסטוריה' },
+  { id: 'custom_only', label: 'מוצרים אישיים' },
   { id: 'retail', label: 'סופרים ומותגים' },
   { id: 'moh_gov', label: 'מזון בסיסי (משה״ב)' },
 ];
@@ -277,6 +278,8 @@ export function getInstantLocalFoods(opts: {
   for (const item of Array.from(deduped.values())) {
     if (opts.sourceGroup === 'favorites_recent') {
       if (item.source !== 'custom' && !histSet.has(item.id) && !favSet.has(item.id)) continue;
+    } else if (opts.sourceGroup === 'custom_only') {
+      if (item.source !== 'custom') continue;
     } else if (opts.sourceGroup === 'moh_gov') {
       if (item.source !== 'moh' && item.sourceSiteId !== 'moh_gov') continue;
     } else if (opts.sourceGroup === 'retail') {

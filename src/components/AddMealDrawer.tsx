@@ -52,6 +52,7 @@ import {
   FoodCatalogItem,
   LoggedFoodItem,
   LoggedMealEntry,
+  MacroTargets,
   MealTemplateSlot,
   PendingAiMealJob,
   QuickContextChip,
@@ -275,6 +276,7 @@ export function AddMealDrawer({
   const [customFoodInitialName, setCustomFoodInitialName] = useState('');
   const [editingCustomFood, setEditingCustomFood] = useState<CustomFoodItem | null>(null);
   const [customFoodsManagerOpen, setCustomFoodsManagerOpen] = useState(false);
+  const [savedMealsInitialFilter, setSavedMealsInitialFilter] = useState<'all' | 'history' | 'questions'>('all');
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const [correctionText, setCorrectionText] = useState('');
   const [correctionLoading, setCorrectionLoading] = useState(false);
@@ -370,15 +372,19 @@ export function AddMealDrawer({
   const saveLockRef = useRef(false);
 
   const navigateTab = (nextTab: string, options?: { replace?: boolean }) => {
+    const resolvedTab = nextTab === 'favorites' ? 'catalog' : nextTab;
+    if (nextTab === 'favorites') {
+      setSourceGroup('favorites_recent');
+    }
     setTabHistory((prev) => {
       if (options?.replace) {
-        return prev.length > 0 ? [...prev.slice(0, -1), nextTab] : [nextTab];
+        return prev.length > 0 ? [...prev.slice(0, -1), resolvedTab] : [resolvedTab];
       }
       const top = prev[prev.length - 1];
-      if (top === nextTab) return prev;
-      return [...prev, nextTab];
+      if (top === resolvedTab) return prev;
+      return [...prev, resolvedTab];
     });
-    setActiveTab(nextTab);
+    setActiveTab(resolvedTab);
   };
 
   const handleDrawerBack = () => {
@@ -521,12 +527,18 @@ export function AddMealDrawer({
         setItemFieldDrafts({});
         itemScaleBaseRef.current = {};
         setAiSummary(null);
+        setSavedMealsInitialFilter('all');
         pendingAdjustReplaceRef.current = false;
         if (initialTab === 'barcode') {
           barcodeStandaloneRef.current = true;
           setTabHistory(['hub']);
           setActiveTab('hub');
           setBarcodeModalOpen(true);
+        } else if (initialTab === 'favorites') {
+          barcodeStandaloneRef.current = false;
+          setSourceGroup('favorites_recent');
+          setTabHistory(['catalog']);
+          setActiveTab('catalog');
         } else {
           const startTab = initialTab || 'hub';
           barcodeStandaloneRef.current = false;
@@ -712,7 +724,7 @@ export function AddMealDrawer({
   );
 
   const searchResults = useMemo(() => {
-    if (sourceGroup === 'favorites_recent') {
+    if (sourceGroup === 'favorites_recent' || sourceGroup === 'custom_only') {
       return instantLocalResults;
     }
     if (!hasRemoteSynced) {
@@ -747,7 +759,7 @@ export function AddMealDrawer({
 
   useEffect(() => {
     if (!opened) return;
-    if (sourceGroup === 'favorites_recent') {
+    if (sourceGroup === 'favorites_recent' || sourceGroup === 'custom_only') {
       setSearchLoading(false);
       setShowSkeletons(false);
       setLiveExpanding(false);
@@ -2682,13 +2694,30 @@ export function AddMealDrawer({
             </div>
           )}
 
-          {/* Hub: big photo tile, 2×2 shortcuts and one-tap saved meals */}
+          {/* Hub: big photo tile, 2×2 shortcuts and saved meals / history */}
           {activeTab === 'hub' && trimmedQuery.length === 0 && (() => {
+            const cloneItemsWithPer100g = (srcItems: LoggedFoodItem[], prefix: string): LoggedFoodItem[] =>
+              srcItems.map((it, i) => {
+                if (it.per100g) {
+                  return { ...it, id: `${prefix}-${Date.now()}-${i}` };
+                }
+                const g = Math.max(1, it.grams || 0);
+                const factor = 100 / g;
+                const fitsBounds =
+                  (it.macros.calories > 0 || it.macros.protein > 0 || it.macros.carbs > 0 || it.macros.fat > 0) &&
+                  it.macros.calories * factor <= 950 &&
+                  it.macros.protein * factor <= 100 &&
+                  it.macros.carbs * factor <= 100 &&
+                  it.macros.fat * factor <= 100;
+                return {
+                  ...it,
+                  id: `${prefix}-${Date.now()}-${i}`,
+                  ...(fitsBounds ? { per100g: computePer100gFromServing(it.macros, g) } : {}),
+                };
+              });
+
             const addPreset = (preset: SavedMealPreset) => {
-              const cloned = preset.items.map((it, i) => ({
-                ...it,
-                id: `hub-pre-${Date.now()}-${i}`,
-              }));
+              const cloned = cloneItemsWithPer100g(preset.items, 'hub-pre');
               setItems((prev) => [...prev, ...cloned]);
               if (preset.photoDataUrl && !photoDataUrl) {
                 setPhotoDataUrl(preset.photoDataUrl);
@@ -2704,13 +2733,71 @@ export function AddMealDrawer({
                 return (b.lastUsedAt || b.updatedAt || '').localeCompare(a.lastUsedAt || a.updatedAt || '');
               })
               .slice(0, 3);
+
+            const hubHistoryFallbackMeals: Array<{
+              key: string;
+              date: string;
+              shortDate: string;
+              title: string;
+              items: LoggedFoodItem[];
+              totals: MacroTargets;
+              photoDataUrl?: string;
+            }> = [];
+            if (topSaved.length < 3) {
+              const seenSigs = new Set(
+                topSaved.map((p) => p.items.map((x) => `${x.name}:${Math.round(x.grams || 0)}`).join('|'))
+              );
+              const dates = Object.keys(traineeLogs)
+                .filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k))
+                .sort((a, b) => b.localeCompare(a));
+              for (const d of dates.slice(0, 30)) {
+                const log = traineeLogs[d];
+                if (!log?.meals) continue;
+                const slotEntries = Object.entries(log.meals).sort(([aId], [bId]) =>
+                  aId === mealSlot.id ? -1 : bId === mealSlot.id ? 1 : 0
+                );
+                for (const [sId, entry] of slotEntries) {
+                  if (d === selectedDate && sId === mealSlot.id) continue;
+                  if (!entry?.items || entry.items.length === 0) continue;
+                  const sig = entry.items
+                    .map((x) => `${x.name}:${Math.round(x.grams || 0)}`)
+                    .join('|');
+                  if (seenSigs.has(sig)) continue;
+                  seenSigs.add(sig);
+                  const [, mo, da] = d.split('-');
+                  hubHistoryFallbackMeals.push({
+                    key: `hub-hist-${d}-${sId}`,
+                    date: d,
+                    shortDate: `${da}.${mo}`,
+                    title: entry.items.map((i) => i.name).join(' + '),
+                    items: entry.items,
+                    totals: sumMacros(entry.items.map((i) => i.macros)),
+                    photoDataUrl: entry.photoDataUrl || entry.photoDataUrls?.[0],
+                  });
+                  if (topSaved.length + hubHistoryFallbackMeals.length >= 3) break;
+                }
+                if (topSaved.length + hubHistoryFallbackMeals.length >= 3) break;
+              }
+            }
+
+            const showingHistoryOnly = topSaved.length === 0 && hubHistoryFallbackMeals.length > 0;
+            const showingMixed = topSaved.length > 0 && hubHistoryFallbackMeals.length > 0;
+            const sectionHeading = showingHistoryOnly
+              ? 'היסטוריית ארוחות'
+              : showingMixed
+              ? 'ארוחות שמורות והיסטוריית ארוחות'
+              : 'ארוחות שמורות';
+
             const tiles: { id: string; title: string; subtitle: string; Icon: typeof Camera }[] = [
               { id: 'ai-text', title: 'טקסט / קול ל-AI', subtitle: 'תיאור חופשי + תיבול', Icon: Mic },
               { id: 'barcode-action', title: 'סריקת ברקוד', subtitle: 'מוצרים ארוזים', Icon: Barcode },
               {
-                id: 'favorites',
-                title: 'מועדפים ומאגר',
-                subtitle: favoriteIds.length > 0 ? `${favoriteIds.length} מועדפים · חיפוש מוצרים` : 'חיפוש מאכלים ומוצרים',
+                id: 'catalog',
+                title: 'מאגר מוצרים ומועדפים',
+                subtitle:
+                  favoriteIds.length > 0
+                    ? `${favoriteIds.length} מועדפים · חיפוש ומוצרים אישיים`
+                    : 'חיפוש, מועדפים ומוצרים אישיים',
                 Icon: Search,
               },
               { id: 'ai-recommend', title: 'מה לאכול?', subtitle: 'המלצות AI + המאמן', Icon: Lightbulb },
@@ -2766,6 +2853,9 @@ export function AddMealDrawer({
                         if (t.id === 'barcode-action') {
                           barcodeStandaloneRef.current = false;
                           setBarcodeModalOpen(true);
+                        } else if (t.id === 'catalog') {
+                          setSourceGroup('all');
+                          navigateTab('catalog');
                         } else {
                           navigateTab(t.id);
                         }
@@ -2797,11 +2887,14 @@ export function AddMealDrawer({
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>ארוחות שמורות</h3>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{sectionHeading}</h3>
                   <button
                     type="button"
                     className="glass"
-                    onClick={() => navigateTab('saved-meals')}
+                    onClick={() => {
+                      setSavedMealsInitialFilter(showingHistoryOnly ? 'history' : 'all');
+                      navigateTab('saved-meals');
+                    }}
                     style={{
                       height: 34,
                       padding: '0 12px',
@@ -2815,9 +2908,9 @@ export function AddMealDrawer({
                       cursor: 'pointer',
                     }}
                   >
-                    <Bookmark size={15} />
-                    כל השמורות
-                    {savedMeals.length > 0 && (
+                    {showingHistoryOnly ? <History size={15} /> : <Bookmark size={15} />}
+                    {showingHistoryOnly ? 'לכל ההיסטוריה' : 'כל השמורות'}
+                    {!showingHistoryOnly && savedMeals.length > 0 && (
                       <span className="num-mono" style={{ color: 'var(--text-2)' }}>
                         {savedMeals.length}
                       </span>
@@ -2825,7 +2918,7 @@ export function AddMealDrawer({
                   </button>
                 </div>
 
-                {topSaved.length === 0 ? (
+                {topSaved.length === 0 && hubHistoryFallbackMeals.length === 0 ? (
                   <div
                     style={{
                       padding: '14px 16px',
@@ -2835,7 +2928,7 @@ export function AddMealDrawer({
                       color: 'var(--text-2)',
                     }}
                   >
-                    עוד אין ארוחות שמורות. אחרי שמירת ארוחה, סמן ״שמור כמנה״ כדי להוסיף אותה כאן בלחיצה אחת.
+                    עוד אין ארוחות שמורות או היסטוריה. אחרי תיעוד ארוחה, סמן ״שמור גם בארוחות שמורות״ או טען מההיסטוריה.
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -2889,6 +2982,85 @@ export function AddMealDrawer({
                           </span>
                         </span>
                         <GlassButton label={`הוסף ${preset.title}`} onClick={() => addPreset(preset)}>
+                          <Plus size={20} strokeWidth={2.2} />
+                        </GlassButton>
+                      </div>
+                    ))}
+                    {hubHistoryFallbackMeals.map((histMeal) => (
+                      <div
+                        key={histMeal.key}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                          padding: '10px 14px 10px 10px',
+                          borderRadius: 20,
+                          border: '1px solid var(--line)',
+                          background: 'var(--surface-2)',
+                        }}
+                      >
+                        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              minWidth: 0,
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 14.5,
+                                fontWeight: 600,
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {histMeal.title}
+                            </span>
+                          </span>
+                          <span
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 8,
+                              fontSize: 12,
+                              color: 'var(--text-2)',
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <span className="num-mono" style={{ color: '#38bdf8', fontWeight: 700 }}>
+                              היסטוריה · {histMeal.shortDate}
+                            </span>
+                            <span className="num-mono" style={{ color: 'var(--text)', fontWeight: 600 }}>
+                              {Math.round(histMeal.totals.calories)} קק״ל
+                            </span>
+                            {[
+                              { l: 'ח', v: histMeal.totals.protein, c: 'var(--macro-protein)' },
+                              { l: 'פ', v: histMeal.totals.carbs, c: 'var(--macro-carbs)' },
+                              { l: 'ש', v: histMeal.totals.fat, c: 'var(--macro-fat)' },
+                            ].map((m) => (
+                              <span key={m.l} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ width: 6, height: 6, borderRadius: 9, background: m.c }} />
+                                {m.l} <span className="num-mono">{Math.round(m.v)}</span>
+                              </span>
+                            ))}
+                          </span>
+                        </span>
+                        <GlassButton
+                          label={`הוסף מהיסטוריה ${histMeal.title}`}
+                          onClick={() => {
+                            const cloned = cloneItemsWithPer100g(histMeal.items, 'hub-hist');
+                            setItems((prev) => [...prev, ...cloned]);
+                            if (histMeal.photoDataUrl && !photoDataUrl) {
+                              setPhotoDataUrl(histMeal.photoDataUrl);
+                            }
+                            setAiSummary({
+                              msg: `נטענה ארוחה מהיסטוריית ${histMeal.shortDate}: "${histMeal.title}"`,
+                            });
+                          }}
+                        >
                           <Plus size={20} strokeWidth={2.2} />
                         </GlassButton>
                       </div>
@@ -3026,6 +3198,7 @@ export function AddMealDrawer({
               traineeLogs={traineeLogs}
               geminiApiKey={geminiApiKey}
               initialSearchQuery={searchQuery}
+              initialFilterMode={savedMealsInitialFilter}
               contextParams={{
                 ...contextParams,
                 customUnits: customFoodUnits,
@@ -3323,7 +3496,7 @@ export function AddMealDrawer({
                   }}
                 >
                   <span style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text-2)' }}>
-                    תוצאות משולבות (היסטוריה, סופרים ומאגר ישראלי):
+                    מאגר מוצרים, מועדפים והיסטוריה:
                   </span>
                   <button
                     type="button"
@@ -3559,7 +3732,13 @@ export function AddMealDrawer({
                     }}
                   >
                     <span>
-                      לא נמצאו מוצרים המתאימים ל־&ldquo;{searchQuery}&rdquo;. אפשר ללחוץ על כפתור <b>✨</b> בשורת החיפוש למעלה לפיענוח ב-AI, או להוסיף מוצר אישי משלך!
+                      {trimmedQuery
+                        ? `לא נמצאו מוצרים המתאימים ל־"${searchQuery}". אפשר ללחוץ על כפתור ✨ בשורת החיפוש למעלה לפיענוח ב-AI, או להוסיף מוצר אישי משלך!`
+                        : sourceGroup === 'custom_only'
+                        ? 'עדיין לא הוגדרו מוצרים אישיים. תוכל להוסיף מוצר אישי חדש כולל תמונה וערכים מותאמים!'
+                        : sourceGroup === 'favorites_recent'
+                        ? 'טרם סימנת מועדפים או בחרת מוצרים. כל מוצר שתסמן בלב או תוסיף יופיע כאן!'
+                        : 'לא נמצאו מוצרים בקטגוריה זו. ניתן לחפש מוצר או להוסיף מוצר אישי חדש.'}
                     </span>
                     <button
                       type="button"
@@ -4429,221 +4608,6 @@ export function AddMealDrawer({
               </div>
             )}
 
-            {/* לשונית 4: מועדפים והיסטוריה אישית + מוצרים אישיים */}
-            {activeTab === 'favorites' && (() => {
-              const combinedFavAndHist = getInstantLocalFoods({
-                query: '',
-                sourceGroup: 'favorites_recent',
-                retailSubSite: 'all',
-                personalHistory,
-                favoriteIds,
-                customFoods: customCatalogItems,
-                limit: 48,
-              });
-              return (
-                <>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 8,
-                      flexWrap: 'wrap',
-                      marginBottom: 8,
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingCustomFood(null);
-                        setCustomFoodInitialName('');
-                        setCustomFoodModalOpen(true);
-                      }}
-                      className="btn-volt"
-                      style={{
-                        padding: '7px 14px',
-                        fontSize: 12.5,
-                        fontWeight: 700,
-                        borderRadius: 999,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 5,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <Plus size={13} />
-                      <span>מוצר אישי חדש</span>
-                    </button>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {customFoods.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setCustomFoodsManagerOpen(true)}
-                          className="btn-surface"
-                          style={{
-                            padding: '6px 12px',
-                            fontSize: 12,
-                            fontWeight: 700,
-                            borderRadius: 999,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          נהל מוצרים ({customFoods.length})
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => navigateTab('catalog')}
-                        className="btn-surface"
-                        style={{
-                          padding: '6px 12px',
-                          fontSize: 12,
-                          fontWeight: 600,
-                          borderRadius: 999,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        מאגר המזון המלא
-                      </button>
-                    </div>
-                  </div>
-                  {combinedFavAndHist.length === 0 ? (
-                    <div
-                      style={{
-                        padding: 24,
-                        textAlign: 'center',
-                        borderRadius: 14,
-                        background: 'var(--bg-surface-2)',
-                        border: '1px solid var(--border-subtle)',
-                        color: 'var(--text-secondary)',
-                        fontSize: 12.5,
-                      }}
-                    >
-                      טרם סימנת מועדפים או בחרת/סרקת מוצרים. כל מוצר שתסמן, תסרוק, תבחר או תוסיף כמוצר אישי יופיע כאן!
-                    </div>
-                  ) : (
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))',
-                        gap: 8,
-                      }}
-                    >
-                      {combinedFavAndHist.map((food) => {
-                        const defaultUnit = food.units?.[0] || { label: '100 גרם', grams: 100 };
-                        const macros = calculateMacrosForGrams(food.per100g, defaultUnit.grams);
-                        const isFav = favoriteIds.includes(food.id);
-                        const isSelected = selectedFood?.id === food.id;
-                        return (
-                          <div
-                            key={food.id}
-                            style={{
-                              background: isSelected ? 'var(--surface-3)' : 'var(--bg-surface-2)',
-                              border: isSelected
-                                ? '1px solid var(--sel-border)'
-                                : '1px solid var(--border-subtle)',
-                              borderRadius: 14,
-                              padding: '6px 8px 6px 8px',
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              gap: 6,
-                            }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => void handleSelectCatalogFood(food, true)}
-                              style={{
-                                minWidth: 0,
-                                flex: 1,
-                                padding: '6px 4px',
-                                background: 'transparent',
-                                border: 'none',
-                                textAlign: 'right',
-                                cursor: 'pointer',
-                                color: 'inherit',
-                                fontFamily: 'inherit',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 8,
-                              }}
-                            >
-                              {getFoodImageThumb(food) && (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={getFoodImageThumb(food)}
-                                  alt={food.name}
-                                  style={{
-                                    width: 36,
-                                    height: 36,
-                                    borderRadius: 10,
-                                    objectFit: 'cover',
-                                    flexShrink: 0,
-                                    border: '1px solid var(--line)',
-                                  }}
-                                />
-                              )}
-                              <div style={{ minWidth: 0, flex: 1 }}>
-                              <div
-                                style={{
-                                  fontSize: 13,
-                                  fontWeight: 700,
-                                  whiteSpace: 'nowrap',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                }}
-                              >
-                                {food.name}
-                              </div>
-                              <div
-                                className="num-mono"
-                                style={{
-                                  fontSize: 12,
-                                  color: 'var(--text-secondary)',
-                                }}
-                              >
-                                {defaultUnit.label} · {macros.calories} קק״ל
-                                {food.useCount ? ` · ×${food.useCount}` : ''}
-                              </div>
-                              </div>
-                            </button>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                              <button
-                                type="button"
-                                aria-label="סמן מועדף"
-                                onClick={() => onToggleFavorite(food.id)}
-                                style={{
-                                  background: 'transparent',
-                                  border: 'none',
-                                  color: isFav ? '#ff5e7e' : 'var(--text-muted)',
-                                  cursor: 'pointer',
-                                  padding: 4,
-                                }}
-                              >
-                                <Heart size={14} fill={isFav ? 'currentColor' : 'none'} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleSelectCatalogFood(food, true)}
-                                className="btn-surface"
-                                style={{
-                                  padding: '6px 10px',
-                                  fontSize: 12,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                + הוסף
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
-              );
-            })()}
-
             {!heroScreen && renderAiProgressCard()}
 
             {slotBgFailedJob && !aiSummary && !isSlotBgProcessing && (
@@ -5436,7 +5400,7 @@ export function AddMealDrawer({
                       onChange={(e) => setSaveAsPreset(e.currentTarget.checked)}
                       label={
                         <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-secondary)' }}>
-                          שמור מנה זו גם ב&quot;הארוחות שלי&quot; לשימוש חוזר
+                          שמור מנה זו גם ב&quot;ארוחות שמורות&quot; לשימוש חוזר
                         </span>
                       }
                     />

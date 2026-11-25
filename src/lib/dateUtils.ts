@@ -37,7 +37,7 @@ export const ALL_MEAL_SHORTCUT_OPTIONS: Array<{
     id: 'saved-meals',
     label: 'ארוחות שמורות',
     shortLabel: 'שמורות',
-    description: 'פתיחה מהירה של גלריית הארוחות השמורות וההיסטוריה',
+    description: 'פתיחה מהירה של הארוחות השמורות והיסטוריית הארוחות',
   },
   {
     id: 'ai-photo',
@@ -59,9 +59,9 @@ export const ALL_MEAL_SHORTCUT_OPTIONS: Array<{
   },
   {
     id: 'favorites',
-    label: 'מועדפים',
+    label: 'מועדפים והיסטוריה',
     shortLabel: 'מועדפים',
-    description: 'גישה מהירה למאכלים האהובים שלך',
+    description: 'פתיחה מהירה של מאגר המוצרים על לשונית המועדפים וההיסטוריה',
   },
 ];
 

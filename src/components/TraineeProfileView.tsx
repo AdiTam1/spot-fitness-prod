@@ -1306,16 +1306,16 @@ export function TraineeProfileView({
         </div>
       )}
 
-      {/* 4. הארוחות שלי — היסטוריה מלאה וחיפוש */}
-      <section aria-label="הארוחות שלי" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* 4. היסטוריית ארוחות — תיעוד יומן מלא וחיפוש */}
+      <section aria-label="היסטוריית ארוחות" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <Utensils size={17} />
             <span>
-              הארוחות שלי (<bdi className="ltr-num">{loggedMealsList.length}</bdi>)
+              היסטוריית ארוחות (<bdi className="ltr-num">{loggedMealsList.length}</bdi>)
             </span>
           </h2>
-          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>לחץ לפתיחה ביומן</span>
+          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>תיעוד יומן · לחץ לעריכה</span>
         </div>
 
         <div style={{ position: 'relative' }}>
@@ -1326,7 +1326,7 @@ export function TraineeProfileView({
           />
           <input
             type="search"
-            aria-label="חיפוש בארוחות שלי"
+            aria-label="חיפוש בהיסטוריית ארוחות"
             value={mealSearch}
             onChange={(e) => setMealSearch(e.target.value)}
             placeholder="חפש מאכל, שם ארוחה או תאריך"
