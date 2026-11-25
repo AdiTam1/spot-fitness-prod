@@ -641,7 +641,7 @@ export function CoachDashboardView({
   };
 
   const triggerResetTraineeOnboarding = (trainee: TraineeProfile) => {
-    if (!onResetTraineeOnboarding) return;
+    if (!onResetTraineeOnboarding || !trainee.onboarding?.completed) return;
     if (
       !confirmDanger(
         `להגדיר את "${trainee.name}" כלא התחבר בפעם הראשונה מחדש? החשבון ינותק ממכשירים פעילים ובכניסה הבאה יוצג לו כל שאלון ה-Onboarding (יומני התזונה והתפריט יישמרו).`
@@ -2638,7 +2638,9 @@ export function CoachDashboardView({
                   <Bell size={14} />
                   <span>שלח פוש אישי</span>
                 </button>
-                {onResetTraineeOnboarding && isOwnerOfTrainee(selectedTrainee) && (
+                {onResetTraineeOnboarding &&
+                  isOwnerOfTrainee(selectedTrainee) &&
+                  Boolean(selectedTrainee.onboarding?.completed) && (
                   <button
                     type="button"
                     disabled={isBusy(`rst-ob-${selectedTrainee.id}`)}
@@ -5332,7 +5334,7 @@ export function CoachDashboardView({
                               </button>
                             </>
                           )}
-                          {onResetTraineeOnboarding && (
+                          {onResetTraineeOnboarding && Boolean(t.onboarding?.completed) && (
                             <button
                               type="button"
                               className="glass"
