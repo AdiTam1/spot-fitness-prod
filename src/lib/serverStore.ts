@@ -7,6 +7,7 @@ import {
 } from '@/data/israeliFoodCatalog';
 import {
   AppReleasePolicy,
+  AppUpdatePushHistoryEntry,
   AuthSessionUser,
   CoachDirectoryItem,
   CoachProfile,
@@ -18,6 +19,8 @@ import {
   TraineeGroup,
   TraineeProfile,
   TraineeWebPushSubscriptionEntry,
+  UserClientVersionInfo,
+  UserRole,
 } from '@/types/nutrition';
 import { hashPassword } from '@/lib/serverAuth';
 import { normalizePendingAiJobs } from '@/lib/aiJobs';
@@ -46,6 +49,8 @@ import {
   saveTemplatesToSupabase,
   saveTraineesToSupabase,
   touchUserLastSeenInSupabase,
+  recordUserClientVersionInSupabase,
+  appendAppUpdatePushHistoryInSupabase,
 } from '@/lib/supabase';
 
 export interface ServerDatabaseState {
@@ -61,6 +66,8 @@ export interface ServerDatabaseState {
   coachCustomFoods?: Record<string, CustomFoodItem[]>;
   coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
   appReleasePolicy?: AppReleasePolicy;
+  userClientVersions?: Record<string, UserClientVersionInfo>;
+  appUpdatePushHistory?: AppUpdatePushHistoryEntry[];
   readErrors?: string[];
 }
 
@@ -70,6 +77,8 @@ const LOCAL_DB_FILE = path.join(LOCAL_DB_DIR, 'spot-server-db.json');
 declare global {
   // eslint-disable-next-line no-var
   var __spotServerDbCache: ServerDatabaseState | undefined;
+  // eslint-disable-next-line no-var
+  var __spotLastClientVersionCache: Map<string, UserClientVersionInfo> | undefined;
 }
 
 const DEFAULT_GROUPS: TraineeGroup[] = [
@@ -111,6 +120,8 @@ function createCleanInitialState(): ServerDatabaseState {
     coachCustomFoods: {},
     coachPushSettings: {},
     appReleasePolicy: { androidBlockedUpToVersionCode: 0 },
+    userClientVersions: {},
+    appUpdatePushHistory: [],
   };
 }
 
@@ -225,6 +236,8 @@ export async function getServerDbState(): Promise<ServerDatabaseState> {
       appReleasePolicy: remote.appReleasePolicy || {
         androidBlockedUpToVersionCode: 0,
       },
+      userClientVersions: remote.userClientVersions || {},
+      appUpdatePushHistory: remote.appUpdatePushHistory || [],
       readErrors: remote.readErrors,
     };
   }
@@ -319,6 +332,74 @@ export async function touchUserLastSeenOnServer(
     );
   }
   saveLocalServerFile(state);
+}
+
+export async function recordUserClientVersionOnServer(
+  role: UserRole,
+  userId: string,
+  info: Omit<UserClientVersionInfo, 'updatedAt'>
+): Promise<void> {
+  const key = `${role}:${userId}`;
+  const cache = (global.__spotLastClientVersionCache ||= new Map());
+  const cached = cache.get(key);
+  const nowMs = Date.now();
+  const normalized: UserClientVersionInfo = {
+    platform: String(info.platform || 'unknown').slice(0, 32),
+    appVersionCode:
+      typeof info.appVersionCode === 'number' && Number.isFinite(info.appVersionCode)
+        ? Math.round(info.appVersionCode)
+        : null,
+    appVersionName: info.appVersionName
+      ? String(info.appVersionName).slice(0, 48)
+      : null,
+    webBuildId: info.webBuildId ? String(info.webBuildId).slice(0, 64) : null,
+    updatedAt: new Date(nowMs).toISOString(),
+  };
+
+  if (cached) {
+    const cachedTs = Date.parse(cached.updatedAt || '');
+    const sameVersion =
+      cached.platform === normalized.platform &&
+      (cached.appVersionCode ?? null) === (normalized.appVersionCode ?? null) &&
+      (cached.appVersionName ?? null) === (normalized.appVersionName ?? null) &&
+      (cached.webBuildId ?? null) === (normalized.webBuildId ?? null);
+    if (sameVersion && Number.isFinite(cachedTs) && nowMs - cachedTs < 5 * 60_000) {
+      return;
+    }
+  }
+  cache.set(key, normalized);
+
+  if (isSupabaseConfigured) {
+    try {
+      await recordUserClientVersionInSupabase(key, normalized);
+    } catch {
+      // שקט: לא חוסם פעילות heartbeat רגילה
+    }
+    return;
+  }
+
+  const state = loadLocalServerFile();
+  state.userClientVersions = {
+    ...(state.userClientVersions || {}),
+    [key]: normalized,
+  };
+  saveLocalServerFile(state);
+}
+
+export async function appendAppUpdatePushHistoryOnServer(
+  entry: AppUpdatePushHistoryEntry
+): Promise<AppUpdatePushHistoryEntry[]> {
+  if (isSupabaseConfigured) {
+    return await appendAppUpdatePushHistoryInSupabase(entry);
+  }
+  const state = loadLocalServerFile();
+  const nextList = [
+    entry,
+    ...(Array.isArray(state.appUpdatePushHistory) ? state.appUpdatePushHistory : []),
+  ].slice(0, 25);
+  state.appUpdatePushHistory = nextList;
+  saveLocalServerFile(state);
+  return nextList;
 }
 
 export async function getSingleTraineeFromServer(

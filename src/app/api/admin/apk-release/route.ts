@@ -11,7 +11,14 @@ import {
   updateServerDbState,
 } from '@/lib/serverStore';
 import { resolveAppVersionInfo } from '@/lib/appVersionServer';
-import { AppReleasePolicy } from '@/types/nutrition';
+import {
+  broadcastAppUpdatePush,
+  buildAdminUserVersionsReport,
+} from '@/lib/appVersionRosterServer';
+import {
+  AppReleasePolicy,
+  AppUpdatePushAudience,
+} from '@/types/nutrition';
 import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
 
 export const runtime = 'nodejs';
@@ -141,7 +148,7 @@ async function ensurePublicApkBucketIfPossible(): Promise<{
 
 /**
  * GET /api/admin/apk-release
- * מחזיר סטטוס מוכנות של Supabase Storage ופרטי הגרסה הפעילה (למנהל ראשי בלבד).
+ * מחזיר סטטוס מוכנות של Supabase Storage, פרטי הגרסה הפעילה, ובבקשת includeUsers=1 גם דוח גרסאות משתמשים והיסטוריית פוש (למנהל ראשי בלבד).
  */
 export async function GET(request: NextRequest) {
   const session = getSessionFromRequest(request);
@@ -152,15 +159,28 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const includeUsers = request.nextUrl.searchParams.get('includeUsers') === '1';
+
   const [storageStatus, versionInfo] = await Promise.all([
     inspectApkBucketStatus(),
     resolveAppVersionInfo(request.url, { includeGitHubRelease: false }),
   ]);
 
-  return NextResponse.json({
-    storage: storageStatus,
-    versionInfo,
-  });
+  const userVersionsReport = includeUsers
+    ? await buildAdminUserVersionsReport({
+        originUrl: request.url,
+        versionInfo,
+      })
+    : undefined;
+
+  return NextResponse.json(
+    {
+      storage: storageStatus,
+      versionInfo,
+      ...(userVersionsReport ? { userVersionsReport } : {}),
+    },
+    { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+  );
 }
 
 /**
@@ -359,9 +379,112 @@ export const POST = withTelemetryHandler('/api/admin/apk-release', async (reques
       },
     });
 
+    const sendPushCfg =
+      body.sendUpdatePush && typeof body.sendUpdatePush === 'object'
+        ? (body.sendUpdatePush as {
+            enabled?: boolean;
+            title?: string;
+            body?: string;
+            audience?: AppUpdatePushAudience;
+          })
+        : null;
+
+    let pushResult:
+      | Awaited<ReturnType<typeof broadcastAppUpdatePush>>
+      | undefined;
+
+    if (sendPushCfg?.enabled) {
+      const validAudience: AppUpdatePushAudience =
+        sendPushCfg.audience === 'trainees' ||
+        sendPushCfg.audience === 'coaches' ||
+        sendPushCfg.audience === 'android-outdated' ||
+        sendPushCfg.audience === 'web-outdated'
+          ? sendPushCfg.audience
+          : 'all';
+
+      pushResult = await broadcastAppUpdatePush({
+        origin: request.nextUrl.origin,
+        originUrl: request.url,
+        adminName: session.name || 'מנהל מערכת',
+        title: sanitizeText(sendPushCfg.title, 120) || undefined,
+        body: sanitizeText(sendPushCfg.body, 360) || undefined,
+        audience: validAudience,
+        policyOverride: nextPolicy,
+      });
+
+      ctx.recordAudit({
+        category: 'push',
+        action: 'app_update_push_broadcast',
+        metadata: {
+          audience: validAudience,
+          sentUsers: pushResult.sentUsers,
+          sentDevices: pushResult.sentDevices,
+          failedDevices: pushResult.failedDevices,
+        },
+      });
+    }
+
     return NextResponse.json({
       ok: true,
       appReleasePolicy: nextPolicy,
+      ...(pushResult ? { pushResult } : {}),
+    });
+  }
+
+  if (action === 'send_update_push') {
+    const rawAudience = String(body.audience || 'all');
+    const validAudience: AppUpdatePushAudience =
+      rawAudience === 'trainees' ||
+      rawAudience === 'coaches' ||
+      rawAudience === 'android-outdated' ||
+      rawAudience === 'web-outdated' ||
+      rawAudience === 'single-user'
+        ? rawAudience
+        : 'all';
+
+    const targetUserId = sanitizeText(body.targetUserId, 80) || undefined;
+    if (validAudience === 'single-user' && !targetUserId) {
+      return NextResponse.json(
+        { error: 'חסר מזהה משתמש לשליחת תזכורת אישית' },
+        { status: 400 }
+      );
+    }
+
+    const pushResult = await broadcastAppUpdatePush({
+      origin: request.nextUrl.origin,
+      originUrl: request.url,
+      adminName: session.name || 'מנהל מערכת',
+      title: sanitizeText(body.title, 120) || undefined,
+      body: sanitizeText(body.body, 360) || undefined,
+      audience: validAudience,
+      targetUserId,
+    });
+
+    ctx.recordAudit({
+      category: 'push',
+      action: 'app_update_push_broadcast',
+      metadata: {
+        audience: validAudience,
+        targetUserId,
+        sentUsers: pushResult.sentUsers,
+        sentDevices: pushResult.sentDevices,
+        failedDevices: pushResult.failedDevices,
+      },
+    });
+
+    if (!pushResult.ok && pushResult.sentDevices === 0) {
+      return NextResponse.json(
+        {
+          error: pushResult.error || 'לא נמצאו מכשירים זמינים לשליחת פוש.',
+          pushResult,
+        },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      pushResult,
     });
   }
 

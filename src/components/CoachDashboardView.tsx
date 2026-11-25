@@ -97,6 +97,7 @@ import { CoachPushModal } from './CoachPushModal';
 import { CoachAlertSettingsModal } from './CoachAlertSettingsModal';
 import { AdminScrapersPanel } from './AdminScrapersPanel';
 import { AdminApkUploadPanel } from './AdminApkUploadPanel';
+import { AdminAppVersionsAndPushPanel } from './AdminAppVersionsAndPushPanel';
 import { AdminMonitoringPanel } from './AdminMonitoringPanel';
 import { buildTraineeAiContextLines } from '@/lib/aiTraineeContext';
 import {
@@ -401,6 +402,7 @@ export function CoachDashboardView({
   const [policyReleaseNotes, setPolicyReleaseNotes] = useState<string>(
     appReleasePolicy?.androidReleaseNotes || ''
   );
+  const [releaseRefreshNonce, setReleaseRefreshNonce] = useState(0);
 
   useEffect(() => {
     if (!appReleasePolicy) return;
@@ -6973,6 +6975,10 @@ export function CoachDashboardView({
                 }
                 onPublished={(policy) => {
                   onApkReleasePublished?.(policy);
+                  setReleaseRefreshNonce((n) => n + 1);
+                }}
+                onBroadcastDone={() => {
+                  setReleaseRefreshNonce((n) => n + 1);
                 }}
                 onNotify={(msg, isErr) => showToast(msg, isErr)}
               />
@@ -7133,6 +7139,12 @@ export function CoachDashboardView({
                   </button>
                 </div>
               </form>
+
+              <AdminAppVersionsAndPushPanel
+                appReleasePolicy={appReleasePolicy}
+                refreshNonce={releaseRefreshNonce}
+                onNotify={(msg, isErr) => showToast(msg, isErr)}
+              />
             </div>
           )}
 

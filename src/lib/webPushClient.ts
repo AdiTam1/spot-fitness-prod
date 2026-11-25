@@ -351,7 +351,8 @@ function normalizeWebDeepLink(
     rawScreen === 'journal' ||
     rawScreen === 'metrics' ||
     rawScreen === 'profile' ||
-    rawScreen === 'inspector'
+    rawScreen === 'inspector' ||
+    rawScreen === 'app-update'
       ? rawScreen
       : 'journal';
   const pushId = String(raw.spotPushId || '').trim();

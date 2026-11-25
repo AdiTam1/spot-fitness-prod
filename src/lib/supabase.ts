@@ -2,6 +2,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import {
   AccountStatus,
   AppReleasePolicy,
+  AppUpdatePushHistoryEntry,
   BodyMeasurementEntry,
   CoachOnboardingData,
   CoachProfile,
@@ -22,6 +23,7 @@ import {
   TraineeOnboardingData,
   TraineeProfile,
   TraineeServingTool,
+  UserClientVersionInfo,
   UserFoodHistoryItem,
   WeeklyCheckInEntry,
 } from '@/types/nutrition';
@@ -419,6 +421,8 @@ export async function loadStateFromSupabase(): Promise<{
   coachCustomFoods: Record<string, CustomFoodItem[]>;
   coachPushSettings: Record<string, CoachPushSubscriptionSettings>;
   appReleasePolicy?: AppReleasePolicy;
+  userClientVersions?: Record<string, UserClientVersionInfo>;
+  appUpdatePushHistory?: AppUpdatePushHistoryEntry[];
   readErrors: string[];
 }> {
   if (!supabase) {
@@ -432,6 +436,8 @@ export async function loadStateFromSupabase(): Promise<{
       coachCustomFoods: {},
       coachPushSettings: {},
       appReleasePolicy: undefined,
+      userClientVersions: {},
+      appUpdatePushHistory: [],
       readErrors: [],
     };
   }
@@ -471,6 +477,8 @@ export async function loadStateFromSupabase(): Promise<{
   let coachCustomFoods: Record<string, CustomFoodItem[]> = {};
   let coachPushSettings: Record<string, CoachPushSubscriptionSettings> = {};
   let appReleasePolicy: AppReleasePolicy | undefined;
+  let userClientVersions: Record<string, UserClientVersionInfo> = {};
+  let appUpdatePushHistory: AppUpdatePushHistoryEntry[] = [];
 
   if (
     systemMetaRow &&
@@ -485,6 +493,8 @@ export async function loadStateFromSupabase(): Promise<{
       coachCustomFoods?: Record<string, CustomFoodItem[]>;
       coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
       appReleasePolicy?: AppReleasePolicy;
+      userClientVersions?: Record<string, UserClientVersionInfo>;
+      appUpdatePushHistory?: AppUpdatePushHistoryEntry[];
     };
     if (Array.isArray(metaObj.coaches)) {
       fallbackCoaches = metaObj.coaches;
@@ -515,6 +525,15 @@ export async function loadStateFromSupabase(): Promise<{
       typeof metaObj.appReleasePolicy === 'object'
     ) {
       appReleasePolicy = metaObj.appReleasePolicy;
+    }
+    if (
+      metaObj.userClientVersions &&
+      typeof metaObj.userClientVersions === 'object'
+    ) {
+      userClientVersions = metaObj.userClientVersions;
+    }
+    if (Array.isArray(metaObj.appUpdatePushHistory)) {
+      appUpdatePushHistory = metaObj.appUpdatePushHistory;
     }
   }
 
@@ -597,6 +616,8 @@ export async function loadStateFromSupabase(): Promise<{
     coachCustomFoods,
     coachPushSettings,
     appReleasePolicy,
+    userClientVersions,
+    appUpdatePushHistory,
     readErrors,
   };
 }
@@ -858,7 +879,7 @@ export async function loadCustomFoodsContextFromSupabase(
   }
 }
 
-export async function saveSystemMetaBackup(partial: {
+export interface SystemMetaShape {
   coaches?: CoachProfile[];
   groups?: TraineeGroup[];
   globalQuickChips?: QuickContextChip[];
@@ -866,8 +887,18 @@ export async function saveSystemMetaBackup(partial: {
   coachCustomFoods?: Record<string, CustomFoodItem[]>;
   coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
   appReleasePolicy?: AppReleasePolicy;
-}): Promise<{ ok: boolean; error?: string }> {
-  const run = async (): Promise<{ ok: boolean; error?: string }> => {
+  userClientVersions?: Record<string, UserClientVersionInfo>;
+  appUpdatePushHistory?: AppUpdatePushHistoryEntry[];
+}
+
+async function mutateSystemMetaBackup(
+  buildPartial: (currentMeta: SystemMetaShape) => SystemMetaShape | null
+): Promise<{ ok: boolean; error?: string; meta?: SystemMetaShape }> {
+  const run = async (): Promise<{
+    ok: boolean;
+    error?: string;
+    meta?: SystemMetaShape;
+  }> => {
     if (!supabase) return { ok: false, error: 'Supabase client not configured' };
 
     const { data: existing, error: readErr } = await supabase
@@ -876,20 +907,17 @@ export async function saveSystemMetaBackup(partial: {
       .eq('id', SYSTEM_META_TEMPLATE_ID)
       .maybeSingle();
 
-    const currentMeta =
+    const currentMeta: SystemMetaShape =
       existing && existing.meals && typeof existing.meals === 'object'
-        ? (existing.meals as {
-            coaches?: CoachProfile[];
-            groups?: TraineeGroup[];
-            globalQuickChips?: QuickContextChip[];
-            globalCustomFoods?: CustomFoodItem[];
-            coachCustomFoods?: Record<string, CustomFoodItem[]>;
-            coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
-            appReleasePolicy?: AppReleasePolicy;
-          })
+        ? (existing.meals as SystemMetaShape)
         : {};
 
-    const mergedMeta = {
+    const partial = buildPartial(currentMeta);
+    if (!partial) {
+      return { ok: true, meta: currentMeta };
+    }
+
+    const mergedMeta: SystemMetaShape = {
       coaches:
         partial.coaches !== undefined
           ? partial.coaches
@@ -918,6 +946,14 @@ export async function saveSystemMetaBackup(partial: {
         partial.appReleasePolicy !== undefined
           ? partial.appReleasePolicy
           : currentMeta.appReleasePolicy,
+      userClientVersions:
+        partial.userClientVersions !== undefined
+          ? partial.userClientVersions
+          : currentMeta.userClientVersions || {},
+      appUpdatePushHistory:
+        partial.appUpdatePushHistory !== undefined
+          ? partial.appUpdatePushHistory
+          : currentMeta.appUpdatePushHistory || [],
     };
 
     const attempts: Record<string, unknown>[] = [
@@ -955,7 +991,7 @@ export async function saveSystemMetaBackup(partial: {
         .from('nutrition_templates')
         .upsert([row], { onConflict: 'id' });
       if (!error) {
-        return { ok: true };
+        return { ok: true, meta: mergedMeta };
       }
       lastErr = error;
     }
@@ -972,6 +1008,55 @@ export async function saveSystemMetaBackup(partial: {
     () => undefined
   );
   return queued;
+}
+
+export async function saveSystemMetaBackup(
+  partial: SystemMetaShape
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await mutateSystemMetaBackup(() => partial);
+  return { ok: res.ok, error: res.error };
+}
+
+export async function recordUserClientVersionInSupabase(
+  key: string,
+  info: UserClientVersionInfo
+): Promise<void> {
+  if (!supabase) return;
+  await mutateSystemMetaBackup((current) => {
+    const existingMap = current.userClientVersions || {};
+    const prev = existingMap[key];
+    if (prev) {
+      const prevTs = Date.parse(prev.updatedAt || '');
+      const sameVersion =
+        prev.platform === info.platform &&
+        (prev.appVersionCode ?? null) === (info.appVersionCode ?? null) &&
+        (prev.appVersionName ?? null) === (info.appVersionName ?? null) &&
+        (prev.webBuildId ?? null) === (info.webBuildId ?? null);
+      if (sameVersion && Number.isFinite(prevTs) && Date.now() - prevTs < 5 * 60_000) {
+        return null;
+      }
+    }
+    return {
+      userClientVersions: {
+        ...existingMap,
+        [key]: info,
+      },
+    };
+  });
+}
+
+export async function appendAppUpdatePushHistoryInSupabase(
+  entry: AppUpdatePushHistoryEntry
+): Promise<AppUpdatePushHistoryEntry[]> {
+  const res = await mutateSystemMetaBackup((current) => {
+    const prevList = Array.isArray(current.appUpdatePushHistory)
+      ? current.appUpdatePushHistory
+      : [];
+    return {
+      appUpdatePushHistory: [entry, ...prevList].slice(0, 25),
+    };
+  });
+  return res.meta?.appUpdatePushHistory || [entry];
 }
 
 export async function saveGlobalQuickChipsToSupabase(

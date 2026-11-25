@@ -454,6 +454,11 @@ export default function HomePage() {
         hbHeaders['x-spot-android-version-code'] = String(
           localAndroid.versionCode
         );
+        if (localAndroid.versionName) {
+          hbHeaders['x-spot-android-version-name'] = String(
+            localAndroid.versionName
+          );
+        }
       }
 
       const res = await fetch(`/api/auth/heartbeat?t=${Date.now()}`, {
@@ -755,8 +760,63 @@ export default function HomePage() {
       ? currentUser.id
       : '';
 
+  const handleAppUpdatePushSignal = useCallback(
+    async (customTitle?: string, customBody?: string) => {
+      void runHeartbeatAndVersionCheck();
+      if (isNativeAndroidApp()) {
+        setDismissedUpdateBanner(false);
+        const info = await refreshAndroidVersionGate();
+        if (info?.updateAvailable) {
+          notifications.show({
+            title:
+              customTitle || `גרסה חדשה זמינה (v${info.latestVersionName})`,
+            message:
+              customBody ||
+              'לחץ על "עדכן גרסה" בסרגל העליון להורדה והתקנה.',
+            color: 'teal',
+            autoClose: 7000,
+          });
+        } else if (info) {
+          notifications.show({
+            title: customTitle || 'האפליקציה מעודכנת',
+            message:
+              customBody ||
+              `מותקנת אצלך הגרסה העדכנית (v${info.localVersionName}).`,
+            color: 'green',
+            autoClose: 5000,
+          });
+        }
+        return;
+      }
+
+      if (typeof window !== 'undefined') {
+        try {
+          if ('serviceWorker' in navigator) {
+            const reg = await navigator.serviceWorker.getRegistration();
+            await reg?.update();
+          }
+        } catch {
+          // ignore
+        }
+        notifications.show({
+          title: customTitle || 'עדכון חדש לאפליקציה',
+          message:
+            customBody ||
+            'בודק גרסה חדשה... אם ישנו עדכון הוא ייטען אוטומטית בדפדפן.',
+          color: 'teal',
+          autoClose: 6000,
+        });
+      }
+    },
+    [refreshAndroidVersionGate, runHeartbeatAndVersionCheck]
+  );
+
   const applyPushDeepLinkTarget = useCallback(
     (target: PushDeepLinkTarget, traineeId: string) => {
+      if (target.kind === 'app-update' || target.screen === 'app-update') {
+        void handleAppUpdatePushSignal();
+        return;
+      }
       if (!traineeId) return;
       void fetchAuthorizedData({ force: true });
       const targetDate = target.date || getLocalDateOffsetIso(0);
@@ -780,7 +840,7 @@ export default function HomePage() {
         });
       }
     },
-    [fetchAuthorizedData]
+    [fetchAuthorizedData, handleAppUpdatePushSignal]
   );
 
   const handleConsumeExternalMealRequest = useCallback((nonce: number) => {
@@ -834,6 +894,13 @@ export default function HomePage() {
       },
       onForegroundCoachPush: (notif) => {
         if (cancelled) return;
+        if (
+          notif.target?.kind === 'app-update' ||
+          notif.target?.screen === 'app-update'
+        ) {
+          void handleAppUpdatePushSignal(notif.title, notif.body);
+          return;
+        }
         void fetchAuthorizedData({ force: true });
         notifications.show({
           title: notif.title || 'הודעה אישית מהמאמן',
@@ -850,7 +917,12 @@ export default function HomePage() {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       unsubPush();
     };
-  }, [activeAndroidTraineeId, applyPushDeepLinkTarget, fetchAuthorizedData]);
+  }, [
+    activeAndroidTraineeId,
+    applyPushDeepLinkTarget,
+    fetchAuthorizedData,
+    handleAppUpdatePushSignal,
+  ]);
 
   useEffect(() => {
     if (!activeWebTraineeId) {
@@ -918,6 +990,10 @@ export default function HomePage() {
     const unsubCoachPush = subscribeWebPushLifecycle({
       onDeepLinkTarget: (target) => {
         if (cancelled) return;
+        if (target.kind === 'app-update' || target.screen === 'app-update') {
+          void handleAppUpdatePushSignal();
+          return;
+        }
         void fetchAuthorizedData({ force: true });
         if (target.traineeId) {
           setCoachPreviewTraineeId(null);
@@ -933,7 +1009,7 @@ export default function HomePage() {
       cancelled = true;
       unsubCoachPush();
     };
-  }, [activeCoachWebId, fetchAuthorizedData]);
+  }, [activeCoachWebId, fetchAuthorizedData, handleAppUpdatePushSignal]);
 
   const handleRenameTraineeProfile = useCallback(
     async (newName: string): Promise<{ error?: string }> => {
@@ -1103,6 +1179,7 @@ export default function HomePage() {
     setSkippedCoachOnboarding(false);
     setSyncError(null);
     await fetchAuthorizedData({ force: true });
+    void runHeartbeatAndVersionCheck();
   };
 
   const handleLogout = async () => {

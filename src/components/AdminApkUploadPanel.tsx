@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { NumberInput, Switch, TextInput, Textarea } from '@mantine/core';
 import {
   AlertTriangle,
+  BellRing,
   CheckCircle2,
   Loader2,
   RefreshCw,
@@ -11,7 +12,7 @@ import {
   Smartphone,
   UploadCloud,
 } from 'lucide-react';
-import { AppReleasePolicy } from '@/types/nutrition';
+import { AppReleasePolicy, AppUpdatePushAudience } from '@/types/nutrition';
 import {
   ParsedApkMetadata,
   parseApkManifestMetadata,
@@ -30,6 +31,7 @@ interface StorageStatusPayload {
 interface AdminApkUploadPanelProps {
   currentBlockedUpToVersionCode: number;
   onPublished: (policy: AppReleasePolicy) => void;
+  onBroadcastDone?: () => void;
   onNotify: (msg: string, isError?: boolean) => void;
 }
 
@@ -93,6 +95,7 @@ function uploadApkDirectViaXhr(
 export function AdminApkUploadPanel({
   currentBlockedUpToVersionCode,
   onPublished,
+  onBroadcastDone,
   onNotify,
 }: AdminApkUploadPanelProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -118,6 +121,12 @@ export function AdminApkUploadPanel({
   >('idle');
   const [uploadPercent, setUploadPercent] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const [sendPushOnPublish, setSendPushOnPublish] = useState(false);
+  const [pushAudienceOnPublish, setPushAudienceOnPublish] =
+    useState<AppUpdatePushAudience>('all');
+  const [pushTitleOnPublish, setPushTitleOnPublish] = useState('');
+  const [pushBodyOnPublish, setPushBodyOnPublish] = useState('');
 
   const refreshStatus = useCallback(async () => {
     setLoadingStatus(true);
@@ -245,12 +254,28 @@ export function AdminApkUploadPanel({
           latestVersionName: cleanName || undefined,
           blockedUpToVersionCode: blockedToSave,
           releaseNotes: releaseNotes.trim() || undefined,
+          ...(sendPushOnPublish
+            ? {
+                sendUpdatePush: {
+                  enabled: true,
+                  audience: pushAudienceOnPublish,
+                  title: pushTitleOnPublish.trim() || undefined,
+                  body: pushBodyOnPublish.trim() || undefined,
+                },
+              }
+            : {}),
         }),
       });
       const pubData = (await pubRes.json().catch(() => ({}))) as {
         ok?: boolean;
         error?: string;
         appReleasePolicy?: AppReleasePolicy;
+        pushResult?: {
+          ok?: boolean;
+          sentUsers?: number;
+          sentDevices?: number;
+          error?: string;
+        };
       };
 
       if (!pubRes.ok || !pubData.appReleasePolicy) {
@@ -258,13 +283,32 @@ export function AdminApkUploadPanel({
       }
 
       onPublished(pubData.appReleasePolicy);
-      onNotify(
-        `גרסת APK${cleanName ? ` v${cleanName}` : ''} הועלתה ופורסמה מיד לכל המשתמשים!`
-      );
+      if (pubData.pushResult) {
+        onBroadcastDone?.();
+        if ((pubData.pushResult.sentDevices || 0) > 0) {
+          onNotify(
+            `גרסת APK${cleanName ? ` v${cleanName}` : ''} פורסמה ונשלח פוש ל-${pubData.pushResult.sentUsers || 0} משתמשים (${pubData.pushResult.sentDevices || 0} מכשירים)!`
+          );
+        } else {
+          onNotify(
+            `גרסת ה-APK פורסמה, אך הפוש לא נשלח: ${
+              pubData.pushResult.error || 'לא נמצאו מכשירים רשומים'
+            }`,
+            true
+          );
+        }
+      } else {
+        onNotify(
+          `גרסת APK${cleanName ? ` v${cleanName}` : ''} הועלתה ופורסמה מיד לכל המשתמשים!`
+        );
+      }
       setSelectedFile(null);
       setParsedMeta(null);
       setReleaseNotes('');
       setForceBlockOlder(false);
+      setSendPushOnPublish(false);
+      setPushTitleOnPublish('');
+      setPushBodyOnPublish('');
       if (fileInputRef.current) fileInputRef.current.value = '';
       void refreshStatus();
     } catch (err) {
@@ -539,6 +583,109 @@ export function AdminApkUploadPanel({
                 onChange={setCustomBlockedUpTo}
                 style={{ width: 170 }}
               />
+            )}
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              padding: '10px 12px',
+              borderRadius: 12,
+              background: 'var(--card)',
+              border: '1px solid var(--line)',
+            }}
+          >
+            <Switch
+              color="teal"
+              disabled={uploading}
+              checked={sendPushOnPublish}
+              onChange={(e) => setSendPushOnPublish(e.currentTarget.checked)}
+              label={
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontWeight: 700,
+                  }}
+                >
+                  <BellRing size={14} color="var(--accent)" />
+                  <span>שלח התראת פוש עדכון אפליקציה למשתמשים מיד לאחר הפרסום</span>
+                </span>
+              }
+            />
+            {sendPushOnPublish && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {(
+                    [
+                      { id: 'all' as AppUpdatePushAudience, label: 'כל המשתמשים' },
+                      {
+                        id: 'android-outdated' as AppUpdatePushAudience,
+                        label: 'Android שעדיין בגרסה ישנה',
+                      },
+                      { id: 'trainees' as AppUpdatePushAudience, label: 'רק מתאמנים' },
+                    ] as const
+                  ).map((aud) => {
+                    const active = pushAudienceOnPublish === aud.id;
+                    return (
+                      <button
+                        key={aud.id}
+                        type="button"
+                        disabled={uploading}
+                        onClick={() => setPushAudienceOnPublish(aud.id)}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: 999,
+                          fontSize: 11.5,
+                          fontWeight: active ? 800 : 600,
+                          border: active
+                            ? '1px solid var(--accent)'
+                            : '1px solid var(--border-subtle)',
+                          background: active
+                            ? 'var(--accent-soft, rgba(245, 158, 11, 0.14))'
+                            : 'var(--bg-surface-2)',
+                          color: active ? 'var(--accent)' : 'var(--text-primary)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {aud.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: 8,
+                  }}
+                >
+                  <TextInput
+                    size="xs"
+                    disabled={uploading}
+                    label="כותרת הפוש (אופציונלי — יש ברירת מחדל)"
+                    placeholder={`עדכון חדש זמין באפליקציית SPOT${
+                      versionName.trim() ? ` (v${versionName.trim()})` : ''
+                    }`}
+                    value={pushTitleOnPublish}
+                    onChange={(e) => setPushTitleOnPublish(e.currentTarget.value)}
+                  />
+                  <TextInput
+                    size="xs"
+                    disabled={uploading}
+                    label="תוכן ההודעה (אופציונלי)"
+                    placeholder={
+                      releaseNotes.trim() ||
+                      'יצאה גרסה חדשה עם שיפורים ותיקונים. לחץ כאן לעדכון.'
+                    }
+                    value={pushBodyOnPublish}
+                    onChange={(e) => setPushBodyOnPublish(e.currentTarget.value)}
+                  />
+                </div>
+              </div>
             )}
           </div>
 

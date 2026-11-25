@@ -268,6 +268,37 @@ export interface AppReleasePolicy {
   updatedAt?: string;
 }
 
+export interface UserClientVersionInfo {
+  platform: string; // 'android-apk' | 'pwa-ios' | 'pwa-android' | 'web' | 'unknown'
+  appVersionCode?: number | null;
+  appVersionName?: string | null;
+  webBuildId?: string | null;
+  updatedAt: string;
+}
+
+export type AppUpdatePushAudience =
+  | 'all'
+  | 'trainees'
+  | 'coaches'
+  | 'android-outdated'
+  | 'web-outdated'
+  | 'single-user';
+
+export interface AppUpdatePushHistoryEntry {
+  id: string;
+  title: string;
+  body: string;
+  audience: AppUpdatePushAudience;
+  targetUserId?: string;
+  targetVersionName?: string;
+  targetVersionCode?: number;
+  sentUsers: number;
+  sentDevices: number;
+  failedDevices: number;
+  sentByName: string;
+  sentAt: string;
+}
+
 export interface BodyMeasurementEntry {
   date: string;
   chestCm?: number;
@@ -355,6 +386,7 @@ export interface CoachProfile {
   status: 'active' | 'paused';
   sessionVersion?: number;
   lastSeenAt?: string;
+  lastClientInfo?: UserClientVersionInfo;
   onboarding?: CoachOnboardingData;
   createdAt?: string;
 }
@@ -565,7 +597,7 @@ export interface TraineePushHistoryEntry {
   body: string;
   sentAt: string;
   sentByCoachName?: string;
-  targetScreen?: 'meal' | 'journal' | 'metrics' | 'profile';
+  targetScreen?: 'meal' | 'journal' | 'metrics' | 'profile' | 'app-update';
   targetMealSlotId?: string;
 }
 
@@ -636,6 +668,7 @@ export interface TraineeProfile {
   logs: Record<string, DailyLog>;
   sessionVersion?: number;
   lastSeenAt?: string;
+  lastClientInfo?: UserClientVersionInfo;
   createdAt?: string;
 }
 

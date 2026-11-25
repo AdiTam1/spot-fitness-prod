@@ -5,6 +5,7 @@ import {
 } from '@/lib/appVersionServer';
 import { authenticateActiveSession } from '@/lib/liveAuth';
 import { clearSessionCookie } from '@/lib/serverAuth';
+import { recordUserClientVersionOnServer } from '@/lib/serverStore';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
@@ -14,6 +15,17 @@ export async function GET(request: NextRequest) {
   const androidHeader =
     request.headers.get('x-spot-android-version-code') ||
     request.nextUrl.searchParams.get('androidCode');
+  const androidNameHeader =
+    request.headers.get('x-spot-android-version-name') ||
+    request.nextUrl.searchParams.get('androidName') ||
+    null;
+  const rawPlatform = request.headers.get('x-spot-client-platform');
+  const clientWebBuildHeader =
+    request.headers.get('x-spot-web-build-id') || null;
+  const parsedAndroidCode =
+    androidHeader && Number.isFinite(Number(androidHeader)) && Number(androidHeader) > 0
+      ? Math.round(Number(androidHeader))
+      : null;
   const includeAndroidPolicy = Boolean(androidHeader);
 
   const [authRes, androidPolicy] = await Promise.all([
@@ -52,6 +64,22 @@ export async function GET(request: NextRequest) {
       }
     );
     return clearSessionCookie(res);
+  }
+
+  try {
+    await recordUserClientVersionOnServer(
+      authRes.session.role,
+      authRes.session.id,
+      {
+        platform:
+          rawPlatform || (parsedAndroidCode ? 'android-apk' : 'web'),
+        appVersionCode: parsedAndroidCode,
+        appVersionName: androidNameHeader,
+        webBuildId: clientWebBuildHeader || webBuildId,
+      }
+    );
+  } catch {
+    // שקט: לא מכשיל heartbeat אם מעקב גרסה נתקל בשגיאה רגעית
   }
 
   return NextResponse.json(

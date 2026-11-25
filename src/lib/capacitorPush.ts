@@ -26,7 +26,7 @@ export interface AndroidPushStatus {
 
 export interface PushDeepLinkTarget {
   pushId: string;
-  screen: 'meal' | 'journal' | 'metrics' | 'profile' | 'inspector';
+  screen: 'meal' | 'journal' | 'metrics' | 'profile' | 'inspector' | 'app-update';
   mealSlotId?: string;
   traineeId?: string;
   date?: string;
@@ -290,7 +290,8 @@ function normalizeTargetFromData(
     rawScreen === 'meal' ||
     rawScreen === 'journal' ||
     rawScreen === 'metrics' ||
-    rawScreen === 'profile'
+    rawScreen === 'profile' ||
+    rawScreen === 'app-update'
       ? rawScreen
       : 'journal';
   const pushId = String(
@@ -335,7 +336,8 @@ export function subscribeAndroidPushLifecycle(options: {
             pending.screen === 'meal' ||
             pending.screen === 'journal' ||
             pending.screen === 'metrics' ||
-            pending.screen === 'profile'
+            pending.screen === 'profile' ||
+            pending.screen === 'app-update'
               ? pending.screen
               : 'journal',
           mealSlotId: pending.mealSlotId || undefined,
@@ -372,8 +374,11 @@ export function subscribeAndroidPushLifecycle(options: {
       if (disposed) return;
       const data = notif.data as Record<string, unknown> | undefined;
       const target = normalizeTargetFromData(data, notif.id);
-      // אם הגיעה הודעה אישית מהמאמן בזמן שהמתאמן בתוך האפליקציה -> נציג באנר נקי בתוך המסך
-      if (target?.kind === 'coach' && options.onForegroundCoachPush) {
+      // אם הגיעה הודעה אישית מהמאמן או עדכון אפליקציה בזמן שהמשתמש בתוך האפליקציה -> נציג באנר נקי בתוך המסך
+      if (
+        (target?.kind === 'coach' || target?.kind === 'app-update') &&
+        options.onForegroundCoachPush
+      ) {
         options.onForegroundCoachPush({
           title: notif.title,
           body: notif.body,

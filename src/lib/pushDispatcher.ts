@@ -18,8 +18,8 @@ export interface UnifiedPushMessage {
   pushId: string;
   title: string;
   body: string;
-  kind: 'ai-meal' | 'coach' | 'coach-alert' | 'test';
-  screen: 'meal' | 'journal' | 'metrics' | 'profile' | 'inspector';
+  kind: 'ai-meal' | 'coach' | 'coach-alert' | 'test' | 'app-update';
+  screen: 'meal' | 'journal' | 'metrics' | 'profile' | 'inspector' | 'app-update';
   mealSlotId?: string;
   traineeId?: string;
   date?: string;
