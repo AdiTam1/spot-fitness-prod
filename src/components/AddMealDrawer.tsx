@@ -243,9 +243,13 @@ export function AddMealDrawer({
   const [freeTextPrompt, setFreeTextPrompt] = useState('');
   const [contextParams, setContextParams] = useState<AiContextParams>({});
   const [toolsModalOpen, setToolsModalOpen] = useState(false);
-  // AI correction ("תקן") UI only. TODO(ai-correction): backend not wired yet, see docs/redesign/TODO-ai-correction.md
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const [correctionText, setCorrectionText] = useState('');
+  const [correctionLoading, setCorrectionLoading] = useState(false);
+  const [correctionError, setCorrectionError] = useState<string | null>(null);
+  const [correctionVoiceState, setCorrectionVoiceState] = useState<VoiceCaptureState>('idle');
+  const [suggestedExtras, setSuggestedExtras] = useState<LoggedFoodItem[]>([]);
+  const [preCorrectionItems, setPreCorrectionItems] = useState<LoggedFoodItem[] | null>(null);
   const [saveAsPreset, setSaveAsPreset] = useState(false);
   const [presetTitleInput, setPresetTitleInput] = useState('');
   const [voiceState, setVoiceState] = useState<VoiceCaptureState>('idle');
@@ -313,6 +317,8 @@ export function AddMealDrawer({
 
   const voiceControllerRef = useRef<VoiceCaptureController | null>(null);
   const voiceBaseTextRef = useRef<string>('');
+  const correctionVoiceCtrlRef = useRef<VoiceCaptureController | null>(null);
+  const correctionVoiceBaseRef = useRef<string>('');
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const aiTextRef = useRef<HTMLTextAreaElement | null>(null);
   const aiLockRef = useRef(false);
@@ -364,6 +370,22 @@ export function AddMealDrawer({
     }
   };
 
+  const stopCorrectionVoice = (commit = false) => {
+    const ctrl = correctionVoiceCtrlRef.current;
+    correctionVoiceCtrlRef.current = null;
+    if (ctrl) {
+      try {
+        if (commit) ctrl.stop();
+        else ctrl.cancel();
+      } catch {
+        // ignore
+      }
+    }
+    if (!commit) {
+      setCorrectionVoiceState('idle');
+    }
+  };
+
   const hadInitialItemsRef = useRef(false);
   const lastOpenedKeyRef = useRef<string>('');
   const slotBgProcessingJob =
@@ -408,6 +430,12 @@ export function AddMealDrawer({
         lastOpenedKeyRef.current = openKey;
         hadInitialItemsRef.current = Boolean(existingEntry?.items?.length);
         setItems(existingEntry?.items ? [...existingEntry.items] : []);
+        setSuggestedExtras(
+          existingEntry?.aiSuggestedExtras ? [...existingEntry.aiSuggestedExtras] : []
+        );
+        setPreCorrectionItems(null);
+        setCorrectionError(null);
+        stopCorrectionVoice(false);
         setPhotoDataUrl(entryPhotos[0] || existingEntry?.photoDataUrl);
         setPhotoItems(
           entryPhotos.map((url) => ({
@@ -466,6 +494,18 @@ export function AddMealDrawer({
             return incomingNew.length > 0 ? [...prev, ...incomingNew] : prev;
           });
         }
+        if (existingEntry?.aiSuggestedExtras && existingEntry.aiSuggestedExtras.length > 0) {
+          setSuggestedExtras((prev) => {
+            const prevIds = new Set(prev.map((p) => p.id));
+            const itemNames = new Set(
+              (existingEntry.items || []).map((it) => it.name.trim().toLowerCase())
+            );
+            const incomingExtras = existingEntry.aiSuggestedExtras!.filter(
+              (ex) => !prevIds.has(ex.id) && !itemNames.has(ex.name.trim().toLowerCase())
+            );
+            return incomingExtras.length > 0 ? [...prev, ...incomingExtras] : prev;
+          });
+        }
         if (entryPhotos.length > 0) {
           setPhotoItems((prev) => {
             const prevUrls = new Set(prev.map((p) => p.dataUrl));
@@ -489,9 +529,11 @@ export function AddMealDrawer({
       lastOpenedKeyRef.current = '';
       barcodeStandaloneRef.current = false;
       stopVoiceRecording(false);
+      stopCorrectionVoice(false);
     }
     return () => {
       stopVoiceRecording(false);
+      stopCorrectionVoice(false);
     };
   }, [opened, mealSlot, existingEntry, initialTab, customFoodUnits, selectedDate]);
 
@@ -1191,6 +1233,9 @@ export function AddMealDrawer({
       }
       if (Array.isArray(data.items) && data.items.length > 0) {
         setItems((prev) => [...prev, ...data.items]);
+        if (Array.isArray(data.suggestedExtras) && data.suggestedExtras.length > 0) {
+          setSuggestedExtras((prev) => [...prev, ...data.suggestedExtras]);
+        }
         const isFallback = Boolean(data.isAiFallback || data.isFallback);
         const detail =
           isFallback && data.summary
@@ -1377,6 +1422,14 @@ export function AddMealDrawer({
       prev.map((item) => {
         if (item.id !== id) return item;
         const safeGrams = Math.max(1, newGrams);
+        if (item.per100g) {
+          return {
+            ...item,
+            grams: safeGrams,
+            unitLabel: `${safeGrams} גרם`,
+            macros: calculateMacrosForGrams(item.per100g, safeGrams),
+          };
+        }
         const ratio = safeGrams / Math.max(1, item.grams);
         return {
           ...item,
@@ -1478,10 +1531,94 @@ export function AddMealDrawer({
           },
         });
       }
+      setSuggestedExtras([]);
+      setPreCorrectionItems(null);
       onClose();
     } finally {
       saveLockRef.current = false;
       setSavingMeal(false);
+    }
+  };
+
+  const toggleCorrectionVoice = () => {
+    if (correctionVoiceState !== 'idle') {
+      stopCorrectionVoice(correctionVoiceState === 'listening');
+      return;
+    }
+    stopVoiceRecording(false);
+    correctionVoiceBaseRef.current = correctionText.trim();
+    correctionVoiceCtrlRef.current = startUnifiedVoiceCapture({
+      customApiKey: geminiApiKey,
+      onStateChange: (st) => {
+        setCorrectionVoiceState(st);
+        if (st === 'idle') correctionVoiceCtrlRef.current = null;
+      },
+      onTranscript: (transcript) => {
+        const clean = transcript.trim();
+        if (!clean) return;
+        const base = correctionVoiceBaseRef.current;
+        setCorrectionText(base ? `${base} ${clean}` : clean);
+      },
+      onError: (msg) => {
+        setCorrectionVoiceState('idle');
+        correctionVoiceCtrlRef.current = null;
+        setCorrectionError(msg);
+      },
+    });
+  };
+
+  const handleRunAiCorrection = async () => {
+    const cleanPrompt = correctionText.trim();
+    if (!cleanPrompt || correctionLoading || items.length === 0) return;
+    stopCorrectionVoice(false);
+    setCorrectionError(null);
+    setCorrectionLoading(true);
+    try {
+      const res = await fetch('/api/ai/analyze-meal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'adjust-meal',
+          baseItems: items,
+          adjustmentPrompt: cleanPrompt,
+          contextParams,
+          imageDataUrl: allMealPhotos[0],
+          imageDataUrls: allMealPhotos.length > 0 ? allMealPhotos : undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !Array.isArray(data.items) || data.items.length === 0) {
+        setCorrectionError(
+          data?.error || 'לא הצלחנו לעדכן את הארוחה כרגע — נסה שוב בעוד רגע.'
+        );
+        return;
+      }
+
+      setPreCorrectionItems([...items]);
+      setItems(data.items);
+      const nextNames = new Set(
+        (data.items as LoggedFoodItem[]).map((it) => it.name.trim().toLowerCase())
+      );
+      setSuggestedExtras((prev) =>
+        prev.filter((ex) => !nextNames.has(ex.name.trim().toLowerCase()))
+      );
+      setAiSummary({
+        msg: data.summary || 'הארוחה עודכנה בהצלחה באמצעות AI',
+        engine: data.engine,
+        isFallback: Boolean(data.isAiFallback),
+        fallbackReason: data.fallbackReason,
+      });
+      notifications.show({
+        title: 'הארוחה עודכנה',
+        message: data.summary || 'הרכיבים והערכים עודכנו לפי בקשתך.',
+        color: 'teal',
+      });
+      setCorrectionOpen(false);
+      setCorrectionText('');
+    } catch {
+      setCorrectionError('שגיאת תקשורת בעת שליחת התיקון — בדוק חיבור ונסה שוב.');
+    } finally {
+      setCorrectionLoading(false);
     }
   };
 
@@ -3463,6 +3600,70 @@ export function AddMealDrawer({
                     />
                   </div>
 
+                  {photoMode !== 'nutrition-label' && (
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={Boolean(contextParams.strictUserList)}
+                      onClick={() =>
+                        setContextParams((prev) => ({
+                          ...prev,
+                          strictUserList: !prev.strictUserList,
+                        }))
+                      }
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 10,
+                        textAlign: 'right',
+                        padding: '10px 14px',
+                        borderRadius: 16,
+                        border: contextParams.strictUserList
+                          ? '1.5px solid var(--accent-solid, #10b981)'
+                          : '1px solid var(--line-2)',
+                        background: contextParams.strictUserList
+                          ? 'rgba(16, 185, 129, 0.08)'
+                          : 'var(--card)',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        transition: 'border-color 0.15s ease, background 0.15s ease',
+                      }}
+                    >
+                      <span
+                        aria-hidden
+                        style={{
+                          width: 20,
+                          height: 20,
+                          minWidth: 20,
+                          marginTop: 2,
+                          borderRadius: 6,
+                          border: contextParams.strictUserList
+                            ? 'none'
+                            : '1.5px solid var(--text-3)',
+                          background: contextParams.strictUserList
+                            ? 'var(--accent-solid, #10b981)'
+                            : 'transparent',
+                          color: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {contextParams.strictUserList ? <Check size={13} strokeWidth={3} /> : null}
+                      </span>
+                      <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>
+                          נתתי פירוט מדויק של כל מה שאכלתי (אל תוסיף רכיבים נוספים)
+                        </span>
+                        <span style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.35 }}>
+                          {contextParams.strictUserList
+                            ? 'נעול: ה-AI ייצמד אך ורק לשמות ולמשקלים שכתבת בלי לנחש פריטים אחרים.'
+                            : 'השמות והמשקלים שכתבת נשמרים תמיד; רכיבים נוספים בצילום יוצעו לך לאישור בנפרד.'}
+                        </span>
+                      </span>
+                    </button>
+                  )}
+
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <label htmlFor="photo-net-grams" style={{ fontSize: 13, color: 'var(--text-2)', fontWeight: 600 }}>
                       כמה גרם המנה (ללא הצלחת, אופציונלי)
@@ -4133,6 +4334,193 @@ export function AddMealDrawer({
                     </button>
                   </div>
                   )}
+
+                {preCorrectionItems !== null && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 10,
+                      padding: '10px 14px',
+                      borderRadius: 16,
+                      background: 'var(--bg-surface-2, var(--card))',
+                      border: '1px solid var(--line-2)',
+                    }}
+                  >
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>
+                      הארוחה עודכנה ע״י AI
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setItems(preCorrectionItems);
+                        setPreCorrectionItems(null);
+                        setCorrectionError(null);
+                      }}
+                      style={{
+                        border: '1px solid var(--line-2)',
+                        background: 'var(--card)',
+                        color: 'var(--text)',
+                        borderRadius: 999,
+                        padding: '5px 12px',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        fontFamily: 'inherit',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 5,
+                      }}
+                    >
+                      <RefreshCw size={12} />
+                      <span>בטל תיקון</span>
+                    </button>
+                  </div>
+                )}
+
+                {suggestedExtras.length > 0 && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 10,
+                      padding: '12px 14px',
+                      borderRadius: 18,
+                      border: '1.5px solid rgba(245, 158, 11, 0.45)',
+                      background: 'rgba(245, 158, 11, 0.08)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: 'var(--text)',
+                        }}
+                      >
+                        <Sparkles size={15} />
+                        <span>
+                          ה-AI זיהה בתמונה עוד {suggestedExtras.length} פריטים שלא כתבת — אכלת גם אותם?
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSuggestedExtras([])}
+                        style={{
+                          border: 'none',
+                          background: 'transparent',
+                          color: 'var(--text-2)',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          fontFamily: 'inherit',
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                          padding: 0,
+                        }}
+                      >
+                        זיהיתי הכל · התעלם מהכל
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {suggestedExtras.map((extra) => (
+                        <div
+                          key={extra.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 10,
+                            padding: '8px 10px',
+                            borderRadius: 12,
+                            background: 'var(--card)',
+                            border: '1px solid var(--line)',
+                          }}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                            <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>
+                              {extra.name}
+                            </span>
+                            <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                              <bdi dir="ltr" className="num-mono ltr-num">
+                                {Math.round(extra.grams)}g
+                              </bdi>{' '}
+                              ·{' '}
+                              <bdi dir="ltr" className="num-mono ltr-num">
+                                {Math.round(extra.macros.calories)}
+                              </bdi>{' '}
+                              קק״ל
+                              {extra.visualReason ? ` · ${extra.visualReason}` : ''}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setItems((prev) => [...prev, extra]);
+                                setSuggestedExtras((prev) =>
+                                  prev.filter((p) => p.id !== extra.id)
+                                );
+                              }}
+                              style={{
+                                border: 'none',
+                                borderRadius: 999,
+                                padding: '6px 11px',
+                                background: 'var(--accent-solid, #10b981)',
+                                color: '#fff',
+                                fontSize: 12,
+                                fontWeight: 700,
+                                fontFamily: 'inherit',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                              }}
+                            >
+                              <Plus size={13} />
+                              <span>הוסף</span>
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`הסר הצעה ${extra.name}`}
+                              onClick={() =>
+                                setSuggestedExtras((prev) =>
+                                  prev.filter((p) => p.id !== extra.id)
+                                )
+                              }
+                              style={{
+                                border: '1px solid var(--line-2)',
+                                borderRadius: 999,
+                                width: 30,
+                                height: 30,
+                                background: 'var(--bg-surface-2, transparent)',
+                                color: 'var(--text-2)',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <X size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {items.length === 0 ? (
                   <div
                     style={{
@@ -4935,34 +5323,147 @@ export function AddMealDrawer({
 
       <Modal
         opened={correctionOpen}
-        onClose={() => setCorrectionOpen(false)}
-        title="תיקון הארוחה"
+        onClose={() => {
+          if (!correctionLoading) {
+            stopCorrectionVoice(false);
+            setCorrectionOpen(false);
+            setCorrectionError(null);
+          }
+        }}
+        title="תיקון הארוחה עם AI"
         zIndex={270}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.45 }}>
+            תאר מה לשנות, להחליף, להסיר או לעדכן בגרמים — שאר המרכיבים והמשקלים יישארו כפי שהם.
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {[
+              'הסר פריט שזיהה בטעות',
+              'תקן כמות של פריט ל-150 גרם',
+              'החלף שם מאכל שלא זוהה נכון',
+            ].map((chip) => (
+              <button
+                key={chip}
+                type="button"
+                onClick={() =>
+                  setCorrectionText((prev) =>
+                    prev.trim() ? `${prev.trim()}, ${chip}` : chip
+                  )
+                }
+                style={{
+                  border: '1px solid var(--line-2)',
+                  background: 'var(--card)',
+                  color: 'var(--text-2)',
+                  borderRadius: 999,
+                  padding: '5px 10px',
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  fontFamily: 'inherit',
+                  cursor: 'pointer',
+                }}
+              >
+                + {chip}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>
+              הנחיית תיקון:
+            </span>
+            <button
+              type="button"
+              onClick={toggleCorrectionVoice}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '5px 11px',
+                borderRadius: 999,
+                border: '1px solid var(--line-2)',
+                background:
+                  correctionVoiceState === 'listening'
+                    ? 'rgba(239, 68, 68, 0.14)'
+                    : 'var(--card)',
+                color:
+                  correctionVoiceState === 'listening' ? '#ef4444' : 'var(--text)',
+                fontSize: 12,
+                fontWeight: 700,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+              }}
+            >
+              {correctionVoiceState === 'listening' ? (
+                <>
+                  <MicOff size={13} />
+                  <span>עצור הקלטה</span>
+                </>
+              ) : correctionVoiceState === 'transcribing' ? (
+                <>
+                  <Loader2 size={13} className="animate-spin" />
+                  <span>מתמלל...</span>
+                </>
+              ) : (
+                <>
+                  <Mic size={13} />
+                  <span>דבר תיקון</span>
+                </>
+              )}
+            </button>
+          </div>
           <Textarea
             autosize
             minRows={3}
             maxRows={6}
-            placeholder="מה לתקן? למשל: האורז היה חצי כמות, ויש גם כף שמן זית"
+            placeholder="למשל: הסלק שזיהית הוא בעצם כבד אפוי 160 גרם, והאורז הוא 120 גרם"
             value={correctionText}
             onChange={(e) => setCorrectionText(e.currentTarget.value)}
+            disabled={correctionLoading}
             aria-label="הוראת תיקון ל-AI"
           />
+          {correctionError && (
+            <div
+              style={{
+                padding: '8px 12px',
+                borderRadius: 12,
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                color: '#ef4444',
+                fontSize: 12.5,
+                fontWeight: 600,
+              }}
+            >
+              {correctionError}
+            </div>
+          )}
           <button
             type="button"
             className="btn-volt"
-            disabled={!correctionText.trim()}
-            onClick={() => {
-              // TODO(ai-correction): send correctionText + current items to the AI and apply the result.
-              // Intentionally a no-op until the backend exists (docs/redesign/TODO-ai-correction.md).
-              setCorrectionOpen(false);
-              setCorrectionText('');
+            disabled={!correctionText.trim() || correctionLoading || items.length === 0}
+            onClick={handleRunAiCorrection}
+            style={{
+              height: 52,
+              fontSize: 16,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              cursor:
+                !correctionText.trim() || correctionLoading ? 'not-allowed' : 'pointer',
+              opacity: !correctionText.trim() || correctionLoading ? 0.65 : 1,
             }}
-            style={{ height: 52, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer' }}
           >
-            <Check size={16} />
-            <span>שלח ל-AI</span>
+            {correctionLoading ? (
+              <>
+                <Loader2 size={17} className="animate-spin" />
+                <span>מתקן ארוחה מול AI...</span>
+              </>
+            ) : (
+              <>
+                <Check size={16} />
+                <span>שלח תיקון ל-AI</span>
+              </>
+            )}
           </button>
         </div>
       </Modal>

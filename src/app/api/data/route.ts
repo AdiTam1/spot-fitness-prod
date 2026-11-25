@@ -141,6 +141,8 @@ function mergeLogsPreservingPendingAi(
             ...(clientMeal || serverMeal),
             mealTime: clientMeal?.mealTime || serverMeal.mealTime,
             items: [...(clientMeal?.items || []), ...missingFromClient],
+            aiSuggestedExtras:
+              clientMeal?.aiSuggestedExtras ?? serverMeal.aiSuggestedExtras,
             photoDataUrl: clientMeal?.photoDataUrl || serverMeal.photoDataUrl,
             photoDataUrls:
               clientMeal?.photoDataUrls && clientMeal.photoDataUrls.length > 0

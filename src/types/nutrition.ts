@@ -149,15 +149,20 @@ export interface LoggedFoodItem {
   quantity: number;
   grams: number;
   macros: MacroTargets;
+  per100g?: MacroTargets;
   source: FoodEntrySource;
   aiEngine?: string;
   isAiFallback?: boolean;
   fallbackReason?: string;
+  fromUserText?: boolean;
+  matchedCatalogId?: string;
+  visualReason?: string;
 }
 
 export interface LoggedMealEntry {
   mealSlotId: string;
   items: LoggedFoodItem[];
+  aiSuggestedExtras?: LoggedFoodItem[];
   mealTime?: string; // שעה מותאמת אישית לבחירת המשתמש (HH:MM)
   photoDataUrl?: string;
   photoDataUrls?: string[];
@@ -396,6 +401,7 @@ export interface AiContextParams {
   activeChipLabels?: string[];
   imageAngles?: ('top-down' | 'side-45' | 'label' | 'other')[];
   customUnits?: TraineeCustomUnit[];
+  strictUserList?: boolean;
 }
 
 export interface SavedMealCoachQuestion {

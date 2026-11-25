@@ -444,6 +444,62 @@ export const ISRAELI_FOOD_CATALOG: FoodCatalogItem[] = [
     source: 'local',
   },
   {
+    id: 'schnitzel-baked-homemade',
+    name: 'שניצל עוף אפוי בתנור',
+    category: 'בשר, עוף ודגים',
+    per100g: { calories: 165, protein: 24.5, carbs: 9.5, fat: 3.1 },
+    units: [
+      { label: 'יחידה בינונית (130 גרם)', grams: 130 },
+      { label: '2 יחידות (260 גרם)', grams: 260 },
+    ],
+    source: 'local',
+  },
+  {
+    id: 'chicken-liver-baked',
+    name: 'כבד עוף אפוי / צלוי',
+    category: 'בשר, עוף ודגים',
+    per100g: { calories: 172, protein: 25.8, carbs: 1.1, fat: 6.4 },
+    units: [
+      { label: 'מנה בינונית (150 גרם)', grams: 150 },
+      { label: 'חצי מנה (75 גרם)', grams: 75 },
+      { label: 'יחידה ממוצעת (35 גרם)', grams: 35 },
+    ],
+    source: 'local',
+  },
+  {
+    id: 'beet-cooked',
+    name: 'סלק אדום מבושל / אפוי',
+    category: 'ירקות וסלטים',
+    per100g: { calories: 44, protein: 1.7, carbs: 10.0, fat: 0.2 },
+    units: [
+      { label: 'יחידה בינונית (100 גרם)', grams: 100 },
+      { label: 'כוס קוביות (150 גרם)', grams: 150 },
+    ],
+    source: 'local',
+  },
+  {
+    id: 'quinoa-cooked',
+    name: 'קינואה מבושלת',
+    category: 'פחמימות ודגנים',
+    per100g: { calories: 120, protein: 4.4, carbs: 21.3, fat: 1.9 },
+    units: [
+      { label: 'כוס מבושלת (185 גרם)', grams: 185 },
+      { label: 'חצי כוס (90 גרם)', grams: 90 },
+    ],
+    source: 'local',
+  },
+  {
+    id: 'sweet-potato-baked',
+    name: 'בטטה אפויה בתנור',
+    category: 'פחמימות ודגנים',
+    per100g: { calories: 90, protein: 2.0, carbs: 20.7, fat: 0.2 },
+    units: [
+      { label: 'יחידה בינונית (150 גרם)', grams: 150 },
+      { label: 'יחידה גדולה (250 גרם)', grams: 250 },
+    ],
+    source: 'local',
+  },
+  {
     id: 'pasta-cooked',
     name: 'פסטה מבושלת',
     category: 'פחמימות ודגנים',
