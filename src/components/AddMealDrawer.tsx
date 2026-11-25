@@ -2344,17 +2344,18 @@ export function AddMealDrawer({
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  background: 'var(--bg-surface-2)',
+                  background: 'var(--surface-2, var(--bg-surface-2))',
                   border: trimmedQuery
-                    ? '1px solid var(--line-2)'
-                    : '1px solid var(--border-strong)',
+                    ? '1.5px solid var(--text)'
+                    : '1.5px solid var(--line-2)',
                   borderRadius: 999,
-                  padding: '0 10px 0 6px',
-                  height: 42,
-                  gap: 5,
+                  padding: '0 16px 0 8px',
+                  height: 54,
+                  gap: 8,
+                  boxShadow: 'var(--card-shadow)',
                 }}
               >
-                <Search size={15} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+                <Search size={19} color="var(--text-2)" style={{ flexShrink: 0 }} />
                 <input
                   ref={searchInputRef}
                   type="text"
@@ -2392,7 +2393,8 @@ export function AddMealDrawer({
                     border: 'none',
                     outline: 'none',
                     color: 'var(--text-primary)',
-                    fontSize: 13,
+                    fontSize: 16,
+                    fontWeight: 500,
                   }}
                 />
                 {trimmedQuery && (
@@ -2401,8 +2403,8 @@ export function AddMealDrawer({
                     aria-label="נקה חיפוש"
                     onClick={() => setSearchQuery('')}
                     style={{
-                      width: 24,
-                      height: 24,
+                      width: 28,
+                      height: 28,
                       borderRadius: '50%',
                       border: 'none',
                       background: 'var(--line)',
@@ -2414,7 +2416,7 @@ export function AddMealDrawer({
                       flexShrink: 0,
                     }}
                   >
-                    <X size={12} />
+                    <X size={14} />
                   </button>
                 )}
                 <button
@@ -2430,8 +2432,8 @@ export function AddMealDrawer({
                   }
                   onClick={() => toggleVoiceRecording('search')}
                   style={{
-                    width: 34,
-                    height: 34,
+                    width: 38,
+                    height: 38,
                     borderRadius: '50%',
                     border: 'none',
                     background:
@@ -2458,11 +2460,11 @@ export function AddMealDrawer({
                   }}
                 >
                   {voiceState === 'listening' ? (
-                    <MicOff size={16} />
+                    <MicOff size={18} />
                   ) : voiceState === 'transcribing' ? (
-                    <Loader2 size={15} className="spot-spinner" />
+                    <Loader2 size={16} className="spot-spinner" />
                   ) : (
-                    <Mic size={16} />
+                    <Mic size={18} />
                   )}
                 </button>
                 <button
@@ -2482,8 +2484,8 @@ export function AddMealDrawer({
                     }
                   }}
                   style={{
-                    width: 32,
-                    height: 32,
+                    width: 38,
+                    height: 38,
                     borderRadius: '50%',
                     border: trimmedQuery
                       ? '1px solid rgba(235, 147, 28, 0.7)'
@@ -2501,9 +2503,9 @@ export function AddMealDrawer({
                   }}
                 >
                   {isSlotBgProcessing || aiLoading ? (
-                    <Loader2 size={14} className="spot-spinner" />
+                    <Loader2 size={16} className="spot-spinner" />
                   ) : (
-                    <Sparkles size={15} />
+                    <Sparkles size={17} />
                   )}
                 </button>
                 <button
@@ -2511,8 +2513,8 @@ export function AddMealDrawer({
                   title="צילום במצלמה / בחירת תמונות מהגלריה או קבצים"
                   onClick={() => setCameraChooserOpen((v) => !v)}
                   style={{
-                    width: 32,
-                    height: 32,
+                    width: 38,
+                    height: 38,
                     borderRadius: '50%',
                     border: 'none',
                     background: 'var(--btn-primary)',
@@ -2524,7 +2526,7 @@ export function AddMealDrawer({
                     flexShrink: 0,
                   }}
                 >
-                  <Camera size={15} />
+                  <Camera size={17} />
                 </button>
               </div>
 
@@ -5180,16 +5182,8 @@ export function AddMealDrawer({
                                 >
                                   <bdi dir="ltr" className="num-mono ltr-num">{item.macros.calories}</bdi> קק״ל
                                   {item.isAiFallback ? ' · לא AI' : item.aiEngine ? ' · AI' : ''}
+                                  {item.itemTime ? ` · ${item.itemTime}` : ''}
                                 </span>
-                                <ItemTimePill
-                                  value={item.itemTime}
-                                  fallbackTime={mealTime || mealSlot.timeHint || '12:00'}
-                                  placeholderLabel="הוסף שעה"
-                                  ariaLabel={`שעה עבור ${item.name}`}
-                                  clearAriaLabel={`אפס שעה עבור ${item.name}`}
-                                  height={24}
-                                  onChange={(val) => updateLoggedItemTime(item.id, val)}
-                                />
                               </div>
                             </div>
                             <span
@@ -5267,13 +5261,7 @@ export function AddMealDrawer({
                                   />
                                 </div>
                               </div>
-                              <div
-                                style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: 'repeat(auto-fit, minmax(75px, 1fr))',
-                                  gap: 6,
-                                }}
-                              >
+                              <div className="spot-macro-5-grid">
                                 <NumberInput
                                   size="xs"
                                   label="גרם"
@@ -5544,8 +5532,42 @@ export function AddMealDrawer({
               background: heroScreen ? 'var(--card)' : 'var(--bg)',
               padding: '10px 16px calc(var(--sa-bottom) + 12px)',
               display: 'flex',
+              alignItems: 'center',
+              gap: 10,
             }}
           >
+            <button
+              type="button"
+              className="glass"
+              disabled={isSlotBgProcessing || correctionLoading}
+              onClick={() => setCorrectionOpen(true)}
+              style={{
+                height: 56,
+                padding: '0 20px',
+                borderRadius: 999,
+                flex: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                fontFamily: 'inherit',
+                fontSize: 15,
+                fontWeight: 600,
+                cursor: isSlotBgProcessing ? 'wait' : 'pointer',
+                opacity: isSlotBgProcessing ? 0.65 : 1,
+              }}
+            >
+              {isSlotBgProcessing && slotBgProcessingJob?.mode === 'adjust' ? (
+                <>
+                  <Loader2 size={16} className="spot-spinner" />
+                  <span>מתקן...</span>
+                </>
+              ) : (
+                <>
+                  <Wand2 size={16} />
+                  <span>תקן</span>
+                </>
+              )}
+            </button>
             <button
               type="button"
               disabled={savingMeal || !hasMealChanges}
@@ -5571,39 +5593,6 @@ export function AddMealDrawer({
                   ? `אין שינויים לשמירה (${currentTotals.calories} קק״ל)`
                   : `שמור ארוחה (${currentTotals.calories} קק״ל)`}
               </span>
-            </button>
-            <button
-              type="button"
-              className="glass"
-              disabled={isSlotBgProcessing || correctionLoading}
-              onClick={() => setCorrectionOpen(true)}
-              style={{
-                height: 56,
-                padding: '0 20px',
-                borderRadius: 999,
-                marginInlineStart: 10,
-                flex: 'none',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-                fontFamily: 'inherit',
-                fontSize: 15,
-                fontWeight: 600,
-                cursor: isSlotBgProcessing ? 'wait' : 'pointer',
-                opacity: isSlotBgProcessing ? 0.65 : 1,
-              }}
-            >
-              {isSlotBgProcessing && slotBgProcessingJob?.mode === 'adjust' ? (
-                <>
-                  <Loader2 size={16} className="spot-spinner" />
-                  <span>מתקן...</span>
-                </>
-              ) : (
-                <>
-                  <Wand2 size={16} />
-                  <span>תקן</span>
-                </>
-              )}
             </button>
           </div>
         )}

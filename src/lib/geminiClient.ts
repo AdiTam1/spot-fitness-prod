@@ -256,9 +256,9 @@ export async function callGeminiJson(
 }> {
   const genAI = new GoogleGenerativeAI(apiKey);
   const errors: string[] = [];
-  const primaryTimeoutMs = options?.perAttemptTimeoutMs ?? 18_000;
-  const fallbackTimeoutMs = options?.fallbackAttemptTimeoutMs ?? 13_500;
-  const totalBudgetMs = options?.totalBudgetMs ?? 90_000;
+  const primaryTimeoutMs = options?.perAttemptTimeoutMs ?? 28_000;
+  const fallbackTimeoutMs = options?.fallbackAttemptTimeoutMs ?? 23_500;
+  const totalBudgetMs = options?.totalBudgetMs ?? 120_000;
   const startedAt = Date.now();
   const orderedModels = orderModelsByHealth(models);
   const cooldownMap = getModelCooldownMap();
@@ -385,9 +385,9 @@ export async function callGeminiJson(
         // בעומס רגעי (503 High Demand / רשת / הגבלת דקה קצרה) כשהתשובה נכשלה מהר -> חכה רגע ונסה שוב את אותו מודל!
         const isFastTransient =
           (kind === 'overload_503' || kind === 'rate_limit') &&
-          callDuration < 10_000 &&
+          callDuration < 15_000 &&
           transientRetriesUsed < maxTransientRetries &&
-          totalBudgetMs - (Date.now() - startedAt) >= 14_000;
+          totalBudgetMs - (Date.now() - startedAt) >= 24_000;
 
         if (isFastTransient) {
           transientRetriesUsed += 1;

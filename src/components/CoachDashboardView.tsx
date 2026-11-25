@@ -5126,13 +5126,7 @@ export function CoachDashboardView({
                     </button>
                   </div>
 
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(4, 1fr)',
-                      gap: 8,
-                    }}
-                  >
+                  <div className="spot-macro-4-grid">
                     <NumberInput
                       size="xs"
                       label="קלוריות"
@@ -5883,8 +5877,8 @@ export function CoachDashboardView({
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(105px, 1fr))',
-                    gap: 10,
+                    gridTemplateColumns: 'minmax(0, 1fr) 96px auto',
+                    gap: 8,
                     alignItems: 'flex-end',
                   }}
                 >
@@ -5912,6 +5906,26 @@ export function CoachDashboardView({
                       )
                     }
                   />
+                  <button
+                    disabled={
+                      !canEditCurrentTemplate ||
+                      editableTemplate.meals.length <= 1
+                    }
+                    onClick={() => removeMealSlotFromTemplate(meal.id)}
+                    className="btn-surface"
+                    style={{
+                      height: 36,
+                      width: 36,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Trash2 size={15} color="#ef4444" />
+                  </button>
+                </div>
+                <div className="spot-macro-4-grid" style={{ alignItems: 'flex-end' }}>
                   <NumberInput
                     label="קלוריות"
                     placeholder="0"
@@ -5993,24 +6007,6 @@ export function CoachDashboardView({
                       )
                     }
                   />
-                  <button
-                    disabled={
-                      !canEditCurrentTemplate ||
-                      editableTemplate.meals.length <= 1
-                    }
-                    onClick={() => removeMealSlotFromTemplate(meal.id)}
-                    className="btn-surface"
-                    style={{
-                      height: 36,
-                      width: 36,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <Trash2 size={15} color="#ef4444" />
-                  </button>
                 </div>
 
                 <TextInput

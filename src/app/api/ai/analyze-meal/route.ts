@@ -1170,9 +1170,9 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
         });
 
         const res = await callGeminiStructured(apiKey, parts, {
-          perAttemptTimeoutMs: 18_000,
-          fallbackAttemptTimeoutMs: 13_500,
-          totalBudgetMs: 90_000,
+          perAttemptTimeoutMs: 28_000,
+          fallbackAttemptTimeoutMs: 23_500,
+          totalBudgetMs: 120_000,
           shouldCancel: checkBgJobCancelled,
           onAttemptModel: (m, _idx, meta) =>
             updateBgJobStage(
@@ -1366,9 +1366,9 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
       });
 
       const res = await callGeminiStructured(apiKey, parts, {
-        perAttemptTimeoutMs: 18_000,
-        fallbackAttemptTimeoutMs: 13_500,
-        totalBudgetMs: 90_000,
+        perAttemptTimeoutMs: 28_000,
+        fallbackAttemptTimeoutMs: 23_500,
+        totalBudgetMs: 120_000,
         shouldCancel: checkBgJobCancelled,
         onAttemptModel: (m, _idx, meta) =>
           updateBgJobStage(
