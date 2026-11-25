@@ -5710,6 +5710,85 @@ export function CoachDashboardView({
                 </div>
               </div>
 
+              <div
+                style={{
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 16,
+                  padding: '10px 14px',
+                  marginBottom: 12,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                    קישור ציבורי להורדת האפליקציה למשתמשים
+                  </span>
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }} dir="ltr">
+                    /download · /downloads/spot-fitness-release.apk
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn-surface"
+                    onClick={() => {
+                      const shareUrl =
+                        typeof window !== 'undefined'
+                          ? `${window.location.origin}/download`
+                          : '/download';
+                      void navigator.clipboard?.writeText(shareUrl).then(() => {
+                        showToast('קישור דף ההורדה הועתק לשליחה למשתמשים');
+                      });
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Copy size={13} />
+                    <span>העתק קישור למשתמשים</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-surface"
+                    onClick={() => {
+                      const rawPath =
+                        policyApkUrl.trim() || '/downloads/spot-fitness-release.apk';
+                      const directUrl = /^https?:\/\//i.test(rawPath)
+                        ? rawPath
+                        : typeof window !== 'undefined'
+                        ? `${window.location.origin}${rawPath.startsWith('/') ? rawPath : `/${rawPath}`}`
+                        : rawPath;
+                      void navigator.clipboard?.writeText(directUrl).then(() => {
+                        showToast('הלינק הישיר לקובץ ה-APK הועתק');
+                      });
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Copy size={13} />
+                    <span>העתק לינק ישיר ל-APK</span>
+                  </button>
+                </div>
+              </div>
+
               <form
                 onSubmit={(e) => {
                   e.preventDefault();

@@ -251,7 +251,9 @@ export function buildAppUpdateInfoFromRemote(
     blockedUpToVersionCode: blockedUpTo,
     apkDownloadUrl: String(
       remote.apkDownloadUrl ||
-        'https://github.com/AdiTam1/spot-fitness-prod/releases/latest/download/spot-fitness-release.apk'
+        (typeof window !== 'undefined' && window.location?.origin
+          ? `${window.location.origin}/downloads/spot-fitness-release.apk`
+          : 'https://spot-fitness-prod.vercel.app/downloads/spot-fitness-release.apk')
     ),
     releaseNotes: remote.releaseNotes,
   };

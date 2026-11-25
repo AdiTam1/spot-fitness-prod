@@ -1,11 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import { getAppReleasePolicyFromServer } from '@/lib/serverStore';
+import hostedApkMeta from '@/lib/hostedApkMeta.json';
 
 const DEFAULT_RELEASES_PAGE =
   'https://github.com/AdiTam1/spot-fitness-prod/releases/latest';
-const DEFAULT_DIRECT_APK_URL =
-  'https://github.com/AdiTam1/spot-fitness-prod/releases/latest/download/spot-fitness-release.apk';
+const DEFAULT_HOSTED_APK_PATH = hostedApkMeta?.path || '/downloads/spot-fitness-release.apk';
+const DEFAULT_DIRECT_APK_URL = DEFAULT_HOSTED_APK_PATH;
 
 interface GithubReleaseAsset {
   name?: string;
@@ -73,6 +74,7 @@ export interface ResolvedAppVersionPayload {
   androidBlockedUpToVersionCode: number;
   minSupportedVersionCode: number;
   apkDownloadUrl: string;
+  apkSizeBytes: number | null;
   releasesPageUrl: string;
   releaseNotes: string;
   localApkDetected: boolean;
@@ -92,10 +94,14 @@ export async function resolveAppVersionInfo(
     policy.androidBlockedUpToVersionCode || envBlockedUpTo || 0
   );
 
-  let latestVersionCode =
-    Number(process.env.ANDROID_APK_VERSION_CODE || 1) || 1;
-  let latestVersionName = process.env.ANDROID_APK_VERSION_NAME || '1.0.0';
-  const localHostedRel = findLocalHostedApkPath();
+  const metaCode = Number(hostedApkMeta?.versionCode || 0) || 0;
+  const envVersionCode = Number(process.env.ANDROID_APK_VERSION_CODE || 0) || 0;
+  let latestVersionCode = Math.max(1, envVersionCode, metaCode);
+  let latestVersionName =
+    process.env.ANDROID_APK_VERSION_NAME ||
+    hostedApkMeta?.versionName ||
+    '1.0.0';
+  const localHostedRel = findLocalHostedApkPath() || (hostedApkMeta?.path || null);
   let apkDownloadUrl =
     process.env.ANDROID_APK_DOWNLOAD_URL ||
     localHostedRel ||
@@ -187,6 +193,7 @@ export async function resolveAppVersionInfo(
     androidBlockedUpToVersionCode,
     minSupportedVersionCode: androidBlockedUpToVersionCode + 1,
     apkDownloadUrl: resolveAbsoluteUrl(apkDownloadUrl, originUrl),
+    apkSizeBytes: Number(hostedApkMeta?.sizeBytes || 0) || null,
     releasesPageUrl,
     releaseNotes,
     localApkDetected: Boolean(localHostedRel),

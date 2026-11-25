@@ -14,6 +14,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { AuthRejectionCode, AuthSessionUser } from '@/types/nutrition';
+import { AndroidApkDownloadCard } from './ui/AndroidApkDownloadCard';
 
 interface AuthGateViewProps {
   onLoginSuccess: (user: AuthSessionUser) => void;
@@ -605,6 +606,8 @@ export function AuthGateView({
             </div>
           </form>
         )}
+
+        <AndroidApkDownloadCard variant="compact" />
       </div>
     </div>
   );

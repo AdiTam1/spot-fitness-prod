@@ -29,6 +29,7 @@ import { Pencil, Palette } from 'lucide-react';
 import { Chip } from './ui/Chip';
 import { GlassButton } from './ui/GlassButton';
 import { ThemeToggle } from './ui/ThemeToggle';
+import { AndroidApkDownloadCard } from './ui/AndroidApkDownloadCard';
 import {
   MealCardShortcutId,
   TraineeProfile,
@@ -542,6 +543,8 @@ export function TraineeProfileView({
         </div>
         <ThemeToggle />
       </section>
+
+      {!isCoachPreview && <AndroidApkDownloadCard variant="card" />}
 
       {/* שאלון התאמה אישית והעדפות (הועבר מכותרת הדף הראשי) */}
       {onOpenOnboarding && (

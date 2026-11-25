@@ -17,7 +17,29 @@ const nextConfig = {
     serverComponentsExternalPackages: ['web-push'],
   },
   async headers() {
+    const apkDownloadHeaders = [
+      {
+        key: 'Content-Type',
+        value: 'application/vnd.android.package-archive',
+      },
+      {
+        key: 'Content-Disposition',
+        value: 'attachment; filename="spot-fitness-release.apk"',
+      },
+      {
+        key: 'Cache-Control',
+        value: 'public, max-age=300, must-revalidate',
+      },
+    ];
     return [
+      {
+        source: '/downloads/spot-fitness-release.apk',
+        headers: apkDownloadHeaders,
+      },
+      {
+        source: '/downloads/spot-fitness.apk',
+        headers: apkDownloadHeaders,
+      },
       {
         source: '/sw.js',
         headers: [
