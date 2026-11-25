@@ -1283,6 +1283,30 @@ const nizatScraper: IsraeliFoodScraper = {
 // 7. טבע בריא (tevabari.co.il) — רשת חנויות טבע ותזונת ספורט (לבקשת המשתמש)
 // =============================================================================
 
+async function fetchTevaBariPage(url: string) {
+  const reqOpts = {
+    timeoutMs: 13500,
+    retries: 2,
+    ipv4Fallback: true,
+    headers: {
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Upgrade-Insecure-Requests': '1',
+      Referer: 'https://www.tevabari.co.il/',
+    },
+  } as const;
+
+  const res = await fetchWithTimeout(url, reqOpts);
+  if (res.status === 0 && url.startsWith('https://www.tevabari.co.il/')) {
+    const apexUrl = url.replace(
+      'https://www.tevabari.co.il/',
+      'https://tevabari.co.il/'
+    );
+    const apexRes = await fetchWithTimeout(apexUrl, reqOpts);
+    if (apexRes.ok || apexRes.status > 0) return apexRes;
+  }
+  return res;
+}
+
 async function scrapeTevaBariProduct(
   slugOrUrl: string,
   titleHint?: string
@@ -1290,7 +1314,7 @@ async function scrapeTevaBariProduct(
   const fullUrl = slugOrUrl.startsWith('http')
     ? slugOrUrl
     : `https://www.tevabari.co.il${slugOrUrl.startsWith('/') ? '' : '/'}${slugOrUrl}`;
-  const res = await fetchWithTimeout(fullUrl, { timeoutMs: 8500 });
+  const res = await fetchTevaBariPage(fullUrl);
   const blocked = isAntiBotBlocked(res.status, res.text);
   if (blocked || !res.ok) {
     return { item: null, status: res.status, latencyMs: res.latencyMs, blocked };
@@ -1302,9 +1326,12 @@ async function scrapeTevaBariProduct(
   }
 
   const rawSlice = res.text.slice(descIdx, descIdx + 8500);
-  const stopA = rawSlice.indexOf('vm-product-details-container');
-  const stopB = rawSlice.indexOf('product-neighbours');
-  const endPos = stopA > 50 ? stopA : stopB > 50 ? stopB : rawSlice.length;
+  const stopCandidates = [
+    rawSlice.indexOf('vm-product-details-container'),
+    rawSlice.indexOf('product-neighbours'),
+    rawSlice.indexOf('customer-reviews'),
+  ].filter((n) => n > 50);
+  const endPos = stopCandidates.length > 0 ? Math.min(...stopCandidates) : rawSlice.length;
 
   const cleanFull = decodeHtmlEntities(
     rawSlice
@@ -1401,14 +1428,21 @@ async function searchTevaBari(query: string, limit = 6): Promise<{
   status: number;
   latencyMs: number;
   blocked: boolean;
+  error?: string;
 }> {
   const url = `https://www.tevabari.co.il/index.php?option=com_virtuemart&view=category&search=true&keyword=${encodeURIComponent(
     query
   )}`;
-  const res = await fetchWithTimeout(url, { timeoutMs: 8500 });
+  const res = await fetchTevaBariPage(url);
   const blocked = isAntiBotBlocked(res.status, res.text);
   if (blocked || !res.ok) {
-    return { items: [], status: res.status, latencyMs: res.latencyMs, blocked };
+    return {
+      items: [],
+      status: res.status,
+      latencyMs: res.latencyMs,
+      blocked,
+      error: res.error,
+    };
   }
 
   const mainStart = res.text.indexOf('browse-view');
@@ -1421,8 +1455,8 @@ async function searchTevaBari(query: string, limit = 6): Promise<{
     if (!candidates.has(m[1])) candidates.set(m[1], decodeHtmlEntities(m[2]));
   }
 
-  const picked = Array.from(candidates.entries()).slice(0, limit + 8);
-  const parsed = await mapConcurrent(picked, 4, ([href, title]) => scrapeTevaBariProduct(href, title));
+  const picked = Array.from(candidates.entries()).slice(0, limit + 6);
+  const parsed = await mapConcurrent(picked, 2, ([href, title]) => scrapeTevaBariProduct(href, title));
   return {
     items: parsed
       .map((p) => p.item)
@@ -1446,13 +1480,16 @@ const tevabariScraper: IsraeliFoodScraper = {
     targetUrl: 'https://www.tevabari.co.il',
   },
   async checkHealth(prevSyncedCount = 0) {
-    const res = await searchTevaBari('פנקייק', 4);
+    let res = await searchTevaBari('פנקייק', 4);
+    if (!res.blocked && res.status >= 200 && res.status < 400 && res.items.length === 0) {
+      res = await searchTevaBari('חלבון', 4);
+    }
     if (res.blocked || res.status < 200 || res.status >= 400) {
       return buildBrokenHealth(
         this.meta,
         res.status,
         res.latencyMs,
-        `שגיאת גישה (${res.status}) ב-tevabari.co.il`,
+        `שגיאת גישה (${res.status}) ב-tevabari.co.il${res.error ? ` — ${res.error.slice(0, 90)}` : ''}`,
         prevSyncedCount,
         res.blocked
       );
@@ -1490,12 +1527,11 @@ const tevabariScraper: IsraeliFoodScraper = {
       'סירופ',
       'דייסה',
     ];
-    const searchPages = await mapConcurrent(queries, 4, async (q) => {
-      const r = await fetchWithTimeout(
+    const searchPages = await mapConcurrent(queries, 2, async (q) => {
+      const r = await fetchTevaBariPage(
         `https://www.tevabari.co.il/index.php?option=com_virtuemart&view=category&search=true&keyword=${encodeURIComponent(
           q
-        )}`,
-        { timeoutMs: 8500 }
+        )}`
       );
       if (!r.ok) return [] as Array<[string, string]>;
       const mainStart = r.text.indexOf('browse-view');
@@ -1515,7 +1551,7 @@ const tevabariScraper: IsraeliFoodScraper = {
 
     const parsed = await mapConcurrent(
       Array.from(uniqueLinks.entries()).slice(0, 36),
-      7,
+      2,
       ([href, title]) => scrapeTevaBariProduct(href, title)
     );
     return parsed.map((p) => p.item).filter((x): x is FoodCatalogItem => Boolean(x));
@@ -1523,36 +1559,147 @@ const tevabariScraper: IsraeliFoodScraper = {
 };
 
 // =============================================================================
-// 8. Fuder (fuder.co.il) — ~6,000 מוצרי מותגי סופרים בישראל (WP REST API)
+// 8. Fuder (fuder.co.il) — ~6,000 מוצרי מותגי סופרים בישראל (WP REST API + ACF)
 // =============================================================================
 
-async function scrapeFuderProduct(
+interface FuderWpPost {
+  id?: number;
+  slug?: string;
+  link?: string;
+  title?: { rendered?: string };
+  excerpt?: { rendered?: string };
+  content?: { rendered?: string };
+  acf?: {
+    calories?: string | number | null;
+    protein?: string | number | null;
+    carbohydrates?: string | number | null;
+    fat?: string | number | null;
+    special_data?: Array<{
+      s_name?: { label?: string; value?: string } | string;
+    }> | null;
+    synonyms?: Array<{ synonyms_text?: string }> | boolean | null;
+  } | null;
+}
+
+function hasNumericMacroValue(raw: string | number | null | undefined): boolean {
+  if (raw === undefined || raw === null) return false;
+  const s = String(raw).trim();
+  return s.length > 0 && /\d/.test(s);
+}
+
+function extractMetaTagContent(
+  html: string,
+  attrName: 'property' | 'name',
+  attrVal: string
+): string {
+  const esc = attrVal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const mA = html.match(
+    new RegExp(`<meta[^>]+${attrName}=["']${esc}["'][^>]+content=["']([^"']+)["']`, 'i')
+  );
+  if (mA?.[1]) return decodeHtmlEntities(mA[1]);
+  const mB = html.match(
+    new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+${attrName}=["']${esc}["']`, 'i')
+  );
+  return mB?.[1] ? decodeHtmlEntities(mB[1]) : '';
+}
+
+function parseFuderSpecialDataUnits(
+  specialData: NonNullable<FuderWpPost['acf']>['special_data']
+): FoodUnit[] {
+  const units: FoodUnit[] = [];
+  if (!Array.isArray(specialData)) return units;
+  for (const row of specialData) {
+    const rawLabel =
+      typeof row?.s_name === 'string'
+        ? row.s_name
+        : String(row?.s_name?.label || row?.s_name?.value || '');
+    const stripped = decodeHtmlEntities(rawLabel)
+      .replace(/^\s*\d+(?:[.,]\d+)?\s*:\s*/, '')
+      .trim();
+    if (!stripped) continue;
+    const gMatch = stripped.match(
+      /\((\d+(?:[.,]\d+)?)\s*(?:גרם|ג'|ג"|מ"ל|מל|מ'ל)\)/i
+    );
+    const grams = gMatch ? parseMacroNumber(gMatch[1]) : 0;
+    if (grams > 0 && grams !== 100) {
+      units.push({ label: stripped, grams });
+    }
+  }
+  return units;
+}
+
+function parseFuderApiPost(post: FuderWpPost): FoodCatalogItem | null {
+  const acf = post?.acf;
+  if (
+    !acf ||
+    !hasNumericMacroValue(acf.calories) ||
+    !hasNumericMacroValue(acf.protein) ||
+    !hasNumericMacroValue(acf.carbohydrates) ||
+    !hasNumericMacroValue(acf.fat)
+  ) {
+    return null;
+  }
+
+  const titleName = stripHtmlTags(post.title?.rendered || '').trim();
+  if (!titleName) return null;
+
+  const sourceUrl = String(post.link || '').trim() || 'https://www.fuder.co.il';
+  const rawSlug =
+    String(post.slug || '').trim() ||
+    decodeURIComponent(sourceUrl.split('/foods/')[1] || '').replace(/\//g, '');
+  const extractedUnits = parseFuderSpecialDataUnits(acf.special_data);
+  const barcode = extractBarcodeFromText(
+    `${post.excerpt?.rendered || ''} ${post.content?.rendered || ''}`
+  );
+  const units = mergeUniqueUnits(
+    extractedUnits,
+    inferSmartUnits(titleName, 'מוצרי סופרים')
+  );
+
+  return makeCatalogItem({
+    idSuffix: normalizeFoodKey(rawSlug || titleName).slice(0, 48),
+    name: titleName,
+    brand: 'Fuder סופרים',
+    category: 'מותגי סופרים — Fuder',
+    barcode,
+    per100g: {
+      calories: parseMacroNumber(acf.calories),
+      protein: parseMacroNumber(acf.protein),
+      carbs: parseMacroNumber(acf.carbohydrates),
+      fat: parseMacroNumber(acf.fat),
+    },
+    units,
+    sourceSiteId: 'fuder',
+    sourceSiteName: 'Fuder מוצרי סופרים',
+    sourceUrl,
+  });
+}
+
+async function scrapeFuderProductHtml(
   url: string,
   titleHint?: string
 ): Promise<{ item: FoodCatalogItem | null; status: number; latencyMs: number; blocked: boolean }> {
-  const res = await fetchWithTimeout(url, { timeoutMs: 8500 });
+  const res = await fetchWithTimeout(url, { timeoutMs: 8500, retries: 1 });
   const blocked = isAntiBotBlocked(res.status, res.text);
   if (blocked || !res.ok) {
     return { item: null, status: res.status, latencyMs: res.latencyMs, blocked };
   }
 
-  const ogTitle = decodeHtmlEntities(
-    res.text.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1] || ''
-  );
-  const ogDesc = decodeHtmlEntities(
-    res.text.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)?.[1] || ''
-  );
-  const metaDesc = decodeHtmlEntities(
-    res.text.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)?.[1] || ''
-  );
+  const ogTitle = extractMetaTagContent(res.text, 'property', 'og:title');
+  const ogDesc = extractMetaTagContent(res.text, 'property', 'og:description');
+  const metaDesc = extractMetaTagContent(res.text, 'name', 'description');
 
-  const calMatch = ogTitle.match(/([\d.,]+)\s*קלוריות ל[-\s]?100/i) ||
+  const calMatch =
+    ogTitle.match(/([\d.,]+)\s*קלוריות ל[-\s]?100/i) ||
     metaDesc.match(/ל[-\s]?100\s*גרם:\s*([\d.,]+)\s*קלוריות/i);
-  const proMatch = ogDesc.match(/([\d.,]+)\s*גרם חלבון/i) ||
+  const proMatch =
+    ogDesc.match(/([\d.,]+)\s*גרם חלבון/i) ||
     metaDesc.match(/([\d.,]+)\s*גרם חלבון/i);
-  const carbMatch = ogDesc.match(/([\d.,]+)\s*גרם פחמימות/i) ||
+  const carbMatch =
+    ogDesc.match(/([\d.,]+)\s*גרם פחמימות/i) ||
     metaDesc.match(/([\d.,]+)\s*גרם פחמימות/i);
-  const fatMatch = ogDesc.match(/([\d.,]+)\s*גרם שומן/i) ||
+  const fatMatch =
+    ogDesc.match(/([\d.,]+)\s*גרם שומן/i) ||
     metaDesc.match(/([\d.,]+)\s*גרם שומן/i);
 
   if (!calMatch || !proMatch || !carbMatch || !fatMatch) {
@@ -1613,6 +1760,50 @@ async function scrapeFuderProduct(
   return { item, status: res.status, latencyMs: res.latencyMs, blocked: false };
 }
 
+async function scrapeFuderProduct(
+  url: string,
+  titleHint?: string
+): Promise<{ item: FoodCatalogItem | null; status: number; latencyMs: number; blocked: boolean }> {
+  // ניסיון ראשון דרך WP REST API לפי slug (חוסך 429 Too Many Requests בדפי HTML)
+  const slugSegment = url.split('/foods/')[1]?.split('/')[0]?.split('?')[0];
+  if (slugSegment) {
+    let decodedSlug = slugSegment;
+    try {
+      decodedSlug = decodeURIComponent(slugSegment);
+    } catch {
+      decodedSlug = slugSegment;
+    }
+    const apiUrl = `https://www.fuder.co.il/wp-json/wp/v2/foods?slug=${encodeURIComponent(
+      decodedSlug
+    )}`;
+    const apiRes = await fetchWithTimeout(apiUrl, {
+      timeoutMs: 8500,
+      headers: { Accept: 'application/json' },
+    });
+    if (apiRes.ok) {
+      try {
+        const posts = JSON.parse(apiRes.text) as FuderWpPost[];
+        const first = Array.isArray(posts) ? posts[0] : undefined;
+        if (first) {
+          const parsedApi = parseFuderApiPost(first);
+          if (parsedApi) {
+            return {
+              item: parsedApi,
+              status: apiRes.status,
+              latencyMs: apiRes.latencyMs,
+              blocked: false,
+            };
+          }
+        }
+      } catch {
+        // fallback to HTML below
+      }
+    }
+  }
+
+  return scrapeFuderProductHtml(url, titleHint);
+}
+
 async function searchFuder(query: string, limit = 6): Promise<{
   items: FoodCatalogItem[];
   status: number;
@@ -1621,9 +1812,10 @@ async function searchFuder(query: string, limit = 6): Promise<{
 }> {
   const apiUrl = `https://www.fuder.co.il/wp-json/wp/v2/foods?search=${encodeURIComponent(
     query
-  )}&per_page=${Math.min(limit + 2, 12)}`;
+  )}&per_page=${Math.min(Math.max(limit * 2, 12), 24)}`;
   const res = await fetchWithTimeout(apiUrl, {
-    timeoutMs: 8500,
+    timeoutMs: 9500,
+    retries: 1,
     headers: { Accept: 'application/json' },
   });
   const blocked = isAntiBotBlocked(res.status, res.text);
@@ -1632,14 +1824,42 @@ async function searchFuder(query: string, limit = 6): Promise<{
   }
 
   try {
-    const posts = JSON.parse(res.text) as Array<{ link?: string; title?: { rendered?: string } }>;
-    const valid = (Array.isArray(posts) ? posts : []).filter((p) => p.link).slice(0, limit);
-    const parsed = await mapConcurrent(valid, 4, (p) => scrapeFuderProduct(p.link!, p.title?.rendered));
+    const posts = JSON.parse(res.text) as FuderWpPost[];
+    const list = Array.isArray(posts) ? posts : [];
+    const items: FoodCatalogItem[] = [];
+    const remainingForHtml: FuderWpPost[] = [];
+
+    for (const p of list) {
+      const apiItem = parseFuderApiPost(p);
+      if (apiItem) {
+        items.push(apiItem);
+        if (items.length >= limit) break;
+      } else if (p.link) {
+        remainingForHtml.push(p);
+      }
+    }
+
+    let htmlStatus = res.status;
+    let htmlBlocked = false;
+    if (items.length < limit && remainingForHtml.length > 0) {
+      for (const p of remainingForHtml.slice(0, 2)) {
+        const htmlRes = await scrapeFuderProductHtml(p.link!, p.title?.rendered);
+        if (htmlRes.item) {
+          items.push(htmlRes.item);
+          if (items.length >= limit) break;
+        } else if (htmlRes.blocked || htmlRes.status >= 400 || htmlRes.status === 0) {
+          htmlStatus = htmlRes.status;
+          htmlBlocked = htmlRes.blocked;
+          if (htmlRes.status === 429 || htmlRes.blocked) break;
+        }
+      }
+    }
+
     return {
-      items: parsed.map((p) => p.item).filter((x): x is FoodCatalogItem => Boolean(x)),
-      status: res.status,
+      items: items.slice(0, limit),
+      status: items.length > 0 ? res.status : htmlStatus,
       latencyMs: res.latencyMs,
-      blocked: false,
+      blocked: items.length > 0 ? false : htmlBlocked,
     };
   } catch {
     return { items: [], status: res.status, latencyMs: res.latencyMs, blocked: false };
@@ -1664,7 +1884,7 @@ const fuderScraper: IsraeliFoodScraper = {
         this.meta,
         res.status,
         res.latencyMs,
-        `שגיאת גישה (${res.status}) ב-fuder.co.il/wp-json/wp/v2/foods`,
+        `שגיאת גישה (${res.status}) ב-fuder.co.il`,
         prevSyncedCount,
         res.blocked
       );
@@ -1674,7 +1894,7 @@ const fuderScraper: IsraeliFoodScraper = {
         this.meta,
         res.status,
         res.latencyMs,
-        'לא חולצו 4 ערכי מאקרו מתגיות ה-meta ב-Fuder',
+        'לא חולצו 4 ערכי מאקרו מה-API ומתגיות ה-meta ב-Fuder',
         prevSyncedCount
       );
     }
@@ -1691,19 +1911,29 @@ const fuderScraper: IsraeliFoodScraper = {
     return res.items;
   },
   async syncCatalog() {
-    const res = await fetchWithTimeout('https://www.fuder.co.il/wp-json/wp/v2/foods?per_page=35&page=1', {
-      timeoutMs: 9000,
-      headers: { Accept: 'application/json' },
-    });
-    if (!res.ok) return [];
-    try {
-      const posts = JSON.parse(res.text) as Array<{ link?: string; title?: { rendered?: string } }>;
-      const valid = (Array.isArray(posts) ? posts : []).filter((p) => p.link).slice(0, 35);
-      const parsed = await mapConcurrent(valid, 10, (p) => scrapeFuderProduct(p.link!, p.title?.rendered));
-      return parsed.map((p) => p.item).filter((x): x is FoodCatalogItem => Boolean(x));
-    } catch {
-      return [];
+    const collected: FoodCatalogItem[] = [];
+    for (const page of [1, 2]) {
+      const res = await fetchWithTimeout(
+        `https://www.fuder.co.il/wp-json/wp/v2/foods?per_page=100&page=${page}`,
+        {
+          timeoutMs: 11000,
+          retries: 1,
+          headers: { Accept: 'application/json' },
+        }
+      );
+      if (!res.ok) break;
+      try {
+        const posts = JSON.parse(res.text) as FuderWpPost[];
+        if (!Array.isArray(posts) || posts.length === 0) break;
+        for (const p of posts) {
+          const item = parseFuderApiPost(p);
+          if (item) collected.push(item);
+        }
+      } catch {
+        break;
+      }
     }
+    return collected;
   },
 };
 

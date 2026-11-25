@@ -1,3 +1,5 @@
+import https from 'node:https';
+import zlib from 'node:zlib';
 import { FoodUnit, MacroTargets } from '@/types/nutrition';
 
 export const BROWSER_USER_AGENT =
@@ -99,53 +101,288 @@ export interface FetchResponse {
   error?: string;
 }
 
+function decodeHttpBodyBuffer(
+  buf: Buffer,
+  contentEncoding: string | undefined,
+  textEncoding: 'utf-8' | 'windows-1255'
+): string {
+  const ce = (contentEncoding || '').toLowerCase();
+  let plain = buf;
+  try {
+    if (ce.includes('br')) plain = zlib.brotliDecompressSync(buf);
+    else if (ce.includes('gzip')) plain = zlib.gunzipSync(buf);
+    else if (ce.includes('deflate')) plain = zlib.inflateSync(buf);
+  } catch {
+    plain = buf;
+  }
+  return new TextDecoder(textEncoding).decode(plain);
+}
+
 /**
- * מבצע בקשת HTTP בטוחה עם מדידת זמן תגובה, תמיכה ב-Windows-1255 ומניעת תקיעות מעל timeoutMs.
+ * חלופת Node HTTPS מוקשחת (IPv4 + HTTP/1.1) עבור אתרים/פרוקסי שזורקים ECONNRESET או נתקעים ב-IPv6 תחת undici.
+ */
+function fetchViaNodeHttpsIpv4(
+  targetUrl: string,
+  opts: {
+    method: string;
+    headers: Record<string, string>;
+    timeoutMs: number;
+    encoding: 'utf-8' | 'windows-1255';
+    followRedirects: boolean;
+    redirectsLeft?: number;
+  }
+): Promise<FetchResponse> {
+  const startedAt = Date.now();
+  return new Promise((resolve) => {
+    let parsed: URL;
+    try {
+      parsed = new URL(targetUrl);
+    } catch {
+      resolve({
+        ok: false,
+        status: 0,
+        finalUrl: targetUrl,
+        text: '',
+        latencyMs: 0,
+        error: 'Invalid URL',
+      });
+      return;
+    }
+
+    if (parsed.protocol !== 'https:') {
+      resolve({
+        ok: false,
+        status: 0,
+        finalUrl: targetUrl,
+        text: '',
+        latencyMs: 0,
+        error: 'HTTPS required',
+      });
+      return;
+    }
+
+    let settled = false;
+    const finish = (res: FetchResponse) => {
+      if (settled) return;
+      settled = true;
+      resolve(res);
+    };
+
+    const req = https.request(
+      parsed,
+      {
+        method: opts.method,
+        family: 4,
+        headers: {
+          'Accept-Encoding': 'gzip, deflate, br',
+          ...opts.headers,
+        },
+        timeout: opts.timeoutMs,
+      },
+      (res) => {
+        const status = res.statusCode || 0;
+        const loc = res.headers.location;
+        const left = opts.redirectsLeft ?? 3;
+        if (
+          opts.followRedirects &&
+          loc &&
+          status >= 300 &&
+          status < 400 &&
+          left > 0
+        ) {
+          res.resume();
+          try {
+            const nextUrl = new URL(loc, parsed).toString();
+            const nextParsed = new URL(nextUrl);
+            if (
+              nextParsed.protocol !== 'https:' ||
+              isPrivateOrReservedHostname(nextParsed.hostname)
+            ) {
+              finish({
+                ok: false,
+                status,
+                finalUrl: targetUrl,
+                text: '',
+                latencyMs: Date.now() - startedAt,
+                error: 'Blocked redirect target',
+              });
+              return;
+            }
+            const remainingMs = Math.max(
+              1500,
+              opts.timeoutMs - (Date.now() - startedAt)
+            );
+            void fetchViaNodeHttpsIpv4(nextUrl, {
+              ...opts,
+              timeoutMs: remainingMs,
+              redirectsLeft: left - 1,
+            }).then(finish);
+          } catch {
+            finish({
+              ok: false,
+              status,
+              finalUrl: targetUrl,
+              text: '',
+              latencyMs: Date.now() - startedAt,
+              error: 'Invalid redirect',
+            });
+          }
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => {
+          const buf = Buffer.concat(chunks);
+          const text = decodeHttpBodyBuffer(
+            buf,
+            typeof res.headers['content-encoding'] === 'string'
+              ? res.headers['content-encoding']
+              : undefined,
+            opts.encoding
+          );
+          finish({
+            ok: status >= 200 && status < 300,
+            status,
+            finalUrl: parsed.toString(),
+            text,
+            latencyMs: Date.now() - startedAt,
+          });
+        });
+        res.on('error', (err) => {
+          finish({
+            ok: false,
+            status: 0,
+            finalUrl: targetUrl,
+            text: '',
+            latencyMs: Date.now() - startedAt,
+            error: err.message,
+          });
+        });
+      }
+    );
+
+    req.on('timeout', () => {
+      req.destroy(new Error('Request timeout'));
+    });
+    req.on('error', (err) => {
+      finish({
+        ok: false,
+        status: 0,
+        finalUrl: targetUrl,
+        text: '',
+        latencyMs: Date.now() - startedAt,
+        error: err.message,
+      });
+    });
+    req.end();
+  });
+}
+
+/**
+ * מבצע בקשת HTTP בטוחה עם מדידת זמן תגובה, תמיכה ב-Windows-1255, נתיב גיבוי IPv4/HTTP1.1 וניסיונות חוזרים אופציונליים.
  */
 export async function fetchWithTimeout(
   url: string,
   options: RequestInit & {
     timeoutMs?: number;
     encoding?: 'utf-8' | 'windows-1255';
+    retries?: number;
+    ipv4Fallback?: boolean;
   } = {}
 ): Promise<FetchResponse> {
-  const { timeoutMs = 10000, encoding = 'utf-8', headers, ...rest } = options;
-  const startedAt = Date.now();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const {
+    timeoutMs = 10000,
+    encoding = 'utf-8',
+    retries = 0,
+    ipv4Fallback = false,
+    headers,
+    ...rest
+  } = options;
 
-  try {
-    const res = await fetch(url, {
-      ...rest,
-      signal: controller.signal,
-      cache: 'no-store',
-      headers: {
-        'User-Agent': BROWSER_USER_AGENT,
-        'Accept-Language': 'he-IL,he;q=0.9,en;q=0.8',
-        ...(headers || {}),
-      },
-    });
-    const buf = Buffer.from(await res.arrayBuffer());
-    const text = new TextDecoder(encoding).decode(buf);
-    return {
-      ok: res.ok,
-      status: res.status,
-      finalUrl: res.url || url,
-      text,
-      latencyMs: Date.now() - startedAt,
-    };
-  } catch (err) {
-    return {
-      ok: false,
-      status: 0,
-      finalUrl: url,
-      text: '',
-      latencyMs: Date.now() - startedAt,
-      error: err instanceof Error ? err.message : String(err),
-    };
-  } finally {
-    clearTimeout(timer);
+  const normalizedHeaders: Record<string, string> = {
+    'User-Agent': BROWSER_USER_AGENT,
+    'Accept-Language': 'he-IL,he;q=0.9,en;q=0.8',
+  };
+  if (headers && typeof headers === 'object' && !Array.isArray(headers)) {
+    for (const [k, v] of Object.entries(headers as Record<string, unknown>)) {
+      if (v !== undefined && v !== null) {
+        normalizedHeaders[k] = String(v);
+      }
+    }
   }
+
+  let lastRes: FetchResponse = {
+    ok: false,
+    status: 0,
+    finalUrl: url,
+    text: '',
+    latencyMs: 0,
+  };
+
+  const maxAttempts = 1 + Math.max(0, retries);
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 350 * attempt));
+    }
+
+    const startedAt = Date.now();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(url, {
+        ...rest,
+        signal: controller.signal,
+        cache: 'no-store',
+        headers: normalizedHeaders,
+      });
+      const buf = Buffer.from(await res.arrayBuffer());
+      const text = new TextDecoder(encoding).decode(buf);
+      lastRes = {
+        ok: res.ok,
+        status: res.status,
+        finalUrl: res.url || url,
+        text,
+        latencyMs: Date.now() - startedAt,
+      };
+      if (lastRes.ok || (lastRes.status >= 400 && lastRes.status < 500 && lastRes.status !== 429)) {
+        return lastRes;
+      }
+    } catch (err) {
+      lastRes = {
+        ok: false,
+        status: 0,
+        finalUrl: url,
+        text: '',
+        latencyMs: Date.now() - startedAt,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (
+      ipv4Fallback &&
+      lastRes.status === 0 &&
+      (!rest.method || rest.method.toUpperCase() === 'GET') &&
+      !rest.body
+    ) {
+      const fallbackRes = await fetchViaNodeHttpsIpv4(url, {
+        method: 'GET',
+        headers: normalizedHeaders,
+        timeoutMs,
+        encoding,
+        followRedirects: rest.redirect !== 'manual',
+      });
+      if (fallbackRes.ok || fallbackRes.status > 0) {
+        return fallbackRes;
+      }
+      lastRes = fallbackRes;
+    }
+  }
+
+  return lastRes;
 }
 
 /**
