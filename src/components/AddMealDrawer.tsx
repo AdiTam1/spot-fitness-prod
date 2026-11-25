@@ -195,10 +195,12 @@ interface AddMealDrawerProps {
     date: string;
     mealSlotId: string;
     mealSlotName: string;
-    mode: 'photo' | 'text';
+    mode: 'photo' | 'text' | 'adjust';
     imageDataUrl?: string;
     imageDataUrls?: string[];
     textPrompt?: string;
+    baseItems?: LoggedFoodItem[];
+    adjustmentPrompt?: string;
     contextParams?: AiContextParams;
   }) => Promise<{ jobId: string }>;
 }
@@ -408,6 +410,8 @@ export function AddMealDrawer({
 
   const hadInitialItemsRef = useRef(false);
   const lastOpenedKeyRef = useRef<string>('');
+  const pendingAdjustReplaceRef = useRef(false);
+  const appliedAdjustJobIdsRef = useRef<Set<string>>(new Set());
   const slotBgProcessingJob =
     opened && mealSlot
       ? backgroundAiJobs.find(
@@ -493,6 +497,7 @@ export function AddMealDrawer({
         setPreferenceFeedbackText('');
         setEditingItemId(null);
         setAiSummary(null);
+        pendingAdjustReplaceRef.current = false;
         if (initialTab === 'barcode') {
           barcodeStandaloneRef.current = true;
           setTabHistory(['hub']);
@@ -506,13 +511,52 @@ export function AddMealDrawer({
         }
         stopVoiceRecording(false);
       } else {
+        const unackedCompletedAdjust = backgroundAiJobs.find(
+          (j) =>
+            j.status === 'completed' &&
+            !j.acknowledged &&
+            (j.mode === 'adjust' || j.replaceMealItems) &&
+            j.mealSlotId === mealSlot.id &&
+            (!selectedDate || j.date === selectedDate) &&
+            !appliedAdjustJobIdsRef.current.has(j.id)
+        );
         if (existingEntry?.items && existingEntry.items.length > 0) {
-          // מיזוג אוטומטי כשמשימת AI ברקע מסתיימת בזמן שהחלונית נשארה פתוחה
-          setItems((prev) => {
-            const existingIds = new Set(prev.map((p) => p.id));
-            const incomingNew = existingEntry.items.filter((i) => !existingIds.has(i.id));
-            return incomingNew.length > 0 ? [...prev, ...incomingNew] : prev;
-          });
+          if (unackedCompletedAdjust || pendingAdjustReplaceRef.current) {
+            if (unackedCompletedAdjust) {
+              appliedAdjustJobIdsRef.current.add(unackedCompletedAdjust.id);
+            }
+            pendingAdjustReplaceRef.current = false;
+            setItems((prev) => {
+              const prevIds = new Set(prev.map((p) => p.id));
+              const differs =
+                prev.length !== existingEntry.items.length ||
+                existingEntry.items.some((i) => !prevIds.has(i.id));
+              if (differs) {
+                setPreCorrectionItems((old) => old ?? [...prev]);
+                return [...existingEntry.items];
+              }
+              return prev;
+            });
+            const nextNames = new Set(
+              existingEntry.items.map((it) => it.name.trim().toLowerCase())
+            );
+            setSuggestedExtras((prev) =>
+              prev.filter((ex) => !nextNames.has(ex.name.trim().toLowerCase()))
+            );
+            setAiSummary({
+              msg: 'הארוחה תוקנה ועודכנה ברקע בהצלחה ✨',
+              engine: unackedCompletedAdjust?.engine,
+              isFallback: unackedCompletedAdjust?.isAiFallback,
+              fallbackReason: unackedCompletedAdjust?.fallbackReason,
+            });
+          } else {
+            // מיזוג אוטומטי כשמשימת AI ברקע מסתיימת בזמן שהחלונית נשארה פתוחה
+            setItems((prev) => {
+              const existingIds = new Set(prev.map((p) => p.id));
+              const incomingNew = existingEntry.items.filter((i) => !existingIds.has(i.id));
+              return incomingNew.length > 0 ? [...prev, ...incomingNew] : prev;
+            });
+          }
         }
         if (existingEntry?.aiSuggestedExtras && existingEntry.aiSuggestedExtras.length > 0) {
           setSuggestedExtras((prev) => {
@@ -1595,9 +1639,33 @@ export function AddMealDrawer({
 
   const handleRunAiCorrection = async () => {
     const cleanPrompt = correctionText.trim();
-    if (!cleanPrompt || correctionLoading || items.length === 0) return;
+    if (!cleanPrompt || correctionLoading || isSlotBgProcessing || items.length === 0) return;
     stopCorrectionVoice(false);
     setCorrectionError(null);
+
+    // הרצת תיקון ברקע (תומך ביציאה מהחלונית / יציאה מהאפליקצייה + פוש + סנכרון חוזר אוטומטי!)
+    if (onStartBackgroundAiAnalysis && traineeId && selectedDate && mealSlot) {
+      const baseSnapshot = [...items];
+      setPreCorrectionItems(baseSnapshot);
+      pendingAdjustReplaceRef.current = true;
+      setCorrectionOpen(false);
+      setCorrectionText('');
+      setAiSummary(null);
+      await onStartBackgroundAiAnalysis({
+        traineeId,
+        date: selectedDate,
+        mealSlotId: mealSlot.id,
+        mealSlotName: mealSlot.name,
+        mode: 'adjust',
+        baseItems: baseSnapshot,
+        adjustmentPrompt: cleanPrompt,
+        contextParams,
+        imageDataUrl: allMealPhotos[0],
+        imageDataUrls: allMealPhotos.length > 0 ? allMealPhotos : undefined,
+      });
+      return;
+    }
+
     setCorrectionLoading(true);
     try {
       const res = await fetch('/api/ai/analyze-meal', {
@@ -1647,6 +1715,75 @@ export function AddMealDrawer({
     } finally {
       setCorrectionLoading(false);
     }
+  };
+
+  const renderAiProgressCard = () => {
+    if (!isSlotBgProcessing && !aiLoading) return null;
+    const isAdjusting = slotBgProcessingJob?.mode === 'adjust';
+    return (
+      <div
+        style={{
+          padding: '12px 14px',
+          borderRadius: 16,
+          background: 'var(--fill-1)',
+          border: '1px solid var(--line-2)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Loader2 size={16} color="var(--accent-volt)" className="spot-spinner" />
+            <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent-volt)' }}>
+              {isAdjusting
+                ? 'מתקן ומחשב מחדש את הארוחה...'
+                : progressTicker.currentStepText}
+            </span>
+          </div>
+          <span
+            className="num-mono"
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              padding: '2px 8px',
+              borderRadius: 999,
+              background: 'var(--surface-2)',
+              color: 'var(--accent-volt)',
+            }}
+          >
+            {progressTicker.formattedElapsed}
+          </span>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+          {isAdjusting ? (
+            <>
+              מעדכן את רכיבי הארוחה לפי בקשתך. <b>אפשר לצאת מהחלונית או אפילו לסגור את האפליקצייה</b> — התיקון ממשיך בשרת ויחליף את הרכיבים אוטומטית.
+            </>
+          ) : (
+            <>
+              ניתוח AI מתקדם עשוי לקחת 1–3 דקות. <b>אפשר לצאת מהחלונית או אפילו לסגור בינתיים</b> — הפענוח ממשיך ברקע והפריטים יסתנכרנו אוטומטית ליומן הארוחות שלך.
+            </>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="btn-surface"
+          style={{
+            alignSelf: 'flex-start',
+            padding: '6px 12px',
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: 'pointer',
+            borderColor: 'var(--line-2)',
+            color: 'var(--accent-volt)',
+          }}
+        >
+          אפשר לצאת בינתיים — סגור חלונית והמשך רגיל ←
+        </button>
+      </div>
+    );
   };
 
   const trimmedQuery = searchQuery.trim();
@@ -4232,60 +4369,7 @@ export function AddMealDrawer({
               );
             })()}
 
-            {(isSlotBgProcessing || aiLoading) && (
-              <div
-                style={{
-                  padding: '12px 14px',
-                  borderRadius: 14,
-                  background: 'var(--fill-1)',
-                  border: '1px solid var(--line-2)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Loader2 size={16} color="var(--accent-volt)" className="spot-spinner" />
-                    <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent-volt)' }}>
-                      {progressTicker.currentStepText}
-                    </span>
-                  </div>
-                  <span
-                    className="num-mono"
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 800,
-                      padding: '2px 8px',
-                      borderRadius: 999,
-                      background: 'var(--surface-2)',
-                      color: 'var(--accent-volt)',
-                    }}
-                  >
-                    {progressTicker.formattedElapsed}
-                  </span>
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.45 }}>
-                  ניתוח AI מתקדם עשוי לקחת 1–3 דקות. <b>אפשר לצאת מהחלונית או אפילו לסגור בינתיים</b> — הפענוח ממשיך ברקע והפריטים יסתנכרנו אוטומטית ליומן הארוחות שלך.
-                </div>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="btn-surface"
-                  style={{
-                    alignSelf: 'flex-start',
-                    padding: '6px 12px',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    borderColor: 'var(--line-2)',
-                    color: 'var(--accent-volt)',
-                  }}
-                >
-                  אפשר לצאת בינתיים — סגור חלונית והמשך רגיל ←
-                </button>
-              </div>
-            )}
+            {!heroScreen && renderAiProgressCard()}
 
             {slotBgFailedJob && !aiSummary && !isSlotBgProcessing && (
               <div
@@ -4456,6 +4540,8 @@ export function AddMealDrawer({
                     ))}
                   </div>
                 </div>
+
+                {heroScreen && renderAiProgressCard()}
 
                 {heroScreen && (
                 <div
@@ -5046,6 +5132,7 @@ export function AddMealDrawer({
             <button
               type="button"
               className="glass"
+              disabled={isSlotBgProcessing || correctionLoading}
               onClick={() => setCorrectionOpen(true)}
               style={{
                 height: 56,
@@ -5059,11 +5146,21 @@ export function AddMealDrawer({
                 fontFamily: 'inherit',
                 fontSize: 15,
                 fontWeight: 600,
-                cursor: 'pointer',
+                cursor: isSlotBgProcessing ? 'wait' : 'pointer',
+                opacity: isSlotBgProcessing ? 0.65 : 1,
               }}
             >
-              <Wand2 size={16} />
-              תקן
+              {isSlotBgProcessing && slotBgProcessingJob?.mode === 'adjust' ? (
+                <>
+                  <Loader2 size={16} className="spot-spinner" />
+                  <span>מתקן...</span>
+                </>
+              ) : (
+                <>
+                  <Wand2 size={16} />
+                  <span>תקן</span>
+                </>
+              )}
             </button>
           </div>
         )}

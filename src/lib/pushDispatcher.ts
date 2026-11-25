@@ -63,6 +63,18 @@ export function shouldNotifyUnifiedAiCompletion(
   return Date.now() - updatedMs > 40_000;
 }
 
+/**
+ * מאשר שליחת פוש למתאמן כאשר מאמן ערך/שינה עבורו ארוחה או תפריט,
+ * כל עוד המתאמן אישר התראות פוש במכשיר ולא כיבה התראת שינויי מאמן.
+ */
+export function shouldNotifyTraineeCoachMealChange(
+  trainee: TraineeProfile
+): boolean {
+  if (!hasAnyRegisteredPushTarget(trainee)) return false;
+  if (trainee.pushPreferences?.coachMealChanges === false) return false;
+  return true;
+}
+
 export async function dispatchPushToTargets(params: {
   fcmTokens?: TraineeFcmTokenEntry[];
   webPushSubscriptions?: TraineeWebPushSubscriptionEntry[];

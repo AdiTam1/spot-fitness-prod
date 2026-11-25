@@ -94,6 +94,7 @@ export function TraineeProfileView({
   const [prefs, setPrefs] = useState<TraineePushPreferences>({
     aiMealReady: trainee.pushPreferences?.aiMealReady !== false,
     coachMessages: trainee.pushPreferences?.coachMessages !== false,
+    coachMealChanges: trainee.pushPreferences?.coachMealChanges !== false,
   });
   const [pushBusy, setPushBusy] = useState(false);
   const [pushFeedback, setPushFeedback] = useState<{
@@ -109,6 +110,7 @@ export function TraineeProfileView({
     setPrefs({
       aiMealReady: trainee.pushPreferences?.aiMealReady !== false,
       coachMessages: trainee.pushPreferences?.coachMessages !== false,
+      coachMealChanges: trainee.pushPreferences?.coachMealChanges !== false,
     });
   }, [trainee.pushPreferences]);
 
@@ -1192,6 +1194,38 @@ export function TraineeProfileView({
                 void handleUpdatePushPrefs({
                   ...prefs,
                   coachMessages: e.currentTarget.checked,
+                })
+              }
+            />
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+              background: 'var(--bg-surface-2)',
+              padding: '10px 12px',
+              borderRadius: 20,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700 }}>
+                שינויים בארוחות ע״י המאמן
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-2)' }}>
+                שולח התראה מיד כשהמאמן מוסיף, עורך או מעדכן לך ארוחה
+              </div>
+            </div>
+            <Switch
+              checked={prefs.coachMealChanges !== false}
+              disabled={isCoachPreview}
+              color="orange"
+              onChange={(e) =>
+                void handleUpdatePushPrefs({
+                  ...prefs,
+                  coachMealChanges: e.currentTarget.checked,
                 })
               }
             />

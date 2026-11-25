@@ -12,8 +12,8 @@ function roundCal(n: number): number {
   return Math.max(0, Math.min(950, Math.round(Number(n) || 0)));
 }
 
-function roundMacro1(n: number): number {
-  return Math.round(Math.max(0, Math.min(100, Number(n) || 0)) * 10) / 10;
+function roundMacro2(n: number): number {
+  return Math.round(Math.max(0, Math.min(100, Number(n) || 0)) * 100) / 100;
 }
 
 /**
@@ -27,9 +27,9 @@ export function computePer100gFromServing(
   const factor = 100 / safeGrams;
   return {
     calories: roundCal((Number(servingMacros.calories) || 0) * factor),
-    protein: roundMacro1((Number(servingMacros.protein) || 0) * factor),
-    carbs: roundMacro1((Number(servingMacros.carbs) || 0) * factor),
-    fat: roundMacro1((Number(servingMacros.fat) || 0) * factor),
+    protein: roundMacro2((Number(servingMacros.protein) || 0) * factor),
+    carbs: roundMacro2((Number(servingMacros.carbs) || 0) * factor),
+    fat: roundMacro2((Number(servingMacros.fat) || 0) * factor),
   };
 }
 

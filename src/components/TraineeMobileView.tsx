@@ -186,10 +186,12 @@ interface TraineeMobileViewProps {
     date: string;
     mealSlotId: string;
     mealSlotName: string;
-    mode: 'photo' | 'text';
+    mode: 'photo' | 'text' | 'adjust';
     imageDataUrl?: string;
     imageDataUrls?: string[];
     textPrompt?: string;
+    baseItems?: LoggedFoodItem[];
+    adjustmentPrompt?: string;
     contextParams?: AiContextParams;
   }) => Promise<{ jobId: string }>;
   externalOpenMealRequest?: {

@@ -489,7 +489,8 @@ export interface PendingAiMealJob {
   date: string;
   mealSlotId: string;
   mealSlotName: string;
-  mode: 'photo' | 'text';
+  mode: 'photo' | 'text' | 'adjust';
+  replaceMealItems?: boolean;
   summaryHint?: string;
   photoDataUrls?: string[];
   status: 'processing' | 'completed' | 'failed';
@@ -536,6 +537,7 @@ export interface TraineeWebPushSubscriptionEntry {
 export interface TraineePushPreferences {
   aiMealReady: boolean;
   coachMessages: boolean;
+  coachMealChanges?: boolean;
 }
 
 export interface TraineePushHistoryEntry {

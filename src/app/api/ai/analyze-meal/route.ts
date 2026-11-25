@@ -36,6 +36,7 @@ import {
 import { normalizePendingAiJobs } from '@/lib/aiJobs';
 import {
   sendUnifiedPushToTrainee,
+  shouldNotifyTraineeCoachMealChange,
   shouldNotifyUnifiedAiCompletion,
   stripDeadPushTargetsFromTrainee,
 } from '@/lib/pushDispatcher';
@@ -384,20 +385,38 @@ function adjustMealFallback(
   adjustmentPrompt: string
 ): LoggedFoodItem[] {
   const cleanPrompt = adjustmentPrompt.trim();
-  const gramsOverride = cleanPrompt.match(/(\d+)\s*(?:גרם|ג'|ג׳|g)/i);
-  const withoutMatch = cleanPrompt.match(/בלי\s+([^\s,]+)/i);
+  const cleanLower = cleanPrompt.toLowerCase();
   let next = [...baseItems];
 
-  if (withoutMatch) {
-    const keyword = withoutMatch[1].toLowerCase();
-    next = next.filter((it) => !it.name.toLowerCase().includes(keyword));
+  // 1. הסרת פריטים לפי ניסוחים נפוצים: "בלי X", "ללא X", "הסר את X", "תוריד X", "לא אכלתי X", או "במקום X"
+  const removeMatches = Array.from(
+    cleanPrompt.matchAll(
+      /(?:בלי|ללא|הסר(?:\s+את)?|תוריד(?:\s+את)?|מחק(?:\s+את)?|לא\s+אכלתי(?:\s+את)?|במקום)\s+([^\s,.;]+)/gi
+    )
+  );
+  for (const m of removeMatches) {
+    const kw = (m[1] || '').toLowerCase();
+    if (kw.length >= 2) {
+      next = next.filter((it) => !it.name.toLowerCase().includes(kw));
+    }
   }
 
-  if (gramsOverride && next.length > 0) {
+  // גם זיהוי "X הוא בעצם Y" / "לא X אלא Y": הסר X
+  const replaceFromMatches = Array.from(
+    cleanPrompt.matchAll(/(?:ה?([^\s,.;]{2,})\s+הוא\s+בעצם|לא\s+([^\s,.;]{2,})\s+אלא)/gi)
+  );
+  for (const m of replaceFromMatches) {
+    const kw = (m[1] || m[2] || '').toLowerCase().replace(/^ה/, '');
+    if (kw.length >= 2) {
+      next = next.filter((it) => !it.name.toLowerCase().includes(kw));
+    }
+  }
+
+  const gramsOverride = cleanPrompt.match(/(\d+)\s*(?:גרם|ג'|ג׳|gr|g)/i);
+  if (gramsOverride && next.length > 0 && removeMatches.length === 0 && replaceFromMatches.length === 0) {
     const newGrams = sanitizeNumber(gramsOverride[1], 1, 5000, next[0].grams);
-    // התאם את הרכיב העיקרי (או הרכיב שמוזכר בטקסט)
     let targetIdx = next.findIndex((it) =>
-      cleanPrompt.toLowerCase().includes(it.name.toLowerCase().split(' ')[0])
+      cleanLower.includes(it.name.toLowerCase().split(' ')[0])
     );
     if (targetIdx < 0) targetIdx = 0;
     const target = next[targetIdx];
@@ -513,7 +532,7 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
         date: string;
         mealSlotId: string;
         mealSlotName: string;
-        mode?: 'photo' | 'text';
+        mode?: 'photo' | 'text' | 'adjust';
         summaryHint?: string;
       };
     };
@@ -626,20 +645,30 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
       }
 
       const startNowIso = new Date().toISOString();
+      const jobMode =
+        backgroundJob.mode === 'adjust'
+          ? 'adjust'
+          : backgroundJob.mode === 'text'
+          ? 'text'
+          : 'photo';
       authorizedBgJob = {
         id: sanitizeText(backgroundJob.jobId, 60),
         targetTraineeId: backgroundJob.traineeId,
         date: sanitizeText(backgroundJob.date, 20),
         mealSlotId: sanitizeText(backgroundJob.mealSlotId, 60),
         mealSlotName: sanitizeText(backgroundJob.mealSlotName, 60) || 'ארוחה',
-        mode: backgroundJob.mode === 'text' ? 'text' : 'photo',
-        summaryHint: sanitizeText(backgroundJob.summaryHint || textPrompt || '', 80) || undefined,
+        mode: jobMode,
+        replaceMealItems: jobMode === 'adjust',
+        summaryHint: sanitizeText(backgroundJob.summaryHint || adjustmentPrompt || textPrompt || '', 80) || undefined,
         status: 'processing',
         startedAt: startNowIso,
         lastHeartbeatAt: startNowIso,
-        stageText: hasRealImage
-          ? 'המשימה נרשמה בשרת — מכין תמונות למודל ה-AI...'
-          : 'המשימה נרשמה בשרת — פונה למודל ה-AI...',
+        stageText:
+          jobMode === 'adjust'
+            ? 'המשימה נרשמה בשרת — מעדכן ומתקן ארוחה...'
+            : hasRealImage
+            ? 'המשימה נרשמה בשרת — מכין תמונות למודל ה-AI...'
+            : 'המשימה נרשמה בשרת — פונה למודל ה-AI...',
         acknowledged: false,
       };
 
@@ -709,6 +738,7 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
       isAiFallback?: boolean;
       fallbackReason?: string;
       errorMsg?: string;
+      replaceItems?: boolean;
     }): Promise<PendingAiMealJob | undefined> => {
       if (!authorizedBgJob) return undefined;
       const nowIso = new Date().toISOString();
@@ -732,11 +762,19 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
         : [];
 
       const succeeded = Array.isArray(params.items) && params.items.length > 0;
+      const isReplace = Boolean(params.replaceItems || authorizedBgJob.mode === 'adjust');
       const finishedJob: PendingAiMealJob = {
         ...authorizedBgJob,
         status: succeeded ? 'completed' : 'failed',
+        replaceMealItems: isReplace,
         lastHeartbeatAt: nowIso,
-        stageText: succeeded ? 'הושלם וסונכרן ליומן' : 'הפענוח נכשל',
+        stageText: succeeded
+          ? isReplace
+            ? 'התיקון הושלם וסונכרן ליומן'
+            : 'הושלם וסונכרן ליומן'
+          : isReplace
+          ? 'תיקון הארוחה נכשל'
+          : 'הפענוח נכשל',
         completedAt: nowIso,
         engine: params.engine,
         isAiFallback: params.isAiFallback,
@@ -803,11 +841,14 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
                   ...existingLog.meals,
                   [finishedJob.mealSlotId]: {
                     ...existingMeal,
-                    items: [...existingMeal.items, ...params.items!],
-                    aiSuggestedExtras:
-                      pendingSuggestedExtras.length > 0
-                        ? pendingSuggestedExtras
-                        : existingMeal.aiSuggestedExtras,
+                    items: isReplace
+                      ? params.items!
+                      : [...existingMeal.items, ...params.items!],
+                    aiSuggestedExtras: isReplace
+                      ? undefined
+                      : pendingSuggestedExtras.length > 0
+                      ? pendingSuggestedExtras
+                      : existingMeal.aiSuggestedExtras,
                     photoDataUrl: sanitizedPhotos[0] || existingMeal.photoDataUrl,
                     photoDataUrls: mergedPhotos.length > 0 ? mergedPhotos : undefined,
                     photoNote:
@@ -849,8 +890,14 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
             );
           }
 
-          // 2. פוש למתאמן עצמו (רק אם יצא מהאפליקציה בזמן הטעינה)
-          if (shouldNotifyUnifiedAiCompletion(latestTrainee)) {
+          // 2. פוש למתאמן עצמו: אם מתאמן יצא בזמן טעינת AI, או אם המאמן עדכן לו ארוחה דרך AI
+          const isCoachActor =
+            sessionUser.role === 'coach' || sessionUser.role === 'admin';
+          const canSendTraineeAiPush = isCoachActor
+            ? shouldNotifyTraineeCoachMealChange(latestTrainee)
+            : shouldNotifyUnifiedAiCompletion(latestTrainee);
+
+          if (canSendTraineeAiPush) {
             const dishNames = itemsList.map((i) => i.name).filter(Boolean);
             const dishLabel =
               dishNames.length === 0
@@ -867,34 +914,62 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
               )
             );
 
+            const pushTitle = isCoachActor
+              ? `המאמן ${sessionUser.name} עדכן את ${finishedJob.mealSlotName} ✨`
+              : finishedJob.mode === 'adjust'
+              ? `תיקון ${finishedJob.mealSlotName} הושלם ✨`
+              : `זיהוי ${finishedJob.mealSlotName} הושלם ✨`;
+
+            const pushBody = isCoachActor
+              ? `${dishLabel} (${totalCalories} קלוריות)`
+              : finishedJob.mode === 'adjust'
+              ? `הארוחה עודכנה: "${dishLabel} (${totalCalories} קלוריות)"`
+              : `זיהוי הארוחה הושלם: "${dishLabel} (${totalCalories} קלוריות)"`;
+
             tasks.push(
               sendUnifiedPushToTrainee(latestTrainee, {
                 pushId: finishedJob.id,
-                title: `זיהוי ${finishedJob.mealSlotName} הושלם ✨`,
-                body: `זיהוי הארוחה הושלם: "${dishLabel} (${totalCalories} קלוריות)"`,
-                kind: 'ai-meal',
+                title: pushTitle,
+                body: pushBody,
+                kind: isCoachActor ? 'coach' : 'ai-meal',
                 screen: 'meal',
                 mealSlotId: finishedJob.mealSlotId,
                 date: finishedJob.date,
                 origin: request.nextUrl.origin,
               })
                 .then(async (sendRes) => {
-                  if (
-                    sendRes &&
-                    (sendRes.invalidFcmTokens.length > 0 ||
-                      sendRes.expiredWebEndpoints.length > 0)
-                  ) {
+                  const hasDead =
+                    sendRes.invalidFcmTokens.length > 0 ||
+                    sendRes.expiredWebEndpoints.length > 0;
+                  const recordCoachHist = isCoachActor && sendRes.sentCount > 0;
+                  if (hasDead || recordCoachHist) {
                     await updateServerDbState((prev) => ({
                       ...prev,
-                      trainees: prev.trainees.map((t) =>
-                        t.id === latestTrainee.id
-                          ? stripDeadPushTargetsFromTrainee(
-                              t,
-                              sendRes.invalidFcmTokens,
-                              sendRes.expiredWebEndpoints
-                            )
-                          : t
-                      ),
+                      trainees: prev.trainees.map((t) => {
+                        if (t.id !== latestTrainee.id) return t;
+                        const cleaned = stripDeadPushTargetsFromTrainee(
+                          t,
+                          sendRes.invalidFcmTokens,
+                          sendRes.expiredWebEndpoints
+                        );
+                        return recordCoachHist
+                          ? {
+                              ...cleaned,
+                              pushHistory: [
+                                {
+                                  id: finishedJob.id,
+                                  title: pushTitle,
+                                  body: pushBody,
+                                  sentAt: new Date().toISOString(),
+                                  sentByCoachName: sessionUser.name,
+                                  targetScreen: 'meal' as const,
+                                  targetMealSlotId: finishedJob.mealSlotId,
+                                },
+                                ...(cleaned.pushHistory || []),
+                              ].slice(0, 20),
+                            }
+                          : cleaned;
+                      }),
                     })).catch(() => {});
                   }
                 })
@@ -1042,22 +1117,26 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
       let geminiErrorMsg = '';
       if (apiKey) {
         const adjustInstruction = `אתה תזונאי קליני וספורט מומחה בישראל.
-המתאמן מבקש לתקן או לעדכן ארוחה שכבר פוענחה.
-מרכיבי הבסיס הקיימים כרגע (JSON):
+המתאמן מבקש לתקן, להחליף, להסיר או לעדכן ארוחה שכבר פוענחה.
+מרכיבי הבסיס הקיימים כרגע בארוחה (JSON):
 ${JSON.stringify(cleanBaseItems)}
 
 ${cleanAdjustment ? `הוראת התיקון של המתאמן (עובדה מחייבת — עדיפות עליונה!): "${cleanAdjustment}"` : ''}
 ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : ''}${customFoodsHint}
 
-כללי חובה בעת תיקון:
-1. שמור את כל המרכיבים שהמתאמן לא ביקש לשנות/להסיר עם השם, הגרמים והמאקרו המקוריים שלהם ללא פגיעה.
-2. אם המתאמן ציין שם מאכל מתוקן, שיטת הכנה (אפוי/מבושל/מטוגן) או משקל מפורש בגרמים — אלה נתוני אמת נעולים! לעולם אל תחליף או תשנה אותם למספר אחר.
-3. לכל פריט חדש או מעודכן, ספק "per100g" לפי מצב ההכנה המוכן והמדויק בישראל (כגון אורז מבושל ~130 קק"ל, כבד עוף אפוי ~172 קק"ל, שניצל אפוי ~165 קק"ל; במשקאות אלכוהוליים כגון יין ~83-85 קק"ל כולל תרומת אלכוהול ~7 קק"ל/גרם), וחשב את "macros" לפי grams * per100g / 100. לנוזלים מימיים/יין/בירה שדווחו במ"ל או בגרם: משקל המשתמש הוא נטו ללא הכוס (1 מ"ל ≈ 1 גרם).
-4. אם המתאמן ביקש להסיר פריט — הסר אותו לחלוטין מהמערך.
+כללי חובה להבנת כוונת התיקון (החלפה / הסרה / שימור):
+1. אתה מחזיר במערך "items" את **הרשימה המלאה והסופית של כל הארוחה אחרי התיקון** (לעולם אל תשכפל פריטים!).
+2. **החלפה ("הסלק הוא בעצם כבד", "במקום X זה Y", "לא X אלא Y", "שנה שניצל מטוגן לאפוי"):** מחק לחלוטין את הפריט הישן (X) והחזר במקומו רק את הפריט המתוקן (Y). אסור בהחלט להחזיר גם את X וגם את Y!
+3. **הסרה ("בלי X", "תוריד X", "הסר X", "לא אכלתי X"):** מחק את X לחלוטין מהמערך.
+4. **עדכון כמות ("האורז הוא 120 גרם", "רק חצי שניצל"):** עדכן רק את הגרמים, היחידה והמאקרו של הפריט הקיים — אל תיצור שורה חדשה נוספת!
+5. **הוספה ("תוסיף גם כף שמן", "יש בנוסף..."):** שמור את הקיימים והוסף רק את התוספת המבוקשת.
+6. **כתיבת רשימה מלאה מחדש ("אכלתי רק X ו-Y", "זה בעצם A, B ו-C"):** השאר אך ורק את המרכיבים שתוארו כעת והסר כל פריט ישן שאינו תואם.
+7. אם המתאמן ציין שם מאכל מתוקן, שיטת הכנה (אפוי/מבושל/מטוגן) או משקל מפורש בגרמים — אלה נתוני אמת נעולים! לעולם אל תשנה אותם.
+8. לכל פריט חדש או מעודכן, ספק "per100g" לפי מצב ההכנה המוכן והמדויק בישראל (כגון אורז מבושל ~130 קק"ל, כבד עוף אפוי ~172 קק"ל, שניצל אפוי ~165 קק"ל; במשקאות אלכוהוליים כגון יין ~83-85 קק"ל כולל תרומת אלכוהול ~7 קק"ל/גרם), וחשב את "macros" לפי grams * per100g / 100.
 
 החזר JSON תקני בלבד:
 {
-  "summary": "סיכום קצר בעברית של מה שתוקן",
+  "summary": "סיכום קצר בעברית של מה הוסר, מה הוחלף ומה נשאר",
   "items": [
     {
       "name": "שם המאכל בעברית",
@@ -1076,7 +1155,16 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
           parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
         });
 
-        const res = await callGeminiStructured(apiKey, parts);
+        const res = await callGeminiStructured(apiKey, parts, {
+          perAttemptTimeoutMs: 32_000,
+          totalBudgetMs: 95_000,
+          shouldCancel: checkBgJobCancelled,
+          onAttemptModel: (m) =>
+            updateBgJobStage(`מתקן את הארוחה מול מודל ${m}...`),
+        });
+        if (res.cancelled) {
+          return NextResponse.json({ cancelled: true, items: [] });
+        }
         if (res.parsed && Array.isArray(res.parsed.items) && res.parsed.items.length > 0) {
           const { groundAndNormalizeAiItems } = await import('@/lib/aiFoodGrounding');
           const rawMapped = mapRawGeminiItems(
@@ -1088,6 +1176,12 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
             rawMapped,
             priorityCustomCatalog
           );
+          const syncedJob = await syncAnalyzeResultToServer({
+            items,
+            engine: res.modelName,
+            isAiFallback: false,
+            replaceItems: true,
+          });
           return NextResponse.json({
             items,
             summary:
@@ -1095,6 +1189,7 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
               'הארוחה עודכנה בהצלחה לפי בקשתך',
             engine: res.modelName,
             isAiFallback: false,
+            syncedJob,
           });
         }
         geminiErrorMsg = res.errorMsg || 'מודל Gemini לא החזיר תוצאה';
@@ -1113,13 +1208,31 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
         })
       );
 
-      return NextResponse.json({
-        items: adjusted,
-        summary: `הארוחה הותאמה דטרמיניסטית (${adjusted.length} מרכיבים).`,
-        engine: 'smart-hebrew-builtin',
-        isAiFallback: true,
-        fallbackReason,
+      if (adjusted.length > 0) {
+        const syncedJob = await syncAnalyzeResultToServer({
+          items: adjusted,
+          engine: 'smart-hebrew-builtin',
+          isAiFallback: true,
+          fallbackReason,
+          replaceItems: true,
+        });
+        return NextResponse.json({
+          items: adjusted,
+          summary: `הארוחה הותאמה דטרמיניסטית (${adjusted.length} מרכיבים).`,
+          engine: 'smart-hebrew-builtin',
+          isAiFallback: true,
+          fallbackReason,
+          syncedJob,
+        });
+      }
+
+      const errMsg = `לא הצלחנו לעדכן את הארוחה (${fallbackReason}).`;
+      const syncedJob = await syncAnalyzeResultToServer({
+        items: [],
+        errorMsg: errMsg,
+        replaceItems: true,
       });
+      return NextResponse.json({ error: errMsg, syncedJob }, { status: 422 });
     }
 
     // =========================================================================

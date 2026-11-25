@@ -1659,14 +1659,17 @@ export default function HomePage() {
     date: string;
     mealSlotId: string;
     mealSlotName: string;
-    mode: 'photo' | 'text';
+    mode: 'photo' | 'text' | 'adjust';
     imageDataUrl?: string;
     imageDataUrls?: string[];
     textPrompt?: string;
+    baseItems?: LoggedFoodItem[];
+    adjustmentPrompt?: string;
     contextParams?: AiContextParams;
   }): Promise<{ jobId: string }> => {
     const jobId = `aijob-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const nowIso = new Date().toISOString();
+    const isAdjust = payload.mode === 'adjust';
     const startedJob: PendingAiMealJob = {
       id: jobId,
       targetTraineeId: payload.traineeId,
@@ -1674,14 +1677,16 @@ export default function HomePage() {
       mealSlotId: payload.mealSlotId,
       mealSlotName: payload.mealSlotName,
       mode: payload.mode,
-      summaryHint: payload.textPrompt?.slice(0, 70),
+      replaceMealItems: isAdjust,
+      summaryHint: (payload.adjustmentPrompt || payload.textPrompt || '').slice(0, 70),
       status: 'processing',
       startedAt: nowIso,
       lastHeartbeatAt: nowIso,
-      stageText:
-        payload.mode === 'photo'
-          ? 'מעלה תמונות ומפעיל פענוח בשרת...'
-          : 'שולח תיאור ארוחה למודל ה-AI...',
+      stageText: isAdjust
+        ? 'מעביר בקשת תיקון לעיבוד בשרת...'
+        : payload.mode === 'photo'
+        ? 'מעלה תמונות ומפעיל פענוח בשרת...'
+        : 'שולח תיאור ארוחה למודל ה-AI...',
       acknowledged: false,
     };
 
@@ -1697,10 +1702,13 @@ export default function HomePage() {
           headers: { 'Content-Type': 'application/json' },
           signal: abortController.signal,
           body: JSON.stringify({
-            mode: 'analyze',
+            mode: isAdjust ? 'adjust-meal' : 'analyze',
             imageDataUrl: payload.imageDataUrl,
             imageDataUrls: payload.imageDataUrls,
             textPrompt: payload.textPrompt,
+            baseItems: payload.baseItems,
+            adjustmentPrompt: payload.adjustmentPrompt,
+            traineeId: payload.traineeId,
             contextParams: payload.contextParams,
             backgroundJob: {
               jobId,
@@ -1709,7 +1717,7 @@ export default function HomePage() {
               mealSlotId: payload.mealSlotId,
               mealSlotName: payload.mealSlotName,
               mode: payload.mode,
-              summaryHint: payload.textPrompt?.slice(0, 70),
+              summaryHint: (payload.adjustmentPrompt || payload.textPrompt || '').slice(0, 70),
             },
           }),
         });
@@ -1728,12 +1736,13 @@ export default function HomePage() {
                     status: 'completed',
                     completedAt: new Date().toISOString(),
                     lastHeartbeatAt: new Date().toISOString(),
-                    stageText: 'הושלם וסונכרן ליומן',
+                    stageText: isAdjust ? 'התיקון הושלם וסונכרן ליומן' : 'הושלם וסונכרן ליומן',
                     itemsCount: data.items.length,
                     engine: data.engine,
                     isAiFallback: Boolean(data.isAiFallback),
                     fallbackReason: data.fallbackReason,
                     autoSyncedToLog: true,
+                    replaceMealItems: isAdjust,
                   }
                 : j
             )

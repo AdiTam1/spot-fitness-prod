@@ -44,6 +44,13 @@ import {
   detectTraineeActivityEvents,
   notifySubscribedCoachesForEvents,
 } from '@/lib/coachAlertEngine';
+import {
+  buildPlanMealChangeSummary,
+  detectCoachChangedLoggedMeals,
+  detectCoachChangedPlanMeals,
+  dispatchCoachMealChangePushes,
+  type CoachMealPushDispatchItem,
+} from '@/lib/traineeMealPushNotifier';
 import { DEFAULT_TEMPLATES, getTodayIso } from '@/data/israeliFoodCatalog';
 import { normalizePendingAiJobs } from '@/lib/aiJobs';
 import { diagnoseSupabaseError } from '@/lib/supabase';
@@ -130,10 +137,15 @@ function mergeLogsPreservingPendingAi(
     const clientDay = merged[job.date] || existing.logs[job.date];
     const clientMeal = clientDay?.meals?.[job.mealSlotId];
     const clientItemIds = new Set((clientMeal?.items || []).map((i) => i.id));
+    const isReplaceJob = Boolean(job.replaceMealItems || job.mode === 'adjust');
     const missingFromClient = serverMeal.items.filter(
       (i) => !clientItemIds.has(i.id)
     );
-    if (missingFromClient.length > 0 && clientDay) {
+    const clientDiffersFromReplace =
+      isReplaceJob &&
+      ((clientMeal?.items?.length || 0) !== serverMeal.items.length ||
+        missingFromClient.length > 0);
+    if ((clientDiffersFromReplace || (!isReplaceJob && missingFromClient.length > 0)) && clientDay) {
       merged[job.date] = {
         ...clientDay,
         meals: {
@@ -141,9 +153,12 @@ function mergeLogsPreservingPendingAi(
           [job.mealSlotId]: {
             ...(clientMeal || serverMeal),
             mealTime: clientMeal?.mealTime || serverMeal.mealTime,
-            items: [...(clientMeal?.items || []), ...missingFromClient],
-            aiSuggestedExtras:
-              clientMeal?.aiSuggestedExtras ?? serverMeal.aiSuggestedExtras,
+            items: isReplaceJob
+              ? [...serverMeal.items]
+              : [...(clientMeal?.items || []), ...missingFromClient],
+            aiSuggestedExtras: isReplaceJob
+              ? undefined
+              : clientMeal?.aiSuggestedExtras ?? serverMeal.aiSuggestedExtras,
             photoDataUrl: clientMeal?.photoDataUrl || serverMeal.photoDataUrl,
             photoDataUrls:
               clientMeal?.photoDataUrls && clientMeal.photoDataUrls.length > 0
@@ -1544,19 +1559,47 @@ async function handleDataPost(
         );
       }
 
+      const prevTemplate =
+        dayType === 'workout' ? target.workoutTemplate : target.restTemplate;
+      const changedPlanSlots = detectCoachChangedPlanMeals(
+        prevTemplate,
+        updatedTemplate
+      );
+      let updatedTraineeSnapshot: TraineeProfile | undefined;
+
       await updateServerDbState((prev) => ({
         ...prev,
         trainees: prev.trainees.map((t) => {
           if (t.id !== traineeId) return t;
-          return {
+          const nextT: TraineeProfile = {
             ...t,
             tolerancePercent,
             ...(dayType === 'workout'
               ? { workoutTemplate: updatedTemplate }
               : { restTemplate: updatedTemplate }),
           };
+          updatedTraineeSnapshot = nextT;
+          return nextT;
         }),
       }));
+
+      if (changedPlanSlots.length > 0 && updatedTraineeSnapshot) {
+        const pushTask = dispatchCoachMealChangePushes([
+          {
+            trainee: updatedTraineeSnapshot,
+            coachName: session.name,
+            title: `המאמן ${session.name} עדכן את התפריט שלך ✨`,
+            body: buildPlanMealChangeSummary(changedPlanSlots, dayType),
+            screen: 'journal',
+            origin: request.nextUrl.origin,
+          },
+        ]);
+        try {
+          waitUntil(pushTask);
+        } catch {
+          // ignore outside Vercel lifecycle
+        }
+      }
       return NextResponse.json({ ok: true });
     }
 
@@ -1574,43 +1617,87 @@ async function handleDataPost(
         );
       }
 
+      let prevSnapshot: TraineeProfile | undefined;
+      let nextSnapshot: TraineeProfile | undefined;
+
       await updateServerDbState((prev) => ({
         ...prev,
-        trainees: prev.trainees.map((t) =>
-          t.id === traineeInput.id
-            ? {
-                ...t,
-                name: sanitizeText(traineeInput.name, 80) || t.name,
-                logs: mergeLogsPreservingPendingAi(t, traineeInput.logs),
-                currentWeight: traineeInput.currentWeight,
-                targetWeight:
-                  traineeInput.targetWeight || t.targetWeight,
-                weightHistory: traineeInput.weightHistory,
-                measurementsHistory:
-                  traineeInput.measurementsHistory ||
-                  t.measurementsHistory,
-                onboarding: traineeInput.onboarding || t.onboarding,
-                favoriteFoodIds: traineeInput.favoriteFoodIds,
-                mealCardShortcuts:
-                  traineeInput.mealCardShortcuts !== undefined
-                    ? sanitizeMealShortcuts(traineeInput.mealCardShortcuts)
-                    : t.mealCardShortcuts,
-                savedMeals: Array.isArray(traineeInput.savedMeals)
-                  ? traineeInput.savedMeals.slice(0, 120)
-                  : t.savedMeals,
-                customServingTools: Array.isArray(traineeInput.customServingTools)
-                  ? sanitizeServingTools(traineeInput.customServingTools)
-                  : t.customServingTools,
-                customFoodUnits: Array.isArray(traineeInput.customFoodUnits)
-                  ? sanitizeCustomUnits(traineeInput.customFoodUnits)
-                  : t.customFoodUnits,
-                recentContextChips: Array.isArray(traineeInput.recentContextChips)
-                  ? sanitizeQuickChips(traineeInput.recentContextChips, 'user', 60)
-                  : t.recentContextChips,
-              }
-            : t
-        ),
+        trainees: prev.trainees.map((t) => {
+          if (t.id !== traineeInput.id) return t;
+          prevSnapshot = t;
+          const nextT: TraineeProfile = {
+            ...t,
+            name: sanitizeText(traineeInput.name, 80) || t.name,
+            logs: mergeLogsPreservingPendingAi(t, traineeInput.logs),
+            currentWeight: traineeInput.currentWeight,
+            targetWeight:
+              traineeInput.targetWeight || t.targetWeight,
+            weightHistory: traineeInput.weightHistory,
+            measurementsHistory:
+              traineeInput.measurementsHistory ||
+              t.measurementsHistory,
+            onboarding: traineeInput.onboarding || t.onboarding,
+            favoriteFoodIds: traineeInput.favoriteFoodIds,
+            mealCardShortcuts:
+              traineeInput.mealCardShortcuts !== undefined
+                ? sanitizeMealShortcuts(traineeInput.mealCardShortcuts)
+                : t.mealCardShortcuts,
+            savedMeals: Array.isArray(traineeInput.savedMeals)
+              ? traineeInput.savedMeals.slice(0, 120)
+              : t.savedMeals,
+            customServingTools: Array.isArray(traineeInput.customServingTools)
+              ? sanitizeServingTools(traineeInput.customServingTools)
+              : t.customServingTools,
+            customFoodUnits: Array.isArray(traineeInput.customFoodUnits)
+              ? sanitizeCustomUnits(traineeInput.customFoodUnits)
+              : t.customFoodUnits,
+            recentContextChips: Array.isArray(traineeInput.recentContextChips)
+              ? sanitizeQuickChips(traineeInput.recentContextChips, 'user', 60)
+              : t.recentContextChips,
+          };
+          nextSnapshot = nextT;
+          return nextT;
+        }),
       }));
+
+      if (prevSnapshot && nextSnapshot) {
+        const mealChanges = detectCoachChangedLoggedMeals(
+          prevSnapshot,
+          nextSnapshot.logs
+        );
+        if (mealChanges.length > 0) {
+          const primary = mealChanges[0];
+          const title =
+            mealChanges.length === 1
+              ? `המאמן ${session.name} עדכן את ${primary.mealSlotName} ✨`
+              : `המאמן ${session.name} עדכן ${mealChanges.length} ארוחות שלך ✨`;
+          const bodyText =
+            mealChanges.length === 1
+              ? `${primary.summaryText}`
+              : `${mealChanges
+                  .slice(0, 2)
+                  .map((c) => c.mealSlotName)
+                  .join(', ')}${mealChanges.length > 2 ? ` ועוד ${mealChanges.length - 2}` : ''}`;
+
+          const pushTask = dispatchCoachMealChangePushes([
+            {
+              trainee: nextSnapshot,
+              coachName: session.name,
+              title,
+              body: bodyText,
+              screen: 'meal',
+              mealSlotId: primary.mealSlotId,
+              date: primary.date,
+              origin: request.nextUrl.origin,
+            },
+          ]);
+          try {
+            waitUntil(pushTask);
+          } catch {
+            // ignore outside Vercel lifecycle
+          }
+        }
+      }
       return NextResponse.json({ ok: true });
     }
 
@@ -2012,6 +2099,7 @@ async function handleDataPost(
       }
 
       let updatedCount = 0;
+      const bulkPushItems: CoachMealPushDispatchItem[] = [];
       await updateServerDbState((prev) => ({
         ...prev,
         trainees: prev.trainees.map((t) => {
@@ -2020,11 +2108,30 @@ async function handleDataPost(
           }
           updatedCount++;
           const cloned = JSON.parse(JSON.stringify(tpl));
-          return dayType === 'workout'
-            ? { ...t, workoutTemplate: cloned }
-            : { ...t, restTemplate: cloned };
+          const nextT =
+            dayType === 'workout'
+              ? { ...t, workoutTemplate: cloned }
+              : { ...t, restTemplate: cloned };
+          bulkPushItems.push({
+            trainee: nextT,
+            coachName: session.name,
+            title: `המאמן ${session.name} עדכן את התפריט שלך ✨`,
+            body: `הוקצה תפריט מעודכן (${tpl.name}) עבור ${dayType === 'workout' ? 'יום אימון' : 'יום מנוחה'}`,
+            screen: 'journal',
+            origin: request.nextUrl.origin,
+          });
+          return nextT;
         }),
       }));
+
+      if (bulkPushItems.length > 0) {
+        const pushTask = dispatchCoachMealChangePushes(bulkPushItems);
+        try {
+          waitUntil(pushTask);
+        } catch {
+          // ignore outside Vercel lifecycle
+        }
+      }
 
       return NextResponse.json({ ok: true, updatedCount });
     }

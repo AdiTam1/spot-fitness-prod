@@ -154,7 +154,13 @@ export function BackgroundAiSyncBanner({
                 </button>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: isOk ? 'var(--text)' : 'var(--danger-text)' }}>
-                    {isOk ? `הושלם וסונכרן ל${job.mealSlotName}` : `פענוח ה-AI ל${job.mealSlotName} נכשל`}
+                    {isOk
+                      ? job.mode === 'adjust' || job.replaceMealItems
+                        ? `התיקון הושלם וסונכרן ל${job.mealSlotName}`
+                        : `הושלם וסונכרן ל${job.mealSlotName}`
+                      : job.mode === 'adjust'
+                      ? `תיקון ה-AI ל${job.mealSlotName} נכשל`
+                      : `פענוח ה-AI ל${job.mealSlotName} נכשל`}
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
                     {isOk
@@ -262,7 +268,7 @@ export function BackgroundAiSyncBanner({
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 15, fontWeight: 700 }}>
               <Sparkles size={15} color="var(--accent)" />
-              מנתח ברקע · {activeProcessing.mealSlotName}
+              {activeProcessing.mode === 'adjust' ? 'מתקן ברקע' : 'מנתח ברקע'} · {activeProcessing.mealSlotName}
             </span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
               {onCancelJob && (

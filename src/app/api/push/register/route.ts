@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
       isInForeground?: boolean;
       aiMealReady?: boolean;
       coachMessages?: boolean;
+      coachMealChanges?: boolean;
     };
 
     const op = body?.op || '';
@@ -241,6 +242,10 @@ export async function POST(request: NextRequest) {
           typeof body.coachMessages === 'boolean'
             ? body.coachMessages
             : liveTrainee.pushPreferences?.coachMessages !== false,
+        coachMealChanges:
+          typeof body.coachMealChanges === 'boolean'
+            ? body.coachMealChanges
+            : liveTrainee.pushPreferences?.coachMealChanges !== false,
       };
       await updateServerDbState((prev) => ({
         ...prev,

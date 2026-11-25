@@ -118,9 +118,9 @@ function buildSanitizedCustomFood(
   } else {
     per100g = {
       calories: Math.round(sanitizeNumber(rawMacros.calories, 0, 950, 0)),
-      protein: Math.round(sanitizeNumber(rawMacros.protein, 0, 100, 0) * 10) / 10,
-      carbs: Math.round(sanitizeNumber(rawMacros.carbs, 0, 100, 0) * 10) / 10,
-      fat: Math.round(sanitizeNumber(rawMacros.fat, 0, 100, 0) * 10) / 10,
+      protein: Math.round(sanitizeNumber(rawMacros.protein, 0, 100, 0) * 100) / 100,
+      carbs: Math.round(sanitizeNumber(rawMacros.carbs, 0, 100, 0) * 100) / 100,
+      fat: Math.round(sanitizeNumber(rawMacros.fat, 0, 100, 0) * 100) / 100,
     };
     const optLabel = sanitizeText(body.defaultServingLabel ?? body.servingLabel, 50);
     const optGrams = sanitizeNumber(body.defaultServingGrams ?? body.servingGrams, 0, 5000, 0);

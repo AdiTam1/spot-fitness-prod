@@ -142,26 +142,32 @@ export function CustomFoodModal({
     }
   }, [opened, initialFood, initialName, initialBarcode, defaultScope, actorRole, traineeId]);
 
+  const parseDecimal = (raw: string) => {
+    const clean = raw.replace(',', '.').trim();
+    const num = Number(clean);
+    return Number.isFinite(num) && num >= 0 ? num : 0;
+  };
+
   const parsedMacros: MacroTargets = useMemo(
     () => ({
-      calories: Math.max(0, Number(caloriesInput) || 0),
-      protein: Math.max(0, Number(proteinInput) || 0),
-      carbs: Math.max(0, Number(carbsInput) || 0),
-      fat: Math.max(0, Number(fatInput) || 0),
+      calories: parseDecimal(caloriesInput),
+      protein: parseDecimal(proteinInput),
+      carbs: parseDecimal(carbsInput),
+      fat: parseDecimal(fatInput),
     }),
     [caloriesInput, proteinInput, carbsInput, fatInput]
   );
 
   const previewPer100g: MacroTargets = useMemo(() => {
     if (inputMode === 'serving') {
-      const g = Math.max(1, Number(servingGrams) || 100);
+      const g = Math.max(1, parseDecimal(servingGrams) || 100);
       return computePer100gFromServing(parsedMacros, g);
     }
     return {
       calories: Math.round(parsedMacros.calories),
-      protein: Math.round(parsedMacros.protein * 10) / 10,
-      carbs: Math.round(parsedMacros.carbs * 10) / 10,
-      fat: Math.round(parsedMacros.fat * 10) / 10,
+      protein: Math.round(parsedMacros.protein * 100) / 100,
+      carbs: Math.round(parsedMacros.carbs * 100) / 100,
+      fat: Math.round(parsedMacros.fat * 100) / 100,
     };
   }, [inputMode, parsedMacros, servingGrams]);
 
@@ -211,7 +217,7 @@ export function CustomFoodModal({
       return;
     }
     if (inputMode === 'serving') {
-      const sG = Number(servingGrams);
+      const sG = parseDecimal(servingGrams);
       if (!Number.isFinite(sG) || sG <= 0 || sG > 5000) {
         setError('יש להזין משקל מנה תקין בגרמים (1 עד 5000)');
         return;
@@ -225,8 +231,8 @@ export function CustomFoodModal({
         inputMode === 'serving' ? servingLabel.trim() || 'מנה' : optUnitLabel.trim();
       const resolvedServingGrams =
         inputMode === 'serving'
-          ? Math.round(Number(servingGrams) || 100)
-          : Math.round(Number(optUnitGrams) || 0);
+          ? Math.round(parseDecimal(servingGrams) || 100)
+          : Math.round(parseDecimal(optUnitGrams) || 0);
 
       const res = await fetch('/api/food/custom', {
         method: 'POST',
@@ -272,7 +278,7 @@ export function CustomFoodModal({
         content: { borderRadius: 24, maxWidth: 'calc(100vw - 24px)' },
       }}
     >
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <form noValidate onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <TextInput
           label="שם המוצר"
           placeholder="למשל: אורז לבן יסמין מבושל"
@@ -317,6 +323,7 @@ export function CustomFoodModal({
             <TextInput
               label="משקל המנה (גרם)"
               type="number"
+              step="any"
               inputMode="decimal"
               dir="ltr"
               min={1}
@@ -332,6 +339,7 @@ export function CustomFoodModal({
           <TextInput
             label={inputMode === 'serving' ? 'קלוריות במנה (קק״ל)' : 'קלוריות ל-100 גרם'}
             type="number"
+            step="any"
             inputMode="decimal"
             dir="ltr"
             min={0}
@@ -343,7 +351,7 @@ export function CustomFoodModal({
           <TextInput
             label={inputMode === 'serving' ? 'חלבון במנה (ג׳)' : 'חלבון ל-100 גרם'}
             type="number"
-            step="0.1"
+            step="any"
             inputMode="decimal"
             dir="ltr"
             min={0}
@@ -354,7 +362,7 @@ export function CustomFoodModal({
           <TextInput
             label={inputMode === 'serving' ? 'פחמימות במנה (ג׳)' : 'פחמימות ל-100 גרם'}
             type="number"
-            step="0.1"
+            step="any"
             inputMode="decimal"
             dir="ltr"
             min={0}
@@ -365,7 +373,7 @@ export function CustomFoodModal({
           <TextInput
             label={inputMode === 'serving' ? 'שומן במנה (ג׳)' : 'שומן ל-100 גרם'}
             type="number"
-            step="0.1"
+            step="any"
             inputMode="decimal"
             dir="ltr"
             min={0}
@@ -431,6 +439,7 @@ export function CustomFoodModal({
             <TextInput
               label="משקל היחידה (גרם)"
               type="number"
+              step="any"
               inputMode="decimal"
               dir="ltr"
               min={1}
