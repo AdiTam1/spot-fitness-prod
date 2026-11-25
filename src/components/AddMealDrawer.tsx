@@ -62,6 +62,7 @@ import {
   UserRole,
 } from '@/types/nutrition';
 import {
+  computePer100gFromServing,
   customFoodToCatalogItem,
 } from '@/lib/customFoods';
 import {
@@ -1143,6 +1144,7 @@ export function AddMealDrawer({
           : `${safeQuantity} × ${selectedUnitLabel}`,
       quantity: safeQuantity,
       grams: totalGrams,
+      per100g: { ...selectedFood.per100g },
       macros: calculatedMacros,
       source: sourceOverride,
     };
@@ -1524,42 +1526,49 @@ export function AddMealDrawer({
     }
   };
 
+  const rescaleLoggedItemForGrams = (
+    item: LoggedFoodItem,
+    safeGrams: number,
+    base: { grams: number; macros: { calories: number; protein: number; carbs: number; fat: number } }
+  ): LoggedFoodItem => {
+    const nextMacros = item.per100g
+      ? calculateMacrosForGrams(item.per100g, safeGrams)
+      : (() => {
+          const ratio = safeGrams / Math.max(1, base.grams);
+          return {
+            calories: Math.round(base.macros.calories * ratio),
+            protein: Math.round(base.macros.protein * ratio * 10) / 10,
+            carbs: Math.round(base.macros.carbs * ratio * 10) / 10,
+            fat: Math.round(base.macros.fat * ratio * 10) / 10,
+          };
+        })();
+    return {
+      ...item,
+      grams: safeGrams,
+      unitLabel: `${safeGrams} גרם`,
+      macros: nextMacros,
+    };
+  };
+
+  const ensureItemScaleBase = (item: LoggedFoodItem) => {
+    if (!itemScaleBaseRef.current[item.id]) {
+      itemScaleBaseRef.current[item.id] = {
+        grams: Math.max(1, item.grams),
+        macros: { ...item.macros },
+      };
+    }
+    return itemScaleBaseRef.current[item.id];
+  };
+
   const updateLoggedItemGrams = (id: string, newGrams: number) => {
     const safeGrams = Math.max(1, Math.min(5000, newGrams));
-    let updatedSnapshot: { grams: number; macros: { calories: number; protein: number; carbs: number; fat: number } } | null = null;
     setItems((prev) =>
       prev.map((item) => {
         if (item.id !== id) return item;
-        if (!itemScaleBaseRef.current[id]) {
-          itemScaleBaseRef.current[id] = {
-            grams: Math.max(1, item.grams),
-            macros: { ...item.macros },
-          };
-        }
-        const base = itemScaleBaseRef.current[id];
-        const nextMacros = item.per100g
-          ? calculateMacrosForGrams(item.per100g, safeGrams)
-          : (() => {
-              const ratio = safeGrams / Math.max(1, base.grams);
-              return {
-                calories: Math.round(base.macros.calories * ratio),
-                protein: Math.round(base.macros.protein * ratio * 10) / 10,
-                carbs: Math.round(base.macros.carbs * ratio * 10) / 10,
-                fat: Math.round(base.macros.fat * ratio * 10) / 10,
-              };
-            })();
-        updatedSnapshot = { grams: safeGrams, macros: nextMacros };
-        return {
-          ...item,
-          grams: safeGrams,
-          unitLabel: `${safeGrams} גרם`,
-          macros: nextMacros,
-        };
+        const base = ensureItemScaleBase(item);
+        return rescaleLoggedItemForGrams(item, safeGrams, base);
       })
     );
-    if (updatedSnapshot) {
-      itemScaleBaseRef.current[id] = updatedSnapshot;
-    }
     setItemFieldDrafts((prev) => {
       if (!prev[id]) return prev;
       const next = { ...prev };
@@ -1572,12 +1581,7 @@ export function AddMealDrawer({
     item: LoggedFoodItem,
     val: string | number
   ) => {
-    if (!itemScaleBaseRef.current[item.id]) {
-      itemScaleBaseRef.current[item.id] = {
-        grams: Math.max(1, item.grams),
-        macros: { ...item.macros },
-      };
-    }
+    const base = ensureItemScaleBase(item);
     setItemFieldDrafts((prev) => ({
       ...prev,
       [item.id]: { grams: val },
@@ -1585,28 +1589,10 @@ export function AddMealDrawer({
     const parsed = parseOptionalDecimal(val);
     if (parsed !== undefined && parsed > 0) {
       const safeGrams = Math.max(1, Math.min(5000, Math.round(parsed * 10) / 10));
-      const base = itemScaleBaseRef.current[item.id];
       setItems((prev) =>
-        prev.map((it) => {
-          if (it.id !== item.id) return it;
-          const nextMacros = it.per100g
-            ? calculateMacrosForGrams(it.per100g, safeGrams)
-            : (() => {
-                const ratio = safeGrams / Math.max(1, base.grams);
-                return {
-                  calories: Math.round(base.macros.calories * ratio),
-                  protein: Math.round(base.macros.protein * ratio * 10) / 10,
-                  carbs: Math.round(base.macros.carbs * ratio * 10) / 10,
-                  fat: Math.round(base.macros.fat * ratio * 10) / 10,
-                };
-              })();
-          return {
-            ...it,
-            grams: safeGrams,
-            unitLabel: `${safeGrams} גרם`,
-            macros: nextMacros,
-          };
-        })
+        prev.map((it) =>
+          it.id === item.id ? rescaleLoggedItemForGrams(it, safeGrams, base) : it
+        )
       );
     }
   };
@@ -1630,11 +1616,18 @@ export function AddMealDrawer({
         prev.map((it) => {
           if (it.id !== item.id) return it;
           const nextMacros = { ...it.macros, [field]: normalized };
+          const safeGrams = Math.max(1, it.grams);
           itemScaleBaseRef.current[item.id] = {
-            grams: Math.max(1, it.grams),
+            grams: safeGrams,
             macros: nextMacros,
           };
-          return { ...it, macros: nextMacros };
+          return {
+            ...it,
+            macros: nextMacros,
+            per100g: it.per100g
+              ? computePer100gFromServing(nextMacros, safeGrams)
+              : it.per100g,
+          };
         })
       );
     }
@@ -1692,24 +1685,41 @@ export function AddMealDrawer({
 
     const finalItems = items.map((it) => {
       const d = itemFieldDrafts[it.id];
-      if (!d) return it;
       const macroField = (
         k: 'calories' | 'protein' | 'carbs' | 'fat',
         current: number
       ) => {
-        if (d[k] === undefined) return current;
+        if (!d || d[k] === undefined) return current;
         const p = parseOptionalDecimal(d[k]);
         if (p === undefined || p < 0) return 0;
         return k === 'calories' ? Math.round(p) : Math.round(p * 10) / 10;
       };
+      const resolvedMacros = {
+        calories: macroField('calories', it.macros.calories),
+        protein: macroField('protein', it.macros.protein),
+        carbs: macroField('carbs', it.macros.carbs),
+        fat: macroField('fat', it.macros.fat),
+      };
+      const hasAnyMacro =
+        resolvedMacros.calories > 0 ||
+        resolvedMacros.protein > 0 ||
+        resolvedMacros.carbs > 0 ||
+        resolvedMacros.fat > 0;
+      const gSafe = Math.max(1, it.grams);
+      const rawPer100Factor = 100 / gSafe;
+      const fitsNormalBounds =
+        resolvedMacros.calories * rawPer100Factor <= 950 &&
+        resolvedMacros.protein * rawPer100Factor <= 100 &&
+        resolvedMacros.carbs * rawPer100Factor <= 100 &&
+        resolvedMacros.fat * rawPer100Factor <= 100;
+      const derivedPer100g =
+        !it.per100g && hasAnyMacro && fitsNormalBounds
+          ? computePer100gFromServing(resolvedMacros, gSafe)
+          : it.per100g;
       return {
         ...it,
-        macros: {
-          calories: macroField('calories', it.macros.calories),
-          protein: macroField('protein', it.macros.protein),
-          carbs: macroField('carbs', it.macros.carbs),
-          fat: macroField('fat', it.macros.fat),
-        },
+        ...(derivedPer100g ? { per100g: derivedPer100g } : {}),
+        macros: resolvedMacros,
       };
     });
 
@@ -4430,21 +4440,38 @@ export function AddMealDrawer({
                         const defaultUnit = food.units?.[0] || { label: '100 גרם', grams: 100 };
                         const macros = calculateMacrosForGrams(food.per100g, defaultUnit.grams);
                         const isFav = favoriteIds.includes(food.id);
+                        const isSelected = selectedFood?.id === food.id;
                         return (
                           <div
                             key={food.id}
                             style={{
-                              background: 'var(--bg-surface-2)',
-                              border: '1px solid var(--border-subtle)',
+                              background: isSelected ? 'var(--surface-3)' : 'var(--bg-surface-2)',
+                              border: isSelected
+                                ? '1px solid var(--sel-border)'
+                                : '1px solid var(--border-subtle)',
                               borderRadius: 14,
-                              padding: 12,
+                              padding: '6px 8px 6px 8px',
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center',
-                              gap: 8,
+                              gap: 6,
                             }}
                           >
-                            <div style={{ minWidth: 0, flex: 1 }}>
+                            <button
+                              type="button"
+                              onClick={() => void handleSelectCatalogFood(food, true)}
+                              style={{
+                                minWidth: 0,
+                                flex: 1,
+                                padding: '6px 4px',
+                                background: 'transparent',
+                                border: 'none',
+                                textAlign: 'right',
+                                cursor: 'pointer',
+                                color: 'inherit',
+                                fontFamily: 'inherit',
+                              }}
+                            >
                               <div
                                 style={{
                                   fontSize: 13,
@@ -4466,7 +4493,7 @@ export function AddMealDrawer({
                                 {defaultUnit.label} · {macros.calories} קק״ל
                                 {food.useCount ? ` · ×${food.useCount}` : ''}
                               </div>
-                            </div>
+                            </button>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                               <button
                                 type="button"
@@ -4484,23 +4511,7 @@ export function AddMealDrawer({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => {
-                                  trackFoodInteraction(food, 'picked', defaultUnit.label, defaultUnit.grams);
-                                  setItems((prev) => [
-                                    ...prev,
-                                    {
-                                      id: `fav-${Date.now()}-${Math.random()
-                                        .toString(36)
-                                        .slice(2, 6)}`,
-                                      name: food.brand ? `${food.name} (${food.brand})` : food.name,
-                                      unitLabel: defaultUnit.label,
-                                      quantity: 1,
-                                      grams: defaultUnit.grams,
-                                      macros,
-                                      source: food.actionKind === 'barcode' ? 'barcode' : 'catalog',
-                                    },
-                                  ]);
-                                }}
+                                onClick={() => void handleSelectCatalogFood(food, true)}
                                 className="btn-surface"
                                 style={{
                                   padding: '6px 10px',
@@ -6012,6 +6023,7 @@ export function AddMealDrawer({
               unitLabel: defaultUnit.label,
               quantity: 1,
               grams: defaultUnit.grams,
+              per100g: { ...product.per100g },
               macros,
               source: 'barcode',
             },

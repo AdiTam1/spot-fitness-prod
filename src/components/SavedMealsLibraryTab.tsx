@@ -29,7 +29,8 @@ import {
   LoggedFoodItem,
   SavedMealPreset,
 } from '@/types/nutrition';
-import { sumMacros } from '@/data/israeliFoodCatalog';
+import { calculateMacrosForGrams, sumMacros } from '@/data/israeliFoodCatalog';
+import { computePer100gFromServing } from '@/lib/customFoods';
 import { parseOptionalDecimal } from '@/lib/numericInput';
 import {
   startUnifiedVoiceCapture,
@@ -175,9 +176,30 @@ export function SavedMealsLibraryTab({
     return entries.slice(0, 30);
   }, [traineeLogs, searchQuery]);
 
+  const withDerivedPer100g = (it: LoggedFoodItem): LoggedFoodItem => {
+    if (it.per100g) return it;
+    const g = Math.max(1, it.grams || 0);
+    const hasAnyMacro =
+      it.macros.calories > 0 ||
+      it.macros.protein > 0 ||
+      it.macros.carbs > 0 ||
+      it.macros.fat > 0;
+    const factor = 100 / g;
+    const fitsNormalBounds =
+      it.macros.calories * factor <= 950 &&
+      it.macros.protein * factor <= 100 &&
+      it.macros.carbs * factor <= 100 &&
+      it.macros.fat * factor <= 100;
+    if (!hasAnyMacro || !fitsNormalBounds) return it;
+    return {
+      ...it,
+      per100g: computePer100gFromServing(it.macros, g),
+    };
+  };
+
   const cloneItemsForLog = (items: LoggedFoodItem[]): LoggedFoodItem[] =>
     items.map((it, idx) => ({
-      ...it,
+      ...withDerivedPer100g(it),
       id: `preset-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 5)}`,
     }));
 
@@ -257,7 +279,7 @@ export function SavedMealsLibraryTab({
         preset: {
           ...preset,
           title: editTitle.trim(),
-          items: editItems,
+          items: editItems.map(withDerivedPer100g),
         },
       });
       if (res.error) {
@@ -1181,17 +1203,22 @@ export function SavedMealsLibraryTab({
                               setEditItems((prev) =>
                                 prev.map((x, i) => {
                                   if (i !== idx) return x;
-                                  const ratio = g / Math.max(1, base.grams);
+                                  const nextMacros = x.per100g
+                                    ? calculateMacrosForGrams(x.per100g, g)
+                                    : (() => {
+                                        const ratio = g / Math.max(1, base.grams);
+                                        return {
+                                          calories: Math.round(base.macros.calories * ratio),
+                                          protein: Math.round(base.macros.protein * ratio * 10) / 10,
+                                          carbs: Math.round(base.macros.carbs * ratio * 10) / 10,
+                                          fat: Math.round(base.macros.fat * ratio * 10) / 10,
+                                        };
+                                      })();
                                   return {
                                     ...x,
                                     grams: g,
                                     unitLabel: `${g} גרם`,
-                                    macros: {
-                                      calories: Math.round(base.macros.calories * ratio),
-                                      protein: Math.round(base.macros.protein * ratio * 10) / 10,
-                                      carbs: Math.round(base.macros.carbs * ratio * 10) / 10,
-                                      fat: Math.round(base.macros.fat * ratio * 10) / 10,
-                                    },
+                                    macros: nextMacros,
                                   };
                                 })
                               );

@@ -352,12 +352,28 @@ function sanitizeLoggedItems(raw: unknown): LoggedFoodItem[] {
   return raw.slice(0, 35).map((item) => {
     const obj = (item || {}) as Partial<LoggedFoodItem>;
     const grams = sanitizeNumber(obj.grams, 1, 5000, 100);
+    const rawPer100 = obj.per100g;
+    const sanitizedPer100g =
+      rawPer100 &&
+      typeof rawPer100 === 'object' &&
+      Number.isFinite(Number(rawPer100.calories))
+        ? {
+            calories: Math.round(sanitizeNumber(rawPer100.calories, 0, 950, 0)),
+            protein:
+              Math.round(sanitizeNumber(rawPer100.protein, 0, 100, 0) * 100) /
+              100,
+            carbs:
+              Math.round(sanitizeNumber(rawPer100.carbs, 0, 100, 0) * 100) / 100,
+            fat: Math.round(sanitizeNumber(rawPer100.fat, 0, 100, 0) * 100) / 100,
+          }
+        : undefined;
     return {
       id: sanitizeText(obj.id, 60) || generateSecureId('food'),
       name: sanitizeText(obj.name, 90) || 'פריט מזון',
       unitLabel: sanitizeText(obj.unitLabel, 40) || 'גרם',
       quantity: sanitizeNumber(obj.quantity, 0.05, 500, 1),
       grams,
+      ...(sanitizedPer100g ? { per100g: sanitizedPer100g } : {}),
       macros: {
         calories: sanitizeNumber(obj.macros?.calories, 0, 10000, 0),
         protein: sanitizeNumber(obj.macros?.protein, 0, 1000, 0),
