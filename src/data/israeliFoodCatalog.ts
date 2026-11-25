@@ -510,6 +510,64 @@ export const ISRAELI_FOOD_CATALOG: FoodCatalogItem[] = [
     ],
     source: 'local',
   },
+  {
+    id: 'red-wine-semi-dry',
+    name: 'יין אדום חצי יבש',
+    category: 'משקאות ואלכוהול',
+    per100g: { calories: 85, protein: 0.1, carbs: 3.5, fat: 0 },
+    units: [
+      { label: 'כוס יין סטנדרטית (150 מ"ל)', grams: 150 },
+      { label: 'כוס נדיבה (200 גרם / מ"ל)', grams: 200 },
+      { label: '100 גרם / מ"ל', grams: 100 },
+    ],
+    source: 'local',
+  },
+  {
+    id: 'red-wine-dry',
+    name: 'יין אדום יבש',
+    category: 'משקאות ואלכוהול',
+    per100g: { calories: 83, protein: 0.1, carbs: 2.6, fat: 0 },
+    units: [
+      { label: 'כוס יין סטנדרטית (150 מ"ל)', grams: 150 },
+      { label: 'כוס נדיבה (200 גרם / מ"ל)', grams: 200 },
+      { label: '100 גרם / מ"ל', grams: 100 },
+    ],
+    source: 'local',
+  },
+  {
+    id: 'white-wine',
+    name: 'יין לבן יבש / חצי יבש',
+    category: 'משקאות ואלכוהול',
+    per100g: { calories: 82, protein: 0.1, carbs: 2.8, fat: 0 },
+    units: [
+      { label: 'כוס יין (150 מ"ל)', grams: 150 },
+      { label: 'כוס נדיבה (200 גרם / מ"ל)', grams: 200 },
+    ],
+    source: 'local',
+  },
+  {
+    id: 'beer-lager',
+    name: 'בירה בהירה (לאגר)',
+    category: 'משקאות ואלכוהול',
+    per100g: { calories: 43, protein: 0.5, carbs: 3.6, fat: 0 },
+    units: [
+      { label: 'בקבוק שליש (330 מ"ל)', grams: 330 },
+      { label: 'כוס חצי (500 מ"ל)', grams: 500 },
+    ],
+    source: 'local',
+  },
+  {
+    id: 'milk-tnuva-3',
+    name: 'חלב תנובה 3%',
+    brand: 'תנובה',
+    category: 'מוצרי חלב',
+    per100g: { calories: 60, protein: 3.3, carbs: 4.8, fat: 3 },
+    units: [
+      { label: 'כוס (200 מ"ל)', grams: 200 },
+      { label: 'מזיגה לקפה (50 מ"ל)', grams: 50 },
+    ],
+    source: 'local',
+  },
 ];
 
 export function calculateMacrosForGrams(per100g: MacroTargets, grams: number): MacroTargets {

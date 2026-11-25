@@ -107,6 +107,11 @@ function smartHebrewMealParser(
     { keywords: ['שקדים', 'אגוזים'], catalogId: 'almonds-natural', defaultUnitIdx: 0 },
     { keywords: ['סלט', 'ירקות'], catalogId: 'israeli-salad', defaultUnitIdx: 0 },
     { keywords: ['בקר', 'סטייק', 'סינטה'], catalogId: 'Beef-lean-steak', defaultUnitIdx: 0 },
+    { keywords: ['יין אדום יבש'], catalogId: 'red-wine-dry', defaultUnitIdx: 0 },
+    { keywords: ['יין לבן'], catalogId: 'white-wine', defaultUnitIdx: 0 },
+    { keywords: ['יין חצי יבש', 'יין אדום', 'יין'], catalogId: 'red-wine-semi-dry', defaultUnitIdx: 0 },
+    { keywords: ['בירה'], catalogId: 'beer-lager', defaultUnitIdx: 0 },
+    { keywords: ['חלב'], catalogId: 'milk-tnuva-3', defaultUnitIdx: 0 },
   ];
 
   // פיצול המשפט לפי פסיקים או ו' החיבור
@@ -132,7 +137,7 @@ function smartHebrewMealParser(
     if (!matchedCatalogId) {
       const cleanedWord = segLower
         .replace(/\d+(?:\.\d+)?/g, '')
-        .replace(/(?:גרם|ק"ג|יחידות|יחידה|כוסות|כוס|כפות|כף|פרוסות|פרוסה|גביע|חצי)/g, '')
+        .replace(/(?:גרם|ק"ג|מ"ל|מ׳ל|מ״ל|מל|יחידות|יחידה|כוסות|כוס|כפות|כף|פרוסות|פרוסה|גביע|חצי|ml)/gi, '')
         .trim();
       if (cleanedWord.length >= 2) {
         const directMatch = catalogPool.find((c) =>
@@ -149,14 +154,20 @@ function smartHebrewMealParser(
 
     usedCatalogIds.add(`${matchedCatalogId}-${seg}`);
 
-    // בדיקה אם צוין משקל מפורש בגרמים (למשל "200 גרם פסטה")
-    const gramsMatch = seg.match(/(\d+)\s*(?:גרם|ג'|ג׳|gr|g)/i);
-    if (gramsMatch) {
-      const explicitGrams = Number(gramsMatch[1]);
+    // בדיקה אם צוין משקל/נפח מפורש בגרמים או במ"ל (למשל "200 גרם יין" / "200 מ״ל חלב")
+    const gramsOrMlMatch = seg.match(/(\d+)\s*(?:(גרם|ג'|ג׳|gr|g)|(מ"ל|מ׳ל|מ״ל|מל|ml))/i);
+    if (gramsOrMlMatch) {
+      const rawAmount = Number(gramsOrMlMatch[1]);
+      const isMl = Boolean(gramsOrMlMatch[3]);
+      // שמן בצפיפות ~0.92g/ml אם הוזן במ"ל; נוזלים מימיים/יין/בירה/חלב קרובים ל-1g/ml
+      const explicitGrams =
+        isMl && catalogItem.id === 'olive-oil'
+          ? Math.max(1, Math.round(rawAmount * 0.92))
+          : rawAmount;
       matchedItems.push({
         id: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         name: catalogItem.name,
-        unitLabel: `${explicitGrams} גרם`,
+        unitLabel: isMl ? `${rawAmount} מ"ל (${explicitGrams} גרם)` : `${explicitGrams} גרם`,
         quantity: 1,
         grams: explicitGrams,
         macros: calculateMacrosForGrams(catalogItem.per100g, explicitGrams),
@@ -1041,7 +1052,7 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
 כללי חובה בעת תיקון:
 1. שמור את כל המרכיבים שהמתאמן לא ביקש לשנות/להסיר עם השם, הגרמים והמאקרו המקוריים שלהם ללא פגיעה.
 2. אם המתאמן ציין שם מאכל מתוקן, שיטת הכנה (אפוי/מבושל/מטוגן) או משקל מפורש בגרמים — אלה נתוני אמת נעולים! לעולם אל תחליף או תשנה אותם למספר אחר.
-3. לכל פריט חדש או מעודכן, ספק "per100g" לפי מצב ההכנה המוכן והמדויק בישראל (כגון אורז מבושל ~130 קק"ל, כבד עוף אפוי ~172 קק"ל, שניצל אפוי ~165 קק"ל), וחשב את "macros" לפי grams * per100g / 100.
+3. לכל פריט חדש או מעודכן, ספק "per100g" לפי מצב ההכנה המוכן והמדויק בישראל (כגון אורז מבושל ~130 קק"ל, כבד עוף אפוי ~172 קק"ל, שניצל אפוי ~165 קק"ל; במשקאות אלכוהוליים כגון יין ~83-85 קק"ל כולל תרומת אלכוהול ~7 קק"ל/גרם), וחשב את "macros" לפי grams * per100g / 100. לנוזלים מימיים/יין/בירה שדווחו במ"ל או בגרם: משקל המשתמש הוא נטו ללא הכוס (1 מ"ל ≈ 1 גרם).
 4. אם המתאמן ביקש להסיר פריט — הסר אותו לחלוטין מהמערך.
 
 החזר JSON תקני בלבד:
@@ -1165,8 +1176,9 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
    - 2 תמונות (מלמעלה + ~45°): למעלה לשטח/קוטר ומהצד לגובה/עובי.
    - קזז אפקט זווית וקח בחשבון כלי הגשה ו-Packing Fraction (עלים ~0.4, פסטה ~0.65, אורז ~0.85, בשר/מוצק ~0.95).
    - שומנים נסתרים: אם המתאמן הזין ללא תוספת שמן/רטבים, אל תמציא שמן זית/טחינה.
-4. חישוב "per100g" ומצב הכנה מוכן לאכילה:
-   - עבור כל פריט, ציין ערכים ל-100 גרם לפי המנה *המוכנה* (אורז *מבושל* ~130 קק"ל ל-100g ולא יבש ~360 קק"ל; שניצל *אפוי* ~165 קק"ל ולא מטוגן ~225 קק"ל; כבד עוף *אפוי* ~172 קק"ל), וחשב "macros" כ-"per100g * (grams / 100)" בהתאמה לנתוני משרד הבריאות / מוצרים ישראליים.`;
+4. חישוב "per100g", נוזלים, אלכוהול ומצב הכנה מוכן לאכילה:
+   - עבור כל פריט, ציין ערכים ל-100 גרם לפי המנה *המוכנה* (אורז *מבושל* ~130 קק"ל ל-100g ולא יבש ~360 קק"ל; שניצל *אפוי* ~165 קק"ל ולא מטוגן ~225 קק"ל; כבד עוף *אפוי* ~172 קק"ל), וחשב "macros" כ-"per100g * (grams / 100)" בהתאמה לנתוני משרד הבריאות / מוצרים ישראליים.
+   - **נוזלים, מ״ל לעומת גרם ואלכוהול**: כשמתאמן מדווח משקל של משקה בגרמים (למשל "200 גרם כוס יין") מדובר במשקל הנוזל נטו לאחר איפוס הכוס (ביין/מים/בירה/חלב 1 מ״ל ≈ 1 גרם; בשמן ~0.92g/ml; בדבש/טחינה משקל בגרמים מדויק כמות שהוא). במשקאות אלכוהוליים (יין אדום חצי יבש ~85 קק"ל/100g, יין יבש ~83 קק"ל/100g, בירה ~43 קק"ל/100g), שמור את הקלוריות הכוללות גם של האלכוהול (~7 קק״ל לגרם אלכוהול) מעבר לפחמימות בלבד!`;
 
       const parts: GeminiPart[] = [{ text: systemInstruction }];
 
