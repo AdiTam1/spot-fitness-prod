@@ -24,6 +24,7 @@ import {
   NutritionTemplate,
 } from '@/types/nutrition';
 import { getTodayIso, ISRAELI_FOOD_CATALOG } from '@/data/israeliFoodCatalog';
+import { resolveNumericValue } from '@/lib/numericInput';
 import { useSpotUnsavedEditing } from '@/lib/webVersionGuard';
 
 interface CoachOnboardingWizardProps {
@@ -205,7 +206,7 @@ export function CoachOnboardingWizard({
   );
 
   // שלב 2: ברירות מחדל למתאמנים וימי תשקיף
-  const [defaultObservationDays, setDefaultObservationDays] = useState<number>(
+  const [defaultObservationDays, setDefaultObservationDays] = useState<number | string>(
     existingOnboarding?.defaultObservationDays ?? 3
   );
   const [defaultCountObservationInStats, setDefaultCountObservationInStats] =
@@ -217,11 +218,11 @@ export function CoachOnboardingWizard({
   const [defaultWaterGoal, setDefaultWaterGoal] = useState<number>(
     existingOnboarding?.defaultWaterGoal ?? 12
   );
-  const [defaultActivePastDays, setDefaultActivePastDays] = useState<number>(
+  const [defaultActivePastDays, setDefaultActivePastDays] = useState<number | string>(
     existingOnboarding?.defaultActivePastDays ?? 1
   );
   const [defaultActiveFutureDays, setDefaultActiveFutureDays] =
-    useState<number>(existingOnboarding?.defaultActiveFutureDays ?? 0);
+    useState<number | string>(existingOnboarding?.defaultActiveFutureDays ?? 0);
   const [defaultRestrictNonObsOnObsDays, setDefaultRestrictNonObsOnObsDays] =
     useState<boolean>(
       existingOnboarding?.defaultRestrictNonObsOnObsDays ?? false
@@ -248,18 +249,34 @@ export function CoachOnboardingWizard({
   const handleFinish = async () => {
     if (isFinishing) return;
     setIsFinishing(true);
+    const safeObsDays = resolveNumericValue(defaultObservationDays, 0, {
+      min: 0,
+      max: 90,
+      integer: true,
+    });
+    const safePastDays = resolveNumericValue(defaultActivePastDays, 0, {
+      min: 0,
+      max: 365,
+      integer: true,
+    });
+    const safeFutureDays = resolveNumericValue(defaultActiveFutureDays, 0, {
+      min: 0,
+      max: 180,
+      integer: true,
+    });
+
     const onboarding: CoachOnboardingData = {
       completed: true,
       title: title.trim(),
       specialties,
       specialtiesNote: specialtiesNote.trim(),
       welcomeMessage: welcomeMessage.trim(),
-      defaultObservationDays,
+      defaultObservationDays: safeObsDays,
       defaultCountObservationInStats,
       defaultTolerancePercent,
       defaultWaterGoal,
-      defaultActivePastDays,
-      defaultActiveFutureDays,
+      defaultActivePastDays: safePastDays,
+      defaultActiveFutureDays: safeFutureDays,
       defaultRestrictNonObsOnObsDays,
       defaultFavoriteFoodIds,
       completedAt: getTodayIso(),
@@ -604,15 +621,14 @@ export function CoachOnboardingWizard({
               <NumberInput
                 size="xs"
                 label="מספר ימים מדויק"
+                placeholder="0"
                 value={defaultObservationDays}
                 min={0}
                 max={90}
                 step={1}
                 allowDecimal={false}
-                onChange={(val) => {
-                  const num = val === '' ? 0 : Math.max(0, Math.min(90, Math.round(Number(val) || 0)));
-                  setDefaultObservationDays(num);
-                }}
+                clampBehavior="none"
+                onChange={setDefaultObservationDays}
               />
             </div>
 
@@ -803,32 +819,24 @@ export function CoachOnboardingWizard({
                 <NumberInput
                   size="xs"
                   label="ימים אחורה מהיום"
+                  placeholder="0"
                   value={defaultActivePastDays}
                   min={0}
                   max={365}
                   allowDecimal={false}
-                  onChange={(val) =>
-                    setDefaultActivePastDays(
-                      val === ''
-                        ? 0
-                        : Math.max(0, Math.min(365, Math.round(Number(val) || 0)))
-                    )
-                  }
+                  clampBehavior="none"
+                  onChange={setDefaultActivePastDays}
                 />
                 <NumberInput
                   size="xs"
                   label="ימים קדימה מהיום"
+                  placeholder="0"
                   value={defaultActiveFutureDays}
                   min={0}
                   max={180}
                   allowDecimal={false}
-                  onChange={(val) =>
-                    setDefaultActiveFutureDays(
-                      val === ''
-                        ? 0
-                        : Math.max(0, Math.min(180, Math.round(Number(val) || 0)))
-                    )
-                  }
+                  clampBehavior="none"
+                  onChange={setDefaultActiveFutureDays}
                 />
               </div>
               <div style={{ marginTop: 10 }}>

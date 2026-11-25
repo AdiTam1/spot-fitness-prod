@@ -17,6 +17,7 @@ import {
 } from '@/types/nutrition';
 import { getTodayIso } from '@/data/israeliFoodCatalog';
 import { computeAgeFromBirthDate } from '@/lib/dateUtils';
+import { parseOptionalDecimal, resolveNumericValue } from '@/lib/numericInput';
 import { BodyMeasurementGuide } from './BodyMeasurementGuide';
 import { useSpotUnsavedEditing } from '@/lib/webVersionGuard';
 
@@ -161,13 +162,14 @@ export function TraineeOnboardingWizard({
     return `${y}-01-01`;
   });
   const computedAge = computeAgeFromBirthDate(birthDate, existing?.age || 28);
-  const [heightCm, setHeightCm] = useState<number>(existing?.heightCm || 174);
-  const [currentWeight, setCurrentWeight] = useState<number>(
+  const [heightCm, setHeightCm] = useState<number | string>(existing?.heightCm || 174);
+  const [currentWeight, setCurrentWeight] = useState<number | string>(
     trainee.currentWeight || 75
   );
-  const [targetWeight, setTargetWeight] = useState<number>(
+  const [targetWeight, setTargetWeight] = useState<number | string>(
     trainee.targetWeight || 70
   );
+  const [step1Error, setStep1Error] = useState<string | null>(null);
 
   const [activityLevel, setActivityLevel] = useState(
     existing?.activityLevel || NEAT_OPTIONS[0]
@@ -258,11 +260,26 @@ export function TraineeOnboardingWizard({
     if (isFinishing) return;
     setIsFinishing(true);
     try {
+      const safeHeightCm = resolveNumericValue(heightCm, existing?.heightCm || 174, {
+        min: 120,
+        max: 230,
+      });
+      const safeCurrentWeight = resolveNumericValue(
+        currentWeight,
+        trainee.currentWeight || 75,
+        { min: 35, max: 250 }
+      );
+      const safeTargetWeight = resolveNumericValue(
+        targetWeight,
+        trainee.targetWeight || 70,
+        { min: 35, max: 250 }
+      );
+
       const { bmr, tdee } = calculateEstimatedBmrAndTdee({
         gender,
         age: computedAge,
-        heightCm,
-        weightKg: currentWeight,
+        heightCm: safeHeightCm,
+        weightKg: safeCurrentWeight,
         activityLevel,
         strengthWorkouts,
         walkingSessions,
@@ -283,7 +300,7 @@ export function TraineeOnboardingWizard({
         age: computedAge,
         birthDate,
         gender,
-        heightCm,
+        heightCm: safeHeightCm,
         activityLevel,
         activityLevelNote: activityLevelNote.trim(),
         strengthWorkoutsPerWeek: strengthWorkouts,
@@ -310,14 +327,14 @@ export function TraineeOnboardingWizard({
           ? {
               date: getTodayIso(),
               ...measurements,
-              weightKg: currentWeight,
+              weightKg: safeCurrentWeight,
             }
           : undefined;
 
       await onCompleteOnboarding({
         name: name.trim() || trainee.name,
-        currentWeight,
-        targetWeight,
+        currentWeight: safeCurrentWeight,
+        targetWeight: safeTargetWeight,
         onboarding: onboardingData,
         measurement: measurementEntry,
       });
@@ -550,35 +567,84 @@ export function TraineeOnboardingWizard({
               <div style={{ gridColumn: '1 / -1', minWidth: 0 }}>
                 <NumberInput
                   label="גובה (ס״מ)"
+                  placeholder="174"
                   value={heightCm}
                   min={120}
                   max={230}
-                  onChange={(v) => setHeightCm(Number(v) || 174)}
+                  clampBehavior="none"
+                  onChange={(v) => {
+                    setStep1Error(null);
+                    setHeightCm(v);
+                  }}
                 />
               </div>
               <NumberInput
                 label="משקל נוכחי (ק״ג)"
+                placeholder="75"
                 value={currentWeight}
                 min={35}
                 max={250}
                 step={0.5}
                 decimalScale={1}
-                onChange={(v) => setCurrentWeight(Number(v) || 75)}
+                clampBehavior="none"
+                onChange={(v) => {
+                  setStep1Error(null);
+                  setCurrentWeight(v);
+                }}
               />
               <NumberInput
                 label="משקל יעד (ק״ג)"
+                placeholder="70"
                 value={targetWeight}
                 min={35}
                 max={250}
                 step={0.5}
                 decimalScale={1}
-                onChange={(v) => setTargetWeight(Number(v) || 70)}
+                clampBehavior="none"
+                onChange={(v) => {
+                  setStep1Error(null);
+                  setTargetWeight(v);
+                }}
               />
             </div>
 
+            {step1Error && (
+              <div
+                role="alert"
+                style={{
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  color: 'var(--danger-text)',
+                  padding: '6px 10px',
+                  borderRadius: 12,
+                  background: 'rgba(239, 68, 68, 0.1)',
+                }}
+              >
+                {step1Error}
+              </div>
+            )}
+
             <button
               type="button"
-              onClick={() => setStep(2)}
+              onClick={() => {
+                const h = parseOptionalDecimal(heightCm);
+                const cw = parseOptionalDecimal(currentWeight);
+                const tw = parseOptionalDecimal(targetWeight);
+                if (h === undefined || h < 120 || h > 230) {
+                  setStep1Error('נא להזין גובה תקין בין 120 ל-230 ס״מ');
+                  return;
+                }
+                if (cw === undefined || cw < 35 || cw > 250) {
+                  setStep1Error('נא להזין משקל נוכחי תקין בין 35 ל-250 ק״ג');
+                  return;
+                }
+                if (tw === undefined || tw < 35 || tw > 250) {
+                  setStep1Error('נא להזין משקל יעד תקין בין 35 ל-250 ק״ג');
+                  return;
+                }
+                setStep1Error(null);
+                setStep(2);
+              }}
               className="btn-volt"
               style={{
                 marginTop: 4,

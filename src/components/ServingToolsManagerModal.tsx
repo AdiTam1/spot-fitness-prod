@@ -21,6 +21,7 @@ import {
   TraineeServingTool,
 } from '@/types/nutrition';
 import { compressMealImage } from '@/utils/imageCompression';
+import { parseOptionalDecimal } from '@/lib/numericInput';
 
 interface ServingToolsManagerModalProps {
   opened: boolean;
@@ -241,11 +242,16 @@ export function ServingToolsManagerModal({
 
   const handleAddUnit = async () => {
     const cleanName = unitName.trim();
-    const gramsNum = Math.max(1, Number(unitGrams) || 100);
+    const parsedGrams = parseOptionalDecimal(unitGrams);
     if (!cleanName) {
       setErrorBanner('נא להזין שם יחידה (למשל: קערת האורז שלי)');
       return;
     }
+    if (parsedGrams === undefined || parsedGrams <= 0) {
+      setErrorBanner('נא להזין משקל תקין בגרם ליחידה');
+      return;
+    }
+    const gramsNum = Math.max(1, Math.min(3000, Math.round(parsedGrams)));
     setSaving(true);
     setErrorBanner(null);
     try {
@@ -660,6 +666,7 @@ export function ServingToolsManagerModal({
                 onChange={setDiameterCm}
                 min={2}
                 max={55}
+                clampBehavior="none"
               />
               <NumberInput
                 size="xs"
@@ -669,6 +676,7 @@ export function ServingToolsManagerModal({
                 min={0.5}
                 max={35}
                 step={0.5}
+                clampBehavior="none"
               />
               <NumberInput
                 size="xs"
@@ -678,6 +686,7 @@ export function ServingToolsManagerModal({
                 min={10}
                 max={4000}
                 step={25}
+                clampBehavior="none"
               />
               <NumberInput
                 size="xs"
@@ -687,6 +696,7 @@ export function ServingToolsManagerModal({
                 min={10}
                 max={2000}
                 step={10}
+                clampBehavior="none"
               />
             </div>
 
@@ -809,11 +819,13 @@ export function ServingToolsManagerModal({
               <NumberInput
                 size="xs"
                 label="משקל בגרם"
+                placeholder="180"
                 value={unitGrams}
                 onChange={setUnitGrams}
                 min={1}
                 max={3000}
                 step={5}
+                clampBehavior="none"
               />
             </div>
 

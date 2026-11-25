@@ -1,0 +1,74 @@
+<!doctype html>
+<meta charset="utf-8"><style data-dc-design-system-vars>@layer{:root{--bg-canvas:#08090c;--bg-surface-1:#101218;--bg-surface-2:#161922;--bg-surface-3:#1e222e;--bg-glass:#101218d1;--border-subtle:#ffffff0f;--border-strong:#ffffff1f;--border-accent:#d67d0973;--text-primary:#f4f6fb;--text-secondary:#949bb0;--text-muted:#5e6578;--accent-orange:#d67d09;--accent-volt:#d67d09;--accent-orange-bright:#eb931c;--accent-volt-soft:#d67d0924;--orange-0:#fef5e7;--orange-1:#fae8cb;--orange-2:#f4cf97;--orange-3:#eeb45f;--orange-4:#e99c2f;--orange-5:#e68e13;--orange-6:#d67d09;--orange-7:#be6c03;--orange-8:#a95f00;--orange-9:#935000;--macro-protein:#38bdf8;--macro-protein-soft:#38bdf824;--macro-carbs:#ff5e7e;--macro-carbs-soft:#ff5e7e24;--macro-fat:#ff8c1a;--macro-fat-soft:#ff8c1a24;--status-ok:#22c55e;--status-warn:#f59e0b;--status-danger:#ef4444;--shadow-card:inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 8px 24px -8px rgba(0, 0, 0, 0.5);--shadow-card-elevated:inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 20px 40px -15px rgba(0, 0, 0, 0.7);--shadow-button-hover:0 6px 20px -4px rgba(214, 125, 9, 0.45);--shadow-dock:0 20px 45px -10px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.1);--space-xs:10px;--space-sm:12px;--space-md:16px;--space-lg:20px;--space-xl:32px;--radius-sm:12px;--radius-md:20px;--radius-lg:24px;--radius-pill:999px;--font-sans:'Heebo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;--font-mono:'Space Grotesk', 'Heebo', sans-serif;}}</style>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>Spot Fitness – ניהול מאמנים</title>
+<script src="./_runtime/react.js"></script>
+<script src="./_runtime/react-dom.js"></script>
+<script src="./_runtime/support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@300..800&amp;family=Space+Grotesk:wght@500..700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}a:hover{color:inherit}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+input,textarea{font:inherit}
+.app{--acc:#d67d09;--p:#38bdf8;--c:#ff5e7e;--f:#ff8c1a;font-family:'Heebo',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.app.dark{--bg:#000000;--s1:#1c1c1e;--s2:#2c2c2e;--s3:#3a3a3c;--line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.14);--tx:#f5f5f5;--tx2:#a8a8a8;--tx3:#8e8e93;--inv:#3e3e3f;--invtx:#ffffff;--glass:rgba(44,44,46,.52);--glass-b:rgba(255,255,255,.13);--glass-hi:rgba(255,255,255,.22);--shadow:0 14px 34px -10px rgba(0,0,0,.8);--scrim:rgba(0,0,0,.55)}
+.app.light{--bg:#f2f2f4;--s1:#ffffff;--s2:#f2f2f4;--s3:#e5e5e8;--line:rgba(0,0,0,.06);--line2:rgba(0,0,0,.1);--tx:#0a0a0a;--tx2:#5a5a5e;--tx3:#6e6e73;--inv:#2c2c2e;--invtx:#ffffff;--glass:rgba(255,255,255,.62);--glass-b:rgba(255,255,255,.85);--glass-hi:rgba(255,255,255,1);--shadow:0 14px 34px -12px rgba(0,0,0,.22);--scrim:rgba(20,20,22,.28)}
+.glass{position:relative;isolation:isolate;background:var(--glass);-webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);border:1px solid var(--glass-b);box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 -1px 1px rgba(255,255,255,.05),var(--shadow)}
+.glass::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(140deg,rgba(255,255,255,.2),rgba(255,255,255,0) 42%,rgba(255,255,255,0) 70%,rgba(255,255,255,.08));pointer-events:none;z-index:-1}
+.tint{background:color-mix(in srgb,var(--acc) 88%,transparent);border-color:rgba(255,200,130,.55);color:#0a0a0a}
+.num{font-family:'Space Grotesk','Heebo',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-0.03em}
+.ic{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+</helmet>
+<div class="app {{themeClass}}" dir="rtl" lang="he" style="--acc: {{acc}}; --inv: {{btn}}; --s1: {{card}}; --bg: {{bgc}}; width: 390px; height: 844px; position: relative; overflow: hidden; background: var(--bg); color: var(--tx)">
+
+<div style="padding: 20px 20px 150px; display: flex; flex-direction: column; gap: 14px">
+<header style="display: flex; align-items: center; justify-content: space-between; gap: 10px"><span style="display: flex; align-items: center; gap: 12px"><a href="{{hCoach}}" class="glass" aria-label="חזרה" style="width: 44px; height: 44px; border-radius: 999px; display: flex; align-items: center; justify-content: center; flex: none"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="width: 18px; height: 18px; stroke-width: 2.2"><path d="M9 6l6 6-6 6"></path></svg></a><span style="display: flex; flex-direction: column"><h1 style="margin: 0; font-size: 22px; font-weight: 700; line-height: 1.2">ניהול מאמנים</h1><span style="font-size: 13px; color: var(--tx2)">4 מאמנים במערכת</span></span></span><span style="height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; white-space: nowrap; background: var(--s2); color: var(--tx2)">מנהל ראשי</span></header>
+<button style="height: 48px; border-radius: 999px; background: var(--inv); color: var(--invtx); font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="width: 16px; height: 16px; stroke-width: 2.4"><path d="M12 5v14M5 12h14"></path></svg>הוסף מאמן חדש</button>
+<sc-for list="{{coaches}}" as="c" hint-placeholder-count="3">
+<article style="background: var(--s1); border: 1px solid var(--line); border-radius: 24px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: center; gap: 12px"><span style="width: 42px; height: 42px; border-radius: 999px; background: var(--s3); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex: none">{{c.ini}}</span><span style="flex: 1; min-width: 0; display: flex; flex-direction: column"><span style="font-size: 15px; font-weight: 600">{{c.name}}</span><span style="font-size: 12px; color: var(--tx2)">{{c.sub}}</span></span><span style="height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; display: flex; align-items: center; background: var(--s2); color: {{c.sc}}">{{c.status}}</span></div>
+<div style="display: flex; gap: 6px; flex-wrap: wrap"><button class="glass" style="height: 44px; padding: 0 14px; border-radius: 999px; font-size: 13px; font-weight: 600; height: 38px; font-size: 12px">סיסמה וקוד</button><button class="glass" style="height: 44px; padding: 0 14px; border-radius: 999px; font-size: 13px; font-weight: 600; height: 38px; font-size: 12px">נתק מכשירים</button><button style="height: 38px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line2); font-size: 12px; font-weight: 600">{{c.toggle}}</button><button aria-label="מחק מאמן" style="height: 38px; padding: 0 12px; border-radius: 999px; font-size: 12px; color: var(--tx2)">מחק</button></div>
+</article>
+</sc-for>
+<span style="font-size: 12px; color: var(--tx3); line-height: 1.45">במחיקת מאמן, כל המתאמנים שלו עוברים אוטומטית אליך.</span>
+</div>
+<div aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 0; height: 130px; background: linear-gradient(to top, var(--bg), transparent); pointer-events: none"></div>
+<div style="position: absolute; left: 16px; right: 16px; bottom: 26px; display: flex; align-items: center; gap: 10px">
+<nav class="glass" aria-label="ניווט מאמן" style="flex: 1; height: 66px; border-radius: 999px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 6px; gap: 2px">
+<a href="{{hCoach}}" style="border-radius: 999px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--tx2)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="width: 22px; height: 22px"><circle cx="9" cy="8" r="3"></circle><path d="M3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6M18 20a6 6 0 0 0-2-4.5"></path></svg><span style="font-size: 11px">מתאמנים</span></a><a href="{{hCoachTemplates}}" style="border-radius: 999px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--tx2)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="width: 22px; height: 22px"><rect x="4" y="4" width="7" height="7" rx="2"></rect><rect x="13" y="4" width="7" height="7" rx="2"></rect><rect x="4" y="13" width="7" height="7" rx="2"></rect><rect x="13" y="13" width="7" height="7" rx="2"></rect></svg><span style="font-size: 11px">טמפלייטים</span></a><a href="#" aria-current="page" style="border-radius: 999px; background: var(--line2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="width: 22px; height: 22px"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg><span style="font-size: 11px; font-weight: 600">חשבונות</span></a>
+</nav>
+<button class="glass tint" aria-label="מתאמן חדש" style="width: 66px; height: 66px; border-radius: 999px; display: flex; align-items: center; justify-content: center; flex: none"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="width: 28px; height: 28px; stroke-width: 2.4"><path d="M12 5v14M5 12h14"></path></svg></button>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme": {"editor": "enum", "options": ["dark", "light"], "default": "dark"}, "accent": {"editor": "color", "default": "#d67d09", "options": ["#d67d09", "#eb931c", "#f5f5f5", "#38bdf8"], "section": "צבעים"}, "button": {"editor": "color", "default": "#3e3e3f", "section": "צבעים"}, "card": {"editor": "color", "default": "#1c1c1e", "section": "צבעים"}, "background": {"editor": "color", "default": "#000000", "section": "צבעים"}, "$preview": {"width": 390, "height": 844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const theme = this.props.theme ?? 'dark';
+    const L = theme === 'light' ? 'Light' : '';
+    const H = (n) => n + L + '.dc.html';
+    const base = {
+      themeClass: theme,
+      acc: this.props.accent ?? '#d67d09',
+      btn: this.props.button ?? (theme === 'light' ? '#2c2c2e' : '#3e3e3f'),
+      card: this.props.card ?? (theme === 'light' ? '#ffffff' : '#1c1c1e'),
+      bgc: this.props.background ?? (theme === 'light' ? '#f2f2f4' : '#000000'),
+      homeHref: (L ? 'MainLight' : 'Main') + '.dc.html'
+    };
+    const x = (() => { return { hCoach: H('Coach'), hCoachTemplates: H('CoachTemplates'), hCoachAccounts: H('CoachAccounts'), coaches: [ { ini: 'דכ', name: 'דני כהן', sub: 'קוד DANI10 · 8 ראשיים · 2 משותפים', status: 'פעיל', sc: 'var(--tx)', toggle: 'חסום' }, { ini: 'מל', name: 'מיכל לוי', sub: 'קוד MICHAL · 5 ראשיים', status: 'פעיל', sc: 'var(--tx)', toggle: 'חסום' }, { ini: 'יש', name: 'יוסי שרון', sub: 'קוד YOSI · 0 ראשיים', status: 'מושהה', sc: 'var(--tx2)', toggle: 'הפעל' } ] }; })();
+    return Object.assign(base, x);
+  }
+}
+</script>
+</body>
+</html>

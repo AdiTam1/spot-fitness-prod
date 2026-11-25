@@ -16,6 +16,7 @@ import {
   ParsedApkMetadata,
   parseApkManifestMetadata,
 } from '@/lib/apkManifestParser';
+import { resolveNumericValue } from '@/lib/numericInput';
 
 interface StorageStatusPayload {
   supabaseConfigured: boolean;
@@ -107,7 +108,7 @@ export function AdminApkUploadPanel({
   const [versionCode, setVersionCode] = useState<string>('');
   const [releaseNotes, setReleaseNotes] = useState('');
   const [forceBlockOlder, setForceBlockOlder] = useState(false);
-  const [customBlockedUpTo, setCustomBlockedUpTo] = useState<number>(
+  const [customBlockedUpTo, setCustomBlockedUpTo] = useState<number | string>(
     currentBlockedUpToVersionCode
   );
 
@@ -224,7 +225,13 @@ export function AdminApkUploadPanel({
       setUploadStage('publishing');
       const blockedToSave =
         forceBlockOlder && parsedCodeNum && parsedCodeNum > 1
-          ? Math.min(parsedCodeNum - 1, Math.max(0, customBlockedUpTo))
+          ? Math.min(
+              parsedCodeNum - 1,
+              resolveNumericValue(customBlockedUpTo, 0, {
+                min: 0,
+                integer: true,
+              })
+            )
           : currentBlockedUpToVersionCode;
 
       const pubRes = await fetch('/api/admin/apk-release', {
@@ -525,12 +532,11 @@ export function AdminApkUploadPanel({
                 size="xs"
                 min={0}
                 max={99999999}
+                clampBehavior="none"
                 disabled={uploading}
                 label={<>חסום עד וכולל (<bdi dir="ltr">versionCode ≤</bdi>)</>}
                 value={customBlockedUpTo}
-                onChange={(v) =>
-                  setCustomBlockedUpTo(Math.max(0, Number(v) || 0))
-                }
+                onChange={setCustomBlockedUpTo}
                 style={{ width: 170 }}
               />
             )}

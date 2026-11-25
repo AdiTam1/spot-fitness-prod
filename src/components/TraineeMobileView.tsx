@@ -70,6 +70,7 @@ import {
   isTodayObservationRestricted,
 } from '@/lib/dateUtils';
 import { isNativeAndroidApp } from '@/lib/capacitorSteps';
+import { parseOptionalDecimal, sanitizeDecimalInput } from '@/lib/numericInput';
 import { AddMealDrawer } from './AddMealDrawer';
 import { TraineeOnboardingWizard } from './TraineeOnboardingWizard';
 import { BodyMeasurementGuide } from './BodyMeasurementGuide';
@@ -328,6 +329,11 @@ export function TraineeMobileView({
   const [weightInput, setWeightInput] = useState<string>(
     String(trainee.currentWeight)
   );
+  const isWeightFocusedRef = useRef(false);
+  const prevWeightSyncRef = useRef<{ id: string; weight: number }>({
+    id: trainee.id,
+    weight: trainee.currentWeight,
+  });
 
   const latestCheckIn =
     trainee.weeklyCheckIns?.[trainee.weeklyCheckIns.length - 1];
@@ -357,8 +363,16 @@ export function TraineeMobileView({
 
   // סנכרון משקל ומדדים כאשר עוברים מתאמן (בתצוגת מאמן) או כשהנתונים מתעדכנים מהשרת
   useEffect(() => {
-    setWeightInput(String(trainee.currentWeight));
-    setWeightFeedback(null);
+    const prev = prevWeightSyncRef.current;
+    const changedTrainee = prev.id !== trainee.id;
+    const changedWeight = prev.weight !== trainee.currentWeight;
+    prevWeightSyncRef.current = { id: trainee.id, weight: trainee.currentWeight };
+    if (changedTrainee) {
+      setWeightInput(String(trainee.currentWeight));
+      setWeightFeedback(null);
+    } else if (changedWeight && !isWeightFocusedRef.current) {
+      setWeightInput(String(trainee.currentWeight));
+    }
   }, [trainee.id, trainee.currentWeight]);
 
   useEffect(() => {
@@ -2368,8 +2382,8 @@ export function TraineeMobileView({
                 onSubmit={async (e) => {
                   e.preventDefault();
                   if (isBlockedDay || weightLockRef.current) return;
-                  const num = parseFloat(weightInput);
-                  if (isNaN(num) || num < 30 || num > 250) {
+                  const num = parseOptionalDecimal(weightInput);
+                  if (num === undefined || num < 30 || num > 250) {
                     setWeightFeedback({
                       msg: 'נא להזין משקל תקין בין 30 ל-250 ק״ג',
                       isError: true,
@@ -2396,15 +2410,20 @@ export function TraineeMobileView({
                 style={{ display: 'flex', gap: 8 }}
               >
                 <input
-                  type="number"
-                  step="0.1"
+                  type="text"
                   inputMode="decimal"
                   dir="ltr"
                   aria-label="שקילת היום בק״ג"
                   placeholder="שקילת היום (ק״ג)"
                   disabled={savingWeight || isBlockedDay}
                   value={weightInput}
-                  onChange={(e) => setWeightInput(e.target.value)}
+                  onFocus={() => {
+                    isWeightFocusedRef.current = true;
+                  }}
+                  onBlur={() => {
+                    isWeightFocusedRef.current = false;
+                  }}
+                  onChange={(e) => setWeightInput(sanitizeDecimalInput(e.target.value))}
                   className="num-mono"
                   style={{
                     flex: 1,

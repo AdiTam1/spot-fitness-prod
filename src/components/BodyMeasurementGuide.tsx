@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Ruler, CheckCircle2, Info, Loader2 } from 'lucide-react';
 import { BodyMeasurementEntry } from '@/types/nutrition';
+import { parseOptionalDecimal, sanitizeDecimalInput } from '@/lib/numericInput';
 
 interface BodyMeasurementGuideProps {
   initialValues?: Partial<BodyMeasurementEntry>;
@@ -82,6 +83,9 @@ const ZONE_CONFIG: Record<
   },
 };
 
+const formatCmDraft = (n: number | undefined): string =>
+  n !== undefined && Number.isFinite(n) ? String(n) : '';
+
 export function BodyMeasurementGuide({
   initialValues,
   onChange,
@@ -101,6 +105,12 @@ export function BodyMeasurementGuide({
   const [thighCm, setThighCm] = useState<number | undefined>(
     initialValues?.thighCm
   );
+  const [drafts, setDrafts] = useState<Record<MeasurementZone, string>>({
+    chest: formatCmDraft(initialValues?.chestCm),
+    waistNavel: formatCmDraft(initialValues?.waistNavelCm),
+    arm: formatCmDraft(initialValues?.armCm),
+    thigh: formatCmDraft(initialValues?.thighCm),
+  });
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -108,6 +118,24 @@ export function BodyMeasurementGuide({
     setWaistNavelCm(initialValues?.waistNavelCm);
     setArmCm(initialValues?.armCm);
     setThighCm(initialValues?.thighCm);
+    setDrafts((prev) => ({
+      chest:
+        parseOptionalDecimal(prev.chest) === initialValues?.chestCm
+          ? prev.chest
+          : formatCmDraft(initialValues?.chestCm),
+      waistNavel:
+        parseOptionalDecimal(prev.waistNavel) === initialValues?.waistNavelCm
+          ? prev.waistNavel
+          : formatCmDraft(initialValues?.waistNavelCm),
+      arm:
+        parseOptionalDecimal(prev.arm) === initialValues?.armCm
+          ? prev.arm
+          : formatCmDraft(initialValues?.armCm),
+      thigh:
+        parseOptionalDecimal(prev.thigh) === initialValues?.thighCm
+          ? prev.thigh
+          : formatCmDraft(initialValues?.thighCm),
+    }));
   }, [
     initialValues?.chestCm,
     initialValues?.waistNavelCm,
@@ -583,16 +611,16 @@ export function BodyMeasurementGuide({
                 </span>
                 <input
                   id="mg-cm"
-                  type="number"
+                  type="text"
                   inputMode="decimal"
-                  step={0.5}
                   dir="ltr"
                   className="num-mono"
                   placeholder={zoneInfo.placeholder.replace('למשל: ', '')}
-                  value={v ?? ''}
+                  value={drafts[activeZone]}
                   onChange={(e) => {
-                    const raw = e.currentTarget.value;
-                    setZone(activeZone, raw === '' ? undefined : Number(raw));
+                    const clean = sanitizeDecimalInput(e.currentTarget.value);
+                    setDrafts((prev) => ({ ...prev, [activeZone]: clean }));
+                    setZone(activeZone, parseOptionalDecimal(clean));
                   }}
                   style={{
                     width: '100%',

@@ -1,0 +1,77 @@
+<!doctype html>
+<meta charset="utf-8"><style data-dc-design-system-vars>@layer{:root{--bg-canvas:#08090c;--bg-surface-1:#101218;--bg-surface-2:#161922;--bg-surface-3:#1e222e;--bg-glass:#101218d1;--border-subtle:#ffffff0f;--border-strong:#ffffff1f;--border-accent:#d67d0973;--text-primary:#f4f6fb;--text-secondary:#949bb0;--text-muted:#5e6578;--accent-orange:#d67d09;--accent-volt:#d67d09;--accent-orange-bright:#eb931c;--accent-volt-soft:#d67d0924;--orange-0:#fef5e7;--orange-1:#fae8cb;--orange-2:#f4cf97;--orange-3:#eeb45f;--orange-4:#e99c2f;--orange-5:#e68e13;--orange-6:#d67d09;--orange-7:#be6c03;--orange-8:#a95f00;--orange-9:#935000;--macro-protein:#38bdf8;--macro-protein-soft:#38bdf824;--macro-carbs:#ff5e7e;--macro-carbs-soft:#ff5e7e24;--macro-fat:#ff8c1a;--macro-fat-soft:#ff8c1a24;--status-ok:#22c55e;--status-warn:#f59e0b;--status-danger:#ef4444;--shadow-card:inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 8px 24px -8px rgba(0, 0, 0, 0.5);--shadow-card-elevated:inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 20px 40px -15px rgba(0, 0, 0, 0.7);--shadow-button-hover:0 6px 20px -4px rgba(214, 125, 9, 0.45);--shadow-dock:0 20px 45px -10px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.1);--space-xs:10px;--space-sm:12px;--space-md:16px;--space-lg:20px;--space-xl:32px;--radius-sm:12px;--radius-md:20px;--radius-lg:24px;--radius-pill:999px;--font-sans:'Heebo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;--font-mono:'Space Grotesk', 'Heebo', sans-serif;}}</style>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>Spot Fitness – דיוק מהיר</title>
+<script src="./_runtime/react.js"></script>
+<script src="./_runtime/react-dom.js"></script>
+<script src="./_runtime/support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@300..800&amp;family=Space+Grotesk:wght@500..700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}a:hover{color:inherit}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+input,textarea{font:inherit}
+.app{--acc:#d67d09;--p:#38bdf8;--c:#ff5e7e;--f:#ff8c1a;font-family:'Heebo',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.app.dark{--bg:#000000;--s1:#1c1c1e;--s2:#2c2c2e;--s3:#3a3a3c;--line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.14);--tx:#f5f5f5;--tx2:#a8a8a8;--tx3:#8e8e93;--inv:#3e3e3f;--invtx:#ffffff;--glass:rgba(44,44,46,.52);--glass-b:rgba(255,255,255,.13);--glass-hi:rgba(255,255,255,.22);--shadow:0 14px 34px -10px rgba(0,0,0,.8);--scrim:rgba(0,0,0,.55)}
+.app.light{--bg:#f2f2f4;--s1:#ffffff;--s2:#f2f2f4;--s3:#e5e5e8;--line:rgba(0,0,0,.06);--line2:rgba(0,0,0,.1);--tx:#0a0a0a;--tx2:#5a5a5e;--tx3:#6e6e73;--inv:#2c2c2e;--invtx:#ffffff;--glass:rgba(255,255,255,.62);--glass-b:rgba(255,255,255,.85);--glass-hi:rgba(255,255,255,1);--shadow:0 14px 34px -12px rgba(0,0,0,.22);--scrim:rgba(20,20,22,.28)}
+.glass{position:relative;isolation:isolate;background:var(--glass);-webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);border:1px solid var(--glass-b);box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 -1px 1px rgba(255,255,255,.05),var(--shadow)}
+.glass::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(140deg,rgba(255,255,255,.2),rgba(255,255,255,0) 42%,rgba(255,255,255,0) 70%,rgba(255,255,255,.08));pointer-events:none;z-index:-1}
+.tint{background:color-mix(in srgb,var(--acc) 88%,transparent);border-color:rgba(255,200,130,.55);color:#0a0a0a}
+.num{font-family:'Space Grotesk','Heebo',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-0.03em}
+.ic{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+</helmet>
+<div class="app {{themeClass}}" dir="rtl" lang="he" style="--acc: {{acc}}; --inv: {{btn}}; --s1: {{card}}; --bg: {{bgc}}; width: 390px; height: 844px; position: relative; overflow: hidden; background: var(--bg); color: var(--tx)">
+
+<div style="box-sizing: border-box; height: 100%; padding: 20px 20px 26px; display: flex; flex-direction: column; gap: 14px">
+<header style="display: flex; align-items: center; justify-content: space-between; gap: 10px"><span style="display: flex; align-items: center; gap: 12px"><a href="{{hPhoto}}" class="glass" aria-label="חזרה" style="width: 44px; height: 44px; border-radius: 999px; display: flex; align-items: center; justify-content: center; flex: none"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="width: 18px; height: 18px; stroke-width: 2.2"><path d="M9 6l6 6-6 6"></path></svg></a><span style="display: flex; flex-direction: column"><h1 style="margin: 0; font-size: 22px; font-weight: 700; line-height: 1.2">דיוק מהיר</h1><span style="font-size: 13px; color: var(--tx2)">לפני ניתוח התמונה · הכל ברירת מחדל: ללא</span></span></span></header>
+<div style="display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 20px; background: var(--s1); border: 1px solid var(--line)">
+<span role="img" aria-label="התמונה שצולמה" style="width: 56px; height: 56px; border-radius: 14px; background: radial-gradient(circle at 40% 40%, #e9e6e0, #9d988f); flex: none"></span>
+<span style="flex: 1; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; color: var(--tx2)">כלי הגשה</span>
+<span style="display: flex; gap: 6px; flex-wrap: wrap"><span style="height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; white-space: nowrap; background: var(--s2); color: var(--tx)">צלחת לבנה גדולה · 27 ס״מ</span><span style="height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; white-space: nowrap; background: var(--s2); color: var(--tx2)">+ כלים</span></span></span>
+</div>
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="5">
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 13px; color: var(--tx2)">{{g.title}}</span>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{g.opts}}" as="o" hint-placeholder-count="4">
+<button aria-pressed="{{o.on}}" onClick="{{o.pick}}" style="height: 36px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: {{o.fw}}; background: {{o.bg}}; color: {{o.fg}}; border: 1px solid {{o.bd}}; display: flex; align-items: center; gap: 5px">{{o.l}}<sc-if value="{{o.hasSrc}}" hint-placeholder-val="{{ false }}"><span style="font-size: 10px; opacity: .7">· {{o.src}}</span></sc-if></button>
+</sc-for>
+</div>
+</div>
+</sc-for>
+<div style="display: flex; gap: 8px"><input aria-label="צ׳יפ אישי" placeholder="צ׳יפ אישי (למשל: חמאת בוטנים 10g)" style="flex: 1; min-width: 0; height: 44px; border-radius: 999px; border: 1px solid var(--line2); background: transparent; color: var(--tx); font-size: 13px; padding: 0 14px; outline: none"><button class="glass" style="height: 44px; padding: 0 14px; border-radius: 999px; font-size: 13px; font-weight: 600">הוסף</button></div>
+<div style="margin-top: auto"><a href="{{hPhoto}}" style="height: 56px; border-radius: 999px; background: var(--inv); color: var(--invtx); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; width: 100%">נתח את הצלחת</a></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme": {"editor": "enum", "options": ["dark", "light"], "default": "dark"}, "accent": {"editor": "color", "default": "#d67d09", "options": ["#d67d09", "#eb931c", "#f5f5f5", "#38bdf8"], "section": "צבעים"}, "button": {"editor": "color", "default": "#3e3e3f", "section": "צבעים"}, "card": {"editor": "color", "default": "#1c1c1e", "section": "צבעים"}, "background": {"editor": "color", "default": "#000000", "section": "צבעים"}, "$preview": {"width": 390, "height": 844}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { sel: [1, 1, 0, -1, 0] }; }
+  renderVals() {
+    const theme = this.props.theme ?? 'dark';
+    const L = theme === 'light' ? 'Light' : '';
+    const H = (n) => n + L + '.dc.html';
+    const base = {
+      themeClass: theme,
+      acc: this.props.accent ?? '#d67d09',
+      btn: this.props.button ?? (theme === 'light' ? '#2c2c2e' : '#3e3e3f'),
+      card: this.props.card ?? (theme === 'light' ? '#ffffff' : '#1c1c1e'),
+      bgc: this.props.background ?? (theme === 'light' ? '#f2f2f4' : '#000000'),
+      homeHref: (L ? 'MainLight' : 'Main') + '.dc.html'
+    };
+    const x = (() => { const G = [ ['רוטב / שמן', [['ללא שמן/רוטב נוסף',''],['כף שמן זית (~10g)','שלי'],['טחינה כף','קבוצה']]], ['הכנה / בישול', [['מבושל',''],['צלוי / בתנור',''],['מטוגן','מערכת']]], ['כמות / גודל מנה', [['מנה רגילה',''],['חצי מנה',''],['מנה כפולה','']]], ['שתייה / צד', [['ללא שתייה',''],['קולה זירו','שלי']]], ['מקור המנה', [['בית',''],['מסעדה',''],['ארוז','']]] ]; const sel = this.state.sel; return { hPhoto: H('PhotoResult'), groups: G.map((g, gi) => ({ title: g[0], opts: g[1].map((o, oi) => { const on = sel[gi] === oi; return { l: o[0], src: o[1], hasSrc: !!o[1], on: on ? 'true' : 'false', fw: on ? 700 : 500, bg: on ? 'var(--inv)' : 'transparent', fg: on ? 'var(--invtx)' : 'var(--tx)', bd: on ? 'var(--inv)' : 'var(--line2)', pick: () => { const n = sel.slice(); n[gi] = on ? -1 : oi; this.setState({ sel: n }); } }; }) })) }; })();
+    return Object.assign(base, x);
+  }
+}
+</script>
+</body>
+</html>

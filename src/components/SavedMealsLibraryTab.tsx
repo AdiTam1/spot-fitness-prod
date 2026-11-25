@@ -30,6 +30,7 @@ import {
   SavedMealPreset,
 } from '@/types/nutrition';
 import { sumMacros } from '@/data/israeliFoodCatalog';
+import { parseOptionalDecimal } from '@/lib/numericInput';
 import {
   startUnifiedVoiceCapture,
   VoiceCaptureController,
@@ -100,6 +101,10 @@ export function SavedMealsLibraryTab({
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editItems, setEditItems] = useState<LoggedFoodItem[]>([]);
+  const [editGramsDrafts, setEditGramsDrafts] = useState<Record<string, string | number>>({});
+  const editScaleBaseRef = useRef<
+    Record<string, { grams: number; macros: { calories: number; protein: number; carbs: number; fat: number } }>
+  >({});
   const [askingPresetId, setAskingPresetId] = useState<string | null>(null);
   const [questionText, setQuestionText] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -232,6 +237,19 @@ export function SavedMealsLibraryTab({
 
   const handleSaveEditedPreset = async (preset: SavedMealPreset) => {
     if (!onSavedMealAction || !editTitle.trim() || editItems.length === 0) return;
+    const invalidItem = editItems.find((it) => {
+      const draftVal = editGramsDrafts[it.id];
+      if (draftVal === undefined) return false;
+      const parsed = parseOptionalDecimal(draftVal);
+      return parsed === undefined || parsed <= 0;
+    });
+    if (invalidItem) {
+      setFeedbackBanner({
+        msg: `נא להזין משקל בגרם גדול מ-0 עבור "${invalidItem.name}"`,
+        isError: true,
+      });
+      return;
+    }
     setBusyId(preset.id);
     try {
       const res = await onSavedMealAction({
@@ -247,6 +265,8 @@ export function SavedMealsLibraryTab({
         return;
       }
       setEditingPresetId(null);
+      setEditGramsDrafts({});
+      editScaleBaseRef.current = {};
       setFeedbackBanner({ msg: 'הארוחה השמורה עודכנה' });
     } finally {
       setBusyId(null);
@@ -860,10 +880,21 @@ export function SavedMealsLibraryTab({
                         onClick={() => {
                           if (isEditing) {
                             setEditingPresetId(null);
+                            setEditGramsDrafts({});
+                            editScaleBaseRef.current = {};
                           } else {
                             setEditingPresetId(preset.id);
                             setEditTitle(preset.title);
                             setEditItems(preset.items.map((x) => ({ ...x })));
+                            setEditGramsDrafts({});
+                            const baseMap: Record<string, { grams: number; macros: { calories: number; protein: number; carbs: number; fat: number } }> = {};
+                            for (const x of preset.items) {
+                              baseMap[x.id] = {
+                                grams: Math.max(1, x.grams),
+                                macros: { ...x.macros },
+                              };
+                            }
+                            editScaleBaseRef.current = baseMap;
                           }
                         }}
                         className="btn-surface"
@@ -1123,24 +1154,43 @@ export function SavedMealsLibraryTab({
                           <NumberInput
                             size="xs"
                             label={idx === 0 ? 'גרם' : undefined}
-                            value={it.grams}
+                            placeholder="100"
+                            value={
+                              editGramsDrafts[it.id] !== undefined
+                                ? editGramsDrafts[it.id]
+                                : it.grams
+                            }
                             min={1}
                             max={3000}
+                            clampBehavior="none"
                             onChange={(val) => {
-                              const g = Math.max(1, Number(val) || 1);
+                              setEditGramsDrafts((prev) => ({
+                                ...prev,
+                                [it.id]: val,
+                              }));
+                              const parsed = parseOptionalDecimal(val);
+                              if (parsed === undefined || parsed <= 0) return;
+                              const g = Math.max(1, Math.min(3000, Math.round(parsed * 10) / 10));
+                              if (!editScaleBaseRef.current[it.id]) {
+                                editScaleBaseRef.current[it.id] = {
+                                  grams: Math.max(1, it.grams),
+                                  macros: { ...it.macros },
+                                };
+                              }
+                              const base = editScaleBaseRef.current[it.id];
                               setEditItems((prev) =>
                                 prev.map((x, i) => {
                                   if (i !== idx) return x;
-                                  const ratio = x.grams > 0 ? g / x.grams : 1;
+                                  const ratio = g / Math.max(1, base.grams);
                                   return {
                                     ...x,
                                     grams: g,
                                     unitLabel: `${g} גרם`,
                                     macros: {
-                                      calories: Math.round(x.macros.calories * ratio),
-                                      protein: Math.round(x.macros.protein * ratio * 10) / 10,
-                                      carbs: Math.round(x.macros.carbs * ratio * 10) / 10,
-                                      fat: Math.round(x.macros.fat * ratio * 10) / 10,
+                                      calories: Math.round(base.macros.calories * ratio),
+                                      protein: Math.round(base.macros.protein * ratio * 10) / 10,
+                                      carbs: Math.round(base.macros.carbs * ratio * 10) / 10,
+                                      fat: Math.round(base.macros.fat * ratio * 10) / 10,
                                     },
                                   };
                                 })

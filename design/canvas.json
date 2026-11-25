@@ -1,0 +1,1094 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": -51,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "יומן · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "AddMeal.dc.html",
+      "x": 470,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "הוספת ארוחה · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "PhotoResult.dc.html",
+      "x": 940,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "ניתוח תמונה AI · Dark",
+      "radius": 44
+    },
+    {
+      "file": "QuickLog.dc.html",
+      "x": 1410,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "תיאור במילים / קול · Dark",
+      "radius": 44
+    },
+    {
+      "file": "JournalActivity.dc.html",
+      "x": 1880,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "יומן · פעילות וכרטיסי ארוחה · Dark",
+      "radius": 44
+    },
+    {
+      "file": "Metrics.dc.html",
+      "x": 2350,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "מדדים · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "CheckIn.dc.html",
+      "x": 2820,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "מדדים · צ׳ק-אין שבועי · Dark",
+      "radius": 44
+    },
+    {
+      "file": "Profile.dc.html",
+      "x": 3290,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "פרופיל · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "Coach.dc.html",
+      "x": 3760,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · מצבת מתאמנים · Dark",
+      "radius": 44
+    },
+    {
+      "file": "DatePicker.dc.html",
+      "x": 4230,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "בחירת תאריך · חודש / שנה · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "JournalStates.dc.html",
+      "x": 4700,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "יומן · יום חסום / תשקיף / תזכורות · Dark",
+      "radius": 44
+    },
+    {
+      "file": "AiRecommend.dc.html",
+      "x": 5170,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "מה לאכול? · המלצות AI + מאמן · Dark",
+      "radius": 44
+    },
+    {
+      "file": "SavedMeals.dc.html",
+      "x": 5640,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "ארוחות שמורות והיסטוריה · Dark",
+      "radius": 44
+    },
+    {
+      "file": "Barcode.dc.html",
+      "x": 6110,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "סריקת ברקוד · Dark",
+      "radius": 44
+    },
+    {
+      "file": "MealTime.dc.html",
+      "x": 6580,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "שעת ארוחה · Dark",
+      "radius": 44
+    },
+    {
+      "file": "MeasureGuide.dc.html",
+      "x": 7050,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "מדריך מדידת היקפים · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "MainLight.dc.html",
+      "x": 0,
+      "y": 1244,
+      "w": 390,
+      "h": 844,
+      "title": "יומן · Light",
+      "radius": 44
+    },
+    {
+      "file": "AddMealLight.dc.html",
+      "x": 470,
+      "y": 1244,
+      "w": 390,
+      "h": 844,
+      "title": "הוספת ארוחה · Light",
+      "radius": 44
+    },
+    {
+      "file": "PhotoResultLight.dc.html",
+      "x": 940,
+      "y": 1244,
+      "w": 390,
+      "h": 844,
+      "title": "ניתוח תמונה AI · Light",
+      "radius": 44
+    },
+    {
+      "file": "QuickLogLight.dc.html",
+      "x": 1410,
+      "y": 1244,
+      "w": 390,
+      "h": 844,
+      "title": "תיאור במילים / קול · Light",
+      "radius": 44
+    },
+    {
+      "file": "JournalActivityLight.dc.html",
+      "x": 1880,
+      "y": 1244,
+      "w": 390,
+      "h": 844,
+      "title": "יומן · פעילות וכרטיסי ארוחה · Light",
+      "radius": 44
+    },
+    {
+      "file": "MetricsLight.dc.html",
+      "x": 2350,
+      "y": 1244,
+      "w": 390,
+      "h": 844,
+      "title": "מדדים · Light",
+      "radius": 44
+    },
+    {
+      "file": "CheckInLight.dc.html",
+      "x": 2820,
+      "y": 1244,
+      "w": 390,
+      "h": 844,
+      "title": "מדדים · צ׳ק-אין שבועי · Light",
+      "radius": 44
+    },
+    {
+      "file": "ProfileLight.dc.html",
+      "x": 3290,
+      "y": 1244,
+      "w": 390,
+      "h": 844,
+      "title": "פרופיל · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachLight.dc.html",
+      "x": 3760,
+      "y": 1244,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · מצבת מתאמנים · Light",
+      "radius": 44
+    },
+    {
+      "file": "DatePickerLight.dc.html",
+      "x": 4230,
+      "y": 1244,
+      "w": 390,
+      "h": 844,
+      "title": "בחירת תאריך · חודש / שנה · Light",
+      "radius": 44
+    },
+    {
+      "file": "JournalStatesLight.dc.html",
+      "x": 4700,
+      "y": 1244,
+      "w": 390,
+      "h": 844,
+      "title": "יומן · יום חסום / תשקיף / תזכורות · Light",
+      "radius": 44
+    },
+    {
+      "file": "AiRecommendLight.dc.html",
+      "x": 5170,
+      "y": 1244,
+      "w": 390,
+      "h": 844,
+      "title": "מה לאכול? · המלצות AI + מאמן · Light",
+      "radius": 44
+    },
+    {
+      "file": "SavedMealsLight.dc.html",
+      "x": 5640,
+      "y": 1244,
+      "w": 390,
+      "h": 844,
+      "title": "ארוחות שמורות והיסטוריה · Light",
+      "radius": 44
+    },
+    {
+      "file": "BarcodeLight.dc.html",
+      "x": 6110,
+      "y": 1244,
+      "w": 390,
+      "h": 844,
+      "title": "סריקת ברקוד · Light",
+      "radius": 44
+    },
+    {
+      "file": "MealTimeLight.dc.html",
+      "x": 6580,
+      "y": 1244,
+      "w": 390,
+      "h": 844,
+      "title": "שעת ארוחה · Light",
+      "radius": 44
+    },
+    {
+      "file": "MeasureGuideLight.dc.html",
+      "x": 7050,
+      "y": 1244,
+      "w": 390,
+      "h": 844,
+      "title": "מדריך מדידת היקפים · Light",
+      "radius": 44
+    },
+    {
+      "file": "AuthLogin.dc.html",
+      "x": 0,
+      "y": 2788,
+      "w": 390,
+      "h": 844,
+      "title": "התחברות · Dark",
+      "radius": 44
+    },
+    {
+      "file": "AuthRegister.dc.html",
+      "x": 470,
+      "y": 2788,
+      "w": 390,
+      "h": 844,
+      "title": "הרשמת מתאמן · Dark",
+      "radius": 44
+    },
+    {
+      "file": "OnboardingPersonal.dc.html",
+      "x": 940,
+      "y": 2788,
+      "w": 390,
+      "h": 844,
+      "title": "שאלון פתיחה · פרטים אישיים · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "OnboardingNutrition.dc.html",
+      "x": 1410,
+      "y": 2788,
+      "w": 390,
+      "h": 844,
+      "title": "שאלון פתיחה · סגנון תזונה · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "MealItems.dc.html",
+      "x": 1880,
+      "y": 2788,
+      "w": 390,
+      "h": 844,
+      "title": "מרכיבי הארוחה · Dark",
+      "radius": 44
+    },
+    {
+      "file": "AiSync.dc.html",
+      "x": 2350,
+      "y": 2788,
+      "w": 390,
+      "h": 844,
+      "title": "ניתוח AI ברקע · Dark",
+      "radius": 44
+    },
+    {
+      "file": "ForceUpdate.dc.html",
+      "x": 2820,
+      "y": 2788,
+      "w": 390,
+      "h": 844,
+      "title": "עדכון חובה · Dark",
+      "radius": 44
+    },
+    {
+      "file": "CoachTrainee.dc.html",
+      "x": 3290,
+      "y": 2788,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · תפריט ויומן של מתאמן · Dark",
+      "radius": 44
+    },
+    {
+      "file": "CoachTemplates.dc.html",
+      "x": 3760,
+      "y": 2788,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · ספריית טמפלייטים · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "CoachAccounts.dc.html",
+      "x": 4230,
+      "y": 2788,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · חשבונות ושיתוף · Dark",
+      "radius": 44
+    },
+    {
+      "file": "CoachPush.dc.html",
+      "x": 4700,
+      "y": 2788,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · שליחת פוש · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "CoachAlerts.dc.html",
+      "x": 5170,
+      "y": 2788,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · התראות בזמן אמת · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "AuthLoginLight.dc.html",
+      "x": 0,
+      "y": 4032,
+      "w": 390,
+      "h": 844,
+      "title": "התחברות · Light",
+      "radius": 44
+    },
+    {
+      "file": "AuthRegisterLight.dc.html",
+      "x": 470,
+      "y": 4032,
+      "w": 390,
+      "h": 844,
+      "title": "הרשמת מתאמן · Light",
+      "radius": 44
+    },
+    {
+      "file": "OnboardingPersonalLight.dc.html",
+      "x": 940,
+      "y": 4032,
+      "w": 390,
+      "h": 844,
+      "title": "שאלון פתיחה · פרטים אישיים · Light",
+      "radius": 44
+    },
+    {
+      "file": "OnboardingNutritionLight.dc.html",
+      "x": 1410,
+      "y": 4032,
+      "w": 390,
+      "h": 844,
+      "title": "שאלון פתיחה · סגנון תזונה · Light",
+      "radius": 44
+    },
+    {
+      "file": "MealItemsLight.dc.html",
+      "x": 1880,
+      "y": 4032,
+      "w": 390,
+      "h": 844,
+      "title": "מרכיבי הארוחה · Light",
+      "radius": 44
+    },
+    {
+      "file": "AiSyncLight.dc.html",
+      "x": 2350,
+      "y": 4032,
+      "w": 390,
+      "h": 844,
+      "title": "ניתוח AI ברקע · Light",
+      "radius": 44
+    },
+    {
+      "file": "ForceUpdateLight.dc.html",
+      "x": 2820,
+      "y": 4032,
+      "w": 390,
+      "h": 844,
+      "title": "עדכון חובה · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachTraineeLight.dc.html",
+      "x": 3290,
+      "y": 4032,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · תפריט ויומן של מתאמן · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachTemplatesLight.dc.html",
+      "x": 3760,
+      "y": 4032,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · ספריית טמפלייטים · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachAccountsLight.dc.html",
+      "x": 4230,
+      "y": 4032,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · חשבונות ושיתוף · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachPushLight.dc.html",
+      "x": 4700,
+      "y": 4032,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · שליחת פוש · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachAlertsLight.dc.html",
+      "x": 5170,
+      "y": 4032,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · התראות בזמן אמת · Light",
+      "radius": 44
+    },
+    {
+      "file": "OnbLifestyle.dc.html",
+      "x": 0,
+      "y": 5276,
+      "w": 390,
+      "h": 844,
+      "title": "שאלון פתיחה · שגרה ושינה · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "OnbTraining.dc.html",
+      "x": 470,
+      "y": 5276,
+      "w": 390,
+      "h": 844,
+      "title": "שאלון פתיחה · אימונים והליכות · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "OnbMeasure.dc.html",
+      "x": 940,
+      "y": 5276,
+      "w": 390,
+      "h": 844,
+      "title": "שאלון פתיחה · היקפים · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "OnbSensitivities.dc.html",
+      "x": 1410,
+      "y": 5276,
+      "w": 390,
+      "h": 844,
+      "title": "שאלון פתיחה · רגישויות והערות · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "AuthPending.dc.html",
+      "x": 1880,
+      "y": 5276,
+      "w": 390,
+      "h": 844,
+      "title": "ממתין לאישור מאמן · Dark",
+      "radius": 44
+    },
+    {
+      "file": "AiQuickContext.dc.html",
+      "x": 2350,
+      "y": 5276,
+      "w": 390,
+      "h": 844,
+      "title": "דיוק מהיר לניתוח AI · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "ServingTools.dc.html",
+      "x": 2820,
+      "y": 5276,
+      "w": 390,
+      "h": 844,
+      "title": "כלים ויחידות מידה · Dark",
+      "radius": 44
+    },
+    {
+      "file": "StepsCard.dc.html",
+      "x": 3290,
+      "y": 5276,
+      "w": 390,
+      "h": 844,
+      "title": "מד צעדים יומי · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "CoachOnb1.dc.html",
+      "x": 3760,
+      "y": 5276,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · הגדרה 1 · פרטים אישיים · Dark",
+      "radius": 44
+    },
+    {
+      "file": "CoachOnb2.dc.html",
+      "x": 4230,
+      "y": 5276,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · הגדרה 2 · התמחויות · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "CoachOnb3.dc.html",
+      "x": 4700,
+      "y": 5276,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · הגדרה 3 · ברירות מחדל · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "CoachOnb4.dc.html",
+      "x": 5170,
+      "y": 5276,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · הגדרה 4 · טמפלייטים · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "CoachOnb5.dc.html",
+      "x": 5640,
+      "y": 5276,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · הגדרה 5 · קבוצות וסיום · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "OnbLifestyleLight.dc.html",
+      "x": 0,
+      "y": 6520,
+      "w": 390,
+      "h": 844,
+      "title": "שאלון פתיחה · שגרה ושינה · Light",
+      "radius": 44
+    },
+    {
+      "file": "OnbTrainingLight.dc.html",
+      "x": 470,
+      "y": 6520,
+      "w": 390,
+      "h": 844,
+      "title": "שאלון פתיחה · אימונים והליכות · Light",
+      "radius": 44
+    },
+    {
+      "file": "OnbMeasureLight.dc.html",
+      "x": 940,
+      "y": 6520,
+      "w": 390,
+      "h": 844,
+      "title": "שאלון פתיחה · היקפים · Light",
+      "radius": 44
+    },
+    {
+      "file": "OnbSensitivitiesLight.dc.html",
+      "x": 1410,
+      "y": 6520,
+      "w": 390,
+      "h": 844,
+      "title": "שאלון פתיחה · רגישויות והערות · Light",
+      "radius": 44
+    },
+    {
+      "file": "AuthPendingLight.dc.html",
+      "x": 1880,
+      "y": 6520,
+      "w": 390,
+      "h": 844,
+      "title": "ממתין לאישור מאמן · Light",
+      "radius": 44
+    },
+    {
+      "file": "AiQuickContextLight.dc.html",
+      "x": 2350,
+      "y": 6520,
+      "w": 390,
+      "h": 844,
+      "title": "דיוק מהיר לניתוח AI · Light",
+      "radius": 44
+    },
+    {
+      "file": "ServingToolsLight.dc.html",
+      "x": 2820,
+      "y": 6520,
+      "w": 390,
+      "h": 844,
+      "title": "כלים ויחידות מידה · Light",
+      "radius": 44
+    },
+    {
+      "file": "StepsCardLight.dc.html",
+      "x": 3290,
+      "y": 6520,
+      "w": 390,
+      "h": 844,
+      "title": "מד צעדים יומי · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachOnb1Light.dc.html",
+      "x": 3760,
+      "y": 6520,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · הגדרה 1 · פרטים אישיים · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachOnb2Light.dc.html",
+      "x": 4230,
+      "y": 6520,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · הגדרה 2 · התמחויות · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachOnb3Light.dc.html",
+      "x": 4700,
+      "y": 6520,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · הגדרה 3 · ברירות מחדל · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachOnb4Light.dc.html",
+      "x": 5170,
+      "y": 6520,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · הגדרה 4 · טמפלייטים · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachOnb5Light.dc.html",
+      "x": 5640,
+      "y": 6520,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · הגדרה 5 · קבוצות וסיום · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachNewTrainee.dc.html",
+      "x": 0,
+      "y": 7764,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · פתיחת מתאמן חדש · Dark",
+      "radius": 44
+    },
+    {
+      "file": "CoachAccess.dc.html",
+      "x": 470,
+      "y": 7764,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · עריכת פרטי גישה · Dark",
+      "radius": 44
+    },
+    {
+      "file": "CoachShare.dc.html",
+      "x": 940,
+      "y": 7764,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · שיתוף מתאמן · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "CoachNewGroup.dc.html",
+      "x": 1410,
+      "y": 7764,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · קבוצה חדשה · Dark",
+      "is_interactive": true,
+      "radius": 44
+    },
+    {
+      "file": "CoachGroupActions.dc.html",
+      "x": 1880,
+      "y": 7764,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · פעולות קבוצתיות · Dark",
+      "radius": 44
+    },
+    {
+      "file": "CoachMenu.dc.html",
+      "x": 2350,
+      "y": 7764,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · תפריט מתאמן · Dark",
+      "radius": 44
+    },
+    {
+      "file": "CoachJournal.dc.html",
+      "x": 2820,
+      "y": 7764,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · יומן אכילה ופידבק · Dark",
+      "radius": 44
+    },
+    {
+      "file": "CoachAiPrefs.dc.html",
+      "x": 3290,
+      "y": 7764,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · הנחיות AI וצ׳ק-אין · Dark",
+      "radius": 44
+    },
+    {
+      "file": "CoachLibrary.dc.html",
+      "x": 3760,
+      "y": 7764,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · ספריית ארוחות ושאלות · Dark",
+      "radius": 44
+    },
+    {
+      "file": "AdminApprovals.dc.html",
+      "x": 4230,
+      "y": 7764,
+      "w": 390,
+      "h": 844,
+      "title": "מנהל · מתאמנים ממתינים לאישור · Dark",
+      "radius": 44
+    },
+    {
+      "file": "AdminCoaches.dc.html",
+      "x": 4700,
+      "y": 7764,
+      "w": 390,
+      "h": 844,
+      "title": "מנהל · ניהול מאמנים · Dark",
+      "radius": 44
+    },
+    {
+      "file": "AdminVersions.dc.html",
+      "x": 5170,
+      "y": 7764,
+      "w": 390,
+      "h": 844,
+      "title": "מנהל · בקרת גרסאות · Dark",
+      "radius": 44
+    },
+    {
+      "file": "AdminChips.dc.html",
+      "x": 5640,
+      "y": 7764,
+      "w": 390,
+      "h": 844,
+      "title": "מנהל · צ׳יפים מהירים גלובליים · Dark",
+      "radius": 44
+    },
+    {
+      "file": "AdminScrapers.dc.html",
+      "x": 6110,
+      "y": 7764,
+      "w": 390,
+      "h": 844,
+      "title": "מנהל · סקרייפרים ומאגר מזון · Dark",
+      "radius": 44
+    },
+    {
+      "file": "CoachNewTraineeLight.dc.html",
+      "x": 0,
+      "y": 9008,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · פתיחת מתאמן חדש · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachAccessLight.dc.html",
+      "x": 470,
+      "y": 9008,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · עריכת פרטי גישה · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachShareLight.dc.html",
+      "x": 940,
+      "y": 9008,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · שיתוף מתאמן · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachNewGroupLight.dc.html",
+      "x": 1410,
+      "y": 9008,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · קבוצה חדשה · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachGroupActionsLight.dc.html",
+      "x": 1880,
+      "y": 9008,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · פעולות קבוצתיות · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachMenuLight.dc.html",
+      "x": 2350,
+      "y": 9008,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · תפריט מתאמן · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachJournalLight.dc.html",
+      "x": 2820,
+      "y": 9008,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · יומן אכילה ופידבק · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachAiPrefsLight.dc.html",
+      "x": 3290,
+      "y": 9008,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · הנחיות AI וצ׳ק-אין · Light",
+      "radius": 44
+    },
+    {
+      "file": "CoachLibraryLight.dc.html",
+      "x": 3760,
+      "y": 9008,
+      "w": 390,
+      "h": 844,
+      "title": "מאמן · ספריית ארוחות ושאלות · Light",
+      "radius": 44
+    },
+    {
+      "file": "AdminApprovalsLight.dc.html",
+      "x": 4230,
+      "y": 9008,
+      "w": 390,
+      "h": 844,
+      "title": "מנהל · מתאמנים ממתינים לאישור · Light",
+      "radius": 44
+    },
+    {
+      "file": "AdminCoachesLight.dc.html",
+      "x": 4700,
+      "y": 9008,
+      "w": 390,
+      "h": 844,
+      "title": "מנהל · ניהול מאמנים · Light",
+      "radius": 44
+    },
+    {
+      "file": "AdminVersionsLight.dc.html",
+      "x": 5170,
+      "y": 9008,
+      "w": 390,
+      "h": 844,
+      "title": "מנהל · בקרת גרסאות · Light",
+      "radius": 44
+    },
+    {
+      "file": "AdminChipsLight.dc.html",
+      "x": 5640,
+      "y": 9008,
+      "w": 390,
+      "h": 844,
+      "title": "מנהל · צ׳יפים מהירים גלובליים · Light",
+      "radius": 44
+    },
+    {
+      "file": "AdminScrapersLight.dc.html",
+      "x": 6110,
+      "y": 9008,
+      "w": 390,
+      "h": 844,
+      "title": "מנהל · סקרייפרים ומאגר מזון · Light",
+      "radius": 44
+    }
+  ],
+  "annotations": [
+    {
+      "id": "titleDark",
+      "x": 0,
+      "y": -300,
+      "w": 240,
+      "maxW": 7500,
+      "text": "Dark mode — שחור / אפור",
+      "kind": "title1"
+    },
+    {
+      "id": "titleLight",
+      "x": 0,
+      "y": 944,
+      "w": 240,
+      "maxW": 7500,
+      "text": "Light mode",
+      "kind": "title1"
+    },
+    {
+      "id": "titleSys",
+      "x": 0,
+      "y": 2488,
+      "w": 240,
+      "maxW": 5560,
+      "text": "כניסה, מערכת ומאמן — Dark",
+      "kind": "title1"
+    },
+    {
+      "id": "titleSysLight",
+      "x": 0,
+      "y": 3732,
+      "w": 240,
+      "maxW": 5560,
+      "text": "כניסה, מערכת ומאמן — Light",
+      "kind": "title1"
+    },
+    {
+      "id": "titleC",
+      "x": 0,
+      "y": 4976,
+      "w": 240,
+      "maxW": 6000,
+      "text": "שאלונים, כלים למתאמן והגדרת מאמן — Dark",
+      "kind": "title1"
+    },
+    {
+      "id": "titleCL",
+      "x": 0,
+      "y": 6220,
+      "w": 240,
+      "maxW": 6000,
+      "text": "שאלונים, כלים למתאמן והגדרת מאמן — Light",
+      "kind": "title1"
+    },
+    {
+      "id": "titleD",
+      "x": 0,
+      "y": 7464,
+      "w": 240,
+      "maxW": 6500,
+      "text": "ניהול מאמן ומנהל ראשי — Dark",
+      "kind": "title1"
+    },
+    {
+      "id": "titleDL",
+      "x": 0,
+      "y": 8708,
+      "w": 240,
+      "maxW": 6500,
+      "text": "ניהול מאמן ומנהל ראשי — Light",
+      "kind": "title1"
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

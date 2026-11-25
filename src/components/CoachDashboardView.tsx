@@ -74,6 +74,7 @@ import {
   TraineeServingTool,
 } from '@/types/nutrition';
 import { computeAgeFromBirthDate } from '@/lib/dateUtils';
+import { parseOptionalDecimal, resolveNumericValue } from '@/lib/numericInput';
 import { QuickChipsAdminPanel } from './QuickChipsAdminPanel';
 import { CoachSavedMealsPanel } from './CoachSavedMealsPanel';
 import { CustomFoodsLibraryPanel } from './CustomFoodsLibraryPanel';
@@ -357,7 +358,7 @@ export function CoachDashboardView({
   );
   const [coachAlertsModalOpen, setCoachAlertsModalOpen] = useState(false);
 
-  const [policyBlockedUpTo, setPolicyBlockedUpTo] = useState<number>(
+  const [policyBlockedUpTo, setPolicyBlockedUpTo] = useState<number | string>(
     appReleasePolicy?.androidBlockedUpToVersionCode ?? 0
   );
   const [policyLatestCode, setPolicyLatestCode] = useState<string>(
@@ -525,7 +526,7 @@ export function CoachDashboardView({
   const [editCoachEmail, setEditCoachEmail] = useState('');
   const [editCoachPassword, setEditCoachPassword] = useState('');
   const [editCoachInvite, setEditCoachInvite] = useState('');
-  const [customObsDays, setCustomObsDays] = useState<number>(5);
+  const [customObsDays, setCustomObsDays] = useState<number | string>(5);
   const [customBlockDateInput, setCustomBlockDateInput] = useState<string>(() =>
     getTodayIso()
   );
@@ -556,12 +557,41 @@ export function CoachDashboardView({
     return () => window.removeEventListener('resize', syncViewport);
   }, [rosterViewPinned]);
 
-  const [activePastDraft, setActivePastDraft] = useState<number>(
+  const [activePastDraft, setActivePastDraft] = useState<number | string>(
     selectedTrainee?.activeDateRange?.pastDays ?? 1
   );
-  const [activeFutureDraft, setActiveFutureDraft] = useState<number>(
+  const [activeFutureDraft, setActiveFutureDraft] = useState<number | string>(
     selectedTrainee?.activeDateRange?.futureDays ?? 0
   );
+  const [numericDrafts, setNumericDrafts] = useState<Record<string, string | number>>({});
+
+  useEffect(() => {
+    setNumericDrafts({});
+  }, [selectedTrainee?.id, editingDayType, selectedTemplateId]);
+
+  const getNumDraft = (key: string, currentValue: number): string | number =>
+    numericDrafts[key] !== undefined ? numericDrafts[key] : currentValue;
+
+  const handleNumDraftChange = (
+    key: string,
+    val: string | number,
+    onValidCommit: (num: number) => void,
+    opts?: { min?: number; max?: number; integer?: boolean; roundDecimals?: number }
+  ) => {
+    setNumericDrafts((prev) => ({ ...prev, [key]: val }));
+    const parsed = parseOptionalDecimal(val);
+    if (parsed === undefined) return;
+    let num = parsed;
+    if (opts?.integer) {
+      num = Math.round(num);
+    } else if (opts?.roundDecimals !== undefined) {
+      const factor = 10 ** opts.roundDecimals;
+      num = Math.round(num * factor) / factor;
+    }
+    if (opts?.min !== undefined && num < opts.min) return;
+    if (opts?.max !== undefined && num > opts.max) return;
+    onValidCommit(num);
+  };
 
   useEffect(() => {
     setActivePastDraft(selectedTrainee?.activeDateRange?.pastDays ?? 1);
@@ -685,6 +715,7 @@ export function CoachDashboardView({
 
   const handleSelectTemplate = (tplId: string) => {
     setSelectedTemplateId(tplId);
+    setNumericDrafts({});
     const found = templates.find((t) => t.id === tplId);
     if (found) {
       setEditableTemplate(JSON.parse(JSON.stringify(found)));
@@ -2827,70 +2858,129 @@ export function CoachDashboardView({
                     <NumberInput
                       size="xs"
                       label="מינימום ימי אימון בשבוע"
-                      value={act.weeklyWorkoutsTarget}
+                      placeholder="0"
+                      clampBehavior="none"
+                      value={getNumDraft(
+                        `act:${selectedTrainee.id}:workouts`,
+                        act.weeklyWorkoutsTarget
+                      )}
                       min={0}
                       max={14}
+                      allowDecimal={false}
                       onChange={(val) =>
-                        onUpdateActivityTargets(selectedTrainee.id, {
-                          ...act,
-                          weeklyWorkoutsTarget: Number(val) || 0,
-                        })
+                        handleNumDraftChange(
+                          `act:${selectedTrainee.id}:workouts`,
+                          val,
+                          (num) =>
+                            onUpdateActivityTargets(selectedTrainee.id, {
+                              ...act,
+                              weeklyWorkoutsTarget: num,
+                            }),
+                          { min: 0, max: 14, integer: true }
+                        )
                       }
                     />
                     <NumberInput
                       size="xs"
                       label="יעד הליכות / ריצות בשבוע"
-                      value={act.weeklyCardioTarget}
+                      placeholder="0"
+                      clampBehavior="none"
+                      value={getNumDraft(
+                        `act:${selectedTrainee.id}:cardio`,
+                        act.weeklyCardioTarget
+                      )}
                       min={0}
                       max={14}
+                      allowDecimal={false}
                       onChange={(val) =>
-                        onUpdateActivityTargets(selectedTrainee.id, {
-                          ...act,
-                          weeklyCardioTarget: Number(val) || 0,
-                        })
+                        handleNumDraftChange(
+                          `act:${selectedTrainee.id}:cardio`,
+                          val,
+                          (num) =>
+                            onUpdateActivityTargets(selectedTrainee.id, {
+                              ...act,
+                              weeklyCardioTarget: num,
+                            }),
+                          { min: 0, max: 14, integer: true }
+                        )
                       }
                     />
                     <NumberInput
                       size="xs"
                       label="משך הליכה/ריצה (דקות)"
-                      value={act.cardioTargetMinutes}
+                      placeholder="35"
+                      clampBehavior="none"
+                      value={getNumDraft(
+                        `act:${selectedTrainee.id}:cardioMin`,
+                        act.cardioTargetMinutes
+                      )}
                       min={10}
                       max={180}
                       step={5}
+                      allowDecimal={false}
                       onChange={(val) =>
-                        onUpdateActivityTargets(selectedTrainee.id, {
-                          ...act,
-                          cardioTargetMinutes: Number(val) || 35,
-                        })
+                        handleNumDraftChange(
+                          `act:${selectedTrainee.id}:cardioMin`,
+                          val,
+                          (num) =>
+                            onUpdateActivityTargets(selectedTrainee.id, {
+                              ...act,
+                              cardioTargetMinutes: num,
+                            }),
+                          { min: 10, max: 180, integer: true }
+                        )
                       }
                     />
                     <NumberInput
                       size="xs"
                       label="יעד שעות שינה בלילה"
-                      value={act.dailySleepTargetHours}
+                      placeholder="7.5"
+                      clampBehavior="none"
+                      value={getNumDraft(
+                        `act:${selectedTrainee.id}:sleep`,
+                        act.dailySleepTargetHours
+                      )}
                       min={4}
                       max={12}
                       step={0.5}
                       decimalScale={1}
                       onChange={(val) =>
-                        onUpdateActivityTargets(selectedTrainee.id, {
-                          ...act,
-                          dailySleepTargetHours: Number(val) || 7.5,
-                        })
+                        handleNumDraftChange(
+                          `act:${selectedTrainee.id}:sleep`,
+                          val,
+                          (num) =>
+                            onUpdateActivityTargets(selectedTrainee.id, {
+                              ...act,
+                              dailySleepTargetHours: num,
+                            }),
+                          { min: 4, max: 12, roundDecimals: 1 }
+                        )
                       }
                     />
                     <NumberInput
                       size="xs"
                       label="יעד צעדים יומי"
-                      value={act.dailyStepsTarget ?? 8000}
+                      placeholder="8000"
+                      clampBehavior="none"
+                      value={getNumDraft(
+                        `act:${selectedTrainee.id}:steps`,
+                        act.dailyStepsTarget ?? 8000
+                      )}
                       min={1000}
                       max={50000}
                       step={500}
+                      allowDecimal={false}
                       onChange={(val) =>
-                        onUpdateActivityTargets(selectedTrainee.id, {
-                          ...act,
-                          dailyStepsTarget: Number(val) || 8000,
-                        })
+                        handleNumDraftChange(
+                          `act:${selectedTrainee.id}:steps`,
+                          val,
+                          (num) =>
+                            onUpdateActivityTargets(selectedTrainee.id, {
+                              ...act,
+                              dailyStepsTarget: num,
+                            }),
+                          { min: 1000, max: 50000, integer: true }
+                        )
                       }
                     />
                   </div>
@@ -3120,27 +3210,33 @@ export function CoachDashboardView({
                     max={90}
                     step={1}
                     allowDecimal={false}
+                    clampBehavior="none"
                     value={customObsDays}
-                    onChange={(v) =>
-                      setCustomObsDays(
-                        Math.max(1, Math.min(90, Math.round(Number(v) || 1)))
-                      )
-                    }
+                    onChange={setCustomObsDays}
                     style={{ width: 64 }}
                   />
                   <button
                     type="button"
-                    disabled={isBusy('obs-ins-custom')}
-                    onClick={() =>
+                    disabled={
+                      isBusy('obs-ins-custom') ||
+                      (parseOptionalDecimal(customObsDays) ?? 0) < 1
+                    }
+                    onClick={() => {
+                      const daysNum = resolveNumericValue(customObsDays, 1, {
+                        min: 1,
+                        max: 90,
+                        integer: true,
+                      });
+                      setCustomObsDays(daysNum);
                       runBusy(
                         'obs-ins-custom',
                         () =>
                           onManageObservationDays(selectedTrainee.id, {
-                            addFutureDays: customObsDays,
+                            addFutureDays: daysNum,
                           }),
-                        `נוספו ${customObsDays} ימי תשקיף מראש`
-                      )
-                    }
+                        `נוספו ${daysNum} ימי תשקיף מראש`
+                      );
+                    }}
                     className="btn-surface"
                     style={{
                       padding: '5px 10px',
@@ -3150,7 +3246,12 @@ export function CoachDashboardView({
                   >
                     {isBusy('obs-ins-custom')
                       ? 'מוסיף...'
-                      : `+ ${customObsDays} ימים`}
+                      : `+ ${
+                          parseOptionalDecimal(customObsDays) &&
+                          parseOptionalDecimal(customObsDays)! >= 1
+                            ? Math.min(90, Math.round(parseOptionalDecimal(customObsDays)!))
+                            : '...'
+                        } ימים`}
                   </button>
                 </div>
 
@@ -3295,47 +3396,55 @@ export function CoachDashboardView({
                   <NumberInput
                     size="xs"
                     label="ימים אחורה"
+                    placeholder="0"
                     value={activePastDraft}
                     min={0}
                     max={365}
                     allowDecimal={false}
-                    onChange={(val) =>
-                      setActivePastDraft(
-                        val === '' ? 0 : Math.max(0, Math.min(365, Math.round(Number(val) || 0)))
-                      )
-                    }
+                    clampBehavior="none"
+                    onChange={setActivePastDraft}
                     style={{ width: 92 }}
                   />
                   <NumberInput
                     size="xs"
                     label="ימים קדימה"
+                    placeholder="0"
                     value={activeFutureDraft}
                     min={0}
                     max={180}
                     allowDecimal={false}
-                    onChange={(val) =>
-                      setActiveFutureDraft(
-                        val === '' ? 0 : Math.max(0, Math.min(180, Math.round(Number(val) || 0)))
-                      )
-                    }
+                    clampBehavior="none"
+                    onChange={setActiveFutureDraft}
                     style={{ width: 92 }}
                   />
                   <button
                     type="button"
                     disabled={isBusy('active-range-save')}
-                    onClick={() =>
+                    onClick={() => {
+                      const safePast = resolveNumericValue(activePastDraft, 0, {
+                        min: 0,
+                        max: 365,
+                        integer: true,
+                      });
+                      const safeFuture = resolveNumericValue(activeFutureDraft, 0, {
+                        min: 0,
+                        max: 180,
+                        integer: true,
+                      });
+                      setActivePastDraft(safePast);
+                      setActiveFutureDraft(safeFuture);
                       runBusy(
                         'active-range-save',
                         () =>
                           onManageObservationDays(selectedTrainee.id, {
                             activeDateRange: {
-                              pastDays: activePastDraft,
-                              futureDays: activeFutureDraft,
+                              pastDays: safePast,
+                              futureDays: safeFuture,
                             },
                           }),
                         'טווח התאריכים הפעילים למתאמן עודכן'
-                      )
-                    }
+                      );
+                    }}
                     className="btn-volt"
                     style={{
                       padding: '6px 12px',
@@ -4142,20 +4251,32 @@ export function CoachDashboardView({
               )}
               <NumberInput
                 label="טווח גמישות (%)"
+                placeholder="10"
                 size="xs"
                 w={120}
-                value={selectedTrainee.tolerancePercent}
+                value={getNumDraft(
+                  `plan:${selectedTrainee.id}:tolerance`,
+                  selectedTrainee.tolerancePercent
+                )}
                 min={1}
                 max={25}
+                allowDecimal={false}
+                clampBehavior="none"
                 suffix="%"
                 onChange={(val) =>
-                  onUpdateTraineePlan(
-                    selectedTrainee.id,
-                    selectedTrainee.enableWorkoutRestSplit
-                      ? editingDayType
-                      : 'workout',
-                    activeTraineePlan,
-                    Number(val) || 10
+                  handleNumDraftChange(
+                    `plan:${selectedTrainee.id}:tolerance`,
+                    val,
+                    (num) =>
+                      onUpdateTraineePlan(
+                        selectedTrainee.id,
+                        selectedTrainee.enableWorkoutRestSplit
+                          ? editingDayType
+                          : 'workout',
+                        activeTraineePlan,
+                        num
+                      ),
+                    { min: 1, max: 25, integer: true }
                   )
                 }
               />
@@ -4219,38 +4340,82 @@ export function CoachDashboardView({
                     <NumberInput
                       size="xs"
                       label="קלוריות"
-                      value={meal.targets.calories}
+                      placeholder="0"
+                      clampBehavior="none"
+                      value={getNumDraft(
+                        `planMeal:${selectedTrainee.id}:${meal.id}:calories`,
+                        meal.targets.calories
+                      )}
                       min={0}
                       step={25}
+                      allowDecimal={false}
                       onChange={(val) =>
-                        updateTraineeDirectMeal(meal.id, 'calories', val)
+                        handleNumDraftChange(
+                          `planMeal:${selectedTrainee.id}:${meal.id}:calories`,
+                          val,
+                          (num) => updateTraineeDirectMeal(meal.id, 'calories', num),
+                          { min: 0, integer: true }
+                        )
                       }
                     />
                     <NumberInput
                       size="xs"
                       label="חלבון (g)"
-                      value={meal.targets.protein}
+                      placeholder="0"
+                      clampBehavior="none"
+                      value={getNumDraft(
+                        `planMeal:${selectedTrainee.id}:${meal.id}:protein`,
+                        meal.targets.protein
+                      )}
                       min={0}
+                      decimalScale={1}
                       onChange={(val) =>
-                        updateTraineeDirectMeal(meal.id, 'protein', val)
+                        handleNumDraftChange(
+                          `planMeal:${selectedTrainee.id}:${meal.id}:protein`,
+                          val,
+                          (num) => updateTraineeDirectMeal(meal.id, 'protein', num),
+                          { min: 0, roundDecimals: 1 }
+                        )
                       }
                     />
                     <NumberInput
                       size="xs"
                       label="פחמימה (g)"
-                      value={meal.targets.carbs}
+                      placeholder="0"
+                      clampBehavior="none"
+                      value={getNumDraft(
+                        `planMeal:${selectedTrainee.id}:${meal.id}:carbs`,
+                        meal.targets.carbs
+                      )}
                       min={0}
+                      decimalScale={1}
                       onChange={(val) =>
-                        updateTraineeDirectMeal(meal.id, 'carbs', val)
+                        handleNumDraftChange(
+                          `planMeal:${selectedTrainee.id}:${meal.id}:carbs`,
+                          val,
+                          (num) => updateTraineeDirectMeal(meal.id, 'carbs', num),
+                          { min: 0, roundDecimals: 1 }
+                        )
                       }
                     />
                     <NumberInput
                       size="xs"
                       label="שומן (g)"
-                      value={meal.targets.fat}
+                      placeholder="0"
+                      clampBehavior="none"
+                      value={getNumDraft(
+                        `planMeal:${selectedTrainee.id}:${meal.id}:fat`,
+                        meal.targets.fat
+                      )}
                       min={0}
+                      decimalScale={1}
                       onChange={(val) =>
-                        updateTraineeDirectMeal(meal.id, 'fat', val)
+                        handleNumDraftChange(
+                          `planMeal:${selectedTrainee.id}:${meal.id}:fat`,
+                          val,
+                          (num) => updateTraineeDirectMeal(meal.id, 'fat', num),
+                          { min: 0, roundDecimals: 1 }
+                        )
                       }
                     />
                   </div>
@@ -4899,39 +5064,83 @@ export function CoachDashboardView({
                   />
                   <NumberInput
                     label="קלוריות"
+                    placeholder="0"
+                    clampBehavior="none"
                     disabled={!canEditCurrentTemplate}
-                    value={meal.targets.calories}
+                    value={getNumDraft(
+                      `tplMeal:${editableTemplate.id}:${meal.id}:calories`,
+                      meal.targets.calories
+                    )}
                     min={0}
                     step={25}
+                    allowDecimal={false}
                     onChange={(val) =>
-                      updateTemplateMealField(meal.id, 'calories', val)
+                      handleNumDraftChange(
+                        `tplMeal:${editableTemplate.id}:${meal.id}:calories`,
+                        val,
+                        (num) => updateTemplateMealField(meal.id, 'calories', num),
+                        { min: 0, integer: true }
+                      )
                     }
                   />
                   <NumberInput
                     label="חלבון (g)"
+                    placeholder="0"
+                    clampBehavior="none"
                     disabled={!canEditCurrentTemplate}
-                    value={meal.targets.protein}
+                    value={getNumDraft(
+                      `tplMeal:${editableTemplate.id}:${meal.id}:protein`,
+                      meal.targets.protein
+                    )}
                     min={0}
+                    decimalScale={1}
                     onChange={(val) =>
-                      updateTemplateMealField(meal.id, 'protein', val)
+                      handleNumDraftChange(
+                        `tplMeal:${editableTemplate.id}:${meal.id}:protein`,
+                        val,
+                        (num) => updateTemplateMealField(meal.id, 'protein', num),
+                        { min: 0, roundDecimals: 1 }
+                      )
                     }
                   />
                   <NumberInput
                     label="פחמימות (g)"
+                    placeholder="0"
+                    clampBehavior="none"
                     disabled={!canEditCurrentTemplate}
-                    value={meal.targets.carbs}
+                    value={getNumDraft(
+                      `tplMeal:${editableTemplate.id}:${meal.id}:carbs`,
+                      meal.targets.carbs
+                    )}
                     min={0}
+                    decimalScale={1}
                     onChange={(val) =>
-                      updateTemplateMealField(meal.id, 'carbs', val)
+                      handleNumDraftChange(
+                        `tplMeal:${editableTemplate.id}:${meal.id}:carbs`,
+                        val,
+                        (num) => updateTemplateMealField(meal.id, 'carbs', num),
+                        { min: 0, roundDecimals: 1 }
+                      )
                     }
                   />
                   <NumberInput
                     label="שומנים (g)"
+                    placeholder="0"
+                    clampBehavior="none"
                     disabled={!canEditCurrentTemplate}
-                    value={meal.targets.fat}
+                    value={getNumDraft(
+                      `tplMeal:${editableTemplate.id}:${meal.id}:fat`,
+                      meal.targets.fat
+                    )}
                     min={0}
+                    decimalScale={1}
                     onChange={(val) =>
-                      updateTemplateMealField(meal.id, 'fat', val)
+                      handleNumDraftChange(
+                        `tplMeal:${editableTemplate.id}:${meal.id}:fat`,
+                        val,
+                        (num) => updateTemplateMealField(meal.id, 'fat', num),
+                        { min: 0, roundDecimals: 1 }
+                      )
                     }
                   />
                   <button
@@ -5936,12 +6145,14 @@ export function CoachDashboardView({
                       : undefined;
                   runBusy(
                     'save-app-policy',
-                    () =>
-                      onUpdateAppPolicy({
-                        androidBlockedUpToVersionCode: Math.max(
-                          0,
-                          Math.round(Number(policyBlockedUpTo) || 0)
-                        ),
+                    () => {
+                      const safeBlocked = resolveNumericValue(policyBlockedUpTo, 0, {
+                        min: 0,
+                        integer: true,
+                      });
+                      setPolicyBlockedUpTo(safeBlocked);
+                      return onUpdateAppPolicy({
+                        androidBlockedUpToVersionCode: safeBlocked,
                         androidLatestVersionCode: parsedLatestCode,
                         androidLatestVersionName:
                           policyLatestName.trim() || undefined,
@@ -5949,7 +6160,8 @@ export function CoachDashboardView({
                         androidApkSizeBytes: preservedSize,
                         androidReleaseNotes:
                           policyReleaseNotes.trim() || undefined,
-                      }),
+                      });
+                    },
                     'מדיניות הגרסאות והחסימה באנדרואיד עודכנה'
                   );
                 }}
@@ -5965,12 +6177,13 @@ export function CoachDashboardView({
                   <NumberInput
                     label={<>חסום אפליקציית אנדרואיד עד וכולל (<bdi dir="ltr">versionCode ≤</bdi>)</>}
                     description="0 = ללא חסימה. למשל 10002 יחסום גרסאות 10002 ומטה"
+                    placeholder="0"
                     min={0}
                     max={99999999}
+                    allowDecimal={false}
+                    clampBehavior="none"
                     value={policyBlockedUpTo}
-                    onChange={(val) =>
-                      setPolicyBlockedUpTo(Math.max(0, Number(val) || 0))
-                    }
+                    onChange={setPolicyBlockedUpTo}
                   />
                   <TextInput
                     dir="ltr"

@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Footprints,
   RefreshCw,
@@ -11,6 +11,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { StepsSyncSource } from '@/types/nutrition';
+import { sanitizeIntegerInput } from '@/lib/numericInput';
 import {
   getNativeStepsStatus,
   installOrOpenHealthConnect,
@@ -103,9 +104,17 @@ export function DailyStepsCard({
   const [syncing, setSyncing] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [manualInput, setManualInput] = useState(String(steps || 0));
+  const isManualFocusedRef = useRef(false);
+  const prevStepsDateRef = useRef({ steps, selectedDate });
 
   useEffect(() => {
-    setManualInput(String(steps || 0));
+    const prev = prevStepsDateRef.current;
+    const dateChanged = prev.selectedDate !== selectedDate;
+    const stepsChanged = prev.steps !== steps;
+    prevStepsDateRef.current = { steps, selectedDate };
+    if (dateChanged || (stepsChanged && !isManualFocusedRef.current)) {
+      setManualInput(String(steps || 0));
+    }
   }, [steps, selectedDate]);
 
   useEffect(() => {
@@ -298,13 +307,17 @@ export function DailyStepsCard({
       {manualOpen && !isBlockedDay && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input
-            type="number"
+            type="text"
             inputMode="numeric"
-            min={0}
-            max={150000}
             aria-label="מספר צעדים"
             value={manualInput}
-            onChange={(e) => setManualInput(e.target.value)}
+            onFocus={() => {
+              isManualFocusedRef.current = true;
+            }}
+            onBlur={() => {
+              isManualFocusedRef.current = false;
+            }}
+            onChange={(e) => setManualInput(sanitizeIntegerInput(e.target.value))}
             placeholder="מספר צעדים"
             dir="ltr"
             className="num-mono"

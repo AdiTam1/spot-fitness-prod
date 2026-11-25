@@ -1,0 +1,114 @@
+<!doctype html>
+<meta charset="utf-8"><style data-dc-design-system-vars>@layer{:root{--bg-canvas:#08090c;--bg-surface-1:#101218;--bg-surface-2:#161922;--bg-surface-3:#1e222e;--bg-glass:#101218d1;--border-subtle:#ffffff0f;--border-strong:#ffffff1f;--border-accent:#d67d0973;--text-primary:#f4f6fb;--text-secondary:#949bb0;--text-muted:#5e6578;--accent-orange:#d67d09;--accent-volt:#d67d09;--accent-orange-bright:#eb931c;--accent-volt-soft:#d67d0924;--orange-0:#fef5e7;--orange-1:#fae8cb;--orange-2:#f4cf97;--orange-3:#eeb45f;--orange-4:#e99c2f;--orange-5:#e68e13;--orange-6:#d67d09;--orange-7:#be6c03;--orange-8:#a95f00;--orange-9:#935000;--macro-protein:#38bdf8;--macro-protein-soft:#38bdf824;--macro-carbs:#ff5e7e;--macro-carbs-soft:#ff5e7e24;--macro-fat:#ff8c1a;--macro-fat-soft:#ff8c1a24;--status-ok:#22c55e;--status-warn:#f59e0b;--status-danger:#ef4444;--shadow-card:inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 8px 24px -8px rgba(0, 0, 0, 0.5);--shadow-card-elevated:inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 20px 40px -15px rgba(0, 0, 0, 0.7);--shadow-button-hover:0 6px 20px -4px rgba(214, 125, 9, 0.45);--shadow-dock:0 20px 45px -10px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.1);--space-xs:10px;--space-sm:12px;--space-md:16px;--space-lg:20px;--space-xl:32px;--radius-sm:12px;--radius-md:20px;--radius-lg:24px;--radius-pill:999px;--font-sans:'Heebo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;--font-mono:'Space Grotesk', 'Heebo', sans-serif;}}</style>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>Spot Fitness – מה לאכול?</title>
+<script src="./_runtime/react.js"></script>
+<script src="./_runtime/react-dom.js"></script>
+<script src="./_runtime/support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@300..800&amp;family=Space+Grotesk:wght@500..700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}a:hover{color:inherit}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+.app{--acc:#d67d09;--p:#38bdf8;--c:#ff5e7e;--f:#ff8c1a;font-family:'Heebo',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.app.dark{--bg:#000000;--s1:#1c1c1e;--s2:#2c2c2e;--s3:#3a3a3c;--line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.14);--tx:#f5f5f5;--tx2:#a8a8a8;--tx3:#8e8e93;--inv:#3e3e3f;--invtx:#ffffff;--glass:rgba(44,44,46,.52);--glass-b:rgba(255,255,255,.13);--glass-hi:rgba(255,255,255,.22);--shadow:0 14px 34px -10px rgba(0,0,0,.8)}
+.app.light{--bg:#f2f2f4;--s1:#ffffff;--s2:#f2f2f4;--s3:#e5e5e8;--line:rgba(0,0,0,.06);--line2:rgba(0,0,0,.1);--tx:#0a0a0a;--tx2:#5a5a5e;--tx3:#6e6e73;--inv:#2c2c2e;--invtx:#ffffff;--glass:rgba(255,255,255,.62);--glass-b:rgba(255,255,255,.85);--glass-hi:rgba(255,255,255,1);--shadow:0 14px 34px -12px rgba(0,0,0,.22)}
+.glass{position:relative;isolation:isolate;background:var(--glass);-webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);border:1px solid var(--glass-b);box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 -1px 1px rgba(255,255,255,.05),var(--shadow)}
+.glass::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(140deg,rgba(255,255,255,.2),rgba(255,255,255,0) 42%,rgba(255,255,255,0) 70%,rgba(255,255,255,.08));pointer-events:none;z-index:-1}
+.num{font-family:'Space Grotesk','Heebo',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-0.03em}
+.ic{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+</style>
+</helmet>
+<div class="app {{themeClass}}" dir="rtl" lang="he" style="--acc: {{acc}}; --inv: {{btn}}; --s1: {{card}}; --bg: {{bgc}}; width: 390px; height: 844px; position: relative; overflow: hidden; background: var(--bg); color: var(--tx); box-sizing: border-box; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+
+<header style="display: flex; align-items: center; gap: 12px">
+<a href="{{addHref}}" class="glass" aria-label="חזרה" style="width: 44px; height: 44px; border-radius: 999px; display: flex; align-items: center; justify-content: center; flex: none"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="width: 20px; height: 20px"><path d="M9 6l6 6-6 6"></path></svg></a>
+<div style="display: flex; flex-direction: column">
+<h1 style="margin: 0; font-size: 22px; font-weight: 700; line-height: 1.2">מה לאכול?</h1>
+<span style="font-size: 13px; color: var(--tx2)">ארוחת ערב · המלצות המאמן וה-AI</span>
+</div>
+</header>
+
+<section aria-label="אופציות המאמן" style="display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 13px; color: var(--tx2)">אופציות של המאמן לארוחה זו</span>
+<sc-for list="{{coach}}" as="o" hint-placeholder-count="2">
+<div style="display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 14px; border-radius: 20px; background: var(--s1); border: 1px solid var(--line)">
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+<span style="font-size: 15px; font-weight: 600">{{o.name}}</span>
+<span style="font-size: 12px; color: var(--tx2)"><span class="num" style="color: var(--tx); font-weight: 600">{{o.kcal}}</span> קק״ל · ח {{o.p}} · פ {{o.c}} · ש {{o.f}}</span>
+</span>
+<button style="height: 40px; padding: 0 14px; border-radius: 999px; background: var(--inv); color: var(--invtx); font-size: 13px; font-weight: 700">בחר והוסף</button>
+</div>
+</sc-for>
+</section>
+
+<section aria-label="השלמת מאקרו חכמה" style="background: var(--s1); border: 1px solid var(--line); border-radius: 24px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; justify-content: space-between; align-items: flex-start">
+<span style="display: flex; flex-direction: column; gap: 2px">
+<span style="display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 700"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="width: 16px; height: 16px; color: var(--acc)"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg>השלמת מאקרו חכמה</span>
+<span style="font-size: 12px; color: var(--tx2)">יתרה להשלמה בארוחה זו</span>
+</span>
+<span style="height: 30px; padding: 0 10px; border-radius: 999px; background: var(--acc); color: #0a0a0a; font-size: 13px; font-weight: 700; display: flex; align-items: center" class="num">620 קק״ל · ח 48</span>
+</div>
+<div style="display: flex; flex-direction: column">
+<sc-for list="{{ai}}" as="s" hint-placeholder-count="3">
+<div style="display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line)">
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 14px; font-weight: 600">{{s.name}}</span>
+<span style="font-size: 12px; color: var(--tx2)"><span class="num">{{s.kcal}}</span> קק״ל · חלבון <span class="num">{{s.p}}</span> ג׳</span>
+</span>
+<button class="glass" aria-label="הוסף {{s.name}}" style="width: 44px; height: 44px; border-radius: 999px; display: flex; align-items: center; justify-content: center"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="width: 18px; height: 18px; stroke-width: 2.2"><path d="M12 5v14M5 12h14"></path></svg></button>
+</div>
+</sc-for>
+</div>
+<button class="glass" style="height: 44px; border-radius: 999px; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="width: 16px; height: 16px"><path d="M4 12a8 8 0 0 1 14-5l2 2M20 12a8 8 0 0 1-14 5l-2-2M20 5v4h-4M4 19v-4h4"></path></svg>הצע 3 אחרות</button>
+</section>
+
+<section aria-label="העדפות שנלמדו" style="display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 13px; color: var(--tx2)">העדפות שנלמדו בחשבון שלך</span>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<span style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line2); font-size: 13px; display: flex; align-items: center">ללא גלוטן</span>
+<span style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line2); font-size: 13px; display: flex; align-items: center">גבינה צהובה בלבד</span>
+</div>
+<div style="display: flex; gap: 8px">
+<label for="pref" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">העדפה או הגבלה</label>
+<input id="pref" placeholder="משהו לא מתאים? כתוב העדפה…" style="flex: 1; height: 46px; border-radius: 999px; border: 1px solid var(--line2); background: var(--s1); color: var(--tx); font: inherit; font-size: 14px; padding: 0 16px; outline: none">
+<button style="height: 46px; padding: 0 16px; border-radius: 999px; background: var(--inv); color: var(--invtx); font-size: 14px; font-weight: 700">שמור</button>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"color","default":"#d67d09","options":["#d67d09","#eb931c","#f5f5f5","#38bdf8"],"section":"צבעים"},"button":{"editor":"color","default":"#3e3e3f","section":"צבעים"},"card":{"editor":"color","default":"#1c1c1e","section":"צבעים"},"background":{"editor":"color","default":"#000000","section":"צבעים"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const theme = this.props.theme ?? 'dark';
+    const L = theme === 'light' ? 'Light' : '';
+    return {
+      themeClass: theme,
+      acc: this.props.accent ?? '#d67d09',
+      btn: this.props.button ?? (theme === 'light' ? '#2c2c2e' : '#3e3e3f'),
+      card: this.props.card ?? (theme === 'light' ? '#ffffff' : '#1c1c1e'),
+      bgc: this.props.background ?? (theme === 'light' ? '#f2f2f4' : '#000000'),
+      addHref: 'AddMeal' + L + '.dc.html',
+      coach: [
+        { name: 'סלמון, בטטה וירקות צלויים', kcal: 610, p: 42, c: 55, f: 22 },
+        { name: 'פרגית בגריל, קינואה וסלט', kcal: 590, p: 48, c: 50, f: 18 }
+      ],
+      ai: [
+        { name: 'טורטייה מלאה עם טונה וירקות', kcal: 540, p: 44 },
+        { name: 'שקשוקה 3 ביצים ופרוסת לחם', kcal: 480, p: 30 },
+        { name: 'קערת עוף, אורז מלא ואדממה', kcal: 610, p: 50 }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

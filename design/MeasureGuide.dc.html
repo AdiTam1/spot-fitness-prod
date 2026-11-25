@@ -1,0 +1,105 @@
+<!doctype html>
+<meta charset="utf-8"><style data-dc-design-system-vars>@layer{:root{--bg-canvas:#08090c;--bg-surface-1:#101218;--bg-surface-2:#161922;--bg-surface-3:#1e222e;--bg-glass:#101218d1;--border-subtle:#ffffff0f;--border-strong:#ffffff1f;--border-accent:#d67d0973;--text-primary:#f4f6fb;--text-secondary:#949bb0;--text-muted:#5e6578;--accent-orange:#d67d09;--accent-volt:#d67d09;--accent-orange-bright:#eb931c;--accent-volt-soft:#d67d0924;--orange-0:#fef5e7;--orange-1:#fae8cb;--orange-2:#f4cf97;--orange-3:#eeb45f;--orange-4:#e99c2f;--orange-5:#e68e13;--orange-6:#d67d09;--orange-7:#be6c03;--orange-8:#a95f00;--orange-9:#935000;--macro-protein:#38bdf8;--macro-protein-soft:#38bdf824;--macro-carbs:#ff5e7e;--macro-carbs-soft:#ff5e7e24;--macro-fat:#ff8c1a;--macro-fat-soft:#ff8c1a24;--status-ok:#22c55e;--status-warn:#f59e0b;--status-danger:#ef4444;--shadow-card:inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 8px 24px -8px rgba(0, 0, 0, 0.5);--shadow-card-elevated:inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 20px 40px -15px rgba(0, 0, 0, 0.7);--shadow-button-hover:0 6px 20px -4px rgba(214, 125, 9, 0.45);--shadow-dock:0 20px 45px -10px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.1);--space-xs:10px;--space-sm:12px;--space-md:16px;--space-lg:20px;--space-xl:32px;--radius-sm:12px;--radius-md:20px;--radius-lg:24px;--radius-pill:999px;--font-sans:'Heebo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;--font-mono:'Space Grotesk', 'Heebo', sans-serif;}}</style>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>Spot Fitness – מדריך מדידת היקפים</title>
+<script src="./_runtime/react.js"></script>
+<script src="./_runtime/react-dom.js"></script>
+<script src="./_runtime/support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@300..800&amp;family=Space+Grotesk:wght@500..700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}a:hover{color:inherit}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+.app{--acc:#d67d09;--p:#38bdf8;--c:#ff5e7e;--f:#ff8c1a;font-family:'Heebo',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.app.dark{--bg:#000000;--s1:#1c1c1e;--s2:#2c2c2e;--s3:#3a3a3c;--line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.14);--tx:#f5f5f5;--tx2:#a8a8a8;--tx3:#8e8e93;--inv:#3e3e3f;--invtx:#ffffff;--glass:rgba(44,44,46,.52);--glass-b:rgba(255,255,255,.13);--glass-hi:rgba(255,255,255,.22);--shadow:0 14px 34px -10px rgba(0,0,0,.8)}
+.app.light{--bg:#f2f2f4;--s1:#ffffff;--s2:#f2f2f4;--s3:#e5e5e8;--line:rgba(0,0,0,.06);--line2:rgba(0,0,0,.1);--tx:#0a0a0a;--tx2:#5a5a5e;--tx3:#6e6e73;--inv:#2c2c2e;--invtx:#ffffff;--glass:rgba(255,255,255,.62);--glass-b:rgba(255,255,255,.85);--glass-hi:rgba(255,255,255,1);--shadow:0 14px 34px -12px rgba(0,0,0,.22)}
+.glass{position:relative;isolation:isolate;background:var(--glass);-webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);border:1px solid var(--glass-b);box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 -1px 1px rgba(255,255,255,.05),var(--shadow)}
+.glass::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(140deg,rgba(255,255,255,.2),rgba(255,255,255,0) 42%,rgba(255,255,255,0) 70%,rgba(255,255,255,.08));pointer-events:none;z-index:-1}
+.num{font-family:'Space Grotesk','Heebo',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-0.03em}
+.ic{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+</style>
+</helmet>
+<div class="app {{themeClass}}" dir="rtl" lang="he" style="--acc: {{acc}}; --inv: {{btn}}; --s1: {{card}}; --bg: {{bgc}}; width: 390px; height: 844px; position: relative; overflow: hidden; background: var(--bg); color: var(--tx); box-sizing: border-box; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+
+<header style="display: flex; align-items: center; justify-content: space-between">
+<span style="display: flex; flex-direction: column"><h1 style="margin: 0; font-size: 22px; font-weight: 700">מדידת היקפים</h1><span style="font-size: 13px; color: var(--tx2)">שלב <span class="num">{{step}}</span> מתוך 4</span></span>
+<a href="{{metricsHref}}" class="glass" aria-label="סגירה" style="width: 44px; height: 44px; border-radius: 999px; display: flex; align-items: center; justify-content: center"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="width: 18px; height: 18px; stroke-width: 2.2"><path d="M6 6l12 12M18 6L6 18"></path></svg></a>
+</header>
+
+<div role="tablist" aria-label="אזור מדידה" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 999px; background: var(--s1)">
+<sc-for list="{{regions}}" as="r" hint-placeholder-count="4">
+<button role="tab" aria-selected="{{r.on}}" onClick="{{r.pick}}" style="height: 40px; border-radius: 999px; font-size: 14px; font-weight: {{r.fw}}; background: {{r.bg}}; color: {{r.fg}}">{{r.short}}</button>
+</sc-for>
+</div>
+
+<div style="background: var(--s1); border: 1px solid var(--line); border-radius: 26px; height: 230px; display: flex; align-items: center; justify-content: center; position: relative">
+<svg width="150" height="210" viewBox="0 0 150 210" role="img" aria-label="{{title}}">
+<circle cx="75" cy="24" r="16" fill="none" stroke="var(--tx3)" stroke-width="2"></circle>
+<path d="M50 50 Q75 42 100 50 L112 110 L104 112 L98 82 L100 140 L94 205 L80 205 L76 145 L74 145 L70 205 L56 205 L50 140 L52 82 L46 112 L38 110 Z" fill="var(--s2)" stroke="var(--tx3)" stroke-width="2" stroke-linejoin="round"></path>
+<ellipse cx="{{tape.cx}}" cy="{{tape.cy}}" rx="{{tape.rx}}" ry="5" fill="none" stroke="var(--acc)" stroke-width="3"></ellipse>
+</svg>
+</div>
+
+<section style="display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-size: 16px; font-weight: 700">{{title}}</h2>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px">
+<sc-for list="{{tips}}" as="t" hint-placeholder-count="4">
+<li style="display: flex; gap: 10px; font-size: 13px; line-height: 1.45; color: var(--tx2)"><span class="num" style="width: 22px; height: 22px; border-radius: 99px; background: var(--s2); color: var(--tx); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none">{{t.i}}</span>{{t.text}}</li>
+</sc-for>
+</ol>
+</section>
+
+<div style="margin-top: auto; display: flex; gap: 10px">
+<label for="mg-cm" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">היקף בס״מ</label>
+<div style="width: 130px; height: 56px; border-radius: 999px; border: 1px solid var(--line2); background: var(--s1); display: flex; align-items: center; padding: 0 16px; box-sizing: border-box; gap: 6px; flex: none">
+<input id="mg-cm" inputmode="decimal" placeholder="{{ph}}" class="num" style="width: 100%; min-width: 0; border: 0; background: transparent; color: var(--tx); font-size: 18px; font-weight: 600; outline: none">
+<span style="font-size: 13px; color: var(--tx2)">ס״מ</span>
+</div>
+<button onClick="{{next}}" style="flex: 1; height: 56px; border-radius: 999px; background: var(--inv); color: var(--invtx); font-size: 16px; font-weight: 700">{{cta}}</button>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"accent":{"editor":"color","default":"#d67d09","options":["#d67d09","#eb931c","#f5f5f5","#38bdf8"],"section":"צבעים"},"button":{"editor":"color","default":"#3e3e3f","section":"צבעים"},"card":{"editor":"color","default":"#1c1c1e","section":"צבעים"},"background":{"editor":"color","default":"#000000","section":"צבעים"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { r: 1 }; }
+  renderVals() {
+    const theme = this.props.theme ?? 'dark';
+    const L = theme === 'light' ? 'Light' : '';
+    const R = [
+      { short: 'חזה', title: 'מדידת היקף חזה', ph: '98', tape: { cx: 75, cy: 66, rx: 28 }, tips: ['עמוד זקוף כשהידיים משוחררות לצדי הגוף.', 'העבר את הסרט מתחת לבתי השחי ועל שיא החזה.', 'ודא שהסרט מקביל לרצפה גם בגב.', 'מדוד בסיום הוצאת אוויר רגילה.'] },
+      { short: 'בטן', title: 'מדידת היקף בטן · קו הפופיק', ph: '84', tape: { cx: 75, cy: 100, rx: 25 }, tips: ['עמוד ישר על בטן ריקה, מומלץ בבוקר.', 'הנח את הסרט אופקית בדיוק בגובה הטבור.', 'הצמד את הסרט לעור בלי למעוך.', 'הוצא אוויר בנחת ואל תכניס בטן.'] },
+      { short: 'זרוע', title: 'מדידת היקף זרוע', ph: '36', tape: { cx: 106, cy: 82, rx: 9 }, tips: ['הרם את היד הצידה וכופף מרפק ב-90 מעלות.', 'כווץ את שריר הזרוע הקדמי.', 'מדוד סביב הנקודה העבה ביותר.', 'מדוד תמיד את אותה היד.'] },
+      { short: 'ירך', title: 'מדידת היקף ירך עליונה', ph: '56', tape: { cx: 63, cy: 150, rx: 13 }, tips: ['עמוד בפיסוק קל, משקל שווה על שתי הרגליים.', 'השאר את שריר הירך רפוי.', 'מדוד כ-5 ס״מ מתחת לקפל הישבן.', 'שמור על הסרט מאוזן מסביב לירך.'] }
+    ];
+    const r = this.state.r;
+    const cur = R[r];
+    return {
+      themeClass: theme,
+      acc: this.props.accent ?? '#d67d09',
+      btn: this.props.button ?? (theme === 'light' ? '#2c2c2e' : '#3e3e3f'),
+      card: this.props.card ?? (theme === 'light' ? '#ffffff' : '#1c1c1e'),
+      bgc: this.props.background ?? (theme === 'light' ? '#f2f2f4' : '#000000'),
+      metricsHref: 'Metrics' + L + '.dc.html',
+      step: r + 1,
+      title: cur.title, ph: 'למשל ' + cur.ph, tape: cur.tape,
+      tips: cur.tips.map((text, i) => ({ i: i + 1, text })),
+      cta: r === 3 ? 'שמור היקפים' : 'הבא',
+      next: () => this.setState({ r: r === 3 ? 3 : r + 1 }),
+      regions: R.map((x, i) => ({
+        short: x.short, on: i === r ? 'true' : 'false', fw: i === r ? 700 : 500,
+        bg: i === r ? 'var(--inv)' : 'transparent', fg: i === r ? 'var(--invtx)' : 'var(--tx2)',
+        pick: () => this.setState({ r: i })
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

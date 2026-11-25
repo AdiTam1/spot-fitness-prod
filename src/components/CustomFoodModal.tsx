@@ -10,6 +10,7 @@ import {
   UserRole,
 } from '@/types/nutrition';
 import { computePer100gFromServing } from '@/lib/customFoods';
+import { sanitizeDecimalInput } from '@/lib/numericInput';
 import { SegmentedPill } from './ui/SegmentedPill';
 
 export interface CustomFoodsMutationResult {
@@ -322,15 +323,13 @@ export function CustomFoodModal({
             />
             <TextInput
               label="משקל המנה (גרם)"
-              type="number"
-              step="any"
+              type="text"
               inputMode="decimal"
               dir="ltr"
-              min={1}
-              max={5000}
+              placeholder="למשל: 160"
               required
               value={servingGrams}
-              onChange={(e) => setServingGrams(e.currentTarget.value)}
+              onChange={(e) => setServingGrams(sanitizeDecimalInput(e.currentTarget.value))}
             />
           </div>
         )}
@@ -338,48 +337,40 @@ export function CustomFoodModal({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
           <TextInput
             label={inputMode === 'serving' ? 'קלוריות במנה (קק״ל)' : 'קלוריות ל-100 גרם'}
-            type="number"
-            step="any"
+            type="text"
             inputMode="decimal"
             dir="ltr"
-            min={0}
             required
             placeholder="למשל: 130"
             value={caloriesInput}
-            onChange={(e) => setCaloriesInput(e.currentTarget.value)}
+            onChange={(e) => setCaloriesInput(sanitizeDecimalInput(e.currentTarget.value))}
           />
           <TextInput
             label={inputMode === 'serving' ? 'חלבון במנה (ג׳)' : 'חלבון ל-100 גרם'}
-            type="number"
-            step="any"
+            type="text"
             inputMode="decimal"
             dir="ltr"
-            min={0}
             placeholder="0"
             value={proteinInput}
-            onChange={(e) => setProteinInput(e.currentTarget.value)}
+            onChange={(e) => setProteinInput(sanitizeDecimalInput(e.currentTarget.value))}
           />
           <TextInput
             label={inputMode === 'serving' ? 'פחמימות במנה (ג׳)' : 'פחמימות ל-100 גרם'}
-            type="number"
-            step="any"
+            type="text"
             inputMode="decimal"
             dir="ltr"
-            min={0}
             placeholder="0"
             value={carbsInput}
-            onChange={(e) => setCarbsInput(e.currentTarget.value)}
+            onChange={(e) => setCarbsInput(sanitizeDecimalInput(e.currentTarget.value))}
           />
           <TextInput
             label={inputMode === 'serving' ? 'שומן במנה (ג׳)' : 'שומן ל-100 גרם'}
-            type="number"
-            step="any"
+            type="text"
             inputMode="decimal"
             dir="ltr"
-            min={0}
             placeholder="0"
             value={fatInput}
-            onChange={(e) => setFatInput(e.currentTarget.value)}
+            onChange={(e) => setFatInput(sanitizeDecimalInput(e.currentTarget.value))}
           />
         </div>
 
@@ -438,15 +429,12 @@ export function CustomFoodModal({
             />
             <TextInput
               label="משקל היחידה (גרם)"
-              type="number"
-              step="any"
+              type="text"
               inputMode="decimal"
               dir="ltr"
-              min={1}
-              max={5000}
               placeholder="160"
               value={optUnitGrams}
-              onChange={(e) => setOptUnitGrams(e.currentTarget.value)}
+              onChange={(e) => setOptUnitGrams(sanitizeDecimalInput(e.currentTarget.value))}
             />
           </div>
         )}

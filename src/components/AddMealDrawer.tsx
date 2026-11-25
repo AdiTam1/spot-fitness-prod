@@ -95,6 +95,10 @@ import {
   compressDataUrlToThumbnail,
   HEBREW_MONTH_NAMES,
 } from '@/lib/dateUtils';
+import {
+  parseOptionalDecimal,
+  sanitizeIntegerInput,
+} from '@/lib/numericInput';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { ServingToolsManagerModal } from './ServingToolsManagerModal';
 import { GlassButton } from './ui/GlassButton';
@@ -320,8 +324,8 @@ export function AddMealDrawer({
 
   const [selectedFood, setSelectedFood] = useState<FoodCatalogItem | null>(null);
   const [selectedUnitLabel, setSelectedUnitLabel] = useState<string>('custom-grams');
-  const [quantity, setQuantity] = useState<number>(1);
-  const [customGrams, setCustomGrams] = useState<number>(100);
+  const [quantity, setQuantity] = useState<number | string>(1);
+  const [customGrams, setCustomGrams] = useState<number | string>(100);
   const [cameraChooserOpen, setCameraChooserOpen] = useState(false);
   const [mealTime, setMealTime] = useState<string>('');
   const [toolsInitialSection, setToolsInitialSection] = useState<'tools' | 'units'>('units');
@@ -333,6 +337,15 @@ export function AddMealDrawer({
   const [savingInlineUnit, setSavingInlineUnit] = useState(false);
 
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [itemFieldDrafts, setItemFieldDrafts] = useState<
+    Record<
+      string,
+      Partial<Record<'grams' | 'calories' | 'protein' | 'carbs' | 'fat', string | number>>
+    >
+  >({});
+  const itemScaleBaseRef = useRef<
+    Record<string, { grams: number; macros: { calories: number; protein: number; carbs: number; fat: number } }>
+  >({});
   const [barcodeModalOpen, setBarcodeModalOpen] = useState(false);
   const [savingMeal, setSavingMeal] = useState(false);
   const [addingOptionIdx, setAddingOptionIdx] = useState<number | null>(null);
@@ -496,6 +509,8 @@ export function AddMealDrawer({
         setLearnedFeedbackBanner(null);
         setPreferenceFeedbackText('');
         setEditingItemId(null);
+        setItemFieldDrafts({});
+        itemScaleBaseRef.current = {};
         setAiSummary(null);
         pendingAdjustReplaceRef.current = false;
         if (initialTab === 'barcode') {
@@ -533,6 +548,8 @@ export function AddMealDrawer({
                 existingEntry.items.some((i) => !prevIds.has(i.id));
               if (differs) {
                 setPreCorrectionItems((old) => old ?? [...prev]);
+                setItemFieldDrafts({});
+                itemScaleBaseRef.current = {};
                 return [...existingEntry.items];
               }
               return prev;
@@ -1034,7 +1051,9 @@ export function AddMealDrawer({
 
   const handleSaveInlineCustomUnit = async () => {
     if (!inlineUnitName.trim() || !onManageToolsAndUnits || !selectedFood) return;
-    const gramsNum = Math.max(1, Math.min(3000, Math.round(Number(inlineUnitGrams) || 100)));
+    const parsedUnitGrams = parseOptionalDecimal(inlineUnitGrams);
+    if (parsedUnitGrams === undefined || parsedUnitGrams <= 0) return;
+    const gramsNum = Math.max(1, Math.min(3000, Math.round(parsedUnitGrams)));
     setSavingInlineUnit(true);
     try {
       const nextUnit: TraineeCustomUnit = {
@@ -1067,19 +1086,25 @@ export function AddMealDrawer({
       (u) => u.label === unitLabel
     );
     if (found) {
-      setCustomGrams(Math.round(found.grams * quantity));
+      const q = Math.max(0.25, parseOptionalDecimal(quantity) ?? 1);
+      setCustomGrams(Math.max(1, Math.round(found.grams * q)));
     }
   };
 
   const handleQuantityChange = (val: string | number) => {
-    const q = Math.max(0.25, Number(val) || 1);
-    setQuantity(q);
-    if (selectedFood && selectedUnitLabel !== 'custom-grams') {
+    setQuantity(val);
+    const q = parseOptionalDecimal(val);
+    if (
+      q !== undefined &&
+      q > 0 &&
+      selectedFood &&
+      selectedUnitLabel !== 'custom-grams'
+    ) {
       const found = getCombinedUnitsForFood(selectedFood).find(
         (u) => u.label === selectedUnitLabel
       );
       if (found) {
-        setCustomGrams(Math.round(found.grams * q));
+        setCustomGrams(Math.max(1, Math.round(found.grams * q)));
       }
     }
   };
@@ -1087,8 +1112,19 @@ export function AddMealDrawer({
   const addSelectedFoodToMeal = (
     sourceOverride: 'catalog' | 'barcode' = 'catalog'
   ) => {
-    if (!selectedFood) return;
-    const totalGrams = Math.max(1, Number(customGrams) || 100);
+    if (!selectedFood) return false;
+    const parsedGrams = parseOptionalDecimal(customGrams);
+    if (parsedGrams === undefined || parsedGrams <= 0) {
+      return false;
+    }
+    const totalGrams = Math.max(1, parsedGrams);
+    const parsedQuantity = parseOptionalDecimal(quantity);
+    const safeQuantity =
+      selectedUnitLabel === 'custom-grams'
+        ? 1
+        : parsedQuantity !== undefined && parsedQuantity > 0
+        ? parsedQuantity
+        : 1;
     const calculatedMacros = calculateMacrosForGrams(
       selectedFood.per100g,
       totalGrams
@@ -1102,10 +1138,10 @@ export function AddMealDrawer({
       unitLabel:
         selectedUnitLabel === 'custom-grams'
           ? `${totalGrams} גרם`
-          : quantity === 1
+          : safeQuantity === 1
           ? selectedUnitLabel
-          : `${quantity} × ${selectedUnitLabel}`,
-      quantity,
+          : `${safeQuantity} × ${selectedUnitLabel}`,
+      quantity: safeQuantity,
       grams: totalGrams,
       macros: calculatedMacros,
       source: sourceOverride,
@@ -1118,6 +1154,7 @@ export function AddMealDrawer({
       totalGrams
     );
     setItems((prev) => [...prev, newItem]);
+    return true;
   };
 
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -1488,52 +1525,119 @@ export function AddMealDrawer({
   };
 
   const updateLoggedItemGrams = (id: string, newGrams: number) => {
+    const safeGrams = Math.max(1, Math.min(5000, newGrams));
+    let updatedSnapshot: { grams: number; macros: { calories: number; protein: number; carbs: number; fat: number } } | null = null;
     setItems((prev) =>
       prev.map((item) => {
         if (item.id !== id) return item;
-        const safeGrams = Math.max(1, newGrams);
-        if (item.per100g) {
-          return {
-            ...item,
-            grams: safeGrams,
-            unitLabel: `${safeGrams} גרם`,
-            macros: calculateMacrosForGrams(item.per100g, safeGrams),
+        if (!itemScaleBaseRef.current[id]) {
+          itemScaleBaseRef.current[id] = {
+            grams: Math.max(1, item.grams),
+            macros: { ...item.macros },
           };
         }
-        const ratio = safeGrams / Math.max(1, item.grams);
+        const base = itemScaleBaseRef.current[id];
+        const nextMacros = item.per100g
+          ? calculateMacrosForGrams(item.per100g, safeGrams)
+          : (() => {
+              const ratio = safeGrams / Math.max(1, base.grams);
+              return {
+                calories: Math.round(base.macros.calories * ratio),
+                protein: Math.round(base.macros.protein * ratio * 10) / 10,
+                carbs: Math.round(base.macros.carbs * ratio * 10) / 10,
+                fat: Math.round(base.macros.fat * ratio * 10) / 10,
+              };
+            })();
+        updatedSnapshot = { grams: safeGrams, macros: nextMacros };
         return {
           ...item,
           grams: safeGrams,
           unitLabel: `${safeGrams} גרם`,
-          macros: {
-            calories: Math.round(item.macros.calories * ratio),
-            protein: Math.round(item.macros.protein * ratio * 10) / 10,
-            carbs: Math.round(item.macros.carbs * ratio * 10) / 10,
-            fat: Math.round(item.macros.fat * ratio * 10) / 10,
-          },
+          macros: nextMacros,
         };
       })
     );
+    if (updatedSnapshot) {
+      itemScaleBaseRef.current[id] = updatedSnapshot;
+    }
+    setItemFieldDrafts((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   };
 
-  const updateLoggedItemMacroField = (
-    id: string,
-    field: 'calories' | 'protein' | 'carbs' | 'fat',
-    value: number
+  const handleLoggedItemGramsInputChange = (
+    item: LoggedFoodItem,
+    val: string | number
   ) => {
-    setItems((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              macros: {
-                ...item.macros,
-                [field]: Math.max(0, Number(value) || 0),
-              },
-            }
-          : item
-      )
-    );
+    if (!itemScaleBaseRef.current[item.id]) {
+      itemScaleBaseRef.current[item.id] = {
+        grams: Math.max(1, item.grams),
+        macros: { ...item.macros },
+      };
+    }
+    setItemFieldDrafts((prev) => ({
+      ...prev,
+      [item.id]: { grams: val },
+    }));
+    const parsed = parseOptionalDecimal(val);
+    if (parsed !== undefined && parsed > 0) {
+      const safeGrams = Math.max(1, Math.min(5000, Math.round(parsed * 10) / 10));
+      const base = itemScaleBaseRef.current[item.id];
+      setItems((prev) =>
+        prev.map((it) => {
+          if (it.id !== item.id) return it;
+          const nextMacros = it.per100g
+            ? calculateMacrosForGrams(it.per100g, safeGrams)
+            : (() => {
+                const ratio = safeGrams / Math.max(1, base.grams);
+                return {
+                  calories: Math.round(base.macros.calories * ratio),
+                  protein: Math.round(base.macros.protein * ratio * 10) / 10,
+                  carbs: Math.round(base.macros.carbs * ratio * 10) / 10,
+                  fat: Math.round(base.macros.fat * ratio * 10) / 10,
+                };
+              })();
+          return {
+            ...it,
+            grams: safeGrams,
+            unitLabel: `${safeGrams} גרם`,
+            macros: nextMacros,
+          };
+        })
+      );
+    }
+  };
+
+  const handleLoggedItemMacroInputChange = (
+    item: LoggedFoodItem,
+    field: 'calories' | 'protein' | 'carbs' | 'fat',
+    val: string | number
+  ) => {
+    setItemFieldDrafts((prev) => ({
+      ...prev,
+      [item.id]: { ...(prev[item.id] || {}), [field]: val },
+    }));
+    const parsed = parseOptionalDecimal(val);
+    if (parsed !== undefined && parsed >= 0) {
+      const normalized =
+        field === 'calories'
+          ? Math.round(parsed)
+          : Math.round(parsed * 10) / 10;
+      setItems((prev) =>
+        prev.map((it) => {
+          if (it.id !== item.id) return it;
+          const nextMacros = { ...it.macros, [field]: normalized };
+          itemScaleBaseRef.current[item.id] = {
+            grams: Math.max(1, it.grams),
+            macros: nextMacros,
+          };
+          return { ...it, macros: nextMacros };
+        })
+      );
+    }
   };
 
   const updateLoggedItemName = (id: string, name: string) => {
@@ -1544,13 +1648,21 @@ export function AddMealDrawer({
 
   const removeItem = (id: string) => {
     setItems((prev) => prev.filter((i) => i.id !== id));
+    delete itemScaleBaseRef.current[id];
+    setItemFieldDrafts((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   };
 
   if (!mealSlot) return null;
 
   const currentTotals = sumMacros(items.map((i) => i.macros));
+  const previewGramsVal = Math.max(0, parseOptionalDecimal(customGrams) ?? 0);
   const previewMacros = selectedFood
-    ? calculateMacrosForGrams(selectedFood.per100g, customGrams)
+    ? calculateMacrosForGrams(selectedFood.per100g, previewGramsVal)
     : { calories: 0, protein: 0, carbs: 0, fat: 0 };
 
   const allMealPhotos =
@@ -1563,26 +1675,64 @@ export function AddMealDrawer({
 
   const handleSaveMealAndClose = async () => {
     if (saveLockRef.current) return;
+    const invalidItem = items.find((it) => {
+      const gDraft = itemFieldDrafts[it.id]?.grams;
+      if (gDraft === undefined) return false;
+      const parsed = parseOptionalDecimal(gDraft);
+      return parsed === undefined || parsed <= 0;
+    });
+    if (invalidItem) {
+      setEditingItemId(invalidItem.id);
+      setAiSummary({
+        msg: `נא להזין משקל בגרם גדול מ-0 עבור "${invalidItem.name}"`,
+        isError: true,
+      });
+      return;
+    }
+
+    const finalItems = items.map((it) => {
+      const d = itemFieldDrafts[it.id];
+      if (!d) return it;
+      const macroField = (
+        k: 'calories' | 'protein' | 'carbs' | 'fat',
+        current: number
+      ) => {
+        if (d[k] === undefined) return current;
+        const p = parseOptionalDecimal(d[k]);
+        if (p === undefined || p < 0) return 0;
+        return k === 'calories' ? Math.round(p) : Math.round(p * 10) / 10;
+      };
+      return {
+        ...it,
+        macros: {
+          calories: macroField('calories', it.macros.calories),
+          protein: macroField('protein', it.macros.protein),
+          carbs: macroField('carbs', it.macros.carbs),
+          fat: macroField('fat', it.macros.fat),
+        },
+      };
+    });
+
     saveLockRef.current = true;
     setSavingMeal(true);
     try {
       const primaryPhoto = allMealPhotos[0] || photoDataUrl;
       await onSaveMeal(
         mealSlot.id,
-        items,
+        finalItems,
         primaryPhoto,
         photoNote,
         allMealPhotos.length > 0 ? allMealPhotos : undefined,
         mealTime || undefined
       );
-      if (saveAsPreset && items.length > 0 && onSavedMealAction) {
+      if (saveAsPreset && finalItems.length > 0 && onSavedMealAction) {
         const autoTitle =
           presetTitleInput.trim() ||
-          items
+          finalItems
             .slice(0, 2)
             .map((i) => i.name)
             .join(' + ');
-        const aiItem = items.find(
+        const aiItem = finalItems.find(
           (it) => it.aiEngine || it.isAiFallback !== undefined
         );
         await onSavedMealAction({
@@ -1590,7 +1740,7 @@ export function AddMealDrawer({
           preset: {
             title: autoTitle,
             mealSlotId: mealSlot.id,
-            items,
+            items: finalItems,
             photoDataUrls: allMealPhotos.length > 0 ? allMealPhotos : undefined,
             photoDataUrl: primaryPhoto,
             contextParams,
@@ -1603,6 +1753,8 @@ export function AddMealDrawer({
       }
       setSuggestedExtras([]);
       setPreCorrectionItems(null);
+      setItemFieldDrafts({});
+      itemScaleBaseRef.current = {};
       onClose();
     } finally {
       saveLockRef.current = false;
@@ -1691,6 +1843,8 @@ export function AddMealDrawer({
 
       setPreCorrectionItems([...items]);
       setItems(data.items);
+      setItemFieldDrafts({});
+      itemScaleBaseRef.current = {};
       const nextNames = new Set(
         (data.items as LoggedFoodItem[]).map((it) => it.name.trim().toLowerCase())
       );
@@ -3919,16 +4073,13 @@ export function AddMealDrawer({
                     >
                       <input
                         id="photo-net-grams"
-                        type="number"
-                        inputMode="decimal"
-                        min={1}
-                        max={5000}
-                        step={1}
+                        type="text"
+                        inputMode="numeric"
                         dir="ltr"
                         placeholder="למשל: 250"
                         value={contextParams.netFoodWeightGrams ?? ''}
                         onChange={(e) => {
-                          const raw = e.currentTarget.value;
+                          const raw = sanitizeIntegerInput(e.currentTarget.value);
                           if (raw === '') {
                             setContextParams({
                               ...contextParams,
@@ -4779,6 +4930,7 @@ export function AddMealDrawer({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                     {items.map((item) => {
                       const isEditing = editingItemId === item.id;
+                      const itemDraft = itemFieldDrafts[item.id];
                       return (
                         <div
                           key={item.id}
@@ -4870,68 +5022,96 @@ export function AddMealDrawer({
                                 <NumberInput
                                   size="xs"
                                   label="גרם"
-                                  value={item.grams}
+                                  placeholder="100"
+                                  value={
+                                    itemDraft?.grams !== undefined
+                                      ? itemDraft.grams
+                                      : item.grams
+                                  }
                                   min={1}
+                                  max={5000}
                                   step={5}
+                                  clampBehavior="none"
                                   onChange={(val) =>
-                                    updateLoggedItemGrams(
-                                      item.id,
-                                      Number(val) || 100
-                                    )
+                                    handleLoggedItemGramsInputChange(item, val)
                                   }
                                 />
                                 <NumberInput
                                   size="xs"
                                   label="קק״ל"
-                                  value={item.macros.calories}
+                                  placeholder="0"
+                                  value={
+                                    itemDraft?.calories !== undefined
+                                      ? itemDraft.calories
+                                      : item.macros.calories
+                                  }
                                   min={0}
+                                  clampBehavior="none"
                                   onChange={(val) =>
-                                    updateLoggedItemMacroField(
-                                      item.id,
+                                    handleLoggedItemMacroInputChange(
+                                      item,
                                       'calories',
-                                      Number(val)
+                                      val
                                     )
                                   }
                                 />
                                 <NumberInput
                                   size="xs"
                                   label="חלבון"
-                                  value={item.macros.protein}
+                                  placeholder="0"
+                                  value={
+                                    itemDraft?.protein !== undefined
+                                      ? itemDraft.protein
+                                      : item.macros.protein
+                                  }
                                   min={0}
                                   decimalScale={1}
+                                  clampBehavior="none"
                                   onChange={(val) =>
-                                    updateLoggedItemMacroField(
-                                      item.id,
+                                    handleLoggedItemMacroInputChange(
+                                      item,
                                       'protein',
-                                      Number(val)
+                                      val
                                     )
                                   }
                                 />
                                 <NumberInput
                                   size="xs"
                                   label="פחמימה"
-                                  value={item.macros.carbs}
+                                  placeholder="0"
+                                  value={
+                                    itemDraft?.carbs !== undefined
+                                      ? itemDraft.carbs
+                                      : item.macros.carbs
+                                  }
                                   min={0}
                                   decimalScale={1}
+                                  clampBehavior="none"
                                   onChange={(val) =>
-                                    updateLoggedItemMacroField(
-                                      item.id,
+                                    handleLoggedItemMacroInputChange(
+                                      item,
                                       'carbs',
-                                      Number(val)
+                                      val
                                     )
                                   }
                                 />
                                 <NumberInput
                                   size="xs"
                                   label="שומן"
-                                  value={item.macros.fat}
+                                  placeholder="0"
+                                  value={
+                                    itemDraft?.fat !== undefined
+                                      ? itemDraft.fat
+                                      : item.macros.fat
+                                  }
                                   min={0}
                                   decimalScale={1}
+                                  clampBehavior="none"
                                   onChange={(val) =>
-                                    updateLoggedItemMacroField(
-                                      item.id,
+                                    handleLoggedItemMacroInputChange(
+                                      item,
                                       'fat',
-                                      Number(val)
+                                      val
                                     )
                                   }
                                 />
@@ -5482,8 +5662,10 @@ export function AddMealDrawer({
                     <NumberInput
                       size="xs"
                       label="גרם"
+                      placeholder="100"
                       min={1}
                       max={3000}
+                      clampBehavior="none"
                       value={inlineUnitGrams}
                       onChange={setInlineUnitGrams}
                     />
@@ -5498,7 +5680,11 @@ export function AddMealDrawer({
                     />
                     <button
                       type="button"
-                      disabled={savingInlineUnit || !inlineUnitName.trim()}
+                      disabled={
+                        savingInlineUnit ||
+                        !inlineUnitName.trim() ||
+                        (parseOptionalDecimal(inlineUnitGrams) ?? 0) <= 0
+                      }
                       onClick={() => void handleSaveInlineCustomUnit()}
                       className="btn-volt"
                       style={{
@@ -5528,47 +5714,61 @@ export function AddMealDrawer({
               <NumberInput
                 size="sm"
                 label="כמות"
+                placeholder="1"
                 value={quantity}
                 onChange={handleQuantityChange}
                 min={0.25}
                 max={20}
                 step={0.5}
+                clampBehavior="none"
                 disabled={selectedUnitLabel === 'custom-grams'}
               />
               <NumberInput
                 size="sm"
                 label="סה״כ גרמים"
+                placeholder="100"
                 value={customGrams}
-                onChange={(val) => setCustomGrams(Math.max(1, Number(val) || 100))}
+                onChange={setCustomGrams}
                 min={1}
                 max={2000}
                 step={5}
+                clampBehavior="none"
               />
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                addSelectedFoodToMeal('catalog');
-                setAiSummary({ msg: `נוסף לארוחה: ${selectedFood.name}` });
-                setInlineUnitOpen(false);
-                setSelectedFood(null);
-              }}
-              className="btn-volt"
-              style={{
-                padding: '12px 16px',
-                fontSize: 14,
-                fontWeight: 900,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                cursor: 'pointer',
-              }}
-            >
-              <Plus size={16} />
-              <span>הוסף לארוחה</span>
-            </button>
+            {(() => {
+              const canAdd =
+                (parseOptionalDecimal(customGrams) ?? 0) > 0 &&
+                (selectedUnitLabel === 'custom-grams' ||
+                  (parseOptionalDecimal(quantity) ?? 0) > 0);
+              return (
+                <button
+                  type="button"
+                  disabled={!canAdd}
+                  onClick={() => {
+                    if (!addSelectedFoodToMeal('catalog')) return;
+                    setAiSummary({ msg: `נוסף לארוחה: ${selectedFood.name}` });
+                    setInlineUnitOpen(false);
+                    setSelectedFood(null);
+                  }}
+                  className="btn-volt"
+                  style={{
+                    padding: '12px 16px',
+                    fontSize: 14,
+                    fontWeight: 900,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    cursor: canAdd ? 'pointer' : 'not-allowed',
+                    opacity: canAdd ? 1 : 0.45,
+                  }}
+                >
+                  <Plus size={16} />
+                  <span>הוסף לארוחה</span>
+                </button>
+              );
+            })()}
           </div>
         )}
       </Modal>
