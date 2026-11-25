@@ -1700,6 +1700,124 @@ export function AddMealDrawer({
     });
   };
 
+  const initialEntryPhotos = useMemo(() => {
+    if (!existingEntry) return [];
+    if (existingEntry.photoDataUrls && existingEntry.photoDataUrls.length > 0) {
+      return existingEntry.photoDataUrls.filter((u) => Boolean(u) && !u.endsWith(',DEMO'));
+    }
+    if (existingEntry.photoDataUrl && !existingEntry.photoDataUrl.endsWith(',DEMO')) {
+      return [existingEntry.photoDataUrl];
+    }
+    return [];
+  }, [existingEntry]);
+
+  const allMealPhotos = useMemo(
+    () =>
+      photoItems.length > 0
+        ? photoItems.map((im) => im.dataUrl)
+        : photoDataUrl && !photoDataUrl.endsWith(',DEMO')
+        ? [photoDataUrl]
+        : [],
+    [photoItems, photoDataUrl]
+  );
+
+  const hasPendingItemFieldEdits = useMemo(
+    () =>
+      items.some((it) => {
+        const d = itemFieldDrafts[it.id];
+        if (!d) return false;
+        if (d.grams !== undefined) {
+          const parsedG = parseOptionalDecimal(d.grams);
+          if (
+            parsedG === undefined ||
+            parsedG <= 0 ||
+            Math.round(parsedG * 10) / 10 !== Math.round(it.grams * 10) / 10
+          ) {
+            return true;
+          }
+        }
+        const macroKeys = ['calories', 'protein', 'carbs', 'fat'] as const;
+        return macroKeys.some((k) => {
+          if (d[k] === undefined) return false;
+          const p = parseOptionalDecimal(d[k]);
+          if (p === undefined || p < 0) return true;
+          const norm = k === 'calories' ? Math.round(p) : Math.round(p * 10) / 10;
+          return norm !== it.macros[k];
+        });
+      }),
+    [items, itemFieldDrafts]
+  );
+
+  const hasMealChanges = useMemo(() => {
+    const initialItems = existingEntry?.items || [];
+    const hasInitialContent =
+      initialItems.length > 0 ||
+      initialEntryPhotos.length > 0 ||
+      Boolean((existingEntry?.photoNote || '').trim());
+
+    if (
+      !hasInitialContent &&
+      items.length === 0 &&
+      allMealPhotos.length === 0 &&
+      !photoNote.trim()
+    ) {
+      return false;
+    }
+
+    if (hasPendingItemFieldEdits) return true;
+
+    if (saveAsPreset && items.length > 0 && Boolean(onSavedMealAction)) {
+      return true;
+    }
+
+    if (items.length !== initialItems.length) return true;
+    for (let idx = 0; idx < items.length; idx++) {
+      const cur = items[idx];
+      const base = initialItems[idx];
+      if (!cur || !base) return true;
+      if (
+        cur.id !== base.id ||
+        cur.name !== base.name ||
+        Math.round(cur.grams * 10) / 10 !== Math.round(base.grams * 10) / 10 ||
+        (cur.unitLabel || '') !== (base.unitLabel || '') ||
+        (normalizeHhMmTime(cur.itemTime || '') || '') !==
+          (normalizeHhMmTime(base.itemTime || '') || '') ||
+        cur.macros.calories !== base.macros.calories ||
+        cur.macros.protein !== base.macros.protein ||
+        cur.macros.carbs !== base.macros.carbs ||
+        cur.macros.fat !== base.macros.fat
+      ) {
+        return true;
+      }
+    }
+
+    if (allMealPhotos.length !== initialEntryPhotos.length) return true;
+    for (let idx = 0; idx < allMealPhotos.length; idx++) {
+      if (allMealPhotos[idx] !== initialEntryPhotos[idx]) return true;
+    }
+
+    if ((photoNote || '') !== (existingEntry?.photoNote || '')) return true;
+
+    const baselineTime =
+      normalizeHhMmTime(existingEntry?.mealTime || mealSlot?.timeHint || '') || '';
+    const currentTime =
+      normalizeHhMmTime(mealTime || mealSlot?.timeHint || '') || '';
+    if (currentTime !== baselineTime) return true;
+
+    return false;
+  }, [
+    existingEntry,
+    initialEntryPhotos,
+    items,
+    allMealPhotos,
+    photoNote,
+    hasPendingItemFieldEdits,
+    saveAsPreset,
+    onSavedMealAction,
+    mealTime,
+    mealSlot?.timeHint,
+  ]);
+
   if (!mealSlot) return null;
 
   const currentTotals = sumMacros(items.map((i) => i.macros));
@@ -1708,16 +1826,10 @@ export function AddMealDrawer({
     ? calculateMacrosForGrams(selectedFood.per100g, previewGramsVal)
     : { calories: 0, protein: 0, carbs: 0, fat: 0 };
 
-  const allMealPhotos =
-    photoItems.length > 0
-      ? photoItems.map((im) => im.dataUrl)
-      : photoDataUrl && !photoDataUrl.endsWith(',DEMO')
-      ? [photoDataUrl]
-      : [];
   const mealThumbnailUrl = allMealPhotos[0];
 
   const handleSaveMealAndClose = async () => {
-    if (saveLockRef.current) return;
+    if (saveLockRef.current || !hasMealChanges) return;
     const invalidItem = items.find((it) => {
       const gDraft = itemFieldDrafts[it.id]?.grams;
       if (gDraft === undefined) return false;
@@ -3094,7 +3206,7 @@ export function AddMealDrawer({
                         לכל ההיסטוריה ({personalHistory.length})
                       </button>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+                    <div className="h-scroll" style={{ display: 'flex', gap: 8, paddingBottom: 4 }}>
                       {personalHistory.slice(0, 10).map((hist) => (
                         <button
                           key={hist.foodKey}
@@ -3522,10 +3634,10 @@ export function AddMealDrawer({
 
                 {/* 4 מסננים סמנטיים ברורים במקום 16 שמות ספקים */}
                 <div
+                  className="h-scroll"
                   style={{
                     display: 'flex',
                     gap: 6,
-                    overflowX: 'auto',
                     paddingBottom: 2,
                     alignItems: 'center',
                   }}
@@ -5435,7 +5547,9 @@ export function AddMealDrawer({
             }}
           >
             <button
-              disabled={savingMeal}
+              type="button"
+              disabled={savingMeal || !hasMealChanges}
+              title={!hasMealChanges ? 'הוסף, הסר או ערוך פריט כדי לשמור שינויים' : undefined}
               onClick={() => void handleSaveMealAndClose()}
               className="btn-volt"
               style={{
@@ -5446,11 +5560,17 @@ export function AddMealDrawer({
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 8,
-                cursor: 'pointer',
+                cursor: hasMealChanges ? 'pointer' : 'not-allowed',
               }}
             >
               {savingMeal ? <Loader2 size={16} className="spot-spinner" /> : <Check size={16} />}
-              <span>{savingMeal ? 'שומר ארוחה...' : `שמור ארוחה (${currentTotals.calories} קק״ל)`}</span>
+              <span>
+                {savingMeal
+                  ? 'שומר ארוחה...'
+                  : !hasMealChanges
+                  ? `אין שינויים לשמירה (${currentTotals.calories} קק״ל)`
+                  : `שמור ארוחה (${currentTotals.calories} קק״ל)`}
+              </span>
             </button>
             <button
               type="button"
@@ -5537,7 +5657,8 @@ export function AddMealDrawer({
             )}
             <button
               type="button"
-              disabled={savingMeal}
+              disabled={savingMeal || !hasMealChanges}
+              title={!hasMealChanges ? 'אין שינויים לשמירה' : undefined}
               onClick={() => void handleSaveMealAndClose()}
               className="btn-volt"
               style={{
@@ -5548,12 +5669,13 @@ export function AddMealDrawer({
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 8,
-                cursor: 'pointer',
+                cursor: hasMealChanges ? 'pointer' : 'not-allowed',
               }}
             >
               {savingMeal ? <Loader2 size={18} className="spot-spinner" /> : <Check size={18} />}
               <span>
-                שמור · <bdi dir="ltr" className="ltr-num">{currentTotals.calories}</bdi> קק״ל
+                {!hasMealChanges ? 'ללא שינוי · ' : 'שמור · '}
+                <bdi dir="ltr" className="ltr-num">{currentTotals.calories}</bdi> קק״ל
               </span>
             </button>
           </div>

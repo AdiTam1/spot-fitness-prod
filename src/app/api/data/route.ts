@@ -53,6 +53,7 @@ import {
   type CoachMealPushDispatchItem,
 } from '@/lib/traineeMealPushNotifier';
 import { DEFAULT_TEMPLATES, getTodayIso } from '@/data/israeliFoodCatalog';
+import { sanitizeMetricsScheduleConfig } from '@/lib/dateUtils';
 import { normalizePendingAiJobs } from '@/lib/aiJobs';
 import { diagnoseSupabaseError } from '@/lib/supabase';
 import {
@@ -1555,6 +1556,10 @@ async function handleDataPost(
         body.activeDateRange !== undefined
           ? sanitizeActiveDateRange(body.activeDateRange)
           : undefined;
+      const incomingMetricsSchedule =
+        body.metricsSchedule !== undefined
+          ? sanitizeMetricsScheduleConfig(body.metricsSchedule, target.metricsSchedule)
+          : undefined;
 
       let nextDates = [...(target.observationDates || [])];
 
@@ -1617,6 +1622,10 @@ async function handleDataPost(
                   incomingActiveRange !== undefined
                     ? incomingActiveRange
                     : t.activeDateRange,
+                metricsSchedule:
+                  incomingMetricsSchedule !== undefined
+                    ? incomingMetricsSchedule
+                    : t.metricsSchedule,
               }
             : t
         ),
@@ -1638,6 +1647,10 @@ async function handleDataPost(
           incomingActiveRange !== undefined
             ? incomingActiveRange
             : target.activeDateRange,
+        metricsSchedule:
+          incomingMetricsSchedule !== undefined
+            ? incomingMetricsSchedule
+            : target.metricsSchedule,
       });
     }
 

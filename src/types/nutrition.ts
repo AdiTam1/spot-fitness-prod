@@ -487,6 +487,21 @@ export interface TraineeActiveDateRange {
   endDate?: string; // אופציונלי YYYY-MM-DD
 }
 
+export type TraineeMetricScheduleMode = 'hidden' | 'interval' | 'weekdays';
+
+export interface TraineeMetricSchedule {
+  mode: TraineeMetricScheduleMode;
+  everyDays?: number; // במצב 'interval': כל כמה ימים נפתח (1 = כל יום, 7 = כל שבוע וכו')
+  startDate?: string; // במצב 'interval': תאריך התחלה/עוגן (YYYY-MM-DD)
+  weekdays?: number[]; // במצב 'weekdays': ימים בשבוע 0=א'..6=ש'
+}
+
+export interface TraineeMetricsScheduleConfig {
+  weeklyCheckIn?: TraineeMetricSchedule;
+  weight?: TraineeMetricSchedule;
+  measurements?: TraineeMetricSchedule;
+}
+
 export interface PendingAiMealJob {
   id: string;
   targetTraineeId: string;
@@ -605,6 +620,7 @@ export interface TraineeProfile {
   restrictToObservationDaysWhenTodayIsObservation?: boolean; // אם היום יום תשקיף בארץ, ננעל את הניווט אצל המתאמן לימי תשקיף בלבד
   countObservationInStats?: boolean; // בחירת מאמן בקליק אם ימי תשקיף נספרים בחישוב היעדים או לא
   activeDateRange?: TraineeActiveDateRange; // חלון התאריכים הפעילים לניווט המתאמן (מוגדר כברירת מחדל ע"י המאמן או אישית)
+  metricsSchedule?: TraineeMetricsScheduleConfig; // תזמון פתיחה נפרד לצ'ק-אין שבועי, שקילה והיקפי גוף ע"י המאמן
   mealCardShortcuts?: MealCardShortcutId[]; // עד 2 קיצורי דרך מותאמים בכרטיסיית הארוחה
   savedMeals?: SavedMealPreset[]; // ספריית ארוחות שמורות (מועדפים, נעיצה, פופולריות, התאמת AI, שאלות למאמן)
   customServingTools?: TraineeServingTool[]; // צלחות / קערות / קופסאות / כוסות מוגדרות אישית

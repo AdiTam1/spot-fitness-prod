@@ -63,9 +63,12 @@ import {
   HEBREW_WEEKDAY_LETTERS,
   addDaysIso,
   diffDaysIso,
+  formatMetricScheduleSummary,
+  getResolvedMetricSchedule,
   getWeekDaysAroundDate,
   isDateActiveForTrainee,
   isDayBlockedForTrainee,
+  isMetricScheduledForDate,
   isObservationDateForTrainee,
   isTodayObservationRestricted,
 } from '@/lib/dateUtils';
@@ -569,6 +572,17 @@ export function TraineeMobileView({
     Boolean(dailyLog.isObservationDay);
   const isBlockedDay = isDayBlockedForTrainee(selectedDate, trainee);
   const obsLockedToObservation = isTodayObservationRestricted(trainee, todayIso);
+  const isWeightScheduled = isMetricScheduledForDate(trainee, 'weight', selectedDate);
+  const isMeasurementsScheduled = isMetricScheduledForDate(
+    trainee,
+    'measurements',
+    selectedDate
+  );
+  const isWeeklyCheckInScheduled = isMetricScheduledForDate(
+    trainee,
+    'weeklyCheckIn',
+    selectedDate
+  );
 
   const activeTemplate = !trainee.enableWorkoutRestSplit
     ? trainee.workoutTemplate
@@ -630,7 +644,9 @@ export function TraineeMobileView({
   const latestMeasurement =
     trainee.measurementsHistory?.[trainee.measurementsHistory.length - 1];
   const needsInitialMeasurements =
-    !trainee.onboarding?.measurementsCompleted && !latestMeasurement;
+    isMeasurementsScheduled &&
+    !trainee.onboarding?.measurementsCompleted &&
+    !latestMeasurement;
   const loggedMealsCount = activeTemplate.meals.filter(
     (m) => (dailyLog.meals[m.id]?.items?.length || 0) > 0
   ).length;
@@ -773,9 +789,11 @@ export function TraineeMobileView({
                   <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{dateLabel}</span>
                   <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, lineHeight: 1.15 }}>מדדים</h1>
                 </div>
-                <GlassButton label="מדידת היקפים מודרכת" onClick={() => setMeasurementModalOpen(true)}>
-                  <Ruler size={20} />
-                </GlassButton>
+                {isMeasurementsScheduled && (
+                  <GlassButton label="מדידת היקפים מודרכת" onClick={() => setMeasurementModalOpen(true)}>
+                    <Ruler size={20} />
+                  </GlassButton>
+                )}
               </header>
             )}
 
@@ -2360,16 +2378,24 @@ export function TraineeMobileView({
             )}
           </motion.div>
         ) : mobileSection === 'metrics' ? (
-          /* טאב מדדים, מים, משקל גוף והיקפים */
+          /* טאב מדדים: כל מדד בסקשן נפרד ונפתח אך ורק לפי התזמון שהמאמן הגדיר */
           <motion.div
             key="metrics"
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.2 }}
-            style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
+            style={{ display: 'flex', flexDirection: 'column', gap: 18 }}
           >
-            {/* כרטיס מעקב משקל גוף ומגמה (design: Metrics hero) */}
+            {/* סקשן משקל גוף ושקילה (נפרד ונפתח רק בימים שהמאמן הגדיר) */}
+            {isWeightScheduled && (
+              <section aria-label="שקילה ומשקל גוף" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>שקילה ומשקל גוף</h2>
+                  <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                    תדירות מהמאמן: {formatMetricScheduleSummary(getResolvedMetricSchedule(trainee, 'weight'), todayIso)}
+                  </span>
+                </div>
             <div className="pro-card" style={{ padding: 18, borderRadius: 28 }}>
               {(() => {
                 const hist = trainee.weightHistory.slice(-12);
@@ -2435,7 +2461,7 @@ export function TraineeMobileView({
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  if (isBlockedDay || weightLockRef.current) return;
+                  if (isBlockedDay || !isWeightScheduled || weightLockRef.current) return;
                   const num = parseOptionalDecimal(weightInput);
                   if (num === undefined || num < 30 || num > 250) {
                     setWeightFeedback({
@@ -2529,6 +2555,8 @@ export function TraineeMobileView({
                 </div>
               )}
             </div>
+              </section>
+            )}
 
             {/* כרטיס הידרציה / שתיית מים (design: Metrics) */}
             <div className="pro-card" style={{ padding: 18, borderRadius: 28 }}>
@@ -2580,7 +2608,15 @@ export function TraineeMobileView({
               </div>
             </div>
 
-            {/* כרטיס היקפי גוף ומדריך מדידה מונפש */}
+            {/* סקשן היקפי גוף ומדריך מדידה מונפש (נפרד ונפתח רק בימים שהמאמן הגדיר) */}
+            {isMeasurementsScheduled && (
+              <section aria-label="מדידת היקפי גוף" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>היקפי גוף</h2>
+                  <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                    תדירות מהמאמן: {formatMetricScheduleSummary(getResolvedMetricSchedule(trainee, 'measurements'), todayIso)}
+                  </span>
+                </div>
             <div className="pro-card" style={{ padding: 18, borderRadius: 28 }}>
               <div
                 style={{
@@ -2691,8 +2727,11 @@ export function TraineeMobileView({
                 </div>
               )}
             </div>
+              </section>
+            )}
 
-            {/* צ'ק-אין שבועי + דו"ח סיכום (design: CheckIn) */}
+            {/* צ'ק-אין שבועי + דו"ח סיכום (מוסתר לגמרי ונפתח רק בימים שהמאמן הגדיר) */}
+            {isWeeklyCheckInScheduled && (
             <section aria-label="צ׳ק-אין שבועי" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>צ׳ק-אין שבועי</h2>
@@ -2824,9 +2863,9 @@ export function TraineeMobileView({
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <button
                   type="button"
-                  disabled={savingCheckIn}
+                  disabled={savingCheckIn || isBlockedDay || !isWeeklyCheckInScheduled}
                   onClick={async () => {
-                    if (!onSaveWeeklyCheckIn || checkInLockRef.current) return;
+                    if (!onSaveWeeklyCheckIn || isBlockedDay || !isWeeklyCheckInScheduled || checkInLockRef.current) return;
                     checkInLockRef.current = true;
                     setSavingCheckIn(true);
                     try {
@@ -2888,6 +2927,7 @@ export function TraineeMobileView({
                 </button>
               </div>
             </section>
+            )}
           </motion.div>
         ) : (
           /* טאב פרופיל: היסטוריית ארוחות, סטטיסטיקות, הגדרות פושים ושינוי שם */
@@ -2968,7 +3008,7 @@ export function TraineeMobileView({
 
       {/* מודאל מדידת היקפים מונפש */}
       <Modal
-        opened={measurementModalOpen}
+        opened={isMeasurementsScheduled && measurementModalOpen}
         onClose={() => !savingMeasurements && setMeasurementModalOpen(false)}
         title={
           <span style={{ fontWeight: 800, fontSize: 16 }}>

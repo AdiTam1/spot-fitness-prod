@@ -142,6 +142,7 @@ interface EmbeddedTraineeMeta {
   restrictToObservationDaysWhenTodayIsObservation?: boolean;
   countObservationInStats?: boolean;
   activeDateRange?: TraineeProfile['activeDateRange'];
+  metricsSchedule?: TraineeProfile['metricsSchedule'];
   mealCardShortcuts?: TraineeProfile['mealCardShortcuts'];
   savedMeals?: SavedMealPreset[];
   customServingTools?: TraineeServingTool[];
@@ -292,6 +293,7 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
     restrictToObservationDaysWhenTodayIsObservation,
     countObservationInStats,
     activeDateRange: embeddedMeta.activeDateRange,
+    metricsSchedule: embeddedMeta.metricsSchedule,
     mealCardShortcuts: Array.isArray(embeddedMeta.mealCardShortcuts)
       ? embeddedMeta.mealCardShortcuts
       : undefined,
@@ -1255,6 +1257,7 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
       ),
       countObservationInStats: Boolean(t.countObservationInStats),
       activeDateRange: t.activeDateRange,
+      metricsSchedule: t.metricsSchedule,
       mealCardShortcuts: t.mealCardShortcuts,
       savedMeals: t.savedMeals || [],
       customServingTools: t.customServingTools || [],

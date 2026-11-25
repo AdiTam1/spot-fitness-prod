@@ -1,4 +1,11 @@
-import { MealCardShortcutId, TraineeActiveDateRange, TraineeProfile } from '@/types/nutrition';
+import {
+  MealCardShortcutId,
+  TraineeActiveDateRange,
+  TraineeMetricSchedule,
+  TraineeMetricScheduleMode,
+  TraineeMetricsScheduleConfig,
+  TraineeProfile,
+} from '@/types/nutrition';
 
 export const HEBREW_WEEKDAY_LETTERS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
 export const HEBREW_MONTH_NAMES = [
@@ -226,6 +233,143 @@ export function isDateActiveForTrainee(
   }
   const { minIso, maxIso } = getResolvedTraineeDateRange(trainee, todayIso);
   return iso >= minIso && iso <= maxIso;
+}
+
+export type TraineeMetricScheduleKey = 'weeklyCheckIn' | 'weight' | 'measurements';
+
+export const DEFAULT_METRICS_SCHEDULE: Record<TraineeMetricScheduleKey, TraineeMetricSchedule> = {
+  weeklyCheckIn: { mode: 'hidden' },
+  weight: { mode: 'interval', everyDays: 1 },
+  measurements: { mode: 'interval', everyDays: 1 },
+};
+
+export function sanitizeMetricSchedule(
+  raw: unknown,
+  fallback: TraineeMetricSchedule
+): TraineeMetricSchedule {
+  if (!raw || typeof raw !== 'object') return { ...fallback };
+  const obj = raw as Partial<TraineeMetricSchedule>;
+  const mode: TraineeMetricScheduleMode =
+    obj.mode === 'hidden' || obj.mode === 'interval' || obj.mode === 'weekdays'
+      ? obj.mode
+      : fallback.mode;
+
+  if (mode === 'hidden') {
+    return { mode: 'hidden' };
+  }
+
+  if (mode === 'weekdays') {
+    const cleanDays = Array.isArray(obj.weekdays)
+      ? Array.from(
+          new Set(
+            obj.weekdays
+              .map((d) => Math.round(Number(d)))
+              .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
+          )
+        ).sort((a, b) => a - b)
+      : [...(fallback.weekdays || [5])];
+    return {
+      mode: 'weekdays',
+      weekdays: cleanDays,
+    };
+  }
+
+  const everyDays = Math.max(
+    1,
+    Math.min(90, Math.round(Number(obj.everyDays ?? fallback.everyDays ?? 1) || 1))
+  );
+  const startDate =
+    typeof obj.startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(obj.startDate.trim())
+      ? obj.startDate.trim()
+      : undefined;
+  return {
+    mode: 'interval',
+    everyDays,
+    ...(startDate ? { startDate } : {}),
+  };
+}
+
+export function sanitizeMetricsScheduleConfig(
+  raw: unknown,
+  base?: TraineeMetricsScheduleConfig
+): TraineeMetricsScheduleConfig | undefined {
+  if (!raw || typeof raw !== 'object') return base;
+  const obj = raw as Partial<TraineeMetricsScheduleConfig>;
+  return {
+    weeklyCheckIn:
+      obj.weeklyCheckIn !== undefined
+        ? sanitizeMetricSchedule(obj.weeklyCheckIn, DEFAULT_METRICS_SCHEDULE.weeklyCheckIn)
+        : base?.weeklyCheckIn
+        ? sanitizeMetricSchedule(base.weeklyCheckIn, DEFAULT_METRICS_SCHEDULE.weeklyCheckIn)
+        : DEFAULT_METRICS_SCHEDULE.weeklyCheckIn,
+    weight:
+      obj.weight !== undefined
+        ? sanitizeMetricSchedule(obj.weight, DEFAULT_METRICS_SCHEDULE.weight)
+        : base?.weight
+        ? sanitizeMetricSchedule(base.weight, DEFAULT_METRICS_SCHEDULE.weight)
+        : DEFAULT_METRICS_SCHEDULE.weight,
+    measurements:
+      obj.measurements !== undefined
+        ? sanitizeMetricSchedule(obj.measurements, DEFAULT_METRICS_SCHEDULE.measurements)
+        : base?.measurements
+        ? sanitizeMetricSchedule(base.measurements, DEFAULT_METRICS_SCHEDULE.measurements)
+        : DEFAULT_METRICS_SCHEDULE.measurements,
+  };
+}
+
+export function getResolvedMetricSchedule(
+  trainee: Pick<TraineeProfile, 'metricsSchedule'>,
+  key: TraineeMetricScheduleKey
+): TraineeMetricSchedule {
+  return sanitizeMetricSchedule(
+    trainee.metricsSchedule?.[key],
+    DEFAULT_METRICS_SCHEDULE[key]
+  );
+}
+
+export function isMetricScheduledForDate(
+  trainee: Pick<TraineeProfile, 'metricsSchedule'>,
+  key: TraineeMetricScheduleKey,
+  targetIso: string
+): boolean {
+  if (!targetIso || !/^\d{4}-\d{2}-\d{2}$/.test(targetIso)) return false;
+  const sched = getResolvedMetricSchedule(trainee, key);
+  if (sched.mode === 'hidden') return false;
+  if (sched.mode === 'weekdays') {
+    const [y, m, d] = targetIso.split('-').map(Number);
+    const dow = new Date(y, m - 1, d, 12, 0, 0).getDay();
+    return Boolean(sched.weekdays?.length && sched.weekdays.includes(dow));
+  }
+  const every = Math.max(1, Math.min(90, Math.round(Number(sched.everyDays) || 1)));
+  if (sched.startDate && /^\d{4}-\d{2}-\d{2}$/.test(sched.startDate)) {
+    const diff = diffDaysIso(targetIso, sched.startDate);
+    if (diff < 0) return false;
+    return diff % every === 0;
+  }
+  if (every === 1) return true;
+  const diff = diffDaysIso(targetIso, '2026-01-01');
+  return ((diff % every) + every) % every === 0;
+}
+
+export function formatMetricScheduleSummary(
+  sched: TraineeMetricSchedule,
+  todayIso?: string
+): string {
+  if (sched.mode === 'hidden') return 'מוסתר מהמתאמן';
+  if (sched.mode === 'weekdays') {
+    const days = sched.weekdays || [];
+    if (days.length === 0) return 'מוסתר (לא נבחרו ימים)';
+    if (days.length === 7) return 'פתוח כל יום';
+    return `בימי ${days.map((d) => HEBREW_WEEKDAY_LETTERS[d] || '').join(', ')}`;
+  }
+  const every = Math.max(1, Math.round(Number(sched.everyDays) || 1));
+  if (every === 1) {
+    if (sched.startDate && todayIso && sched.startDate > todayIso) {
+      return `כל יום החל מ-${sched.startDate}`;
+    }
+    return 'כל יום';
+  }
+  return `כל ${every} ימים${sched.startDate ? ` (מ-${sched.startDate})` : ''}`;
 }
 
 /**

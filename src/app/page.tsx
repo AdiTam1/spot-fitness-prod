@@ -44,6 +44,7 @@ import {
   TraineeActivityTargets,
   TraineeCustomUnit,
   TraineeGroup,
+  TraineeMetricsScheduleConfig,
   TraineeOnboardingData,
   TraineeProfile,
   TraineePushPreferences,
@@ -1420,6 +1421,7 @@ export default function HomePage() {
       restrictToObservationDaysWhenTodayIsObservation?: boolean;
       countObservationInStats?: boolean;
       activeDateRange?: TraineeActiveDateRange;
+      metricsSchedule?: TraineeMetricsScheduleConfig;
     }
   ): Promise<{ error?: string }> => {
     const res = await postDataAction({
@@ -1448,6 +1450,10 @@ export default function HomePage() {
                 json.activeDateRange !== undefined
                   ? json.activeDateRange
                   : t.activeDateRange,
+              metricsSchedule:
+                json.metricsSchedule !== undefined
+                  ? json.metricsSchedule
+                  : t.metricsSchedule,
             }
           : t
       )

@@ -52,6 +52,9 @@ import {
   RotateCcw,
   Smartphone,
   Activity,
+  Scale,
+  Ruler,
+  ClipboardCheck,
 } from 'lucide-react';
 import {
   AccountStatus,
@@ -70,10 +73,20 @@ import {
   TraineeActivityTargets,
   TraineeCustomUnit,
   TraineeGroup,
+  TraineeMetricSchedule,
+  TraineeMetricsScheduleConfig,
   TraineeProfile,
   TraineeServingTool,
 } from '@/types/nutrition';
-import { computeAgeFromBirthDate } from '@/lib/dateUtils';
+import {
+  HEBREW_WEEKDAY_LETTERS,
+  TraineeMetricScheduleKey,
+  computeAgeFromBirthDate,
+  formatMetricScheduleSummary,
+  getResolvedMetricSchedule,
+  isMetricScheduledForDate,
+  sanitizeMetricsScheduleConfig,
+} from '@/lib/dateUtils';
 import { parseOptionalDecimal, resolveNumericValue } from '@/lib/numericInput';
 import { QuickChipsAdminPanel } from './QuickChipsAdminPanel';
 import { CoachSavedMealsPanel } from './CoachSavedMealsPanel';
@@ -166,6 +179,7 @@ interface CoachDashboardViewProps {
       restrictToObservationDaysWhenTodayIsObservation?: boolean;
       countObservationInStats?: boolean;
       activeDateRange?: TraineeActiveDateRange;
+      metricsSchedule?: TraineeMetricsScheduleConfig;
     }
   ) => Promise<{ error?: string }> | void;
   onUpdateActivityTargets: (
@@ -613,6 +627,36 @@ export function CoachDashboardView({
     selectedTrainee?.activeDateRange?.pastDays,
     selectedTrainee?.activeDateRange?.futureDays,
   ]);
+
+  const [metricsIntervalDrafts, setMetricsIntervalDrafts] = useState<
+    Partial<Record<TraineeMetricScheduleKey, string | number>>
+  >({});
+  useEffect(() => {
+    setMetricsIntervalDrafts({});
+  }, [selectedTrainee?.id, selectedTrainee?.metricsSchedule]);
+
+  const saveTraineeMetricSchedule = (
+    key: TraineeMetricScheduleKey,
+    nextSchedule: TraineeMetricSchedule,
+    toastMsg: string
+  ) => {
+    if (!selectedTrainee) return;
+    const mergedSchedule = sanitizeMetricsScheduleConfig(
+      {
+        ...(selectedTrainee.metricsSchedule || {}),
+        [key]: nextSchedule,
+      },
+      selectedTrainee.metricsSchedule
+    );
+    void runBusy(
+      `metric-sched-${key}`,
+      () =>
+        onManageObservationDays(selectedTrainee.id, {
+          metricsSchedule: mergedSchedule,
+        }),
+      toastMsg
+    );
+  };
 
   const [coachGoalDraft, setCoachGoalDraft] = useState<string>(
     selectedTrainee?.onboarding?.goal || selectedTrainee?.goal || ''
@@ -3734,6 +3778,432 @@ export function CoachDashboardView({
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* ניהול תזמון פתיחה נפרד לצ'ק-אין שבועי, שקילה והיקפי גוף אצל המתאמן */}
+            <div
+              style={{
+                background: 'var(--surface-2)',
+                padding: '14px 16px',
+                borderRadius: 22,
+                border: '1px solid var(--line)',
+                marginBottom: 14,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text)' }}>
+                  תזמון פתיחת סקשנים למתאמן (צ׳ק-אין שבועי, שקילה והיקפים)
+                </div>
+                <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                  כל סקשן מוסתר אצל המתאמן בימים שאינם תואמים לתזמון שקבעת לו — אפשר לבחור כל X ימים (1 = כל יום) או ימים קבועים בשבוע.
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+                  gap: 10,
+                }}
+              >
+                {(
+                  [
+                    {
+                      key: 'weeklyCheckIn' as TraineeMetricScheduleKey,
+                      title: 'צ׳ק-אין שבועי למאמן',
+                      hint: 'כברירת מחדל מוסתר עד שתקבע תדירות או יום.',
+                      Icon: ClipboardCheck,
+                      quickIntervals: [
+                        { days: 1, label: 'כל יום' },
+                        { days: 7, label: 'כל שבוע (7)' },
+                        { days: 14, label: 'כל שבועיים (14)' },
+                      ],
+                      defaultWeekdays: [5],
+                      defaultIntervalDays: 7,
+                    },
+                    {
+                      key: 'weight' as TraineeMetricScheduleKey,
+                      title: 'שקילה ומשקל גוף',
+                      hint: 'כברירת מחדל פתוח כל יום עד שתצמצם.',
+                      Icon: Scale,
+                      quickIntervals: [
+                        { days: 1, label: 'כל יום' },
+                        { days: 3, label: 'כל 3 ימים' },
+                        { days: 7, label: 'כל שבוע (7)' },
+                      ],
+                      defaultWeekdays: [5],
+                      defaultIntervalDays: 1,
+                    },
+                    {
+                      key: 'measurements' as TraineeMetricScheduleKey,
+                      title: 'מדידת היקפי גוף',
+                      hint: 'כברירת מחדל פתוח כל יום עד שתצמצם.',
+                      Icon: Ruler,
+                      quickIntervals: [
+                        { days: 1, label: 'כל יום' },
+                        { days: 7, label: 'כל שבוע (7)' },
+                        { days: 14, label: 'כל שבועיים (14)' },
+                      ],
+                      defaultWeekdays: [5],
+                      defaultIntervalDays: 14,
+                    },
+                  ]
+                ).map((cfg) => {
+                  const currentSched = getResolvedMetricSchedule(selectedTrainee, cfg.key);
+                  const openToday = isMetricScheduledForDate(selectedTrainee, cfg.key, today);
+                  const summaryLabel = formatMetricScheduleSummary(currentSched, today);
+                  const busy = isBusy(`metric-sched-${cfg.key}`);
+                  const everyDaysDraft =
+                    metricsIntervalDrafts[cfg.key] !== undefined
+                      ? metricsIntervalDrafts[cfg.key]!
+                      : currentSched.everyDays ?? cfg.defaultIntervalDays;
+
+                  const commitCustomDays = () => {
+                    const safeDays = resolveNumericValue(everyDaysDraft, cfg.defaultIntervalDays, {
+                      min: 1,
+                      max: 90,
+                      integer: true,
+                    });
+                    setMetricsIntervalDrafts((prev) => ({ ...prev, [cfg.key]: safeDays }));
+                    const nextStart =
+                      safeDays === 1
+                        ? currentSched.startDate
+                        : currentSched.startDate || today;
+                    saveTraineeMetricSchedule(
+                      cfg.key,
+                      {
+                        mode: 'interval',
+                        everyDays: safeDays,
+                        ...(nextStart ? { startDate: nextStart } : {}),
+                      },
+                      `עודכן תזמון "${cfg.title}"`
+                    );
+                  };
+
+                  return (
+                    <div
+                      key={cfg.key}
+                      style={{
+                        background: 'var(--card)',
+                        border: '1px solid var(--line)',
+                        borderRadius: 18,
+                        padding: 12,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                          <span
+                            style={{
+                              width: 30,
+                              height: 30,
+                              borderRadius: 999,
+                              background: 'var(--surface-2)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                            }}
+                          >
+                            <cfg.Icon size={15} />
+                          </span>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text)' }}>
+                              {cfg.title}
+                            </div>
+                            <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                              {cfg.hint}
+                            </div>
+                          </div>
+                        </div>
+                        <span
+                          style={{
+                            flexShrink: 0,
+                            padding: '3px 8px',
+                            borderRadius: 999,
+                            fontSize: 11.5,
+                            fontWeight: 700,
+                            background: openToday
+                              ? 'rgba(16, 185, 129, 0.14)'
+                              : 'var(--surface-2)',
+                            color: openToday ? 'var(--ok-text)' : 'var(--text-muted)',
+                            border: openToday
+                              ? '1px solid rgba(16, 185, 129, 0.35)'
+                              : '1px solid var(--line)',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {openToday ? `פתוח היום · ${summaryLabel}` : summaryLabel}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                        {(
+                          [
+                            { mode: 'hidden' as const, label: 'מוסתר' },
+                            { mode: 'interval' as const, label: 'כל יום / X ימים' },
+                            { mode: 'weekdays' as const, label: 'ימים בשבוע' },
+                          ]
+                        ).map((opt) => {
+                          const active = currentSched.mode === opt.mode;
+                          return (
+                            <button
+                              key={opt.mode}
+                              type="button"
+                              disabled={busy}
+                              onClick={() => {
+                                if (active) return;
+                                if (opt.mode === 'hidden') {
+                                  saveTraineeMetricSchedule(
+                                    cfg.key,
+                                    { mode: 'hidden' },
+                                    `${cfg.title} הוסתר מהמתאמן`
+                                  );
+                                } else if (opt.mode === 'interval') {
+                                  const days = cfg.defaultIntervalDays;
+                                  saveTraineeMetricSchedule(
+                                    cfg.key,
+                                    {
+                                      mode: 'interval',
+                                      everyDays: days,
+                                      ...(days > 1 ? { startDate: today } : {}),
+                                    },
+                                    `עודכן תזמון "${cfg.title}"`
+                                  );
+                                } else {
+                                  saveTraineeMetricSchedule(
+                                    cfg.key,
+                                    {
+                                      mode: 'weekdays',
+                                      weekdays:
+                                        currentSched.weekdays && currentSched.weekdays.length > 0
+                                          ? currentSched.weekdays
+                                          : cfg.defaultWeekdays,
+                                    },
+                                    `עודכן תזמון "${cfg.title}"`
+                                  );
+                                }
+                              }}
+                              style={{
+                                padding: '5px 9px',
+                                borderRadius: 999,
+                                fontSize: 12,
+                                fontWeight: 700,
+                                fontFamily: 'inherit',
+                                cursor: busy ? 'wait' : 'pointer',
+                                border: active
+                                  ? '1px solid var(--sel-border)'
+                                  : '1px solid var(--line)',
+                                background: active ? 'var(--sel-bg)' : 'var(--surface-2)',
+                                color: active ? 'var(--sel-text)' : 'var(--text-2)',
+                              }}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {currentSched.mode === 'interval' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                            {cfg.quickIntervals.map((preset) => {
+                              const presetActive =
+                                (currentSched.everyDays || 1) === preset.days &&
+                                (preset.days === 1 ? !currentSched.startDate : true);
+                              return (
+                                <button
+                                  key={preset.days}
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => {
+                                    setMetricsIntervalDrafts((prev) => ({
+                                      ...prev,
+                                      [cfg.key]: preset.days,
+                                    }));
+                                    saveTraineeMetricSchedule(
+                                      cfg.key,
+                                      {
+                                        mode: 'interval',
+                                        everyDays: preset.days,
+                                        ...(preset.days > 1
+                                          ? { startDate: currentSched.startDate || today }
+                                          : {}),
+                                      },
+                                      `${cfg.title}: ${preset.label}`
+                                    );
+                                  }}
+                                  className="btn-surface"
+                                  style={{
+                                    padding: '4px 9px',
+                                    fontSize: 11.5,
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    borderColor: presetActive ? 'var(--sel-border)' : undefined,
+                                    background: presetActive ? 'var(--sel-bg)' : undefined,
+                                    color: presetActive ? 'var(--sel-text)' : undefined,
+                                  }}
+                                >
+                                  {preset.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, flexWrap: 'wrap' }}>
+                            <NumberInput
+                              size="xs"
+                              label="כל X ימים (1 = כל יום)"
+                              min={1}
+                              max={90}
+                              allowDecimal={false}
+                              clampBehavior="none"
+                              value={everyDaysDraft}
+                              onChange={(val) =>
+                                setMetricsIntervalDrafts((prev) => ({
+                                  ...prev,
+                                  [cfg.key]: val,
+                                }))
+                              }
+                              style={{ width: 120 }}
+                            />
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={commitCustomDays}
+                              className="btn-volt"
+                              style={{
+                                height: 30,
+                                padding: '0 10px',
+                                fontSize: 12,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {busy ? 'שומר...' : 'שמור ימים'}
+                            </button>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <label style={{ fontSize: 11.5, color: 'var(--text-secondary)', fontWeight: 600 }}>
+                              מתאריך התחלה:
+                            </label>
+                            <input
+                              type="date"
+                              value={currentSched.startDate || ''}
+                              disabled={busy}
+                              onChange={(e) => {
+                                const picked = e.target.value;
+                                saveTraineeMetricSchedule(
+                                  cfg.key,
+                                  {
+                                    mode: 'interval',
+                                    everyDays: Math.max(1, Number(currentSched.everyDays) || 1),
+                                    ...(picked ? { startDate: picked } : {}),
+                                  },
+                                  picked
+                                    ? `${cfg.title} יתחיל מתאריך ${picked}`
+                                    : `${cfg.title} הוגדר ללא תאריך התחלה`
+                                );
+                              }}
+                              style={{
+                                background: 'var(--surface-2)',
+                                color: 'var(--text)',
+                                border: '1px solid var(--line)',
+                                borderRadius: 10,
+                                padding: '3px 8px',
+                                fontSize: 12,
+                                colorScheme: 'dark',
+                              }}
+                            />
+                            {currentSched.startDate && (
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  saveTraineeMetricSchedule(
+                                    cfg.key,
+                                    {
+                                      mode: 'interval',
+                                      everyDays: Math.max(1, Number(currentSched.everyDays) || 1),
+                                    },
+                                    `${cfg.title}: תאריך ההתחלה נוקה`
+                                  )
+                                }
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--text-secondary)',
+                                  fontSize: 11.5,
+                                  textDecoration: 'underline',
+                                  cursor: 'pointer',
+                                  fontFamily: 'inherit',
+                                }}
+                              >
+                                נקה תאריך
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {currentSched.mode === 'weekdays' && (
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                          {HEBREW_WEEKDAY_LETTERS.map((letter, idx) => {
+                            const selectedDays = currentSched.weekdays || [];
+                            const isDayOn = selectedDays.includes(idx);
+                            return (
+                              <button
+                                key={idx}
+                                type="button"
+                                disabled={busy}
+                                onClick={() => {
+                                  const nextDays = isDayOn
+                                    ? selectedDays.filter((d) => d !== idx)
+                                    : [...selectedDays, idx].sort((a, b) => a - b);
+                                  if (nextDays.length === 0) {
+                                    saveTraineeMetricSchedule(
+                                      cfg.key,
+                                      { mode: 'hidden' },
+                                      `${cfg.title} הוסתר (לא נבחרו ימים)`
+                                    );
+                                    return;
+                                  }
+                                  saveTraineeMetricSchedule(
+                                    cfg.key,
+                                    { mode: 'weekdays', weekdays: nextDays },
+                                    `עודכנו ימי "${cfg.title}"`
+                                  );
+                                }}
+                                style={{
+                                  width: 34,
+                                  height: 32,
+                                  borderRadius: 999,
+                                  border: isDayOn
+                                    ? '1px solid var(--sel-border)'
+                                    : '1px solid var(--line)',
+                                  background: isDayOn ? 'var(--sel-bg)' : 'var(--surface-2)',
+                                  color: isDayOn ? 'var(--sel-text)' : 'var(--text-2)',
+                                  fontSize: 12.5,
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  fontFamily: 'inherit',
+                                }}
+                              >
+                                {letter}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
