@@ -159,6 +159,7 @@ export default function HomePage() {
     androidBlockedUpToVersionCode: 0,
   });
   const [adminShowScraperSources, setAdminShowScraperSources] = useState(false);
+  const [semanticSearchEnabled, setSemanticSearchEnabled] = useState(false);
   const [pendingWebUpdateBuildId, setPendingWebUpdateBuildId] = useState<
     string | null
   >(null);
@@ -244,6 +245,7 @@ export default function HomePage() {
       setCoachPreviewTraineeId(null);
       setCoachPushSettings(null);
       setAdminShowScraperSources(false);
+      setSemanticSearchEnabled(false);
       bgJobAbortControllersRef.current.forEach((ctrl) => ctrl.abort());
       bgJobAbortControllersRef.current.clear();
       setLiveBgJobIds([]);
@@ -432,6 +434,9 @@ export default function HomePage() {
         }
         if (typeof remoteData.adminShowScraperSources === 'boolean') {
           setAdminShowScraperSources(remoteData.adminShowScraperSources);
+        }
+        if (typeof remoteData.semanticSearchEnabled === 'boolean') {
+          setSemanticSearchEnabled(remoteData.semanticSearchEnabled);
         }
         if (remoteData.dbError) {
           setSyncError(remoteData.dbError);
@@ -1211,6 +1216,7 @@ export default function HomePage() {
       setShowIosA2hsBanner(false);
       setCoachPushSettings(null);
       setAdminShowScraperSources(false);
+      setSemanticSearchEnabled(false);
       await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {});
       setCurrentUser(null);
       setTrainees([]);
@@ -3248,6 +3254,7 @@ export default function HomePage() {
             onUpdateMealShortcuts={handleUpdateMealShortcuts}
             onSyncNativeStepsNow={syncNativeAndroidSteps}
             showScraperSources={false}
+            semanticSearchEnabled={semanticSearchEnabled}
           />
         ) : (currentUser.role === 'admin' || currentUser.role === 'coach') &&
           coachPreviewTraineeId &&
@@ -3297,6 +3304,7 @@ export default function HomePage() {
             showScraperSources={
               currentUser.role === 'admin' && adminShowScraperSources
             }
+            semanticSearchEnabled={semanticSearchEnabled}
           />
         ) : (
           <CoachDashboardView
@@ -3366,6 +3374,8 @@ export default function HomePage() {
             appReleasePolicy={appReleasePolicy}
             adminShowScraperSources={adminShowScraperSources}
             onAdminShowScraperSourcesChange={setAdminShowScraperSources}
+            adminSemanticSearchEnabled={semanticSearchEnabled}
+            onAdminSemanticSearchEnabledChange={setSemanticSearchEnabled}
             onUpdateAppPolicy={handleUpdateAppPolicy}
             onApkReleasePublished={(policy) => setAppReleasePolicy(policy)}
             onPreviewTraineeMobile={(id) => setCoachPreviewTraineeId(id)}

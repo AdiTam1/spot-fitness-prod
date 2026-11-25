@@ -39,6 +39,14 @@ import {
   extractRealBrandFromProduct,
   getBrandSearchTerms,
 } from '@/lib/foodBrands';
+import {
+  buildFoodEmbeddingDocumentText,
+  embedFoodDocumentsBatch,
+  embedSingleSearchQuery,
+  FOOD_EMBEDDING_DIMS,
+  formatVectorLiteral,
+} from '@/lib/foodSemanticEngine';
+import { normalizeSemanticQueryText } from '@/lib/foodSynonyms';
 
 const cleanEnv = (v?: string) =>
   (v || '')
@@ -427,6 +435,7 @@ export async function loadStateFromSupabase(): Promise<{
   coachPushSettings: Record<string, CoachPushSubscriptionSettings>;
   appReleasePolicy?: AppReleasePolicy;
   showScraperSourcesToAdmin?: boolean;
+  semanticSearchEnabled?: boolean;
   userClientVersions?: Record<string, UserClientVersionInfo>;
   appUpdatePushHistory?: AppUpdatePushHistoryEntry[];
   readErrors: string[];
@@ -443,6 +452,7 @@ export async function loadStateFromSupabase(): Promise<{
       coachPushSettings: {},
       appReleasePolicy: undefined,
       showScraperSourcesToAdmin: false,
+      semanticSearchEnabled: false,
       userClientVersions: {},
       appUpdatePushHistory: [],
       readErrors: [],
@@ -485,6 +495,7 @@ export async function loadStateFromSupabase(): Promise<{
   let coachPushSettings: Record<string, CoachPushSubscriptionSettings> = {};
   let appReleasePolicy: AppReleasePolicy | undefined;
   let showScraperSourcesToAdmin = false;
+  let semanticSearchEnabled = false;
   let userClientVersions: Record<string, UserClientVersionInfo> = {};
   let appUpdatePushHistory: AppUpdatePushHistoryEntry[] = [];
 
@@ -502,6 +513,7 @@ export async function loadStateFromSupabase(): Promise<{
       coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
       appReleasePolicy?: AppReleasePolicy;
       showScraperSourcesToAdmin?: boolean;
+      semanticSearchEnabled?: boolean;
       userClientVersions?: Record<string, UserClientVersionInfo>;
       appUpdatePushHistory?: AppUpdatePushHistoryEntry[];
     };
@@ -537,6 +549,9 @@ export async function loadStateFromSupabase(): Promise<{
     }
     if (typeof metaObj.showScraperSourcesToAdmin === 'boolean') {
       showScraperSourcesToAdmin = metaObj.showScraperSourcesToAdmin;
+    }
+    if (typeof metaObj.semanticSearchEnabled === 'boolean') {
+      semanticSearchEnabled = metaObj.semanticSearchEnabled;
     }
     if (
       metaObj.userClientVersions &&
@@ -629,6 +644,7 @@ export async function loadStateFromSupabase(): Promise<{
     coachPushSettings,
     appReleasePolicy,
     showScraperSourcesToAdmin,
+    semanticSearchEnabled,
     userClientVersions,
     appUpdatePushHistory,
     readErrors,
@@ -901,6 +917,7 @@ export interface SystemMetaShape {
   coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
   appReleasePolicy?: AppReleasePolicy;
   showScraperSourcesToAdmin?: boolean;
+  semanticSearchEnabled?: boolean;
   userClientVersions?: Record<string, UserClientVersionInfo>;
   appUpdatePushHistory?: AppUpdatePushHistoryEntry[];
 }
@@ -964,6 +981,10 @@ async function mutateSystemMetaBackup(
         partial.showScraperSourcesToAdmin !== undefined
           ? partial.showScraperSourcesToAdmin
           : currentMeta.showScraperSourcesToAdmin,
+      semanticSearchEnabled:
+        partial.semanticSearchEnabled !== undefined
+          ? partial.semanticSearchEnabled
+          : currentMeta.semanticSearchEnabled,
       userClientVersions:
         partial.userClientVersions !== undefined
           ? partial.userClientVersions
@@ -1128,6 +1149,35 @@ export async function saveShowScraperSourcesToSupabase(
   const res = await saveSystemMetaBackup({ showScraperSourcesToAdmin });
   if (!res.ok) {
     throw new Error(res.error || 'Supabase admin visibility setting save failed');
+  }
+}
+
+export async function saveSemanticSearchEnabledToSupabase(
+  semanticSearchEnabled: boolean
+) {
+  const res = await saveSystemMetaBackup({ semanticSearchEnabled });
+  if (!res.ok) {
+    throw new Error(res.error || 'Supabase semantic search setting save failed');
+  }
+}
+
+/**
+ * קריאה קלת משקל של מתג החיפוש הסמנטי מתוך שורת המטה בלבד (ללא טעינת כל טבלאות האפליקציה).
+ */
+export async function loadSemanticSearchEnabledFromSupabase(): Promise<boolean> {
+  if (!supabase) return false;
+  try {
+    const { data, error } = await supabase
+      .from('nutrition_templates')
+      .select('meals')
+      .eq('id', SYSTEM_META_TEMPLATE_ID)
+      .maybeSingle();
+    if (error || !data || !data.meals || typeof data.meals !== 'object') {
+      return false;
+    }
+    return Boolean((data.meals as { semanticSearchEnabled?: boolean }).semanticSearchEnabled);
+  } catch {
+    return false;
   }
 }
 
@@ -1853,14 +1903,27 @@ export async function searchFoodCatalogSql(opts: {
   sourceMode?: 'all' | 'retail' | 'moh_gov' | 'openfoodfacts';
   sourceSiteId?: string;
   brand?: string;
+  queryEmbeddingText?: string | null;
+  semanticWeight?: number;
   limit?: number;
-}): Promise<{ items: FoodCatalogItem[]; tableReady: boolean; usedHybridRpc?: boolean }> {
+}): Promise<{ items: FoodCatalogItem[]; tableReady: boolean; usedHybridRpc?: boolean; usedSemanticRrf?: boolean }> {
   if (!supabase) return { items: [], tableReady: false };
   const limit = Math.min(60, Math.max(1, opts.limit || 36));
   const qRaw = (opts.query || '').trim();
   const qNorm = normalizeFoodSearchQuery(qRaw);
   const brandFilterRaw =
     opts.brand && opts.brand !== 'all' ? String(opts.brand).trim() : '';
+  const brandTermsList = brandFilterRaw
+    ? getBrandSearchTerms(brandFilterRaw).slice(0, 6)
+    : null;
+  const queryEmbeddingText =
+    opts.queryEmbeddingText && opts.queryEmbeddingText.trim()
+      ? opts.queryEmbeddingText.trim()
+      : null;
+  const semanticWeight =
+    queryEmbeddingText && (opts.semanticWeight ?? 1.0) > 0
+      ? Number(opts.semanticWeight ?? 1.0)
+      : 0.0;
   const specificSite =
     opts.sourceSiteId &&
     opts.sourceSiteId !== 'all' &&
@@ -1882,6 +1945,42 @@ export async function searchFoodCatalogSql(opts: {
       : 'all');
 
   try {
+    // ניסיון ראשון: ה-RPC המורחב (תומך בסינון מותג + halfvec RRF סמנטי כשמופעל)
+    const { data: upgradedRows, error: upgradedErr } = await supabase.rpc(
+      'search_food_catalog_hybrid',
+      {
+        q_raw: qRaw,
+        q_norm: qNorm,
+        source_mode: sourceMode,
+        source_site: specificSite,
+        max_rows: limit,
+        brand_terms: brandTermsList && brandTermsList.length > 0 ? brandTermsList : null,
+        query_embedding_text: queryEmbeddingText,
+        semantic_weight: semanticWeight,
+      }
+    );
+
+    if (!upgradedErr && Array.isArray(upgradedRows)) {
+      const items = upgradedRows
+        .map((r) => mapSqlRowToFoodCatalogItem(r as Record<string, unknown>))
+        .filter((x): x is FoodCatalogItem => Boolean(x));
+      return {
+        items,
+        tableReady: true,
+        usedHybridRpc: true,
+        usedSemanticRrf: Boolean(queryEmbeddingText && semanticWeight > 0),
+      };
+    }
+
+    if (upgradedErr && !isMissingRpcOrTableError(upgradedErr)) {
+      return {
+        items: [],
+        tableReady: !isMissingFoodTableError(upgradedErr),
+        usedHybridRpc: false,
+      };
+    }
+
+    // נתיב גיבוי תואם-לאחור (אם המיגרציה 20261126 טרם הורצה):
     if (brandFilterRaw) {
       let req = supabase
         .from('food_catalog_items')
@@ -1907,7 +2006,7 @@ export async function searchFoodCatalogSql(opts: {
         }
       }
 
-      const brandTerms = getBrandSearchTerms(brandFilterRaw).slice(0, 4);
+      const brandTerms = (brandTermsList || []).slice(0, 4);
       const orClauses: string[] = [];
       for (const term of brandTerms) {
         const cleanTerm = escapeSqlLikePattern(term.replace(/[,()]/g, ' ').trim());
@@ -2373,6 +2472,225 @@ export async function backfillFoodCatalogBarcodesAndUnits(): Promise<{
 }
 
 /**
+ * שולף וקטור שאילתה שמור מ-Supabase (search_query_embeddings) בלי קריאת Gemini חוזרת.
+ */
+export async function getCachedQueryEmbeddingTextSql(
+  query: string
+): Promise<string | null> {
+  if (!supabase) return null;
+  const qNorm = normalizeSemanticQueryText(query);
+  if (!qNorm || qNorm.length < 2) return null;
+  try {
+    const { data, error } = await supabase.rpc('get_cached_query_embedding', {
+      p_query_norm: qNorm,
+    });
+    if (error || typeof data !== 'string' || !data.trim()) {
+      return null;
+    }
+    return data.trim();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * משיג או יוצר Embedding לשאילתת חיפוש אחת ושומר אותו אסינכרונית בקאש DB משותף לכל המשתמשים.
+ */
+export async function getOrCreateQueryEmbeddingText(
+  query: string,
+  options?: { allowGeminiCall?: boolean }
+): Promise<{ vectorText: string | null; cacheHit: boolean }> {
+  const cachedSql = await getCachedQueryEmbeddingTextSql(query);
+  if (cachedSql) {
+    return { vectorText: cachedSql, cacheHit: true };
+  }
+  if (options?.allowGeminiCall === false) {
+    return { vectorText: null, cacheHit: false };
+  }
+
+  const vec = await embedSingleSearchQuery(query);
+  if (!vec || vec.length !== FOOD_EMBEDDING_DIMS) {
+    return { vectorText: null, cacheHit: false };
+  }
+
+  const vecText = formatVectorLiteral(vec);
+  const qNorm = normalizeSemanticQueryText(query);
+  if (supabase && qNorm) {
+    void Promise.resolve(
+      supabase.rpc('upsert_cached_query_embedding', {
+        p_query_norm: qNorm,
+        p_query_raw: query.trim().slice(0, 160),
+        p_vector_text: vecText,
+      })
+    ).catch(() => undefined);
+  }
+  return { vectorText: vecText, cacheHit: false };
+}
+
+/**
+ * בודק אם מיגרציית pgvector הותקנה ומחזיר כמה מוצרים כבר מאונדקסים עם Embedding.
+ */
+export async function getFoodCatalogSemanticStatsSql(): Promise<{
+  semanticReady: boolean;
+  totalCount: number;
+  embeddedCount: number;
+}> {
+  if (!supabase) return { semanticReady: false, totalCount: 0, embeddedCount: 0 };
+  try {
+    const { data, error } = await supabase.rpc('get_food_catalog_semantic_stats');
+    if (error) {
+      return { semanticReady: false, totalCount: 0, embeddedCount: 0 };
+    }
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row || typeof row !== 'object') {
+      return { semanticReady: false, totalCount: 0, embeddedCount: 0 };
+    }
+    return {
+      semanticReady: true,
+      totalCount: Number((row as { total_count?: number }).total_count) || 0,
+      embeddedCount: Number((row as { embedded_count?: number }).embedded_count) || 0,
+    };
+  } catch {
+    return { semanticReady: false, totalCount: 0, embeddedCount: 0 };
+  }
+}
+
+/**
+ * מאנדקס מוצרים שעדיין חסר להם vector embedding (עדיפות לפופולריים ולחדשים ביותר),
+ * באמצעות gemini-embedding-001 (halfvec 768) בלי לדרוס מאקרו, מותגים או pick_count.
+ */
+export async function backfillFoodCatalogEmbeddingsBatch(maxRows = 200): Promise<{
+  ok: boolean;
+  semanticReady: boolean;
+  processed: number;
+  embedded: number;
+  remainingEstimate: number;
+  error?: string;
+}> {
+  if (!supabase) {
+    return {
+      ok: false,
+      semanticReady: false,
+      processed: 0,
+      embedded: 0,
+      remainingEstimate: 0,
+      error: 'Supabase לא מוגדר',
+    };
+  }
+
+  const batchCap = Math.min(400, Math.max(10, Math.round(maxRows)));
+  try {
+    const { data, error, count } = await supabase
+      .from('food_catalog_items')
+      .select(FOOD_CATALOG_SELECT_COLS, { count: 'exact' })
+      .is('embedding', null)
+      .order('pick_count', { ascending: false })
+      .order('updated_at', { ascending: false })
+      .limit(batchCap);
+
+    if (error) {
+      const msg = String(error.message || '').toLowerCase();
+      const missingCol =
+        String(error.code || '') === '42703' || msg.includes('embedding');
+      return {
+        ok: false,
+        semanticReady: !missingCol,
+        processed: 0,
+        embedded: 0,
+        remainingEstimate: 0,
+        error: missingCol
+          ? 'עמודת embedding טרם נוצרה ב-Supabase — יש להריץ תחילה את supabase/migrations/20261126_semantic_food_search.sql'
+          : formatSupabaseError('food_catalog_items', error),
+      };
+    }
+
+    const rows = (data || []) as Record<string, unknown>[];
+    const totalMissing = typeof count === 'number' ? count : rows.length;
+    if (rows.length === 0) {
+      return {
+        ok: true,
+        semanticReady: true,
+        processed: 0,
+        embedded: 0,
+        remainingEstimate: 0,
+      };
+    }
+
+    const mapped = rows
+      .map((r) => mapSqlRowToFoodCatalogItem(r))
+      .filter((x): x is FoodCatalogItem => Boolean(x));
+
+    const vectors = await embedFoodDocumentsBatch(
+      mapped.map((item) => ({
+        text: buildFoodEmbeddingDocumentText(item),
+        taskType: 'RETRIEVAL_DOCUMENT',
+      }))
+    );
+
+    const idsToSave: string[] = [];
+    const vecsToSave: string[] = [];
+    for (let i = 0; i < mapped.length; i++) {
+      const vec = vectors[i];
+      if (!vec || vec.length !== FOOD_EMBEDDING_DIMS) continue;
+      idsToSave.push(mapped[i].id);
+      vecsToSave.push(formatVectorLiteral(vec));
+    }
+
+    if (idsToSave.length === 0) {
+      return {
+        ok: false,
+        semanticReady: true,
+        processed: mapped.length,
+        embedded: 0,
+        remainingEstimate: totalMissing,
+        error:
+          'לא הופקו Embeddings מ-Gemini (בדוק מפתח GEMINI_API_KEY או מכסות זמניות)',
+      };
+    }
+
+    const { data: updatedCount, error: rpcErr } = await supabase.rpc(
+      'upsert_food_catalog_embeddings',
+      {
+        p_ids: idsToSave,
+        p_vectors: vecsToSave,
+      }
+    );
+
+    if (rpcErr) {
+      return {
+        ok: false,
+        semanticReady: !isMissingRpcOrTableError(rpcErr),
+        processed: mapped.length,
+        embedded: 0,
+        remainingEstimate: totalMissing,
+        error: isMissingRpcOrTableError(rpcErr)
+          ? 'פונקציית upsert_food_catalog_embeddings חסרה ב-DB — יש להריץ את supabase/migrations/20261126_semantic_food_search.sql'
+          : formatSupabaseError('upsert_food_catalog_embeddings', rpcErr),
+      };
+    }
+
+    const saved =
+      typeof updatedCount === 'number' ? updatedCount : idsToSave.length;
+    return {
+      ok: true,
+      semanticReady: true,
+      processed: mapped.length,
+      embedded: saved,
+      remainingEstimate: Math.max(0, totalMissing - saved),
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      semanticReady: true,
+      processed: 0,
+      embedded: 0,
+      remainingEstimate: 0,
+      error: err instanceof Error ? err.message : 'שגיאה ביצירת Embeddings',
+    };
+  }
+}
+
+/**
  * מחזיר סטטיסטיקת ספירת שורות מדויקת מהטבלה ב-SQL (head-only COUNT, 0 שורות עוברות ברשת).
  */
 export async function getSqlFoodCatalogStats(
@@ -2381,9 +2699,12 @@ export async function getSqlFoodCatalogStats(
   if (!supabase) return { available: false, totalCount: 0, bySource: {} };
 
   try {
-    const totalRes = await supabase
-      .from('food_catalog_items')
-      .select('id', { count: 'exact', head: true });
+    const [totalRes, semanticStats] = await Promise.all([
+      supabase
+        .from('food_catalog_items')
+        .select('id', { count: 'exact', head: true }),
+      getFoodCatalogSemanticStatsSql(),
+    ]);
 
     if (totalRes.error) {
       return { available: false, totalCount: 0, bySource: {} };
@@ -2409,6 +2730,8 @@ export async function getSqlFoodCatalogStats(
       available: true,
       totalCount: totalRes.count || 0,
       bySource,
+      semanticReady: semanticStats.semanticReady,
+      embeddedCount: semanticStats.semanticReady ? semanticStats.embeddedCount : 0,
     };
   } catch {
     return { available: false, totalCount: 0, bySource: {} };

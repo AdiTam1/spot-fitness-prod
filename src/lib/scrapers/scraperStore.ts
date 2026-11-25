@@ -20,6 +20,10 @@ import {
 import { normalizeFoodKey, normalizeFoodSearchQuery } from './helpers';
 import { extractRealBrandFromProduct } from '@/lib/foodBrands';
 import {
+  filterLiveScraperItemsSemantically,
+  rewriteQueryForIsraeliRetailScrapers,
+} from '@/lib/foodSemanticEngine';
+import {
   fetchOpenFoodFactsIsraelItems,
   getScraperById,
   ISRAELI_SCRAPERS,
@@ -572,8 +576,15 @@ export async function searchSqlAndCachedCatalog(opts: {
   sourceMode?: 'all' | 'retail' | 'moh_gov' | 'openfoodfacts';
   sourceFilter?: string;
   brand?: string;
+  queryEmbeddingText?: string | null;
+  semanticWeight?: number;
   limit?: number;
-}): Promise<{ items: FoodCatalogItem[]; sqlCount: number; usedHybridRpc?: boolean }> {
+}): Promise<{
+  items: FoodCatalogItem[];
+  sqlCount: number;
+  usedHybridRpc?: boolean;
+  usedSemanticRrf?: boolean;
+}> {
   const limit = Math.min(60, Math.max(8, opts.limit || 36));
   const shouldHitSql =
     opts.sourceFilter !== 'local' && opts.sourceFilter !== 'favorites_recent';
@@ -583,14 +594,17 @@ export async function searchSqlAndCachedCatalog(opts: {
         sourceMode: opts.sourceMode,
         sourceSiteId: opts.sourceFilter && opts.sourceFilter !== 'all' ? opts.sourceFilter : undefined,
         brand: opts.brand && opts.brand !== 'all' ? opts.brand : undefined,
+        queryEmbeddingText: opts.queryEmbeddingText,
+        semanticWeight: opts.semanticWeight,
         limit,
       })
-    : { items: [], tableReady: false, usedHybridRpc: false };
+    : { items: [], tableReady: false, usedHybridRpc: false, usedSemanticRrf: false };
 
   return {
     items: sqlRes.items,
     sqlCount: sqlRes.items.length,
     usedHybridRpc: sqlRes.usedHybridRpc,
+    usedSemanticRrf: sqlRes.usedSemanticRrf,
   };
 }
 
@@ -633,17 +647,20 @@ export async function getMergedCatalogItems(): Promise<FoodCatalogItem[]> {
 
 /**
  * מריץ חיפוש חי במקביל מול אתרים תומכים, עם Query Cache (10 דק') ו-Circuit Breaker לכל ספק.
+ * במצב semanticMode, משכתב שאילתות טבעיות/אנגלית למונחים קמעונאיים בעברית ומסנן רעש לא רלוונטי.
  */
 export async function searchLiveScrapers(
   query: string,
   onlySourceId?: ScraperSourceId,
-  maxWaitMs?: number
+  maxWaitMs?: number,
+  options?: { semanticMode?: boolean }
 ): Promise<FoodCatalogItem[]> {
   const cleanQ = query.trim();
   const normQ = normalizeFoodSearchQuery(cleanQ);
   if (normQ.length < 2) return [];
 
-  const cacheKey = `${normQ}|${onlySourceId || 'all'}`;
+  const semanticMode = Boolean(options?.semanticMode);
+  const cacheKey = `${normQ}|${onlySourceId || 'all'}|${semanticMode ? 'sem' : 'lex'}`;
   const cache = getLiveQueryCache();
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
@@ -663,38 +680,55 @@ export async function searchLiveScrapers(
 
   if (activeScrapers.length === 0) return [];
 
+  const searchTerms = semanticMode
+    ? (await rewriteQueryForIsraeliRetailScrapers(cleanQ)).slice(0, 2)
+    : [cleanQ];
+  const effectiveTerms = searchTerms.length > 0 ? searchTerms : [cleanQ];
   const timeoutCap = maxWaitMs ?? (onlySourceId ? 6000 : 3400);
 
-  const batches = await Promise.all(
-    activeScrapers.map(async (scraper) => {
-      const sid = scraper.meta.id;
-      let timedOut = false;
-      try {
-        const items = await Promise.race([
-          scraper.searchLive!(cleanQ, 6),
-          new Promise<FoodCatalogItem[]>((_, reject) =>
-            setTimeout(() => {
-              timedOut = true;
-              reject(new Error('timeout'));
-            }, timeoutCap)
-          ),
-        ]);
-        // אפס כשלים בהצלחה (גם אם חזרו 0 תוצאות תקינות)
-        circuits.delete(sid);
-        return Array.isArray(items) ? items : [];
-      } catch {
-        const prev = circuits.get(sid) || { failures: 0, openUntil: 0 };
-        const failures = prev.failures + 1;
-        circuits.set(sid, {
-          failures: timedOut ? failures : failures,
-          openUntil: failures >= CIRCUIT_BREAKER_THRESHOLD ? Date.now() + CIRCUIT_BREAKER_COOLDOWN_MS : 0,
-        });
-        return [] as FoodCatalogItem[];
-      }
-    })
-  );
+  const runScrapersForTerm = async (term: string): Promise<FoodCatalogItem[]> => {
+    const batches = await Promise.all(
+      activeScrapers.map(async (scraper) => {
+        const sid = scraper.meta.id;
+        try {
+          const items = await Promise.race([
+            scraper.searchLive!(term, 6),
+            new Promise<FoodCatalogItem[]>((_, reject) =>
+              setTimeout(() => reject(new Error('timeout')), timeoutCap)
+            ),
+          ]);
+          // אפס כשלים בהצלחה (גם אם חזרו 0 תוצאות תקינות)
+          circuits.delete(sid);
+          return Array.isArray(items) ? items : [];
+        } catch {
+          const prev = circuits.get(sid) || { failures: 0, openUntil: 0 };
+          const failures = prev.failures + 1;
+          circuits.set(sid, {
+            failures,
+            openUntil: failures >= CIRCUIT_BREAKER_THRESHOLD ? Date.now() + CIRCUIT_BREAKER_COOLDOWN_MS : 0,
+          });
+          return [] as FoodCatalogItem[];
+        }
+      })
+    );
+    return batches.flat();
+  };
 
-  const flat = batches.flat();
+  const termBatches = await Promise.all(effectiveTerms.map((t) => runScrapersForTerm(t)));
+  const rawFlat = termBatches.flat();
+
+  // דה-דופליקציה בסיסית לפי id לפני סינון סמנטי
+  const dedupedById = new Map<string, FoodCatalogItem>();
+  for (const item of rawFlat) {
+    if (item?.id && !dedupedById.has(item.id)) {
+      dedupedById.set(item.id, item);
+    }
+  }
+  const uniqueFlat = Array.from(dedupedById.values());
+  const flat = semanticMode
+    ? filterLiveScraperItemsSemantically(cleanQ, uniqueFlat)
+    : uniqueFlat;
+
   if (cache.size >= LIVE_QUERY_CACHE_MAX) {
     const oldest = cache.keys().next().value;
     if (oldest) cache.delete(oldest);

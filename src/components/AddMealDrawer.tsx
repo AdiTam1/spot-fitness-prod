@@ -202,6 +202,7 @@ interface AddMealDrawerProps {
   }) => Promise<{ error?: string }>;
   actorRole?: UserRole;
   showScraperSources?: boolean;
+  semanticSearchEnabled?: boolean;
   customFoods?: CustomFoodItem[];
   onCustomFoodsUpdated?: (res: CustomFoodsMutationResult) => void;
   selectedDate?: string;
@@ -250,6 +251,7 @@ export function AddMealDrawer({
   onManageQuickChips,
   actorRole = 'trainee',
   showScraperSources = false,
+  semanticSearchEnabled = false,
   customFoods = [],
   onCustomFoodsUpdated,
   selectedDate,
@@ -323,6 +325,13 @@ export function AddMealDrawer({
   } | null>(null);
 
   const canShowScraperSources = actorRole === 'admin' && Boolean(showScraperSources);
+  const [semanticSearchActive, setSemanticSearchActive] = useState<boolean>(
+    Boolean(semanticSearchEnabled)
+  );
+  useEffect(() => {
+    setSemanticSearchActive(Boolean(semanticSearchEnabled));
+  }, [semanticSearchEnabled]);
+  const [usedSemanticRrf, setUsedSemanticRrf] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sourceGroup, setSourceGroup] = useState<SemanticSourceGroup>('all');
   const [retailSubSite, setRetailSubSite] = useState<string>('all');
@@ -735,9 +744,10 @@ export function AddMealDrawer({
         personalHistory,
         favoriteIds,
         customFoods: customCatalogItems,
+        semanticEnabled: semanticSearchActive,
         limit: 36,
       }),
-    [searchQuery, sourceGroup, effectiveRetailSubSite, selectedBrand, personalHistory, favoriteIds, customCatalogItems]
+    [searchQuery, sourceGroup, effectiveRetailSubSite, selectedBrand, personalHistory, favoriteIds, customCatalogItems, semanticSearchActive]
   );
 
   const searchResults = useMemo(() => {
@@ -753,7 +763,8 @@ export function AddMealDrawer({
         searchQuery,
         personalHistory,
         favoriteIds,
-        36
+        36,
+        semanticSearchActive
       );
     }
 
@@ -770,6 +781,7 @@ export function AddMealDrawer({
     selectedBrand,
     personalHistory,
     favoriteIds,
+    semanticSearchActive,
   ]);
 
   const brandFilterOptions = useMemo(() => {
@@ -821,6 +833,7 @@ export function AddMealDrawer({
       setShowSkeletons(false);
       setLiveExpanding(false);
       setCanManualExpandLive(false);
+      setUsedSemanticRrf(false);
       setSearchError(null);
       setHasRemoteSynced(false);
       return;
@@ -844,6 +857,7 @@ export function AddMealDrawer({
       setShowSkeletons(false);
       setLiveExpanding(false);
       setCanManualExpandLive(false);
+      setUsedSemanticRrf(false);
       setSearchError(null);
       return;
     }
@@ -852,7 +866,8 @@ export function AddMealDrawer({
       qTrim,
       sourceGroup,
       effectiveRetailSubSite,
-      selectedBrand
+      selectedBrand,
+      semanticSearchActive
     );
     const cached = getCachedFoodSearch(cacheKey);
     if (cached) {
@@ -860,6 +875,10 @@ export function AddMealDrawer({
       if (Array.isArray(cached.availableBrands)) {
         setRemoteAvailableBrands(cached.availableBrands);
       }
+      if (typeof cached.semanticSearchEnabled === 'boolean') {
+        setSemanticSearchActive(cached.semanticSearchEnabled);
+      }
+      setUsedSemanticRrf(Boolean(cached.usedSemanticRrf));
       setHasRemoteSynced(true);
       setSearchLoading(false);
       setShowSkeletons(false);
@@ -875,6 +894,7 @@ export function AddMealDrawer({
     // אפס את הרשימה הישנה מיד כדי למנוע לחיצה בשגיאה על תוצאות משאילתה קודמת
     setHasRemoteSynced(false);
     setRemoteResults([]);
+    setUsedSemanticRrf(false);
     setSearchError(null);
     setLiveExpanding(false);
     setCanManualExpandLive(false);
@@ -918,7 +938,13 @@ export function AddMealDrawer({
         const needsLive = Boolean(data.needsLiveFallback) && cleanLen >= 3;
         const mCount = data.mohCount || 0;
         const sCount = data.scraperCount || data.syncedCount || 0;
+        const semOn = typeof data.semanticSearchEnabled === 'boolean'
+          ? data.semanticSearchEnabled
+          : semanticSearchActive;
+        const semRrf = Boolean(data.usedSemanticRrf);
 
+        setSemanticSearchActive(semOn);
+        setUsedSemanticRrf(semRrf);
         setRemoteResults(dbItems);
         if (dbBrands.length > 0) setRemoteAvailableBrands(dbBrands);
         setHasRemoteSynced(true);
@@ -928,7 +954,14 @@ export function AddMealDrawer({
         setScraperCount(sCount);
         if (data.totalAvailable) setTotalAvailable(data.totalAvailable);
 
-        setCachedFoodSearch(cacheKey, {
+        const resolvedCacheKey = buildSearchCacheKey(
+          qTrim,
+          sourceGroup,
+          effectiveRetailSubSite,
+          selectedBrand,
+          semOn
+        );
+        setCachedFoodSearch(resolvedCacheKey, {
           items: dbItems,
           availableBrands: dbBrands,
           needsLiveFallback: needsLive,
@@ -936,6 +969,8 @@ export function AddMealDrawer({
           mohCount: mCount,
           scraperCount: sCount,
           totalAvailable: data.totalAvailable,
+          semanticSearchEnabled: semOn,
+          usedSemanticRrf: semRrf,
         });
 
         // שלב 2 אוטומטי לא-חוסם: מרחיב ברקע מול מאגרי מוצרים חיים רק כשחסרות תוצאות ב-DB
@@ -964,11 +999,13 @@ export function AddMealDrawer({
                 : dbBrands) as string[];
               const nextM = liveData.mohCount ?? mCount;
               const nextS = liveData.scraperCount ?? sCount;
+              const liveSemRrf = Boolean(liveData.usedSemanticRrf) || semRrf;
+              setUsedSemanticRrf(liveSemRrf);
               setRemoteResults(liveItems);
               if (liveBrands.length > 0) setRemoteAvailableBrands(liveBrands);
               setMohCount(nextM);
               setScraperCount(nextS);
-              setCachedFoodSearch(cacheKey, {
+              setCachedFoodSearch(resolvedCacheKey, {
                 items: liveItems,
                 availableBrands: liveBrands,
                 needsLiveFallback: false,
@@ -976,6 +1013,8 @@ export function AddMealDrawer({
                 mohCount: nextM,
                 scraperCount: nextS,
                 totalAvailable: liveData.totalAvailable || data.totalAvailable,
+                semanticSearchEnabled: semOn,
+                usedSemanticRrf: liveSemRrf,
               });
             } else {
               setCanManualExpandLive(true);
@@ -1008,7 +1047,7 @@ export function AddMealDrawer({
       controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, sourceGroup, effectiveRetailSubSite, selectedBrand, activeTab, opened, searchRetryNonce]);
+  }, [searchQuery, sourceGroup, effectiveRetailSubSite, selectedBrand, semanticSearchActive, activeTab, opened, searchRetryNonce]);
 
   const runManualLiveExpand = async () => {
     const qTrim = searchQuery.trim();
@@ -1032,6 +1071,12 @@ export function AddMealDrawer({
         const data = await res.json();
         const items = (Array.isArray(data.items) ? data.items : []) as FoodCatalogItem[];
         const brands = (Array.isArray(data.availableBrands) ? data.availableBrands : []) as string[];
+        const semOn = typeof data.semanticSearchEnabled === 'boolean'
+          ? data.semanticSearchEnabled
+          : semanticSearchActive;
+        const semRrf = Boolean(data.usedSemanticRrf);
+        setSemanticSearchActive(semOn);
+        setUsedSemanticRrf(semRrf);
         setRemoteResults(items);
         if (brands.length > 0) setRemoteAvailableBrands(brands);
         setHasRemoteSynced(true);
@@ -1039,7 +1084,8 @@ export function AddMealDrawer({
           qTrim,
           sourceGroup,
           effectiveRetailSubSite,
-          selectedBrand
+          selectedBrand,
+          semOn
         );
         setCachedFoodSearch(cacheKey, {
           items,
@@ -1049,6 +1095,8 @@ export function AddMealDrawer({
           mohCount: data.mohCount || mohCount,
           scraperCount: data.scraperCount || scraperCount,
           totalAvailable: data.totalAvailable,
+          semanticSearchEnabled: semOn,
+          usedSemanticRrf: semRrf,
         });
       }
     } catch {
@@ -3911,7 +3959,7 @@ export function AddMealDrawer({
                     color: 'var(--text-muted)',
                   }}
                 >
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     {(searchLoading || liveExpanding) && (
                       <Loader2 size={13} className="spot-spinner" />
                     )}
@@ -3922,6 +3970,21 @@ export function AddMealDrawer({
                       : searchLoading
                       ? 'מחפש במהירות במאגר ה-DB...'
                       : `${searchResults.length} תוצאות${totalAvailable > searchResults.length ? ` (מתוך ${totalAvailable.toLocaleString('he-IL')}+)` : ''}`}
+                    {usedSemanticRrf && !searchLoading && (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          padding: '1px 7px',
+                          borderRadius: 999,
+                          background: 'var(--surface-2)',
+                          color: 'var(--accent)',
+                          border: '1px solid var(--border-subtle)',
+                        }}
+                      >
+                        חיפוש סמנטי
+                      </span>
+                    )}
                   </span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <button

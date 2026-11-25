@@ -12,8 +12,12 @@ import {
   syncScrapersCatalog,
   testSingleScraperSearch,
 } from '@/lib/scrapers/scraperStore';
-import { getServerDbState, updateServerDbState } from '@/lib/serverStore';
-import { backfillFoodCatalogBarcodesAndUnits } from '@/lib/supabase';
+import { isEmbeddingConfigured } from '@/lib/foodSemanticEngine';
+import { getServerDbState, invalidateSemanticSearchFlagCache, updateServerDbState } from '@/lib/serverStore';
+import {
+  backfillFoodCatalogBarcodesAndUnits,
+  backfillFoodCatalogEmbeddingsBatch,
+} from '@/lib/supabase';
 import { FoodCatalogItem, ScraperSourceId } from '@/types/nutrition';
 import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
 
@@ -76,6 +80,8 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     report,
     showScraperSourcesToAdmin: Boolean(serverState.showScraperSourcesToAdmin),
+    semanticSearchEnabled: Boolean(serverState.semanticSearchEnabled),
+    embeddingConfigured: isEmbeddingConfigured(),
     isStale: isScraperReportStale(report),
     ranAutoCheck,
     ranInitialSync,
@@ -134,7 +140,8 @@ export const POST = withTelemetryHandler('/api/admin/scrapers', async (request, 
       secretAuthed &&
       body.action !== 'seed_items' &&
       body.action !== 'sync_openfoodfacts' &&
-      body.action !== 'backfill_catalog_meta'
+      body.action !== 'backfill_catalog_meta' &&
+      body.action !== 'backfill_embeddings'
     ) {
       return NextResponse.json({ error: 'פעולה מוגבלת לממשק המנהל' }, { status: 403 });
     }
@@ -206,6 +213,27 @@ export const POST = withTelemetryHandler('/api/admin/scrapers', async (request, 
         return NextResponse.json({
           ok: true,
           showScraperSourcesToAdmin: enabled,
+        });
+      }
+      case 'set_semantic_search': {
+        const enabled = Boolean(body.enabled);
+        invalidateSemanticSearchFlagCache(enabled);
+        await updateServerDbState((prev) => ({
+          ...prev,
+          semanticSearchEnabled: enabled,
+        }));
+        return NextResponse.json({
+          ok: true,
+          semanticSearchEnabled: enabled,
+        });
+      }
+      case 'backfill_embeddings': {
+        const batchSize = Math.min(400, Math.max(20, Number(body.pages) || 200));
+        const res = await backfillFoodCatalogEmbeddingsBatch(batchSize);
+        const { report } = await getScraperState(true);
+        return NextResponse.json({
+          ...res,
+          report,
         });
       }
       case 'seed_items': {

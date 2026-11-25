@@ -31,6 +31,7 @@ import {
   deleteTraineeOnServer,
   getCustomFoodsContextForUser,
   getQuickChipsContextForTrainee,
+  getSemanticSearchEnabledFast,
   getServerDbState,
   getSingleCoachFromServer,
   getSingleTraineeFromServer,
@@ -518,9 +519,10 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
       ...(Array.isArray(myProfile.sharedCoachIds) ? myProfile.sharedCoachIds : []),
     ].filter(Boolean);
 
-    const [chipsCtx, customFoodsCtx] = await Promise.all([
+    const [chipsCtx, customFoodsCtx, semanticSearchEnabled] = await Promise.all([
       getQuickChipsContextForTrainee(myProfile.groupId),
       getCustomFoodsContextForUser({ coachIds: coachIdsForTrainee }),
+      getSemanticSearchEnabledFast(),
     ]);
 
     const sharedCoachCustomFoods: Record<string, typeof customFoodsCtx.globalCustomFoods> = {};
@@ -542,6 +544,7 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
         groupQuickChips: chipsCtx.groupQuickChips,
         globalCustomFoods: customFoodsCtx.globalCustomFoods,
         sharedCoachCustomFoods,
+        semanticSearchEnabled,
         role: 'trainee',
       },
       { headers: { 'Cache-Control': 'no-store, max-age=0' } }
@@ -589,6 +592,7 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
           state.coachPushSettings?.[session.id],
           session.id
         ),
+        semanticSearchEnabled: Boolean(state.semanticSearchEnabled),
         role: 'coach',
       },
       { headers: { 'Cache-Control': 'no-store, max-age=0' } }
@@ -626,6 +630,7 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
         androidBlockedUpToVersionCode: 0,
       },
       adminShowScraperSources: Boolean(state.showScraperSourcesToAdmin),
+      semanticSearchEnabled: Boolean(state.semanticSearchEnabled),
       role: 'admin',
       dbError,
     },

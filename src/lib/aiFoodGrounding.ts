@@ -2,7 +2,15 @@ import {
   calculateMacrosForGrams,
   ISRAELI_FOOD_CATALOG,
 } from '@/data/israeliFoodCatalog';
-import { searchFoodCatalogSql } from '@/lib/supabase';
+import {
+  areDietaryAttributesCompatible,
+  scoreSynonymTextMatch,
+} from '@/lib/foodSynonyms';
+import { getSemanticSearchEnabledFast } from '@/lib/serverStore';
+import {
+  getOrCreateQueryEmbeddingText,
+  searchFoodCatalogSql,
+} from '@/lib/supabase';
 import { FoodCatalogItem, LoggedFoodItem, MacroTargets } from '@/types/nutrition';
 
 const PREP_GROUPS: Record<string, string[]> = {
@@ -119,12 +127,20 @@ function scoreCatalogMatch(
   queryName: string,
   candidate: FoodCatalogItem,
   aiPer100g?: MacroTargets,
-  skipCaloriePlausibility = false
+  skipCaloriePlausibility = false,
+  semanticEnabled = false,
+  isSemanticDbPool = false
 ): number {
   if (!candidate.per100g || !Number.isFinite(candidate.per100g.calories)) {
     return 0;
   }
   if (!areFoodVariantsCompatible(queryName, candidate.name)) {
+    return 0;
+  }
+  if (
+    semanticEnabled &&
+    !areDietaryAttributesCompatible(queryName, candidate.name, candidate.category || '')
+  ) {
     return 0;
   }
 
@@ -135,9 +151,16 @@ function scoreCatalogMatch(
   const matchedCount = qTokens.filter((qt) =>
     cTokens.some((ct) => ct === qt || ct.includes(qt) || qt.includes(ct))
   ).length;
+  const synBonus = semanticEnabled
+    ? scoreSynonymTextMatch(queryName, `${candidate.name} ${candidate.brand || ''}`)
+    : 0;
 
-  // דרוש כיסוי מלא של מילות המפתח העיקריות שהמשתמש/המודל כתב
-  if (matchedCount < qTokens.length) return 0;
+  // במצב רגיל דרוש כיסוי טוקנים מלא; במצב סמנטי מתאפשרת גם התאמה נרדפת או וקטורית בתנאי סבירות קלורית
+  if (matchedCount < qTokens.length) {
+    if (!semanticEnabled) return 0;
+    const semanticOk = synBonus >= 66 || (isSemanticDbPool && matchedCount >= Math.max(1, qTokens.length - 1));
+    if (!semanticOk) return 0;
+  }
 
   // מנע התאמה לתבשיל מורכב בעל הרבה מילים עודפות (למשל "שניצל תירס עם רוטב...")
   const extraTokens = cTokens.length - qTokens.length;
@@ -157,7 +180,10 @@ function scoreCatalogMatch(
     }
   }
 
-  let score = 100 - extraTokens * 8;
+  let score =
+    matchedCount >= qTokens.length
+      ? 100 - extraTokens * 8
+      : Math.max(76, synBonus) - Math.max(0, extraTokens) * 5;
   if (candidate.source === 'custom') score += 45;
   if (candidate.source === 'local') score += 15;
   if (candidate.source === 'moh' || candidate.sourceSiteId === 'moh_gov') score += 10;
@@ -205,7 +231,9 @@ function findBestCandidate(
   queryName: string,
   pool: FoodCatalogItem[],
   aiPer100g?: MacroTargets,
-  skipCaloriePlausibility = false
+  skipCaloriePlausibility = false,
+  semanticEnabled = false,
+  isSemanticDbPool = false
 ): FoodCatalogItem | undefined {
   let best: FoodCatalogItem | undefined;
   let bestScore = 0;
@@ -214,7 +242,9 @@ function findBestCandidate(
       queryName,
       cand,
       aiPer100g,
-      skipCaloriePlausibility || cand.source === 'custom'
+      skipCaloriePlausibility || cand.source === 'custom',
+      semanticEnabled,
+      isSemanticDbPool
     );
     if (score > bestScore) {
       bestScore = score;
@@ -225,23 +255,47 @@ function findBestCandidate(
 }
 
 async function querySupabaseCatalogWithTimeout(
-  query: string
-): Promise<FoodCatalogItem[]> {
+  query: string,
+  semanticEnabled = false
+): Promise<{ items: FoodCatalogItem[]; usedSemanticRrf: boolean }> {
   try {
     const cleanQ = getCoreTokens(query).slice(0, 3).join(' ');
-    if (cleanQ.length < 2) return [];
-    const lookupPromise = searchFoodCatalogSql({
-      query: cleanQ,
-      sourceMode: 'all',
-      limit: 6,
-    }).then((res) => (res.tableReady ? res.items : []));
+    if (cleanQ.length < 2) return { items: [], usedSemanticRrf: false };
 
-    const timeoutPromise = new Promise<FoodCatalogItem[]>((resolve) =>
-      setTimeout(() => resolve([]), DB_LOOKUP_TIMEOUT_MS)
+    const execLookup = async (): Promise<{
+      items: FoodCatalogItem[];
+      usedSemanticRrf: boolean;
+    }> => {
+      let vecText: string | null = null;
+      if (semanticEnabled) {
+        const emb = await getOrCreateQueryEmbeddingText(cleanQ, {
+          allowGeminiCall: true,
+        }).catch(() => ({ vectorText: null, cacheHit: false }));
+        vecText = emb.vectorText;
+      }
+      const res = await searchFoodCatalogSql({
+        query: cleanQ,
+        sourceMode: 'all',
+        queryEmbeddingText: vecText,
+        semanticWeight: vecText ? 0.9 : 0,
+        limit: 8,
+      });
+      return {
+        items: res.tableReady ? res.items : [],
+        usedSemanticRrf: Boolean(res.usedSemanticRrf),
+      };
+    };
+
+    const budgetMs = semanticEnabled ? 2400 : DB_LOOKUP_TIMEOUT_MS;
+    const timeoutPromise = new Promise<{
+      items: FoodCatalogItem[];
+      usedSemanticRrf: boolean;
+    }>((resolve) =>
+      setTimeout(() => resolve({ items: [], usedSemanticRrf: false }), budgetMs)
     );
-    return await Promise.race([lookupPromise, timeoutPromise]);
+    return await Promise.race([execLookup(), timeoutPromise]);
   } catch {
-    return [];
+    return { items: [], usedSemanticRrf: false };
   }
 }
 
@@ -255,6 +309,7 @@ export async function groundAndNormalizeAiItems(
   priorityCatalog?: FoodCatalogItem[]
 ): Promise<LoggedFoodItem[]> {
   if (!Array.isArray(items) || items.length === 0) return [];
+  const semanticEnabled = await getSemanticSearchEnabledFast().catch(() => false);
 
   return Promise.all(
     items.map(async (item) => {
@@ -264,17 +319,41 @@ export async function groundAndNormalizeAiItems(
 
       let matched =
         Array.isArray(priorityCatalog) && priorityCatalog.length > 0
-          ? findBestCandidate(item.name, priorityCatalog, validAiPer100g, true)
+          ? findBestCandidate(
+              item.name,
+              priorityCatalog,
+              validAiPer100g,
+              true,
+              semanticEnabled,
+              false
+            )
           : undefined;
 
       if (!matched) {
-        matched = findBestCandidate(item.name, ISRAELI_FOOD_CATALOG, validAiPer100g);
+        matched = findBestCandidate(
+          item.name,
+          ISRAELI_FOOD_CATALOG,
+          validAiPer100g,
+          false,
+          semanticEnabled,
+          false
+        );
       }
 
       if (!matched) {
-        const dbCandidates = await querySupabaseCatalogWithTimeout(item.name);
-        if (dbCandidates.length > 0) {
-          matched = findBestCandidate(item.name, dbCandidates, validAiPer100g);
+        const dbLookup = await querySupabaseCatalogWithTimeout(
+          item.name,
+          semanticEnabled
+        );
+        if (dbLookup.items.length > 0) {
+          matched = findBestCandidate(
+            item.name,
+            dbLookup.items,
+            validAiPer100g,
+            false,
+            semanticEnabled,
+            dbLookup.usedSemanticRrf
+          );
         }
       }
 

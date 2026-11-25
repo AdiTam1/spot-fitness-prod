@@ -1,6 +1,10 @@
 import { ISRAELI_FOOD_CATALOG } from '@/data/israeliFoodCatalog';
 import { FoodCatalogItem, UserFoodHistoryItem } from '@/types/nutrition';
 import { matchesBrandSelection } from '@/lib/foodBrands';
+import {
+  areDietaryAttributesCompatible,
+  scoreSynonymTextMatch,
+} from '@/lib/foodSynonyms';
 
 export type SemanticSourceGroup = 'all' | 'favorites_recent' | 'custom_only' | 'retail' | 'moh_gov';
 
@@ -12,6 +16,8 @@ export interface SearchCachePayload {
   mohCount: number;
   scraperCount: number;
   totalAvailable?: number;
+  usedSemanticRrf?: boolean;
+  semanticSearchEnabled?: boolean;
   storedAt: number;
 }
 
@@ -86,14 +92,15 @@ export function buildSearchCacheKey(
   query: string,
   sourceGroup: SemanticSourceGroup,
   retailSubSite: string,
-  selectedBrand = 'all'
+  selectedBrand = 'all',
+  semanticMode = false
 ): string {
   const effectiveSource =
     sourceGroup === 'retail' && retailSubSite && retailSubSite !== 'all'
       ? retailSubSite
       : sourceGroup;
   const brandPart = selectedBrand && selectedBrand !== 'all' ? normalizeClientFoodText(selectedBrand) : 'all';
-  return `${normalizeClientFoodText(query)}|${effectiveSource}|b:${brandPart}`;
+  return `${normalizeClientFoodText(query)}|${effectiveSource}|b:${brandPart}|s:${semanticMode ? 1 : 0}`;
 }
 
 export function getCachedFoodSearch(key: string): SearchCachePayload | null {
@@ -200,7 +207,8 @@ function scoreLocalCandidate(
   qNorm: string,
   digitsQ: string,
   favoriteSet: Set<string>,
-  historyKeySet: Set<string>
+  historyKeySet: Set<string>,
+  semanticEnabled = false
 ): number {
   const nameNorm = normalizeClientFoodText(item.name);
   const brandNorm = normalizeClientFoodText(item.brand || '');
@@ -216,6 +224,13 @@ function scoreLocalCandidate(
   if (!qNorm && !digitsQ) {
     if (!isCustom && !isHist && !isFav && !item.isPopular) return 5;
     return 20 + personalBoost + (item.isPopular ? 10 : 0);
+  }
+
+  if (
+    semanticEnabled &&
+    !areDietaryAttributesCompatible(qNorm, item.name, item.category || '')
+  ) {
+    return 0;
   }
 
   if (digitsQ.length >= 4 && item.barcode?.includes(digitsQ)) {
@@ -247,6 +262,10 @@ function scoreLocalCandidate(
     }
   }
 
+  if (textScore <= 0 && semanticEnabled) {
+    textScore = scoreSynonymTextMatch(qNorm, `${item.name} ${item.brand || ''} ${item.category || ''}`);
+  }
+
   if (textScore <= 0) return 0;
   return textScore + personalBoost;
 }
@@ -259,6 +278,7 @@ export function getInstantLocalFoods(opts: {
   personalHistory: UserFoodHistoryItem[];
   favoriteIds: string[];
   customFoods?: FoodCatalogItem[];
+  semanticEnabled?: boolean;
   limit?: number;
 }): Array<FoodCatalogItem & Partial<UserFoodHistoryItem>> {
   const limit = opts.limit || 36;
@@ -316,7 +336,14 @@ export function getInstantLocalFoods(opts: {
       continue;
     }
 
-    const score = scoreLocalCandidate(item, qNorm, digitsQ, favSet, histSet);
+    const score = scoreLocalCandidate(
+      item,
+      qNorm,
+      digitsQ,
+      favSet,
+      histSet,
+      Boolean(opts.semanticEnabled)
+    );
     if (score > 0) {
       scored.push({ item, score });
     }
@@ -332,7 +359,8 @@ export function mergeLocalAndRemoteFoodResults(
   query: string,
   personalHistory: UserFoodHistoryItem[],
   favoriteIds: string[],
-  limit = 36
+  limit = 36,
+  semanticEnabled = false
 ): Array<FoodCatalogItem & Partial<UserFoodHistoryItem>> {
   const qNorm = normalizeClientFoodText(query);
   const digitsQ = query.replace(/[^0-9]/g, '');
@@ -374,7 +402,7 @@ export function mergeLocalAndRemoteFoodResults(
     const isHist = histSet.has(item.id);
     const isFav = favSet.has(item.id);
     const localRelevance = qNorm || digitsQ
-      ? scoreLocalCandidate(item, qNorm, digitsQ, favSet, histSet)
+      ? scoreLocalCandidate(item, qNorm, digitsQ, favSet, histSet, semanticEnabled)
       : (isCustom ? 95 : 0) + (isHist ? 60 : 0) + (isFav ? 40 : 0);
     // שומר מיקום יחסי מתוצאות ה-Hybrid SQL RPC עבור פריטים שאינם בהיסטוריה אישית
     const baseOrderBoost = Math.max(0, 50 - idx);

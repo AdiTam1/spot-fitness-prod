@@ -54,6 +54,8 @@ export interface SqlFoodCatalogStats {
   available: boolean;
   totalCount: number;
   bySource: Record<string, number>;
+  semanticReady?: boolean;
+  embeddedCount?: number;
 }
 
 export type ScraperHealthStatus = 'healthy' | 'warning' | 'broken';

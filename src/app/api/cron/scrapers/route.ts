@@ -3,6 +3,8 @@ import {
   runScrapersHealthCheck,
   syncScrapersCatalog,
 } from '@/lib/scrapers/scraperStore';
+import { getSemanticSearchEnabledFast } from '@/lib/serverStore';
+import { backfillFoodCatalogEmbeddingsBatch } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,6 +27,17 @@ export async function GET(request: NextRequest) {
   const healthReport = await runScrapersHealthCheck('cron');
   const synced = await syncScrapersCatalog();
 
+  let embeddingsAdded = 0;
+  let embeddingsRemaining = 0;
+  const semanticOn = await getSemanticSearchEnabledFast().catch(() => false);
+  if (semanticOn) {
+    const embedRes = await backfillFoodCatalogEmbeddingsBatch(150).catch(() => null);
+    if (embedRes?.ok) {
+      embeddingsAdded = embedRes.embedded;
+      embeddingsRemaining = embedRes.remainingEstimate;
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     checkedAt: healthReport.lastCheckedAt,
@@ -33,5 +46,8 @@ export async function GET(request: NextRequest) {
     broken: healthReport.totalBroken,
     syncedTotal: synced.totalCount,
     addedCount: synced.addedCount,
+    semanticSearchEnabled: semanticOn,
+    embeddingsAdded,
+    embeddingsRemaining,
   });
 }

@@ -35,6 +35,7 @@ import {
   loadCoachLiveAuthState,
   loadCustomFoodsContextFromSupabase,
   loadQuickChipsContextForTraineeFromSupabase,
+  loadSemanticSearchEnabledFromSupabase,
   loadSingleCoachFromSupabase,
   loadSingleTraineeFromSupabase,
   loadStateFromSupabase,
@@ -46,6 +47,7 @@ import {
   saveGlobalCustomFoodsToSupabase,
   saveGlobalQuickChipsToSupabase,
   saveGroupsToSupabase,
+  saveSemanticSearchEnabledToSupabase,
   saveShowScraperSourcesToSupabase,
   saveTemplatesToSupabase,
   saveTraineesToSupabase,
@@ -68,6 +70,7 @@ export interface ServerDatabaseState {
   coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
   appReleasePolicy?: AppReleasePolicy;
   showScraperSourcesToAdmin?: boolean;
+  semanticSearchEnabled?: boolean;
   userClientVersions?: Record<string, UserClientVersionInfo>;
   appUpdatePushHistory?: AppUpdatePushHistoryEntry[];
   readErrors?: string[];
@@ -81,6 +84,8 @@ declare global {
   var __spotServerDbCache: ServerDatabaseState | undefined;
   // eslint-disable-next-line no-var
   var __spotLastClientVersionCache: Map<string, UserClientVersionInfo> | undefined;
+  // eslint-disable-next-line no-var
+  var __spotSemanticFlagCache: { value: boolean; expiresAt: number } | undefined;
 }
 
 const DEFAULT_GROUPS: TraineeGroup[] = [
@@ -123,6 +128,7 @@ function createCleanInitialState(): ServerDatabaseState {
     coachPushSettings: {},
     appReleasePolicy: { androidBlockedUpToVersionCode: 0 },
     showScraperSourcesToAdmin: false,
+    semanticSearchEnabled: false,
     userClientVersions: {},
     appUpdatePushHistory: [],
   };
@@ -240,6 +246,7 @@ export async function getServerDbState(): Promise<ServerDatabaseState> {
         androidBlockedUpToVersionCode: 0,
       },
       showScraperSourcesToAdmin: Boolean(remote.showScraperSourcesToAdmin),
+      semanticSearchEnabled: Boolean(remote.semanticSearchEnabled),
       userClientVersions: remote.userClientVersions || {},
       appUpdatePushHistory: remote.appUpdatePushHistory || [],
       readErrors: remote.readErrors,
@@ -259,6 +266,41 @@ export async function getServerDbState(): Promise<ServerDatabaseState> {
     localState.appReleasePolicy = { androidBlockedUpToVersionCode: 0 };
   }
   return localState;
+}
+
+export function invalidateSemanticSearchFlagCache(nextValue?: boolean): void {
+  if (typeof nextValue === 'boolean') {
+    globalThis.__spotSemanticFlagCache = {
+      value: nextValue,
+      expiresAt: Date.now() + 20_000,
+    };
+    return;
+  }
+  globalThis.__spotSemanticFlagCache = undefined;
+}
+
+/**
+ * קריאה מהירה (~0ms בקאש, או שאילתת מטה בודדת) למצב מתג החיפוש הסמנטי,
+ * כדי לא לעכב את מסלול החיפוש המהיר בשליפת כל טבלאות האפליקציה.
+ */
+export async function getSemanticSearchEnabledFast(): Promise<boolean> {
+  const cached = globalThis.__spotSemanticFlagCache;
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  let enabled = false;
+  if (isSupabaseConfigured) {
+    enabled = await loadSemanticSearchEnabledFromSupabase();
+  } else {
+    enabled = Boolean(loadLocalServerFile().semanticSearchEnabled);
+  }
+
+  globalThis.__spotSemanticFlagCache = {
+    value: enabled,
+    expiresAt: Date.now() + 20_000,
+  };
+  return enabled;
 }
 
 export async function getAppReleasePolicyFromServer(): Promise<AppReleasePolicy> {
@@ -523,10 +565,18 @@ export async function updateServerDbState(
     if (next.showScraperSourcesToAdmin !== current.showScraperSourcesToAdmin) {
       tasks.push(saveShowScraperSourcesToSupabase(Boolean(next.showScraperSourcesToAdmin)));
     }
+    if (next.semanticSearchEnabled !== current.semanticSearchEnabled) {
+      const nextSem = Boolean(next.semanticSearchEnabled);
+      invalidateSemanticSearchFlagCache(nextSem);
+      tasks.push(saveSemanticSearchEnabledToSupabase(nextSem));
+    }
     if (tasks.length > 0) {
       await Promise.all(tasks);
     }
   } else {
+    if (next.semanticSearchEnabled !== current.semanticSearchEnabled) {
+      invalidateSemanticSearchFlagCache(Boolean(next.semanticSearchEnabled));
+    }
     saveLocalServerFile(next);
   }
 

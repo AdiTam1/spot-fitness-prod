@@ -229,6 +229,8 @@ interface CoachDashboardViewProps {
   appReleasePolicy?: AppReleasePolicy;
   adminShowScraperSources?: boolean;
   onAdminShowScraperSourcesChange?: (next: boolean) => void;
+  adminSemanticSearchEnabled?: boolean;
+  onAdminSemanticSearchEnabledChange?: (next: boolean) => void;
   onUpdateAppPolicy?: (policy: AppReleasePolicy) => Promise<{ error?: string }> | void;
   onApkReleasePublished?: (policy: AppReleasePolicy) => void;
   onPreviewTraineeMobile: (traineeId: string) => void;
@@ -326,6 +328,8 @@ export function CoachDashboardView({
   appReleasePolicy,
   adminShowScraperSources,
   onAdminShowScraperSourcesChange,
+  adminSemanticSearchEnabled,
+  onAdminSemanticSearchEnabledChange,
   onUpdateAppPolicy,
   onApkReleasePublished,
   onPreviewTraineeMobile,
@@ -360,6 +364,7 @@ export function CoachDashboardView({
     null
   );
   const [scraperLoading, setScraperLoading] = useState<boolean>(false);
+  const [embeddingConfigured, setEmbeddingConfigured] = useState<boolean>(true);
 
   useEffect(() => {
     if (!isSuperAdmin) return;
@@ -371,6 +376,12 @@ export function CoachDashboardView({
         if (cancelled) return;
         if (typeof data?.showScraperSourcesToAdmin === 'boolean') {
           onAdminShowScraperSourcesChange?.(data.showScraperSourcesToAdmin);
+        }
+        if (typeof data?.semanticSearchEnabled === 'boolean') {
+          onAdminSemanticSearchEnabledChange?.(data.semanticSearchEnabled);
+        }
+        if (typeof data?.embeddingConfigured === 'boolean') {
+          setEmbeddingConfigured(data.embeddingConfigured);
         }
         if (data?.report) {
           setScraperReport(data.report as ScraperSuiteReport);
@@ -7176,6 +7187,9 @@ export function CoachDashboardView({
           loading={scraperLoading}
           showScraperSourcesToAdmin={adminShowScraperSources}
           onShowScraperSourcesChange={onAdminShowScraperSourcesChange}
+          semanticSearchEnabled={adminSemanticSearchEnabled}
+          onSemanticSearchChange={onAdminSemanticSearchEnabledChange}
+          embeddingConfigured={embeddingConfigured}
           onReportUpdate={(next) => setScraperReport(next)}
           onNotify={(msg, isErr) => showToast(msg, isErr)}
         />

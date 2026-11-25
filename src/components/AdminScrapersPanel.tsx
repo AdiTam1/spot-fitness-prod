@@ -28,6 +28,9 @@ interface AdminScrapersPanelProps {
   loading: boolean;
   showScraperSourcesToAdmin?: boolean;
   onShowScraperSourcesChange?: (next: boolean) => void;
+  semanticSearchEnabled?: boolean;
+  onSemanticSearchChange?: (next: boolean) => void;
+  embeddingConfigured?: boolean;
   onReportUpdate: (next: ScraperSuiteReport) => void;
   onNotify: (msg: string, isError?: boolean) => void;
 }
@@ -51,6 +54,9 @@ export function AdminScrapersPanel({
   loading,
   showScraperSourcesToAdmin = false,
   onShowScraperSourcesChange,
+  semanticSearchEnabled = false,
+  onSemanticSearchChange,
+  embeddingConfigured = true,
   onReportUpdate,
   onNotify,
 }: AdminScrapersPanelProps) {
@@ -210,6 +216,61 @@ export function AdminScrapersPanel({
     }
   };
 
+  const handleToggleSemanticSearch = async (next: boolean) => {
+    setBusyAction('toggle_semantic');
+    onSemanticSearchChange?.(next);
+    try {
+      await callScraperApi({
+        action: 'set_semantic_search',
+        enabled: next,
+      });
+      onNotify(
+        next
+          ? 'החיפוש הסמנטי המתקדם הופעל (pgvector RRF + מילים נרדפות + שכתוב סקרייפרים + AI Grounding).'
+          : 'החיפוש הסמנטי הושבת — האפליקציה פועלת כעת בארכיטקטורת החיפוש הלקסיקלית הקיימת.'
+      );
+    } catch (err) {
+      onSemanticSearchChange?.(!next);
+      onNotify(
+        err instanceof Error ? err.message : 'שמירת הגדרת החיפוש הסמנטי נכשלה',
+        true
+      );
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleBackfillEmbeddings = async () => {
+    setBusyAction('backfill_embeddings');
+    try {
+      const data = await callScraperApi({
+        action: 'backfill_embeddings',
+        pages: 250,
+      });
+      if (data.report) onReportUpdate(data.report);
+      if (!data.ok) {
+        onNotify(data.error || 'אינדוקס Embeddings נכשל', true);
+        return;
+      }
+      if (Number(data.embedded || 0) === 0 && Number(data.remainingEstimate || 0) === 0) {
+        onNotify('כל המוצרים בטבלת food_catalog_items כבר מאונדקסים עם Embeddings סמנטיים!');
+      } else {
+        onNotify(
+          `אונדקסו ${Number(data.embedded || 0).toLocaleString('he-IL')} מוצרים סמנטית (נותרו כ-${Number(
+            data.remainingEstimate || 0
+          ).toLocaleString('he-IL')} להשלמה באצוות הבאות / Cron לילי).`
+        );
+      }
+    } catch (err) {
+      onNotify(
+        err instanceof Error ? err.message : 'אינדוקס Embeddings נכשל',
+        true
+      );
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   const handleRunTestSearch = async (scraperId: ScraperSourceId) => {
     setTestingId(scraperId);
     try {
@@ -328,35 +389,85 @@ export function AdminScrapersPanel({
           </div>
         </div>
 
-        {/* הגדרת מנהל ייעודית: הצגת מקור סקרייפר בחיפוש המזון (למנהל מערכת בלבד) */}
-        <div
-          className="pro-card"
-          style={{
-            padding: '12px 16px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            flexWrap: 'wrap',
-            borderColor: showScraperSourcesToAdmin ? 'var(--accent)' : 'var(--border-subtle)',
-          }}
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: '1 1 260px' }}>
-            <span style={{ fontSize: 13.5, fontWeight: 800 }}>
-              הצג מקור סקרייפר וסינון לפי רשת/סקרייפר בחיפוש המזון
-            </span>
-            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              ברירת מחדל: מוסתר לכלל המשתמשים (כולל מנהל). הפעלה מציגה למנהל המערכת בלבד את שם האתר ממנו הגיע המוצר ואת מסנן האתרים.
-            </span>
+        {/* הגדרות מנהל ייעודיות: נראות סקרייפרים + מנוע חיפוש סמנטי */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div
+            className="pro-card"
+            style={{
+              padding: '12px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
+              borderColor: showScraperSourcesToAdmin ? 'var(--accent)' : 'var(--border-subtle)',
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: '1 1 260px' }}>
+              <span style={{ fontSize: 13.5, fontWeight: 800 }}>
+                הצג מקור סקרייפר וסינון לפי רשת/סקרייפר בחיפוש המזון
+              </span>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                ברירת מחדל: מוסתר לכלל המשתמשים (כולל מנהל). הפעלה מציגה למנהל המערכת בלבד את שם האתר ממנו הגיע המוצר ואת מסנן האתרים.
+              </span>
+            </div>
+            <Switch
+              color="orange"
+              size="md"
+              disabled={busyAction === 'toggle_visibility'}
+              checked={Boolean(showScraperSourcesToAdmin)}
+              onChange={(e) => void handleToggleScraperVisibility(e.currentTarget.checked)}
+              label={showScraperSourcesToAdmin ? 'מוצג למנהל' : 'מוסתר (מותג בלבד)'}
+            />
           </div>
-          <Switch
-            color="orange"
-            size="md"
-            disabled={busyAction === 'toggle_visibility'}
-            checked={Boolean(showScraperSourcesToAdmin)}
-            onChange={(e) => void handleToggleScraperVisibility(e.currentTarget.checked)}
-            label={showScraperSourcesToAdmin ? 'מוצג למנהל' : 'מוסתר (מותג בלבד)'}
-          />
+
+          <div
+            className="pro-card"
+            style={{
+              padding: '12px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
+              borderColor: semanticSearchEnabled ? 'var(--accent)' : 'var(--border-subtle)',
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: '1 1 280px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13.5, fontWeight: 800 }}>
+                  חיפוש סמנטי מתקדם ב-DB, בסקרייפרים ובזיהוי AI
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: 999,
+                    background: semanticSearchEnabled
+                      ? 'rgba(74, 222, 128, 0.14)'
+                      : 'var(--surface-2)',
+                    color: semanticSearchEnabled ? 'var(--ok-text)' : 'var(--text-muted)',
+                  }}
+                >
+                  {semanticSearchEnabled ? 'מופעל (Hybrid + pgvector RRF)' : 'כבוי (מצב לקסיקלי קיים)'}
+                </span>
+              </div>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                ברירת מחדל: כבוי (הארכיטקטורה הקיימת ממשיכה לעבוד ללא שינוי). בהפעלה: מילים נרדפות בעברית/אנגלית,
+                מיזוג וקטורי <bdi dir="ltr"><code>halfvec RRF</code></bdi>, שכתוב שאילתות חי בסקרייפרים והתאמת AI משופרת תוך נעילת אחוזי שומן ואילוצי תזונה.
+                {!embeddingConfigured ? ' · שים לב: חסר GEMINI_API_KEY ליצירת וקטורים.' : ''}
+              </span>
+            </div>
+            <Switch
+              color="orange"
+              size="md"
+              disabled={busyAction === 'toggle_semantic'}
+              checked={Boolean(semanticSearchEnabled)}
+              onChange={(e) => void handleToggleSemanticSearch(e.currentTarget.checked)}
+              label={semanticSearchEnabled ? 'סמנטי פעיל' : 'ארכיטקטורה קיימת'}
+            />
+          </div>
         </div>
 
         {/* באנר חיווי תקלה או תקינות */}
@@ -547,7 +658,22 @@ export function AdminScrapersPanel({
                 · OpenFoodFacts ישראל:{' '}
                 <strong className="num-mono">
                   {(report.sqlCatalogStats.bySource?.openfoodfacts || 0).toLocaleString('he-IL')}
-                </strong>
+                </strong>{' '}
+                ·{' '}
+                {report.sqlCatalogStats.semanticReady ? (
+                  <>
+                    מאונדקס סמנטית (pgvector):{' '}
+                    <strong className="num-mono" style={{ color: 'var(--text-primary)' }}>
+                      {(report.sqlCatalogStats.embeddedCount || 0).toLocaleString('he-IL')}
+                    </strong>{' '}
+                    / {report.sqlCatalogStats.totalCount.toLocaleString('he-IL')}
+                  </>
+                ) : (
+                  <>
+                    סמנטי: ממתין למיגרציה{' '}
+                    <bdi dir="ltr"><code>20261126_semantic_food_search.sql</code></bdi>
+                  </>
+                )}
                 . כל חיפוש חי או סריקת ברקוד של מתאמן נשמר אוטומטית לטבלה!
               </>
             ) : (
@@ -621,6 +747,34 @@ export function AdminScrapersPanel({
               {busyAction === 'sync_off'
                 ? 'מייבא מ-OpenFoodFacts...'
                 : 'ייבא Open Food Facts ישראל (ברקודים)'}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            disabled={Boolean(busyAction) || loading}
+            onClick={handleBackfillEmbeddings}
+            className="btn-surface"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '8px 14px',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: 'pointer',
+              borderColor: 'var(--line-2)',
+            }}
+          >
+            {busyAction === 'backfill_embeddings' ? (
+              <Loader2 size={14} className="spot-spinner" />
+            ) : (
+              <Search size={14} color="currentColor" />
+            )}
+            <span>
+              {busyAction === 'backfill_embeddings'
+                ? 'מאנדקס Embeddings סמנטיים...'
+                : 'אנדקס Embeddings סמנטיים (אצווה)'}
             </span>
           </button>
         </div>

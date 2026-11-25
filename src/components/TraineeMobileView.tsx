@@ -230,6 +230,7 @@ interface TraineeMobileViewProps {
   ) => void | Promise<void>;
   onSyncNativeStepsNow?: () => Promise<void>;
   showScraperSources?: boolean;
+  semanticSearchEnabled?: boolean;
 }
 
 function CompactMiniRing({
@@ -307,6 +308,7 @@ export function TraineeMobileView({
   onUpdateMealShortcuts,
   onSyncNativeStepsNow,
   showScraperSources = false,
+  semanticSearchEnabled = false,
 }: TraineeMobileViewProps) {
   const todayIso = getTodayIso();
   const [selectedDate, setSelectedDate] = useState<string>(todayIso);
@@ -3136,6 +3138,7 @@ export function TraineeMobileView({
         onManageQuickChips={onManageQuickChips}
         actorRole={actorRole}
         showScraperSources={actorRole === 'admin' && Boolean(showScraperSources)}
+        semanticSearchEnabled={Boolean(semanticSearchEnabled)}
         customFoods={customFoods}
         onCustomFoodsUpdated={onCustomFoodsUpdated}
         selectedDate={selectedDate}

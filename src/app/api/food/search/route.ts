@@ -10,6 +10,17 @@ import {
   matchesBrandSelection,
 } from '@/lib/foodBrands';
 import {
+  areDietaryAttributesCompatible,
+  scoreSynonymTextMatch,
+  shouldEscalateToSemanticSearch,
+} from '@/lib/foodSynonyms';
+import { getSemanticSearchEnabledFast } from '@/lib/serverStore';
+import {
+  backfillFoodCatalogEmbeddingsBatch,
+  getCachedQueryEmbeddingTextSql,
+  getOrCreateQueryEmbeddingText,
+} from '@/lib/supabase';
+import {
   persistCatalogItemsToDb,
   searchLiveScrapers,
   searchSqlAndCachedCatalog,
@@ -20,7 +31,13 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
-function scoreMatch(item: FoodCatalogItem, qNorm: string, digitsQ: string): number {
+function scoreMatch(
+  item: FoodCatalogItem,
+  qNorm: string,
+  digitsQ: string,
+  rawQuery = '',
+  semanticEnabled = false
+): number {
   const nameNorm = normalizeFoodKey(item.name);
   const brandNorm = normalizeFoodKey(item.brand || '');
   const catNorm = normalizeFoodKey(item.category || '');
@@ -28,6 +45,9 @@ function scoreMatch(item: FoodCatalogItem, qNorm: string, digitsQ: string): numb
   const popularityBoost = Math.min(18, Math.round(Math.log1p(Math.max(0, item.pickCount || 0)) * 4));
 
   if (!qNorm && !digitsQ) return item.isPopular ? 30 + popularityBoost : 10 + popularityBoost;
+  if (semanticEnabled && rawQuery && !areDietaryAttributesCompatible(rawQuery, item.name, item.category || '')) {
+    return 0;
+  }
   if (digitsQ.length >= 6 && item.barcode && item.barcode === digitsQ) return 130 + popularityBoost;
   if (nameNorm === qNorm) return 115 + popularityBoost;
   if (nameNorm.startsWith(`${qNorm} `)) return 96 - Math.min(4, Math.floor(lenPenalty / 2)) + popularityBoost;
@@ -47,9 +67,22 @@ function scoreMatch(item: FoodCatalogItem, qNorm: string, digitsQ: string): numb
   if (qNorm && brandNorm.includes(qNorm)) return 48 + popularityBoost;
   if (qNorm && catNorm.includes(qNorm)) return 32 + Math.floor(popularityBoost / 2);
 
-  // תוצאות מה-Hybrid SQL RPC (שגיאות כתיב via pg_trgm או מוספיות עבריות via tsvector)
+  if (semanticEnabled && rawQuery) {
+    const synBonus = scoreSynonymTextMatch(
+      rawQuery,
+      `${item.name} ${item.brand || ''} ${item.category || ''}`
+    );
+    if (synBonus > 0) {
+      return synBonus - Math.floor(lenPenalty / 2) + popularityBoost;
+    }
+  }
+
+  // תוצאות מה-Hybrid SQL RPC (שגיאות כתיב via pg_trgm, מוספיות עבריות via tsvector, או דמיון וקטורי RRF)
   if (item.sourceSiteId || item.source === 'moh' || item.source === 'openfoodfacts') {
-    return 24 + popularityBoost;
+    return (semanticEnabled ? 34 : 24) + popularityBoost;
+  }
+  if (semanticEnabled) {
+    return 0;
   }
   return 0;
 }
@@ -86,7 +119,9 @@ function rankAndDedupeMatches(
   digitsQ: string,
   limit: number,
   interleaveBySource: boolean,
-  brandFilter?: string
+  brandFilter?: string,
+  rawQuery = '',
+  semanticEnabled = false
 ): Array<{ item: FoodCatalogItem; score: number }> {
   const scoredByKey = new Map<string, { item: FoodCatalogItem; score: number }>();
 
@@ -94,7 +129,7 @@ function rankAndDedupeMatches(
     if (brandFilter && brandFilter !== 'all' && !matchesBrandSelection(item, brandFilter)) {
       continue;
     }
-    const score = scoreMatch(item, qNorm, digitsQ);
+    const score = scoreMatch(item, qNorm, digitsQ, rawQuery, semanticEnabled);
     if (score <= 0) continue;
     const key = `${normalizeFoodKey(item.name)}:${Math.round(item.per100g.calories)}`;
     const prev = scoredByKey.get(key);
@@ -219,6 +254,7 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
       : undefined;
 
   const localPool = filterLocalCatalog(sourceFilter);
+  const semanticSearchEnabled = await getSemanticSearchEnabledFast().catch(() => false);
 
   // מצב דפדוף ריק: מחזיר מקומי + שורה קלה מה-SQL בלי לטעון BLOB או סקרייפרים
   if (!qNorm && !isBarcodeQuery) {
@@ -241,7 +277,9 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
       '',
       limit,
       !specificSiteFilter,
-      brandFilter
+      brandFilter,
+      rawQuery,
+      semanticSearchEnabled
     ).map((x) => x.item);
 
     return NextResponse.json({
@@ -254,28 +292,102 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
       sqlCount: sqlBrowse.sqlCount,
       liveCount: 0,
       usedHybridRpc: Boolean(sqlBrowse.usedHybridRpc),
+      usedSemanticRrf: false,
+      semanticSearchEnabled,
       dbLatencyMs: Date.now() - startedAt,
     });
   }
 
-  // טוקן בודד שאינו ברקוד — השרת מדלג על סקרייפרים חיים ומחזיר מקומי + prefix קצר ב-SQL
-  const sqlRes = await searchSqlAndCachedCatalog({
-    query: rawQuery.trim(),
-    sourceMode,
-    sourceFilter: specificSiteFilter,
-    brand: brandFilter !== 'all' ? brandFilter : undefined,
-    limit,
-  });
+  const canUseVectorSemantic =
+    semanticSearchEnabled &&
+    !isBarcodeQuery &&
+    sourceFilter !== 'local' &&
+    sourceFilter !== 'favorites_recent' &&
+    qNorm.replace(/\s+/g, '').length >= 3;
 
-  const fastPool = [...localPool, ...sqlRes.items];
-  const fastRanked = rankAndDedupeMatches(
+  // מריץ חיפוש לקסיקלי מהיר ובמקביל בודק קאש וקטורי ב-DB (אם מצב סמנטי מופעל)
+  const [sqlResInitial, cachedQueryVecText] = await Promise.all([
+    searchSqlAndCachedCatalog({
+      query: rawQuery.trim(),
+      sourceMode,
+      sourceFilter: specificSiteFilter,
+      brand: brandFilter !== 'all' ? brandFilter : undefined,
+      limit,
+    }),
+    canUseVectorSemantic
+      ? getCachedQueryEmbeddingTextSql(rawQuery.trim())
+      : Promise.resolve(null),
+  ]);
+
+  let sqlRes = sqlResInitial;
+  let fastPool = [...localPool, ...sqlRes.items];
+  let fastRanked = rankAndDedupeMatches(
     fastPool,
     qNorm,
     digitsQ,
     limit,
     !specificSiteFilter,
-    brandFilter
+    brandFilter,
+    rawQuery,
+    semanticSearchEnabled
   );
+
+  const initialStrongHits = fastRanked.filter((x) => x.score >= 60).length;
+  let usedSemanticRrf = false;
+
+  // אסקלציה סמנטית מבוקרת: מופעלת רק כשמצב סמנטי דלוק וגם יש קאש וקטורי מוכן או מחסור בהתאמות חזקות
+  if (
+    canUseVectorSemantic &&
+    (cachedQueryVecText ||
+      shouldEscalateToSemanticSearch({
+        query: rawQuery.trim(),
+        lexicalStrongHits: initialStrongHits,
+        lexicalTotalHits: fastRanked.length,
+        isBarcode: isBarcodeQuery,
+      }))
+  ) {
+    const queryVecText =
+      cachedQueryVecText ||
+      (
+        await getOrCreateQueryEmbeddingText(rawQuery.trim(), {
+          allowGeminiCall: true,
+        })
+      ).vectorText;
+
+    if (queryVecText) {
+      const semanticRes = await searchSqlAndCachedCatalog({
+        query: rawQuery.trim(),
+        sourceMode,
+        sourceFilter: specificSiteFilter,
+        brand: brandFilter !== 'all' ? brandFilter : undefined,
+        queryEmbeddingText: queryVecText,
+        semanticWeight: 1.0,
+        limit,
+      });
+
+      if (semanticRes.usedSemanticRrf && semanticRes.items.length > 0) {
+        usedSemanticRrf = true;
+        sqlRes = {
+          items: [...semanticRes.items, ...sqlResInitial.items],
+          sqlCount: Math.max(semanticRes.sqlCount, sqlResInitial.sqlCount),
+          usedHybridRpc: true,
+          usedSemanticRrf: true,
+        };
+        fastPool = [...localPool, ...sqlRes.items];
+        fastRanked = rankAndDedupeMatches(
+          fastPool,
+          qNorm,
+          digitsQ,
+          limit,
+          !specificSiteFilter,
+          brandFilter,
+          rawQuery,
+          true
+        );
+      }
+    }
+  }
+
   const availableBrands = collectTopBrandsFromItems(
     brandFilter !== 'all' ? fastRanked.map((e) => e.item) : fastPool
   );
@@ -319,24 +431,38 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
       sqlCount: sqlRes.sqlCount,
       liveCount: 0,
       usedHybridRpc: Boolean(sqlRes.usedHybridRpc),
+      usedSemanticRrf,
+      semanticSearchEnabled,
       dbLatencyMs: Date.now() - startedAt,
       mohCount: items.filter((i) => i.source === 'moh' || i.sourceSiteId === 'moh_gov').length,
       scraperCount: items.filter((i) => Boolean(i.sourceSiteId)).length,
     });
   }
 
-  // Phase 2 (mode=live): חיפוש משלים באתרים חיים עם Query Cache + Circuit Breaker
+  // Phase 2 (mode=live): חיפוש משלים באתרים חיים עם Query Cache + Circuit Breaker (+ שכתוב סמנטי כשמופעל)
   let liveMatches: FoodCatalogItem[] = [];
   if (supportsLiveSite || (requestedMode === 'live' && qNorm.length >= 2 && !isBarcodeQuery)) {
     liveMatches = await searchLiveScrapers(
       rawQuery.trim(),
-      specificSiteFilter ? (specificSiteFilter as ScraperSourceId) : undefined
+      specificSiteFilter ? (specificSiteFilter as ScraperSourceId) : undefined,
+      undefined,
+      { semanticMode: semanticSearchEnabled }
     );
   }
 
   if (liveMatches.length > 0) {
     try {
-      waitUntil(persistCatalogItemsToDb(liveMatches).catch(() => undefined));
+      const persistAndEmbedTask = persistCatalogItemsToDb(liveMatches)
+        .then((savedRes) => {
+          if (semanticSearchEnabled && savedRes.savedCount > 0) {
+            return backfillFoodCatalogEmbeddingsBatch(
+              Math.min(40, savedRes.savedCount)
+            );
+          }
+          return undefined;
+        })
+        .catch(() => undefined);
+      waitUntil(persistAndEmbedTask);
     } catch {
       // ignore outside Vercel lifecycle
     }
@@ -349,7 +475,9 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
     digitsQ,
     limit,
     !specificSiteFilter,
-    brandFilter
+    brandFilter,
+    rawQuery,
+    semanticSearchEnabled
   );
   const deduped = finalRanked.map((e) => e.item);
   const finalBrands = collectTopBrandsFromItems(
@@ -366,6 +494,8 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
     sqlCount: sqlRes.sqlCount,
     liveCount: liveMatches.length,
     usedHybridRpc: Boolean(sqlRes.usedHybridRpc),
+    usedSemanticRrf,
+    semanticSearchEnabled,
     dbLatencyMs: Date.now() - startedAt,
     mohCount: deduped.filter((i) => i.source === 'moh' || i.sourceSiteId === 'moh_gov').length,
     scraperCount: deduped.filter((i) => Boolean(i.sourceSiteId)).length,
