@@ -117,11 +117,22 @@ export interface FoodCatalogItem {
   per100g: MacroTargets;
   units: FoodUnit[];
   isPopular?: boolean;
+  pickCount?: number;
   source?: 'local' | 'moh' | 'openfoodfacts' | 'scraper';
   sourceSiteId?: FoodCatalogSourceId;
   sourceSiteName?: string;
   sourceUrl?: string;
   updatedAt?: string;
+}
+
+export interface UserFoodHistoryItem extends FoodCatalogItem {
+  foodKey: string;
+  catalogId?: string;
+  actionKind: 'picked' | 'barcode' | 'logged';
+  useCount: number;
+  lastUsedAt: string;
+  lastUnitLabel?: string;
+  lastGrams?: number;
 }
 
 export type FoodEntrySource =

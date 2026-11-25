@@ -21,11 +21,14 @@ import {
   TraineeOnboardingData,
   TraineeProfile,
   TraineeServingTool,
+  UserFoodHistoryItem,
   WeeklyCheckInEntry,
 } from '@/types/nutrition';
 import {
+  escapeSqlLikePattern,
   isValidMacroSet,
   normalizeFoodKey,
+  normalizeFoodSearchQuery,
   roundMacros,
 } from '@/lib/scrapers/helpers';
 
@@ -1505,6 +1508,7 @@ function mapSqlRowToFoodCatalogItem(row: Record<string, unknown>): FoodCatalogIt
       : undefined,
     sourceSiteName: row.source_site_name ? String(row.source_site_name) : undefined,
     sourceUrl: row.source_url ? String(row.source_url) : undefined,
+    pickCount: typeof row.pick_count === 'number' ? row.pick_count : Number(row.pick_count) || 0,
     updatedAt: row.updated_at ? String(row.updated_at) : undefined,
   };
 }
@@ -1599,64 +1603,156 @@ export async function upsertFoodCatalogItemsToSupabase(
   return { ok: true, tableReady: true, savedCount };
 }
 
+function isMissingRpcOrTableError(err: SbErrorLike): boolean {
+  if (!err) return false;
+  const code = String(err.code || '').toUpperCase();
+  const msg = String(err.message || '').toLowerCase();
+  return (
+    code === '42883' ||
+    code === '42P01' ||
+    code === 'PGRST202' ||
+    code === 'PGRST205' ||
+    msg.includes('could not find the function') ||
+    msg.includes('does not exist')
+  );
+}
+
 /**
- * חיפוש מהיר ישירות מול PostgreSQL (GIN trigram index) — אינו טוען שורות מיותרות ל-RAM.
+ * חיפוש היברידי מהיר ישירות מול PostgreSQL ב-Round-Trip יחיד:
+ * FTS ('simple' + מוספיות עבריות) + pg_trgm לשגיאות כתיב + מונה פופולריות (pick_count),
+ * עם נסיגה בטוחה לשאילתות מאובטחות אם המיגרציה טרם הורצה.
  */
 export async function searchFoodCatalogSql(opts: {
   query?: string;
+  sourceMode?: 'all' | 'retail' | 'moh_gov' | 'openfoodfacts';
   sourceSiteId?: string;
   limit?: number;
-}): Promise<{ items: FoodCatalogItem[]; tableReady: boolean }> {
+}): Promise<{ items: FoodCatalogItem[]; tableReady: boolean; usedHybridRpc?: boolean }> {
   if (!supabase) return { items: [], tableReady: false };
-  const limit = Math.min(120, Math.max(1, opts.limit || 60));
+  const limit = Math.min(60, Math.max(1, opts.limit || 36));
+  const qRaw = (opts.query || '').trim();
+  const qNorm = normalizeFoodSearchQuery(qRaw);
+  const specificSite =
+    opts.sourceSiteId &&
+    opts.sourceSiteId !== 'all' &&
+    opts.sourceSiteId !== 'local' &&
+    opts.sourceSiteId !== 'retail' &&
+    opts.sourceSiteId !== 'moh_gov' &&
+    opts.sourceSiteId !== 'favorites_recent'
+      ? opts.sourceSiteId
+      : null;
 
-  const runFilteredQuery = async (mode: 'exact_site' | 'retail_only' | 'moh_only', rowLimit: number) => {
-    let req = supabase!
-      .from('food_catalog_items')
-      .select(FOOD_CATALOG_SELECT_COLS);
-
-    if (mode === 'exact_site' && opts.sourceSiteId) {
-      req = req.eq('source_site_id', opts.sourceSiteId);
-    } else if (mode === 'retail_only') {
-      req = req.neq('source_site_id', 'moh_gov');
-    } else if (mode === 'moh_only') {
-      req = req.eq('source_site_id', 'moh_gov');
-    }
-
-    const qTrimmed = (opts.query || '').trim();
-    const digitsOnly = qTrimmed.replace(/[^0-9]/g, '');
-    if (digitsOnly.length >= 6 && digitsOnly.length === qTrimmed.length) {
-      req = req.or(`barcode.eq.${digitsOnly},id.eq.shufersal-P_${digitsOnly},name_norm.ilike.%${digitsOnly}%`);
-    } else {
-      const qNorm = opts.query ? normalizeFoodKey(opts.query) : '';
-      if (qNorm) {
-        const tokens = qNorm.split(/\s+/).filter((t) => t.length >= 1).slice(0, 4);
-        for (const tok of tokens) {
-          req = req.ilike('name_norm', `%${tok}%`);
-        }
-      }
-    }
-
-    return req.order('updated_at', { ascending: false }).limit(rowLimit);
-  };
+  const sourceMode =
+    opts.sourceMode ||
+    (opts.sourceSiteId === 'retail'
+      ? 'retail'
+      : opts.sourceSiteId === 'moh_gov'
+      ? 'moh_gov'
+      : opts.sourceSiteId === 'openfoodfacts'
+      ? 'openfoodfacts'
+      : 'all');
 
   try {
-    const specificSite = opts.sourceSiteId && opts.sourceSiteId !== 'all' && opts.sourceSiteId !== 'local';
-    if (specificSite) {
-      const { data, error } = await runFilteredQuery('exact_site', limit);
-      if (error) {
-        return { items: [], tableReady: !isMissingFoodTableError(error) };
+    const { data: rpcRows, error: rpcErr } = await supabase.rpc(
+      'search_food_catalog_hybrid',
+      {
+        q_raw: qRaw,
+        q_norm: qNorm,
+        source_mode: sourceMode,
+        source_site: specificSite,
+        max_rows: limit,
       }
+    );
+
+    if (!rpcErr && Array.isArray(rpcRows)) {
+      const items = rpcRows
+        .map((r) => mapSqlRowToFoodCatalogItem(r as Record<string, unknown>))
+        .filter((x): x is FoodCatalogItem => Boolean(x));
+      return { items, tableReady: true, usedHybridRpc: true };
+    }
+
+    if (rpcErr && !isMissingRpcOrTableError(rpcErr)) {
+      return {
+        items: [],
+        tableReady: !isMissingFoodTableError(rpcErr),
+        usedHybridRpc: false,
+      };
+    }
+
+    // Fallback בטוח אם פונקציית ה-RPC טרם הורצה ב-SQL Editor
+    const runFilteredQuery = async (mode: 'exact_site' | 'retail_only' | 'moh_only', rowLimit: number) => {
+      let req = supabase!
+        .from('food_catalog_items')
+        .select(FOOD_CATALOG_SELECT_COLS);
+
+      if (mode === 'exact_site' && specificSite) {
+        req = req.eq('source_site_id', specificSite);
+      } else if (mode === 'retail_only') {
+        req = req.neq('source_site_id', 'moh_gov');
+      } else if (mode === 'moh_only') {
+        req = req.eq('source_site_id', 'moh_gov');
+      }
+
+      if (/^[0-9]{6,16}$/.test(qRaw)) {
+        req = req.or(`barcode.eq.${qRaw},id.eq.shufersal-P_${qRaw}`);
+      } else if (qNorm) {
+        const tokens = qNorm.split(/\s+/).filter((t) => t.length >= 1).slice(0, 4);
+        for (const tok of tokens) {
+          const safeTok = escapeSqlLikePattern(tok);
+          // טוקנים קצרים (<3) נמנעים מ-% שמאט GIN ומבצעים התאמת תחילה ממוקדת
+          req = tok.length <= 2
+            ? req.ilike('name_norm', `${safeTok}%`)
+            : req.ilike('name_norm', `%${safeTok}%`);
+        }
+      }
+
+      return req.order('updated_at', { ascending: false }).limit(rowLimit);
+    };
+
+    if (specificSite || sourceMode === 'moh_gov' || sourceMode === 'openfoodfacts') {
+      const modeArg =
+        specificSite
+          ? 'exact_site'
+          : sourceMode === 'moh_gov'
+          ? 'moh_only'
+          : 'retail_only';
+      let req = supabase!
+        .from('food_catalog_items')
+        .select(FOOD_CATALOG_SELECT_COLS);
+      if (specificSite) req = req.eq('source_site_id', specificSite);
+      else if (modeArg === 'moh_only') req = req.eq('source_site_id', 'moh_gov');
+      else req = req.eq('source_site_id', 'openfoodfacts');
+
+      if (/^[0-9]{6,16}$/.test(qRaw)) {
+        req = req.or(`barcode.eq.${qRaw},id.eq.shufersal-P_${qRaw}`);
+      } else if (qNorm) {
+        for (const tok of qNorm.split(/\s+/).filter(Boolean).slice(0, 4)) {
+          const safeTok = escapeSqlLikePattern(tok);
+          req = tok.length <= 2
+            ? req.ilike('name_norm', `${safeTok}%`)
+            : req.ilike('name_norm', `%${safeTok}%`);
+        }
+      }
+      const { data, error } = await req.order('updated_at', { ascending: false }).limit(limit);
+      if (error) return { items: [], tableReady: !isMissingFoodTableError(error) };
       const items = (data || [])
         .map((r) => mapSqlRowToFoodCatalogItem(r as Record<string, unknown>))
         .filter((x): x is FoodCatalogItem => Boolean(x));
-      return { items, tableReady: true };
+      return { items, tableReady: true, usedHybridRpc: false };
     }
 
-    // בחיפוש "הכל": מונע מ-4,610 רשומות משרד הבריאות להסתיר מוצרי סופרים ורשתות שיווק מהתוצאות
+    if (sourceMode === 'retail') {
+      const { data, error } = await runFilteredQuery('retail_only', limit);
+      if (error) return { items: [], tableReady: !isMissingFoodTableError(error) };
+      const items = (data || [])
+        .map((r) => mapSqlRowToFoodCatalogItem(r as Record<string, unknown>))
+        .filter((x): x is FoodCatalogItem => Boolean(x));
+      return { items, tableReady: true, usedHybridRpc: false };
+    }
+
     const [retailRes, mohRes] = await Promise.all([
-      runFilteredQuery('retail_only', Math.min(90, limit)),
-      runFilteredQuery('moh_only', Math.min(35, Math.ceil(limit / 2))),
+      runFilteredQuery('retail_only', Math.min(48, Math.ceil(limit * 0.8))),
+      runFilteredQuery('moh_only', Math.min(20, Math.ceil(limit * 0.4))),
     ]);
 
     if (retailRes.error && isMissingFoodTableError(retailRes.error)) {
@@ -1668,9 +1764,175 @@ export async function searchFoodCatalogSql(opts: {
       .map((r) => mapSqlRowToFoodCatalogItem(r as Record<string, unknown>))
       .filter((x): x is FoodCatalogItem => Boolean(x));
 
+    return { items, tableReady: true, usedHybridRpc: false };
+  } catch {
+    return { items: [], tableReady: false };
+  }
+}
+
+export async function fetchFoodCatalogItemByIdSql(
+  itemId: string
+): Promise<FoodCatalogItem | null> {
+  const cleanId = String(itemId || '').trim().slice(0, 120);
+  if (!supabase || !cleanId) return null;
+  try {
+    const { data, error } = await supabase
+      .from('food_catalog_items')
+      .select(FOOD_CATALOG_SELECT_COLS)
+      .eq('id', cleanId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return mapSqlRowToFoodCatalogItem(data as Record<string, unknown>);
+  } catch {
+    return null;
+  }
+}
+
+export async function incrementFoodPickCountsSql(foodIds: string[]): Promise<void> {
+  if (!supabase || !foodIds || foodIds.length === 0) return;
+  const cleanIds = Array.from(
+    new Set(foodIds.map((id) => String(id || '').trim()).filter((id) => id.length > 0 && id.length <= 120))
+  ).slice(0, 20);
+  if (cleanIds.length === 0) return;
+  try {
+    await supabase.rpc('increment_food_pick_counts', { food_ids: cleanIds });
+  } catch {
+    // ignore if RPC migration not applied yet
+  }
+}
+
+export async function getUserFoodHistorySql(
+  userId: string,
+  limit = 80
+): Promise<{ items: UserFoodHistoryItem[]; tableReady: boolean }> {
+  const cleanUid = String(userId || '').trim();
+  if (!supabase || !cleanUid) return { items: [], tableReady: false };
+  try {
+    const safeLimit = Math.min(120, Math.max(10, limit));
+    const { data, error } = await supabase
+      .from('user_food_history')
+      .select(
+        'user_id, food_key, catalog_id, name, brand, category, barcode, calories, protein, carbs, fat, units, last_unit_label, last_grams, source, source_site_id, source_site_name, source_url, action_kind, use_count, last_used_at'
+      )
+      .eq('user_id', cleanUid)
+      .order('last_used_at', { ascending: false })
+      .limit(safeLimit);
+
+    if (error) {
+      return { items: [], tableReady: !isMissingRpcOrTableError(error) };
+    }
+
+    const items: UserFoodHistoryItem[] = [];
+    for (const row of (data || []) as Record<string, unknown>[]) {
+      const per100g = roundMacros({
+        calories: Number(row.calories) || 0,
+        protein: Number(row.protein) || 0,
+        carbs: Number(row.carbs) || 0,
+        fat: Number(row.fat) || 0,
+      });
+      if (!isValidMacroSet(per100g)) continue;
+      const rawUnits = Array.isArray(row.units) ? (row.units as FoodUnit[]) : [];
+      const units = rawUnits.length > 0 ? rawUnits : [{ label: '100 גרם', grams: 100 }];
+      items.push({
+        id: String(row.catalog_id || row.food_key),
+        foodKey: String(row.food_key),
+        catalogId: row.catalog_id ? String(row.catalog_id) : undefined,
+        name: String(row.name || '').trim(),
+        brand: row.brand ? String(row.brand) : undefined,
+        category: String(row.category || 'היסטוריה אישית'),
+        barcode: row.barcode ? String(row.barcode) : undefined,
+        per100g,
+        units,
+        lastUnitLabel: row.last_unit_label ? String(row.last_unit_label) : undefined,
+        lastGrams: row.last_grams != null ? Number(row.last_grams) : undefined,
+        source: (row.source as FoodCatalogItem['source']) || 'local',
+        sourceSiteId: row.source_site_id
+          ? (String(row.source_site_id) as FoodCatalogSourceId)
+          : undefined,
+        sourceSiteName: row.source_site_name ? String(row.source_site_name) : undefined,
+        sourceUrl: row.source_url ? String(row.source_url) : undefined,
+        actionKind:
+          row.action_kind === 'barcode' || row.action_kind === 'logged'
+            ? row.action_kind
+            : 'picked',
+        useCount: Math.max(1, Number(row.use_count) || 1),
+        lastUsedAt: row.last_used_at ? String(row.last_used_at) : new Date().toISOString(),
+        updatedAt: row.last_used_at ? String(row.last_used_at) : undefined,
+      });
+    }
+
     return { items, tableReady: true };
   } catch {
     return { items: [], tableReady: false };
+  }
+}
+
+export async function recordUserFoodHistorySql(
+  userId: string,
+  entries: Array<{
+    foodKey: string;
+    catalogId?: string;
+    name: string;
+    brand?: string;
+    category?: string;
+    barcode?: string;
+    per100g: { calories: number; protein: number; carbs: number; fat: number };
+    units?: FoodUnit[];
+    lastUnitLabel?: string;
+    lastGrams?: number;
+    source?: FoodCatalogItem['source'];
+    sourceSiteId?: string;
+    sourceSiteName?: string;
+    sourceUrl?: string;
+    actionKind: 'picked' | 'barcode' | 'logged';
+  }>
+): Promise<{ ok: boolean; savedCount: number }> {
+  const cleanUid = String(userId || '').trim();
+  if (!supabase || !cleanUid || entries.length === 0) {
+    return { ok: Boolean(supabase), savedCount: 0 };
+  }
+
+  const sanitized = entries
+    .slice(0, 20)
+    .map((e) => {
+      const rounded = roundMacros(e.per100g);
+      if (!isValidMacroSet(rounded) || !e.name?.trim()) return null;
+      return {
+        foodKey: String(e.foodKey || e.catalogId || normalizeFoodKey(e.name)).slice(0, 140),
+        catalogId: e.catalogId ? String(e.catalogId).slice(0, 120) : null,
+        name: e.name.replace(/\s+/g, ' ').trim().slice(0, 180),
+        brand: (e.brand || '').replace(/\s+/g, ' ').trim().slice(0, 100),
+        category: (e.category || '').slice(0, 100),
+        barcode: e.barcode ? e.barcode.replace(/[^0-9]/g, '').slice(0, 20) || null : null,
+        calories: rounded.calories,
+        protein: rounded.protein,
+        carbs: rounded.carbs,
+        fat: rounded.fat,
+        units: Array.isArray(e.units) ? e.units.slice(0, 8) : [{ label: '100 גרם', grams: 100 }],
+        lastUnitLabel: e.lastUnitLabel ? String(e.lastUnitLabel).slice(0, 80) : null,
+        lastGrams: e.lastGrams && Number.isFinite(e.lastGrams) ? Math.round(e.lastGrams) : null,
+        source: e.source || 'local',
+        sourceSiteId: e.sourceSiteId || null,
+        sourceSiteName: e.sourceSiteName || null,
+        sourceUrl: e.sourceUrl || null,
+        actionKind: e.actionKind,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => Boolean(x));
+
+  if (sanitized.length === 0) return { ok: true, savedCount: 0 };
+
+  try {
+    const { data, error } = await supabase.rpc('record_user_food_history_batch', {
+      p_user_id: cleanUid,
+      p_items: sanitized,
+    });
+    if (!error) {
+      return { ok: true, savedCount: Number(data) || sanitized.length };
+    }
+    return { ok: false, savedCount: 0 };
+  } catch {
+    return { ok: false, savedCount: 0 };
   }
 }
 
@@ -1678,7 +1940,9 @@ export async function findFoodByBarcodeSql(
   barcode: string
 ): Promise<{ item: FoodCatalogItem | null; tableReady: boolean }> {
   const clean = String(barcode || '').replace(/[^0-9]/g, '');
-  if (!supabase || !clean) return { item: null, tableReady: false };
+  if (!supabase || !/^[0-9]{6,16}$/.test(clean)) {
+    return { item: null, tableReady: Boolean(supabase) };
+  }
   try {
     const { data, error } = await supabase
       .from('food_catalog_items')

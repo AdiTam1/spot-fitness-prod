@@ -251,11 +251,24 @@ create table if not exists public.food_catalog_items (
   source_site_id text,
   source_site_name text,
   source_url text,
+  pick_count integer not null default 0,
+  search_tokens text not null default '',
+  search_tsv tsvector,
   updated_at timestamptz not null default now()
 );
 
+alter table public.food_catalog_items add column if not exists pick_count integer not null default 0;
+alter table public.food_catalog_items add column if not exists search_tokens text not null default '';
+alter table public.food_catalog_items add column if not exists search_tsv tsvector;
+
 create index if not exists idx_food_catalog_name_trgm
   on public.food_catalog_items using gin (name_norm gin_trgm_ops);
+create index if not exists idx_food_catalog_search_tsv
+  on public.food_catalog_items using gin (search_tsv);
+create index if not exists idx_food_catalog_name_prefix
+  on public.food_catalog_items using btree (name_norm text_pattern_ops);
+create index if not exists idx_food_catalog_pick_count
+  on public.food_catalog_items (pick_count desc);
 create index if not exists idx_food_catalog_barcode
   on public.food_catalog_items (barcode)
   where barcode is not null;
@@ -288,8 +301,11 @@ create policy "Allow full access to trainees"
   on public.trainees for all using (true) with check (true);
 
 drop policy if exists "Allow full access to food_catalog_items" on public.food_catalog_items;
-create policy "Allow full access to food_catalog_items"
-  on public.food_catalog_items for all using (true) with check (true);
+drop policy if exists "Allow public read food catalog" on public.food_catalog_items;
+create policy "Allow public read food catalog"
+  on public.food_catalog_items for select using (true);
 
--- 9. רענון מיידי של Schema Cache ב-PostgREST
+-- 9. טבלת היסטוריית מוצרים וברקודים פר משתמש + פונקציות החיפוש ההיברידי
+-- מנוהלות בקובץ המיגרציה supabase/migrations/20261125_food_search_and_history.sql
+-- רענון מיידי של Schema Cache ב-PostgREST
 notify pgrst, 'reload schema';

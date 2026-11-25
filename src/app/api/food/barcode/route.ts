@@ -4,21 +4,69 @@ import {
   extractPackageGramsFromText,
   isValidMacroSet,
   mergeUniqueUnits,
+  normalizeFoodKey,
+  SPOT_OFF_USER_AGENT,
 } from '@/lib/scrapers/helpers';
 import {
+  isBarcodeMissCached,
   lookupBarcodeUnified,
+  markBarcodeMissCached,
   persistCatalogItemsToDb,
 } from '@/lib/scrapers/scraperStore';
+import { recordUserFoodHistorySql } from '@/lib/supabase';
 import { lookupRetailerByBarcodeLive } from '@/lib/scrapers/israeliScrapers';
 import { FoodCatalogItem } from '@/types/nutrition';
-import { getSessionFromRequest, sanitizeText } from '@/lib/serverAuth';
+import { authenticateActiveSession } from '@/lib/liveAuth';
+import { checkRateLimit, sanitizeText } from '@/lib/serverAuth';
+import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
 
 export const runtime = 'nodejs';
 
-export async function GET(request: NextRequest) {
-  const session = getSessionFromRequest(request);
-  if (!session) {
-    return NextResponse.json({ error: 'נדרשת התחברות' }, { status: 401 });
+function scheduleBarcodeHistorySave(userId: string, item: FoodCatalogItem, code: string) {
+  const defaultUnit = item.units?.[0] || { label: '100 גרם', grams: 100 };
+  const task = recordUserFoodHistorySql(userId, [
+    {
+      foodKey: item.id || `barcode-${code}-${normalizeFoodKey(item.name)}`,
+      catalogId: item.id,
+      name: item.name,
+      brand: item.brand,
+      category: item.category,
+      barcode: item.barcode || code,
+      per100g: item.per100g,
+      units: item.units,
+      lastUnitLabel: defaultUnit.label,
+      lastGrams: defaultUnit.grams,
+      source: item.source || 'openfoodfacts',
+      sourceSiteId: item.sourceSiteId,
+      sourceSiteName: item.sourceSiteName,
+      sourceUrl: item.sourceUrl,
+      actionKind: 'barcode',
+    },
+  ]).catch(() => undefined);
+
+  try {
+    waitUntil(task);
+  } catch {
+    // ignore outside Vercel lifecycle
+  }
+}
+
+export const GET = withTelemetryHandler('/api/food/barcode', async (request: NextRequest, ctx) => {
+  const auth = await authenticateActiveSession(request);
+  if (!auth.ok) {
+    return auth.response;
+  }
+  const session = auth.session;
+  ctx.setActor(session);
+  ctx.setActionName('barcode_lookup');
+
+  const rl = checkRateLimit(`food-barcode:${session.id}`, 20, 60);
+  if (!rl.allowed) {
+    ctx.setErrorCode('RATE_LIMITED', 'חריגה ממגבלת סריקות ברקוד');
+    return NextResponse.json(
+      { error: 'בוצעו יותר מדי סריקות ברקוד בזמן קצר. המתן כדקה ונסה שוב.' },
+      { status: 429 }
+    );
   }
 
   const { searchParams } = new URL(request.url);
@@ -26,23 +74,34 @@ export async function GET(request: NextRequest) {
 
   // ולידציית SSRF: ברקוד חייב להכיל ספרות בלבד (EAN-8 / UPC / EAN-13)
   if (!code || !/^[0-9]{6,16}$/.test(code)) {
+    ctx.setErrorCode('INVALID_BARCODE', 'פורמט ברקוד שגוי');
     return NextResponse.json(
       { error: 'קוד ברקוד לא תקין (מספרים בלבד)' },
       { status: 400 }
     );
   }
 
-  // 1. בדיקה במאגר המוצרים המשולב (מקומי + טבלת SQL + קאש)
+  // 1. בדיקה במאגר המוצרים המשולב (מקומי + טבלת SQL + קאש חם)
   const localItem = await lookupBarcodeUnified(code);
   if (localItem) {
+    scheduleBarcodeHistorySave(session.id, localItem, code);
     return NextResponse.json({ item: localItem, source: localItem.source || 'local' });
   }
 
-  // 2. שליפה מ-Open Food Facts API החינמי
+  // Negative cache למניעת חסימת Rate Limit מול OpenFoodFacts בסריקות חוזרות
+  if (isBarcodeMissCached(code)) {
+    ctx.setErrorCode('BARCODE_NOT_FOUND_CACHED', 'לא נמצא (Negative Cache)');
+    return NextResponse.json(
+      { error: 'הברקוד לא נמצא במאגר. ניתן להזין בטקסט חופשי או לבחור מהקטלוג.' },
+      { status: 404 }
+    );
+  }
+
+  // 2. שליפה מ-Open Food Facts API לפי User-Agent תקני
   try {
     const offUrl = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json`;
     const res = await fetch(offUrl, {
-      headers: { 'User-Agent': 'SpotFitnessIsrael/1.0' },
+      headers: { 'User-Agent': SPOT_OFF_USER_AGENT },
       signal: AbortSignal.timeout(4000),
     });
 
@@ -101,7 +160,6 @@ export async function GET(request: NextRequest) {
           updatedAt: new Date().toISOString(),
         };
 
-        // שמירה אוטומטית ברקע לטבלת food_catalog_items אם למוצר יש ערכים מלאים ותקינים
         if (
           nutriments['energy-kcal_100g'] != null &&
           nutriments.proteins_100g != null &&
@@ -116,11 +174,15 @@ export async function GET(request: NextRequest) {
           }
         }
 
+        if (isValidMacroSet(item.per100g)) {
+          scheduleBarcodeHistorySave(session.id, item, code);
+        }
+
         return NextResponse.json({ item, source: 'openfoodfacts' });
       }
     }
   } catch {
-    // Fallback if offline
+    // Fallback if offline or timeout
   }
 
   // 3. שליפה חיה מרשתות שיווק ישראליות (ויקטורי + שופרסל) לפי ברקוד
@@ -132,6 +194,7 @@ export async function GET(request: NextRequest) {
       } catch {
         // ignore outside Vercel lifecycle
       }
+      scheduleBarcodeHistorySave(session.id, retailItem, code);
       return NextResponse.json({
         item: retailItem,
         source: retailItem.sourceSiteId || 'scraper',
@@ -141,8 +204,10 @@ export async function GET(request: NextRequest) {
     // ignore live retailer timeout
   }
 
+  markBarcodeMissCached(code);
+  ctx.setErrorCode('BARCODE_NOT_FOUND', 'ברקוד לא נמצא במאגרים');
   return NextResponse.json(
     { error: 'הברקוד לא נמצא במאגר. ניתן להזין בטקסט חופשי או לבחור מהקטלוג.' },
     { status: 404 }
   );
-}
+});

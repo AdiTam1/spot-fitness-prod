@@ -17,7 +17,7 @@ import {
   ScraperSourceId,
   ScraperSuiteReport,
 } from '@/types/nutrition';
-import { normalizeFoodKey } from './helpers';
+import { normalizeFoodKey, normalizeFoodSearchQuery } from './helpers';
 import {
   fetchOpenFoodFactsIsraelItems,
   getScraperById,
@@ -26,6 +26,12 @@ import {
 
 export const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // בדיקה אוטומטית כל 6 שעות
 const MEMORY_CACHE_TTL_MS = 5 * 60 * 1000;
+const LIVE_QUERY_CACHE_TTL_MS = 10 * 60 * 1000;
+const LIVE_QUERY_CACHE_MAX = 120;
+const BARCODE_MISS_TTL_MS = 30 * 60 * 1000;
+const BARCODE_MISS_MAX = 500;
+const CIRCUIT_BREAKER_THRESHOLD = 3;
+const CIRCUIT_BREAKER_COOLDOWN_MS = 15 * 60 * 1000;
 const MAX_CATALOG_ITEMS = 2200;
 const MAX_PER_SOURCE_CAP = 220;
 
@@ -38,6 +44,16 @@ interface PersistedScraperData {
   loadedAt: number;
 }
 
+interface LiveQueryCacheEntry {
+  items: FoodCatalogItem[];
+  expiresAt: number;
+}
+
+interface CircuitState {
+  failures: number;
+  openUntil: number;
+}
+
 declare global {
   // eslint-disable-next-line no-var
   var __spotScraperCache: PersistedScraperData | undefined;
@@ -45,6 +61,12 @@ declare global {
   var __spotScraperCheckPromise: Promise<ScraperSuiteReport> | undefined;
   // eslint-disable-next-line no-var
   var __spotScraperSyncPromise: Promise<{ report: ScraperSuiteReport; addedCount: number; totalCount: number }> | undefined;
+  // eslint-disable-next-line no-var
+  var __spotLiveQueryCache: Map<string, LiveQueryCacheEntry> | undefined;
+  // eslint-disable-next-line no-var
+  var __spotScraperCircuit: Map<string, CircuitState> | undefined;
+  // eslint-disable-next-line no-var
+  var __spotBarcodeMissCache: Map<string, number> | undefined;
 }
 
 function buildInitialReport(catalog: FoodCatalogItem[]): ScraperSuiteReport {
@@ -463,29 +485,81 @@ export async function syncOpenFoodFactsToCatalog(pages = 5): Promise<{
   };
 }
 
-/**
- * חיפוש מהיר משולב: קטלוג הבסיס + זיכרון RAM + שאילתת SQL מאונדקסת על עשרות אלפי פריטים.
- */
-export async function searchSqlAndCachedCatalog(opts: {
-  query?: string;
-  sourceFilter?: string;
-  limit?: number;
-}): Promise<{ items: FoodCatalogItem[]; sqlCount: number }> {
-  const limit = Math.min(120, Math.max(10, opts.limit || 60));
-  const shouldHitSql = !opts.sourceFilter || opts.sourceFilter !== 'local';
-  const sqlRes = shouldHitSql
-    ? await searchFoodCatalogSql({
-        query: opts.query,
-        sourceSiteId: opts.sourceFilter && opts.sourceFilter !== 'all' ? opts.sourceFilter : undefined,
-        limit,
-      })
-    : { items: [], tableReady: false };
+function getLiveQueryCache(): Map<string, LiveQueryCacheEntry> {
+  if (!globalThis.__spotLiveQueryCache) {
+    globalThis.__spotLiveQueryCache = new Map();
+  }
+  return globalThis.__spotLiveQueryCache;
+}
 
-  return { items: sqlRes.items, sqlCount: sqlRes.items.length };
+function getCircuitMap(): Map<string, CircuitState> {
+  if (!globalThis.__spotScraperCircuit) {
+    globalThis.__spotScraperCircuit = new Map();
+  }
+  return globalThis.__spotScraperCircuit;
+}
+
+function getBarcodeMissCache(): Map<string, number> {
+  if (!globalThis.__spotBarcodeMissCache) {
+    globalThis.__spotBarcodeMissCache = new Map();
+  }
+  return globalThis.__spotBarcodeMissCache;
+}
+
+export function isBarcodeMissCached(barcode: string): boolean {
+  const clean = String(barcode || '').replace(/[^0-9]/g, '');
+  if (!clean) return false;
+  const cache = getBarcodeMissCache();
+  const exp = cache.get(clean);
+  if (!exp) return false;
+  if (Date.now() > exp) {
+    cache.delete(clean);
+    return false;
+  }
+  return true;
+}
+
+export function markBarcodeMissCached(barcode: string): void {
+  const clean = String(barcode || '').replace(/[^0-9]/g, '');
+  if (!clean) return;
+  const cache = getBarcodeMissCache();
+  if (cache.size >= BARCODE_MISS_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest) cache.delete(oldest);
+  }
+  cache.set(clean, Date.now() + BARCODE_MISS_TTL_MS);
 }
 
 /**
- * בדיקת ברקוד משולבת: מקומי -> SQL (אינדקס B-tree על barcode) -> זיכרון מסונכרן.
+ * חיפוש מהיר ישיר: שאילתת SQL היברידית אחת בלי לטעון את קאש ה-BLOB המלא של הסקרייפרים.
+ */
+export async function searchSqlAndCachedCatalog(opts: {
+  query?: string;
+  sourceMode?: 'all' | 'retail' | 'moh_gov' | 'openfoodfacts';
+  sourceFilter?: string;
+  limit?: number;
+}): Promise<{ items: FoodCatalogItem[]; sqlCount: number; usedHybridRpc?: boolean }> {
+  const limit = Math.min(60, Math.max(8, opts.limit || 36));
+  const shouldHitSql =
+    opts.sourceFilter !== 'local' && opts.sourceFilter !== 'favorites_recent';
+  const sqlRes = shouldHitSql
+    ? await searchFoodCatalogSql({
+        query: opts.query,
+        sourceMode: opts.sourceMode,
+        sourceSiteId: opts.sourceFilter && opts.sourceFilter !== 'all' ? opts.sourceFilter : undefined,
+        limit,
+      })
+    : { items: [], tableReady: false, usedHybridRpc: false };
+
+  return {
+    items: sqlRes.items,
+    sqlCount: sqlRes.items.length,
+    usedHybridRpc: sqlRes.usedHybridRpc,
+  };
+}
+
+/**
+ * בדיקת ברקוד משולבת: מקומי -> SQL (אינדקס B-tree על barcode) -> זיכרון חם קיים ללא משיכת BLOB קרה.
  */
 export async function lookupBarcodeUnified(barcode: string): Promise<FoodCatalogItem | null> {
   const localMatch = ISRAELI_FOOD_CATALOG.find((i) => i.barcode === barcode);
@@ -494,12 +568,15 @@ export async function lookupBarcodeUnified(barcode: string): Promise<FoodCatalog
   const sqlMatch = await findFoodByBarcodeSql(barcode);
   if (sqlMatch.item) return sqlMatch.item;
 
-  const { catalog } = await getScraperState();
-  return catalog.find((i) => i.barcode === barcode) || null;
+  const warmCatalog = globalThis.__spotScraperCache?.catalog;
+  if (Array.isArray(warmCatalog) && warmCatalog.length > 0) {
+    return warmCatalog.find((i) => i.barcode === barcode) || null;
+  }
+  return null;
 }
 
 /**
- * מחזיר את מאגר המזון המלא של האפליקציה (מקומי + כל המוצרים שנסרקו מהאתרים).
+ * מחזיר את מאגר המזון המלא של האפליקציה (לשימוש Admin בלבד).
  */
 export async function getMergedCatalogItems(): Promise<FoodCatalogItem[]> {
   const { catalog } = await getScraperState();
@@ -519,7 +596,7 @@ export async function getMergedCatalogItems(): Promise<FoodCatalogItem[]> {
 }
 
 /**
- * מריץ חיפוש חי במקביל מול כל הרשתות והאתרים הפעילים שתומכים בחיפוש דינמי.
+ * מריץ חיפוש חי במקביל מול אתרים תומכים, עם Query Cache (10 דק') ו-Circuit Breaker לכל ספק.
  */
 export async function searchLiveScrapers(
   query: string,
@@ -527,25 +604,67 @@ export async function searchLiveScrapers(
   maxWaitMs?: number
 ): Promise<FoodCatalogItem[]> {
   const cleanQ = query.trim();
-  if (cleanQ.length < 2) return [];
+  const normQ = normalizeFoodSearchQuery(cleanQ);
+  if (normQ.length < 2) return [];
 
-  const liveScrapers = onlySourceId
+  const cacheKey = `${normQ}|${onlySourceId || 'all'}`;
+  const cache = getLiveQueryCache();
+  const cached = cache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.items;
+  }
+
+  const now = Date.now();
+  const circuits = getCircuitMap();
+  const candidates = onlySourceId
     ? ISRAELI_SCRAPERS.filter((s) => s.meta.id === onlySourceId && typeof s.searchLive === 'function')
     : ISRAELI_SCRAPERS.filter((s) => typeof s.searchLive === 'function');
 
-  // קאפ זמן קשיח לכל סקרייפר בחיפוש משולב כדי שאתר איטי יחיד לא יעכב תוצאות של כלל האתרים
-  const timeoutCap = maxWaitMs ?? (onlySourceId ? 6500 : 3400);
+  const activeScrapers = candidates.filter((scraper) => {
+    const c = circuits.get(scraper.meta.id);
+    return !c || now >= c.openUntil;
+  });
+
+  if (activeScrapers.length === 0) return [];
+
+  const timeoutCap = maxWaitMs ?? (onlySourceId ? 6000 : 3400);
 
   const batches = await Promise.all(
-    liveScrapers.map((scraper) =>
-      Promise.race([
-        scraper.searchLive?.(cleanQ, 6).catch(() => []) ?? Promise.resolve([]),
-        new Promise<FoodCatalogItem[]>((resolve) => setTimeout(() => resolve([]), timeoutCap)),
-      ])
-    )
+    activeScrapers.map(async (scraper) => {
+      const sid = scraper.meta.id;
+      let timedOut = false;
+      try {
+        const items = await Promise.race([
+          scraper.searchLive!(cleanQ, 6),
+          new Promise<FoodCatalogItem[]>((_, reject) =>
+            setTimeout(() => {
+              timedOut = true;
+              reject(new Error('timeout'));
+            }, timeoutCap)
+          ),
+        ]);
+        // אפס כשלים בהצלחה (גם אם חזרו 0 תוצאות תקינות)
+        circuits.delete(sid);
+        return Array.isArray(items) ? items : [];
+      } catch {
+        const prev = circuits.get(sid) || { failures: 0, openUntil: 0 };
+        const failures = prev.failures + 1;
+        circuits.set(sid, {
+          failures: timedOut ? failures : failures,
+          openUntil: failures >= CIRCUIT_BREAKER_THRESHOLD ? Date.now() + CIRCUIT_BREAKER_COOLDOWN_MS : 0,
+        });
+        return [] as FoodCatalogItem[];
+      }
+    })
   );
 
-  return batches.flat();
+  const flat = batches.flat();
+  if (cache.size >= LIVE_QUERY_CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest) cache.delete(oldest);
+  }
+  cache.set(cacheKey, { items: flat, expiresAt: Date.now() + LIVE_QUERY_CACHE_TTL_MS });
+  return flat;
 }
 
 export async function testSingleScraperSearch(scraperId: ScraperSourceId, query: string) {

@@ -7,6 +7,7 @@ import {
   ScraperSourceId,
 } from '@/types/nutrition';
 import {
+  assertAllowedScraperUrl,
   decodeHtmlEntities,
   encodeWin1255,
   extractBarcodeFromText,
@@ -21,6 +22,7 @@ import {
   normalizeFoodKey,
   parseMacroNumber,
   roundMacros,
+  SPOT_OFF_USER_AGENT,
   stripHtmlTags,
 } from './helpers';
 
@@ -2290,28 +2292,49 @@ export async function lookupRetailerByBarcodeLive(barcode: string): Promise<Food
  */
 export async function enrichCatalogItemFromSourceUrl(item: FoodCatalogItem): Promise<FoodCatalogItem> {
   if (!item?.sourceUrl) return item;
+
+  // הגנת SSRF קפדנית: אימות דומיין מאושר ו-HTTPS בלבד לפני כל פנייה לרשת
+  const verifiedUrl = assertAllowedScraperUrl(item.sourceUrl, item.sourceSiteId);
+  const host = verifiedUrl.hostname.toLowerCase();
+  const isHost = (domain: string) => host === domain || host.endsWith(`.${domain}`);
+
   try {
     let fresh: FoodCatalogItem | null = null;
-    if (item.sourceSiteId === 'victory' || item.sourceUrl.includes('victoryonline.co.il')) {
-      fresh = (await scrapeVictoryProduct(item.sourceUrl)).item;
-    } else if (item.sourceSiteId === 'nizat' || item.sourceUrl.includes('nizat.com')) {
-      const m = item.sourceUrl.match(/prodid=(\d+)/i);
+    if (item.sourceSiteId === 'victory' || isHost('victoryonline.co.il')) {
+      if (!isHost('victoryonline.co.il')) throw new Error('דומיין אינו תואם ויקטורי');
+      fresh = (await scrapeVictoryProduct(verifiedUrl.toString())).item;
+    } else if (item.sourceSiteId === 'nizat' || isHost('nizat.com')) {
+      if (!isHost('nizat.com')) throw new Error('דומיין אינו תואם ניצת');
+      const m = verifiedUrl.search.match(/prodid=(\d+)/i);
       if (m?.[1]) fresh = (await scrapeNizatProduct(m[1], item.name)).item;
-    } else if (item.sourceSiteId === 'fuder' || item.sourceUrl.includes('fuder.co.il')) {
-      fresh = (await scrapeFuderProduct(item.sourceUrl, item.name)).item;
-    } else if (item.sourceSiteId === 'foodgroups' || item.sourceUrl.includes('foodgroups.co.il')) {
-      fresh = (await scrapeFoodGroupsProduct(item.sourceUrl, item.name)).item;
-    } else if (item.sourceSiteId === 'sugat' || item.sourceUrl.includes('sugat.com')) {
-      fresh = (await scrapeSugatProduct(item.sourceUrl, item.name)).item;
-    } else if (item.sourceSiteId === 'tevabari' || item.sourceUrl.includes('tevabari.co.il')) {
-      fresh = (await scrapeTevaBariProduct(item.sourceUrl, item.name)).item;
-    } else if (item.sourceSiteId === 'shufersal' || item.sourceUrl.includes('shufersal.co.il')) {
+    } else if (item.sourceSiteId === 'fuder' || isHost('fuder.co.il')) {
+      if (!isHost('fuder.co.il')) throw new Error('דומיין אינו תואם Fuder');
+      fresh = (await scrapeFuderProduct(verifiedUrl.toString(), item.name)).item;
+    } else if (item.sourceSiteId === 'foodgroups' || isHost('foodgroups.co.il')) {
+      if (!isHost('foodgroups.co.il')) throw new Error('דומיין אינו תואם FoodGroups');
+      fresh = (await scrapeFoodGroupsProduct(verifiedUrl.toString(), item.name)).item;
+    } else if (item.sourceSiteId === 'sugat' || isHost('sugat.com')) {
+      if (!isHost('sugat.com')) throw new Error('דומיין אינו תואם סוגת');
+      fresh = (await scrapeSugatProduct(verifiedUrl.toString(), item.name)).item;
+    } else if (item.sourceSiteId === 'tevabari' || isHost('tevabari.co.il')) {
+      if (!isHost('tevabari.co.il')) throw new Error('דומיין אינו תואם טבע בריא');
+      fresh = (await scrapeTevaBariProduct(verifiedUrl.toString(), item.name)).item;
+    } else if (item.sourceSiteId === 'shufersal' || isHost('shufersal.co.il')) {
+      if (!isHost('shufersal.co.il')) throw new Error('דומיין אינו תואם שופרסל');
       const codeM = item.id.match(/^shufersal-P_(\d+)/i);
-      fresh = await scrapeShufersalProductPage(item.sourceUrl, codeM?.[1]);
-    } else if (item.sourceSiteId === 'openfoodfacts' && item.barcode) {
+      fresh = await scrapeShufersalProductPage(verifiedUrl.toString(), codeM?.[1]);
+    } else if (
+      (item.sourceSiteId === 'openfoodfacts' || isHost('openfoodfacts.org')) &&
+      item.barcode &&
+      /^[0-9]{6,16}$/.test(item.barcode)
+    ) {
       const offRes = await fetchWithTimeout(
         `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(item.barcode)}.json`,
-        { timeoutMs: 4500 }
+        {
+          timeoutMs: 4500,
+          redirect: 'manual',
+          headers: { 'User-Agent': SPOT_OFF_USER_AGENT },
+        }
       );
       if (offRes.ok) {
         const j = JSON.parse(offRes.text);

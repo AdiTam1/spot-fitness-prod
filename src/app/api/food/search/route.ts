@@ -1,71 +1,88 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
 import { ISRAELI_FOOD_CATALOG } from '@/data/israeliFoodCatalog';
-import { FoodCatalogItem, FoodCatalogSourceId, ScraperSourceId } from '@/types/nutrition';
-import { getSessionFromRequest, sanitizeText } from '@/lib/serverAuth';
-import { normalizeFoodKey } from '@/lib/scrapers/helpers';
+import { FoodCatalogItem, ScraperSourceId } from '@/types/nutrition';
+import { authenticateActiveSession } from '@/lib/liveAuth';
+import { checkRateLimit, sanitizeText } from '@/lib/serverAuth';
+import { mergeUniqueUnits, normalizeFoodKey, normalizeFoodSearchQuery } from '@/lib/scrapers/helpers';
 import {
-  getMergedCatalogItems,
-  getScraperState,
   persistCatalogItemsToDb,
   searchLiveScrapers,
   searchSqlAndCachedCatalog,
-  syncScrapersCatalog,
 } from '@/lib/scrapers/scraperStore';
+import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
-function scoreMatch(item: FoodCatalogItem, qLower: string): number {
-  const qNorm = normalizeFoodKey(qLower);
+function scoreMatch(item: FoodCatalogItem, qNorm: string, digitsQ: string): number {
   const nameNorm = normalizeFoodKey(item.name);
   const brandNorm = normalizeFoodKey(item.brand || '');
   const catNorm = normalizeFoodKey(item.category || '');
   const lenPenalty = Math.min(10, Math.floor(Math.max(0, nameNorm.length - qNorm.length) / 7));
+  const popularityBoost = Math.min(18, Math.round(Math.log1p(Math.max(0, item.pickCount || 0)) * 4));
 
-  if (!qNorm) return 0;
-  const digitsQ = qLower.replace(/[^0-9]/g, '');
-  if (digitsQ.length >= 6 && item.barcode && item.barcode === digitsQ) return 100;
-  if (nameNorm === qNorm) return 100;
-  if (nameNorm.startsWith(`${qNorm} `)) return 93 - Math.min(4, Math.floor(lenPenalty / 2));
-  if (nameNorm.startsWith(qNorm)) return 88 - Math.min(4, Math.floor(lenPenalty / 2));
+  if (!qNorm && !digitsQ) return item.isPopular ? 30 + popularityBoost : 10 + popularityBoost;
+  if (digitsQ.length >= 6 && item.barcode && item.barcode === digitsQ) return 130 + popularityBoost;
+  if (nameNorm === qNorm) return 115 + popularityBoost;
+  if (nameNorm.startsWith(`${qNorm} `)) return 96 - Math.min(4, Math.floor(lenPenalty / 2)) + popularityBoost;
+  if (nameNorm.startsWith(qNorm)) return 90 - Math.min(4, Math.floor(lenPenalty / 2)) + popularityBoost;
 
-  // התאמת מילה שלמה בתוך שם המוצר (למשל "דבש טהור" / "יוגורט דבש" מקבלים עדיפות גבוהה ממחרוזות ארוכות)
   const paddedName = ` ${nameNorm} `;
-  if (paddedName.includes(` ${qNorm} `)) {
-    return 82 - lenPenalty;
+  if (qNorm && paddedName.includes(` ${qNorm} `)) {
+    return 84 - lenPenalty + popularityBoost;
   }
 
   const words = qNorm.split(/\s+/).filter((w) => w.length >= 2);
   if (words.length > 1 && words.every((w) => nameNorm.includes(w) || brandNorm.includes(w))) {
-    return 74 - Math.min(8, lenPenalty);
+    return 76 - Math.min(8, lenPenalty) + popularityBoost;
   }
 
-  if (nameNorm.includes(qNorm)) return 64 - lenPenalty;
-  if (brandNorm.includes(qNorm)) return 48;
-  if (catNorm.includes(qNorm)) return 32;
+  if (qNorm && nameNorm.includes(qNorm)) return 64 - lenPenalty + popularityBoost;
+  if (qNorm && brandNorm.includes(qNorm)) return 48 + popularityBoost;
+  if (qNorm && catNorm.includes(qNorm)) return 32 + Math.floor(popularityBoost / 2);
+
+  // תוצאות מה-Hybrid SQL RPC (שגיאות כתיב via pg_trgm או מוספיות עבריות via tsvector)
+  if (item.sourceSiteId || item.source === 'moh' || item.source === 'openfoodfacts') {
+    return 24 + popularityBoost;
+  }
   return 0;
 }
 
-/**
- * מדרג תוצאות מכל המקורות לפי ציון התאמה, ותחת "הכל" מאזן מקורות קרובים כך שמקור בודד לא ידחוק אחרים.
- */
+function mergeFoodMetadata(winner: FoodCatalogItem, fallback: FoodCatalogItem): FoodCatalogItem {
+  const mergedUnits = mergeUniqueUnits(winner.units || [], fallback.units || []);
+  const bestPickCount = Math.max(winner.pickCount || 0, fallback.pickCount || 0);
+  return {
+    ...winner,
+    barcode: winner.barcode || fallback.barcode,
+    brand: winner.brand || fallback.brand,
+    sourceUrl: winner.sourceUrl || fallback.sourceUrl,
+    units: mergedUnits,
+    ...(bestPickCount > 0 ? { pickCount: bestPickCount } : {}),
+  };
+}
+
 function rankAndDedupeMatches(
   candidates: FoodCatalogItem[],
-  qLower: string,
+  qNorm: string,
+  digitsQ: string,
   limit: number,
   interleaveBySource: boolean
 ): Array<{ item: FoodCatalogItem; score: number }> {
   const scoredByKey = new Map<string, { item: FoodCatalogItem; score: number }>();
 
   for (const item of candidates) {
-    const score = scoreMatch(item, qLower);
+    const score = scoreMatch(item, qNorm, digitsQ);
     if (score <= 0) continue;
     const key = `${normalizeFoodKey(item.name)}:${Math.round(item.per100g.calories)}`;
     const prev = scoredByKey.get(key);
-    if (!prev || score > prev.score) {
+    if (!prev) {
       scoredByKey.set(key, { item, score });
+    } else if (score > prev.score) {
+      scoredByKey.set(key, { item: mergeFoodMetadata(item, prev.item), score });
+    } else {
+      scoredByKey.set(key, { item: mergeFoodMetadata(prev.item, item), score: prev.score });
     }
   }
 
@@ -82,8 +99,7 @@ function rankAndDedupeMatches(
     let bestIdx = -1;
     let bestEffective = -Infinity;
 
-    // בוחן חלון של המועמדים המובילים שטרם נבחרו ומפחית קלות רצף מאותו מקור
-    for (let i = 0; i < pool.length && i < 180; i++) {
+    for (let i = 0; i < pool.length && i < 160; i++) {
       if (usedIndices.has(i)) continue;
       const entry = pool[i];
       const srcKey = entry.item.sourceSiteId || entry.item.source || 'local';
@@ -106,157 +122,184 @@ function rankAndDedupeMatches(
   return picked;
 }
 
-export async function GET(request: NextRequest) {
-  const session = getSessionFromRequest(request);
-  if (!session) {
-    return NextResponse.json({ error: 'נדרשת התחברות' }, { status: 401 });
+const LOCAL_CATALOG_DECORATED: FoodCatalogItem[] = ISRAELI_FOOD_CATALOG.map((item) => ({
+  ...item,
+  source: item.source || 'local',
+  sourceSiteName: item.source === 'moh' ? 'משרד הבריאות' : 'מאגר SPOT מקומי',
+}));
+
+function filterLocalCatalog(sourceFilter: string): FoodCatalogItem[] {
+  if (!sourceFilter || sourceFilter === 'all') return LOCAL_CATALOG_DECORATED;
+  if (sourceFilter === 'local') {
+    return LOCAL_CATALOG_DECORATED.filter((i) => !i.sourceSiteId && i.source !== 'moh');
   }
+  if (sourceFilter === 'retail') {
+    return LOCAL_CATALOG_DECORATED.filter((i) => i.source !== 'moh');
+  }
+  if (sourceFilter === 'moh_gov') {
+    return LOCAL_CATALOG_DECORATED.filter((i) => i.source === 'moh');
+  }
+  return [];
+}
+
+export const GET = withTelemetryHandler('/api/food/search', async (request: NextRequest, ctx) => {
+  const startedAt = Date.now();
+  const auth = await authenticateActiveSession(request);
+  if (!auth.ok) {
+    return auth.response;
+  }
+  const session = auth.session;
+  ctx.setActor(session);
 
   const { searchParams } = new URL(request.url);
-  const query = sanitizeText(searchParams.get('q') || '', 80);
-  const sourceFilter = sanitizeText(searchParams.get('source') || '', 30) as
-    | FoodCatalogSourceId
-    | '';
-  const limit = Math.min(120, Math.max(10, Number(searchParams.get('limit')) || 60));
+  const rawQuery = sanitizeText(searchParams.get('q') || '', 80);
+  const sourceFilter = sanitizeText(searchParams.get('source') || 'all', 30);
+  const requestedMode = searchParams.get('mode') === 'live' || searchParams.get('forceLive') === '1'
+    ? 'live'
+    : 'db';
+  ctx.setActionName(`search_${requestedMode}`);
 
-  const { report, catalog: syncedCatalog } = await getScraperState();
-  // אם טרם סונכרנו מוצרים מהאתרים או שנוספו מקורות חדשים שטרם נבדקו, הפעל סנכרון ברקע בלי לעכב את התגובה
-  if (syncedCatalog.length === 0 || report.results.some((r) => !r.checkedAt)) {
-    try {
-      waitUntil(syncScrapersCatalog().catch(() => undefined));
-    } catch {
-      // ignore if outside Vercel request lifecycle
-    }
+  const rl =
+    requestedMode === 'live'
+      ? checkRateLimit(`food-search-live:${session.id}`, 10, 60)
+      : checkRateLimit(`food-search-db:${session.id}`, 60, 60);
+  if (!rl.allowed) {
+    ctx.setErrorCode('RATE_LIMITED', 'חריגה ממכסת בקשות חיפוש');
+    return NextResponse.json(
+      {
+        error:
+          requestedMode === 'live'
+            ? 'בוצעו יותר מדי חיפושים חיים ברשת. המתן כדקה ונסה שוב.'
+            : 'קצב החיפוש מהיר מדי. המתן רגע ונסה שוב.',
+      },
+      { status: 429 }
+    );
   }
 
-  const mergedCatalog = await getMergedCatalogItems();
-  const filteredPool = sourceFilter
-    ? mergedCatalog.filter((item) =>
-        sourceFilter === 'local'
-          ? (item.source || 'local') === 'local' && !item.sourceSiteId
-          : item.sourceSiteId === sourceFilter
-      )
-    : mergedCatalog;
+  const limit = Math.min(60, Math.max(8, Number(searchParams.get('limit')) || 36));
+  const qNorm = normalizeFoodSearchQuery(rawQuery);
+  const digitsQ = rawQuery.replace(/[^0-9]/g, '');
+  const isBarcodeQuery = digitsQ.length >= 6 && digitsQ.length === rawQuery.trim().length;
 
-  const totalCatalogEstimate = Math.max(
-    mergedCatalog.length,
-    ISRAELI_FOOD_CATALOG.length + (report.sqlCatalogStats?.totalCount || 0)
-  );
+  const sourceMode: 'all' | 'retail' | 'moh_gov' | 'openfoodfacts' =
+    sourceFilter === 'retail'
+      ? 'retail'
+      : sourceFilter === 'moh_gov'
+      ? 'moh_gov'
+      : sourceFilter === 'openfoodfacts'
+      ? 'openfoodfacts'
+      : 'all';
 
-  // במצב דפדוף (חיפוש ריק): מציג את המאגר המקומי + נציגות מאוזנת מכל הסופרים והאתרים המסונכרנים + תוצאות SQL
-  if (!query.trim()) {
-    let sqlBrowse =
-      sourceFilter === 'shufersal' || sourceFilter === 'openfoodfacts' || sourceFilter === ''
-        ? await searchSqlAndCachedCatalog({
-            sourceFilter: sourceFilter || undefined,
-            limit: sourceFilter ? limit : 20,
-          })
-        : { items: [] as FoodCatalogItem[], sqlCount: 0 };
+  const specificSiteFilter =
+    sourceFilter &&
+    !['all', 'local', 'retail', 'moh_gov', 'openfoodfacts', 'favorites_recent'].includes(sourceFilter)
+      ? sourceFilter
+      : undefined;
 
-    // גיבוי עבור טאב שופרסל טרם הרצת הסקריפט: הצג מותגי שופרסל מ-Fuder/Foodik ב-SQL
-    if (sourceFilter === 'shufersal' && sqlBrowse.items.length === 0) {
-      sqlBrowse = await searchSqlAndCachedCatalog({
-        query: 'שופרסל',
-        limit,
-      });
-    }
+  const localPool = filterLocalCatalog(sourceFilter);
 
-    const localItems = filteredPool.filter((i) => !i.sourceSiteId);
-    const scrapedItems = filteredPool.filter((i) => Boolean(i.sourceSiteId));
+  // מצב דפדוף ריק: מחזיר מקומי + שורה קלה מה-SQL בלי לטעון BLOB או סקרייפרים
+  if (!qNorm && !isBarcodeQuery) {
+    const sqlBrowse =
+      sourceFilter === 'local'
+        ? { items: [] as FoodCatalogItem[], sqlCount: 0, usedHybridRpc: false }
+        : await searchSqlAndCachedCatalog({
+            query: '',
+            sourceMode,
+            sourceFilter: specificSiteFilter,
+            limit,
+          });
 
-    // בחירה מגוונת של פריטים מכל אתר מסונכרן
-    const bySite = new Map<string, FoodCatalogItem[]>();
-    for (const item of scrapedItems) {
-      const k = item.sourceSiteId || 'other';
-      if (!bySite.has(k)) bySite.set(k, []);
-      bySite.get(k)!.push(item);
-    }
-
-    const diversifiedScraped: FoodCatalogItem[] = [];
-    const maxPerSite = sourceFilter ? limit : 6;
-    Array.from(bySite.values()).forEach((group) => {
-      diversifiedScraped.push(...group.slice(0, maxPerSite));
-    });
-
-    const combinedSeen = new Set<string>();
-    const combined: FoodCatalogItem[] = [];
-    for (const item of [...localItems, ...sqlBrowse.items, ...diversifiedScraped]) {
-      const key = `${normalizeFoodKey(item.name)}:${Math.round(item.per100g.calories)}`;
-      if (combinedSeen.has(key)) continue;
-      combinedSeen.add(key);
-      combined.push(item);
-      if (combined.length >= limit) break;
-    }
+    const combined = rankAndDedupeMatches(
+      [...localPool, ...sqlBrowse.items],
+      '',
+      '',
+      limit,
+      !specificSiteFilter
+    ).map((x) => x.item);
 
     return NextResponse.json({
       items: combined,
-      totalAvailable: totalCatalogEstimate,
-      localCount: ISRAELI_FOOD_CATALOG.length,
-      syncedCount: syncedCatalog.length,
-      mohCount: 0,
+      mode: 'db',
+      fastPath: true,
+      needsLiveFallback: false,
+      localCount: localPool.length,
+      sqlCount: sqlBrowse.sqlCount,
       liveCount: 0,
+      usedHybridRpc: Boolean(sqlBrowse.usedHybridRpc),
+      dbLatencyMs: Date.now() - startedAt,
     });
   }
 
-  const qLower = query.trim().toLowerCase();
-  const forceLive = searchParams.get('forceLive') === '1';
-
-  // שלב 1 (מיידי, ~15-35ms): חיפוש בקטלוג המקומי + שאילתת SQL מאונדקסת (מפרידה בין רשתות שיווק למשרד הבריאות)
-  let sqlRes = await searchSqlAndCachedCatalog({
-    query: query.trim(),
-    sourceFilter: sourceFilter || undefined,
-    limit: 120,
+  // טוקן בודד שאינו ברקוד — השרת מדלג על סקרייפרים חיים ומחזיר מקומי + prefix קצר ב-SQL
+  const sqlRes = await searchSqlAndCachedCatalog({
+    query: rawQuery.trim(),
+    sourceMode,
+    sourceFilter: specificSiteFilter,
+    limit,
   });
 
-  // גיבוי חכם למסנן "שופרסל" לפני הרצת הסקריפט המלא: מציאת מוצרי מותג שופרסל שנמשכו מ-Fuder/Foodik/OpenFoodFacts
-  if (sourceFilter === 'shufersal' && sqlRes.items.length === 0) {
-    sqlRes = await searchSqlAndCachedCatalog({
-      query: `${query.trim()} שופרסל`,
-      limit: 60,
-    });
-  }
-
   const fastRanked = rankAndDedupeMatches(
-    [...filteredPool, ...sqlRes.items],
-    qLower,
+    [...localPool, ...sqlRes.items],
+    qNorm,
+    digitsQ,
     limit,
-    !sourceFilter
+    !specificSiteFilter
   );
 
   const retailSitesSeen = new Set<string>();
-  let retailStrongHits = 0;
+  let strongHits = 0;
   for (const { item, score } of fastRanked) {
-    const sid = item.sourceSiteId;
-    if (sid && sid !== 'moh_gov' && item.source !== 'moh') {
-      retailSitesSeen.add(sid);
-      if (score >= 60) retailStrongHits += 1;
+    if (score >= 60) strongHits += 1;
+    if (item.sourceSiteId && item.sourceSiteId !== 'moh_gov' && item.source !== 'moh') {
+      retailSitesSeen.add(item.sourceSiteId);
     }
   }
 
   const supportsLiveSite =
-    query.trim().length >= 2 &&
+    qNorm.replace(/\s+/g, '').length >= 3 &&
+    !isBarcodeQuery &&
     sourceFilter !== 'local' &&
     sourceFilter !== 'shufersal' &&
     sourceFilter !== 'openfoodfacts' &&
+    sourceFilter !== 'moh_gov' &&
     sourceFilter !== 'tara' &&
-    sourceFilter !== 'berman';
+    sourceFilter !== 'berman' &&
+    sourceFilter !== 'favorites_recent';
 
-  // Fast-Path רק כשכבר קיים ב-DB גיוון אמיתי מרשתות השיווק (ולא רק משרד הבריאות שממלא מכסה לבדו!)
-  const hasEnoughFromDb =
-    !forceLive &&
-    (sourceFilter
-      ? fastRanked.length >= 10
-      : retailSitesSeen.size >= 3 && retailStrongHits >= 6);
+  const hasEnoughFromDb = specificSiteFilter
+    ? fastRanked.length >= 6
+    : retailSitesSeen.size >= 2 && strongHits >= 4;
 
+  const needsLiveFallback = supportsLiveSite && !hasEnoughFromDb;
+
+  // Phase 1 (DB Fast-Path תמידי): לעולם לא חוסם את ה-UI בהמתנה לאתרים חיצוניים
+  if (requestedMode === 'db') {
+    const items = fastRanked.map((e) => e.item);
+    return NextResponse.json({
+      items,
+      mode: 'db',
+      fastPath: true,
+      needsLiveFallback,
+      localCount: fastRanked.length,
+      sqlCount: sqlRes.sqlCount,
+      liveCount: 0,
+      usedHybridRpc: Boolean(sqlRes.usedHybridRpc),
+      dbLatencyMs: Date.now() - startedAt,
+      mohCount: items.filter((i) => i.source === 'moh' || i.sourceSiteId === 'moh_gov').length,
+      scraperCount: items.filter((i) => Boolean(i.sourceSiteId)).length,
+    });
+  }
+
+  // Phase 2 (mode=live): חיפוש משלים באתרים חיים עם Query Cache + Circuit Breaker
   let liveMatches: FoodCatalogItem[] = [];
-  if (supportsLiveSite && !hasEnoughFromDb) {
+  if (supportsLiveSite || (requestedMode === 'live' && qNorm.length >= 2 && !isBarcodeQuery)) {
     liveMatches = await searchLiveScrapers(
-      query.trim(),
-      sourceFilter ? (sourceFilter as ScraperSourceId) : undefined
+      rawQuery.trim(),
+      specificSiteFilter ? (specificSiteFilter as ScraperSourceId) : undefined
     );
   }
 
-  // שמירה אוטומטית ברקע של תוצאות החיפוש החי בטבלת SQL כדי שחיפושים עתידיים יהיו מיידיים
   if (liveMatches.length > 0) {
     try {
       waitUntil(persistCatalogItemsToDb(liveMatches).catch(() => undefined));
@@ -265,30 +308,26 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // איחוד ודירוג סופי של כל המקורות יחד (מקומי + SQL + חיפוש חי) לפי התאמה + גיוון בין מקורות
-  const combinedCandidates = [...filteredPool, ...sqlRes.items, ...liveMatches];
   const finalRanked = rankAndDedupeMatches(
-    combinedCandidates,
-    qLower,
+    [...localPool, ...sqlRes.items, ...liveMatches],
+    qNorm,
+    digitsQ,
     limit,
-    !sourceFilter
+    !specificSiteFilter
   );
-  const deduped = finalRanked.map((entry) => entry.item);
-
-  const mohCount = deduped.filter(
-    (i) => i.source === 'moh' || i.sourceSiteId === 'moh_gov'
-  ).length;
-  const scraperCount = deduped.filter((i) => Boolean(i.sourceSiteId)).length;
+  const deduped = finalRanked.map((e) => e.item);
 
   return NextResponse.json({
     items: deduped,
-    totalAvailable: totalCatalogEstimate,
+    mode: 'live',
+    fastPath: false,
+    needsLiveFallback: false,
     localCount: fastRanked.length,
-    syncedCount: syncedCatalog.length,
-    liveCount: liveMatches.length,
     sqlCount: sqlRes.sqlCount,
-    fastPath: hasEnoughFromDb && liveMatches.length === 0,
-    scraperCount,
-    mohCount,
+    liveCount: liveMatches.length,
+    usedHybridRpc: Boolean(sqlRes.usedHybridRpc),
+    dbLatencyMs: Date.now() - startedAt,
+    mohCount: deduped.filter((i) => i.source === 'moh' || i.sourceSiteId === 'moh_gov').length,
+    scraperCount: deduped.filter((i) => Boolean(i.sourceSiteId)).length,
   });
-}
+});

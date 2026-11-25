@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Drawer,
   Modal,
@@ -41,6 +41,8 @@ import {
   CalendarDays,
   Clock,
   Ruler,
+  History,
+  RefreshCw,
 } from 'lucide-react';
 import {
   AiContextParams,
@@ -55,6 +57,7 @@ import {
   SavedMealPreset,
   TraineeCustomUnit,
   TraineeServingTool,
+  UserFoodHistoryItem,
 } from '@/types/nutrition';
 import {
   ISRAELI_FOOD_CATALOG,
@@ -62,6 +65,21 @@ import {
   getTodayIso,
   sumMacros,
 } from '@/data/israeliFoodCatalog';
+import {
+  buildSearchCacheKey,
+  getCachedFoodSearch,
+  getInstantLocalFoods,
+  loadLocalFoodHistory,
+  mergeLocalAndRemoteFoodResults,
+  mergeServerAndLocalHistory,
+  normalizeClientFoodText,
+  RETAIL_SITE_OPTIONS,
+  saveLocalFoodHistory,
+  SEMANTIC_SOURCE_TABS,
+  SemanticSourceGroup,
+  setCachedFoodSearch,
+  upsertLocalHistoryList,
+} from '@/lib/foodSearchClient';
 import { compressMealImage } from '@/utils/imageCompression';
 import {
   compressDataUrlToThumbnail,
@@ -258,10 +276,18 @@ export function AddMealDrawer({
   } | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [sourceFilter, setSourceFilter] = useState<string>('all');
-  const [searchResults, setSearchResults] =
-    useState<FoodCatalogItem[]>(ISRAELI_FOOD_CATALOG);
+  const [sourceGroup, setSourceGroup] = useState<SemanticSourceGroup>('all');
+  const [retailSubSite, setRetailSubSite] = useState<string>('all');
+  const [personalHistory, setPersonalHistory] = useState<UserFoodHistoryItem[]>([]);
+  const [remoteResults, setRemoteResults] = useState<FoodCatalogItem[]>([]);
+  const [hasRemoteSynced, setHasRemoteSynced] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [showSkeletons, setShowSkeletons] = useState(false);
+  const [liveExpanding, setLiveExpanding] = useState(false);
+  const [canManualExpandLive, setCanManualExpandLive] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchRetryNonce, setSearchRetryNonce] = useState(0);
+  const [activeResultIndex, setActiveResultIndex] = useState<number>(0);
   const [mohCount, setMohCount] = useState(0);
   const [scraperCount, setScraperCount] = useState(0);
   const [totalAvailable, setTotalAvailable] = useState(ISRAELI_FOOD_CATALOG.length);
@@ -399,6 +425,13 @@ export function AddMealDrawer({
         setSaveAsPreset(false);
         setPresetTitleInput('');
         setSearchQuery('');
+        setSourceGroup('all');
+        setRetailSubSite('all');
+        setRemoteResults([]);
+        setHasRemoteSynced(false);
+        setSearchError(null);
+        setCanManualExpandLive(false);
+        setActiveResultIndex(0);
         setSelectedFood(null);
         setCameraChooserOpen(false);
         setMealTime(existingEntry?.mealTime || mealSlot.timeHint || '');
@@ -462,42 +495,307 @@ export function AddMealDrawer({
     };
   }, [opened, mealSlot, existingEntry, initialTab, customFoodUnits, selectedDate]);
 
+  // טעינה מיידית (0ms) מ-localStorage של ההיסטוריה האישית וסנכרון שקט מול השרת
   useEffect(() => {
     if (!opened) return;
+    const localHist = loadLocalFoodHistory(traineeId);
+    if (localHist.length > 0) {
+      setPersonalHistory(localHist);
+    }
     const controller = new AbortController();
+    fetch('/api/food/history', { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { items?: UserFoodHistoryItem[] } | null) => {
+        if (controller.signal.aborted || !data?.items) return;
+        setPersonalHistory((prev) => {
+          const merged = mergeServerAndLocalHistory(data.items || [], prev);
+          saveLocalFoodHistory(traineeId, merged);
+          return merged;
+        });
+      })
+      .catch(() => undefined);
+
+    return () => controller.abort();
+  }, [opened, traineeId]);
+
+  const trackFoodInteraction = (
+    food: FoodCatalogItem,
+    actionKind: 'picked' | 'barcode' | 'logged',
+    lastUnitLabel?: string,
+    lastGrams?: number
+  ) => {
+    setPersonalHistory((prev) => {
+      const next = upsertLocalHistoryList(prev, food, actionKind, lastUnitLabel, lastGrams);
+      saveLocalFoodHistory(traineeId, next);
+      return next;
+    });
+    fetch('/api/food/history', {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        item: food,
+        actionKind,
+        lastUnitLabel,
+        lastGrams,
+      }),
+    }).catch(() => undefined);
+  };
+
+  const instantLocalResults = useMemo(
+    () =>
+      getInstantLocalFoods({
+        query: searchQuery,
+        sourceGroup,
+        retailSubSite,
+        personalHistory,
+        favoriteIds,
+        limit: 36,
+      }),
+    [searchQuery, sourceGroup, retailSubSite, personalHistory, favoriteIds]
+  );
+
+  const searchResults = useMemo(() => {
+    if (sourceGroup === 'favorites_recent') {
+      return instantLocalResults;
+    }
+    if (!hasRemoteSynced) {
+      return instantLocalResults;
+    }
+    return mergeLocalAndRemoteFoodResults(
+      instantLocalResults,
+      remoteResults,
+      searchQuery,
+      personalHistory,
+      favoriteIds,
+      36
+    );
+  }, [
+    sourceGroup,
+    hasRemoteSynced,
+    instantLocalResults,
+    remoteResults,
+    searchQuery,
+    personalHistory,
+    favoriteIds,
+  ]);
+
+  const effectiveSourceParam =
+    sourceGroup === 'retail' && retailSubSite && retailSubSite !== 'all'
+      ? retailSubSite
+      : sourceGroup;
+
+  useEffect(() => {
+    setActiveResultIndex(0);
+  }, [searchQuery, sourceGroup, retailSubSite]);
+
+  useEffect(() => {
+    if (!opened) return;
+    if (sourceGroup === 'favorites_recent') {
+      setSearchLoading(false);
+      setShowSkeletons(false);
+      setLiveExpanding(false);
+      setCanManualExpandLive(false);
+      setSearchError(null);
+      setHasRemoteSynced(false);
+      return;
+    }
+
+    const qTrim = searchQuery.trim();
+    const cleanLen = normalizeClientFoodText(qTrim).replace(/\s+/g, '').length;
+    const isBarcodeDigits = /^[0-9]{6,16}$/.test(qTrim);
+    const shouldQueryRemote =
+      isBarcodeDigits ||
+      cleanLen >= 2 ||
+      (activeTab === 'catalog' && qTrim.length === 0);
+
+    if (!shouldQueryRemote) {
+      setRemoteResults([]);
+      setHasRemoteSynced(false);
+      setSearchLoading(false);
+      setShowSkeletons(false);
+      setLiveExpanding(false);
+      setCanManualExpandLive(false);
+      setSearchError(null);
+      return;
+    }
+
+    const cacheKey = buildSearchCacheKey(qTrim, sourceGroup, retailSubSite);
+    const cached = getCachedFoodSearch(cacheKey);
+    if (cached) {
+      setRemoteResults(cached.items);
+      setHasRemoteSynced(true);
+      setSearchLoading(false);
+      setShowSkeletons(false);
+      setLiveExpanding(false);
+      setCanManualExpandLive(cached.needsLiveFallback && !cached.liveDone);
+      setSearchError(null);
+      setMohCount(cached.mohCount);
+      setScraperCount(cached.scraperCount);
+      if (cached.totalAvailable) setTotalAvailable(cached.totalAvailable);
+      return;
+    }
+
+    // אפס את הרשימה הישנה מיד כדי למנוע לחיצה בשגיאה על תוצאות משאילתה קודמת
+    setHasRemoteSynced(false);
+    setRemoteResults([]);
+    setSearchError(null);
+    setLiveExpanding(false);
+    setCanManualExpandLive(false);
+
+    const controller = new AbortController();
+    let skeletonTimer: ReturnType<typeof setTimeout> | null = null;
+    const debounceMs = isBarcodeDigits || qTrim.length === 0 ? 40 : 250;
+
     const timer = setTimeout(async () => {
       setSearchLoading(true);
+      if (instantLocalResults.length === 0) {
+        skeletonTimer = setTimeout(() => {
+          if (!controller.signal.aborted) setShowSkeletons(true);
+        }, 150);
+      }
+
       try {
         const qs = new URLSearchParams({
-          q: searchQuery.trim(),
-          limit: '80',
+          q: qTrim,
+          limit: '36',
+          mode: 'db',
         });
-        if (sourceFilter && sourceFilter !== 'all') {
-          qs.set('source', sourceFilter);
+        if (effectiveSourceParam && effectiveSourceParam !== 'all') {
+          qs.set('source', effectiveSourceParam);
         }
         const res = await fetch(`/api/food/search?${qs.toString()}`, {
           signal: controller.signal,
         });
-        if (res.ok) {
-          const data = await res.json();
-          setSearchResults(data.items || ISRAELI_FOOD_CATALOG);
-          setMohCount(data.mohCount || 0);
-          setScraperCount(data.scraperCount || data.syncedCount || 0);
-          setTotalAvailable(data.totalAvailable || (data.items || []).length);
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => null);
+          throw new Error(errJson?.error || `שגיאת שרת (${res.status})`);
+        }
+        const data = await res.json();
+        if (controller.signal.aborted) return;
+
+        const dbItems = (Array.isArray(data.items) ? data.items : []) as FoodCatalogItem[];
+        const needsLive = Boolean(data.needsLiveFallback) && cleanLen >= 3;
+        const mCount = data.mohCount || 0;
+        const sCount = data.scraperCount || data.syncedCount || 0;
+
+        setRemoteResults(dbItems);
+        setHasRemoteSynced(true);
+        setShowSkeletons(false);
+        setSearchLoading(false);
+        setMohCount(mCount);
+        setScraperCount(sCount);
+        if (data.totalAvailable) setTotalAvailable(data.totalAvailable);
+
+        setCachedFoodSearch(cacheKey, {
+          items: dbItems,
+          needsLiveFallback: needsLive,
+          liveDone: false,
+          mohCount: mCount,
+          scraperCount: sCount,
+          totalAvailable: data.totalAvailable,
+        });
+
+        // שלב 2 אוטומטי לא-חוסם: מרחיב ברקע מול סופרים חיים רק כשחסרות תוצאות ב-DB
+        if (needsLive) {
+          setLiveExpanding(true);
+          try {
+            const liveQs = new URLSearchParams({
+              q: qTrim,
+              limit: '36',
+              mode: 'live',
+            });
+            if (effectiveSourceParam && effectiveSourceParam !== 'all') {
+              liveQs.set('source', effectiveSourceParam);
+            }
+            const liveRes = await fetch(`/api/food/search?${liveQs.toString()}`, {
+              signal: controller.signal,
+            });
+            if (liveRes.ok && !controller.signal.aborted) {
+              const liveData = await liveRes.json();
+              const liveItems = (Array.isArray(liveData.items) ? liveData.items : []) as FoodCatalogItem[];
+              const nextM = liveData.mohCount ?? mCount;
+              const nextS = liveData.scraperCount ?? sCount;
+              setRemoteResults(liveItems);
+              setMohCount(nextM);
+              setScraperCount(nextS);
+              setCachedFoodSearch(cacheKey, {
+                items: liveItems,
+                needsLiveFallback: false,
+                liveDone: true,
+                mohCount: nextM,
+                scraperCount: nextS,
+                totalAvailable: liveData.totalAvailable || data.totalAvailable,
+              });
+            } else {
+              setCanManualExpandLive(true);
+            }
+          } catch {
+            if (!controller.signal.aborted) setCanManualExpandLive(true);
+          } finally {
+            if (!controller.signal.aborted) setLiveExpanding(false);
+          }
+        } else {
+          setCanManualExpandLive(cleanLen >= 3 && effectiveSourceParam !== 'moh_gov');
         }
       } catch (err) {
         if ((err as { name?: string })?.name === 'AbortError') return;
+        if (!controller.signal.aborted) {
+          setSearchError(err instanceof Error ? err.message : 'שגיאת חיבור בחיפוש');
+        }
       } finally {
+        if (skeletonTimer) clearTimeout(skeletonTimer);
         if (!controller.signal.aborted) {
           setSearchLoading(false);
+          setShowSkeletons(false);
         }
       }
-    }, searchQuery.trim() ? 240 : 40);
+    }, debounceMs);
+
     return () => {
       clearTimeout(timer);
+      if (skeletonTimer) clearTimeout(skeletonTimer);
       controller.abort();
     };
-  }, [searchQuery, sourceFilter, opened]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, sourceGroup, retailSubSite, activeTab, opened, searchRetryNonce]);
+
+  const runManualLiveExpand = async () => {
+    const qTrim = searchQuery.trim();
+    if (!qTrim || liveExpanding) return;
+    setLiveExpanding(true);
+    setCanManualExpandLive(false);
+    try {
+      const qs = new URLSearchParams({
+        q: qTrim,
+        limit: '36',
+        mode: 'live',
+      });
+      if (effectiveSourceParam && effectiveSourceParam !== 'all') {
+        qs.set('source', effectiveSourceParam);
+      }
+      const res = await fetch(`/api/food/search?${qs.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        const items = (Array.isArray(data.items) ? data.items : []) as FoodCatalogItem[];
+        setRemoteResults(items);
+        setHasRemoteSynced(true);
+        const cacheKey = buildSearchCacheKey(qTrim, sourceGroup, retailSubSite);
+        setCachedFoodSearch(cacheKey, {
+          items,
+          needsLiveFallback: false,
+          liveDone: true,
+          mohCount: data.mohCount || mohCount,
+          scraperCount: data.scraperCount || scraperCount,
+          totalAvailable: data.totalAvailable,
+        });
+      }
+    } catch {
+      // ignore manual live failure
+    } finally {
+      setLiveExpanding(false);
+    }
+  };
 
   const extractNamePackageGrams = (raw: string): number | null => {
     const cleaned = String(raw || '')
@@ -564,11 +862,19 @@ export function AddMealDrawer({
     setInlineUnitOpen(false);
     setSelectedFood(food);
     const combined = getCombinedUnitsForFood(food);
+    const histEntry = personalHistory.find((h) => h.id === food.id);
+    const histUnitMatch =
+      histEntry?.lastUnitLabel
+        ? combined.find((u) => u.label === histEntry.lastUnitLabel)
+        : undefined;
     const firstNon100 = combined.find((u) => u.grams !== 100);
-    const firstUnit = firstNon100 || combined[0] || { label: '100 גרם', grams: 100 };
+    const firstUnit = histUnitMatch || firstNon100 || combined[0] || { label: '100 גרם', grams: 100 };
     setSelectedUnitLabel(firstUnit.label);
     setQuantity(1);
     setCustomGrams(firstUnit.grams);
+
+    // שמירה מיידית של הבחירה בהיסטוריה האישית + הגדלת פופולריות גלובלית ברקע
+    trackFoodInteraction(food, 'picked', firstUnit.label, firstUnit.grams);
 
     const needsEnrich =
       Boolean(food.sourceUrl) &&
@@ -585,9 +891,14 @@ export function AddMealDrawer({
           const data = (await res.json()) as { item?: FoodCatalogItem };
           if (data.item) {
             const enriched = data.item;
-            setSearchResults((prev) =>
+            setRemoteResults((prev) =>
               prev.map((x) => (x.id === enriched.id ? enriched : x))
             );
+            setPersonalHistory((prev) => {
+              const next = upsertLocalHistoryList(prev, enriched, 'picked', firstUnit.label, firstUnit.grams);
+              saveLocalFoodHistory(traineeId, next);
+              return next;
+            });
             setSelectedFood((prev) => {
               if (!prev || prev.id !== enriched.id) return prev;
               const nextCombined = getCombinedUnitsForFood(enriched);
@@ -688,6 +999,12 @@ export function AddMealDrawer({
       source: sourceOverride,
     };
 
+    trackFoodInteraction(
+      selectedFood,
+      sourceOverride === 'barcode' ? 'barcode' : 'logged',
+      selectedUnitLabel === 'custom-grams' ? `${totalGrams} גרם` : selectedUnitLabel,
+      totalGrams
+    );
     setItems((prev) => [...prev, newItem]);
   };
 
@@ -1397,15 +1714,33 @@ export function AddMealDrawer({
                 <input
                   ref={searchInputRef}
                   type="text"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded={searchResults.length > 0 && (activeTab === 'catalog' || trimmedQuery.length > 0)}
+                  aria-controls="spot-food-search-listbox"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+                    if (e.key === 'ArrowDown' && searchResults.length > 0) {
                       e.preventDefault();
-                      e.currentTarget.blur();
+                      setActiveResultIndex((prev) => Math.min(searchResults.length - 1, prev + 1));
+                    } else if (e.key === 'ArrowUp' && searchResults.length > 0) {
+                      e.preventDefault();
+                      setActiveResultIndex((prev) => Math.max(0, prev - 1));
+                    } else if (e.key === 'Enter') {
+                      if ((activeTab === 'catalog' || trimmedQuery.length > 0) && searchResults[activeResultIndex]) {
+                        e.preventDefault();
+                        void handleSelectCatalogFood(searchResults[activeResultIndex]);
+                      } else {
+                        e.preventDefault();
+                        e.currentTarget.blur();
+                      }
+                    } else if (e.key === 'Escape' && searchQuery) {
+                      e.preventDefault();
+                      setSearchQuery('');
                     }
                   }}
-                  placeholder="חפש מוצר, ברקוד, שמורות או כתוב ל-AI..."
+                  placeholder="חפש מוצר, ברקוד, היסטוריה או כתוב ל-AI..."
                   style={{
                     flex: 1,
                     minWidth: 0,
@@ -2040,6 +2375,78 @@ export function AddMealDrawer({
                     ))}
                   </div>
                 )}
+
+                {personalHistory.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 2 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <History size={15} />
+                        נבחרו ונסרקו לאחרונה
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSourceGroup('favorites_recent');
+                          navigateTab('catalog');
+                        }}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: 'var(--text-2)',
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                        }}
+                      >
+                        לכל ההיסטוריה ({personalHistory.length})
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+                      {personalHistory.slice(0, 10).map((hist) => (
+                        <button
+                          key={hist.foodKey}
+                          type="button"
+                          onClick={() => void handleSelectCatalogFood(hist)}
+                          style={{
+                            flex: '0 0 auto',
+                            maxWidth: 195,
+                            padding: '9px 12px',
+                            borderRadius: 16,
+                            border: '1px solid var(--line)',
+                            background: 'var(--surface-2)',
+                            color: 'var(--text)',
+                            textAlign: 'right',
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 3,
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                            {hist.actionKind === 'barcode' && <Barcode size={12} color="var(--accent-orange-bright)" />}
+                            <span
+                              style={{
+                                fontSize: 13,
+                                fontWeight: 700,
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {hist.name}
+                            </span>
+                          </div>
+                          <span className="num-mono" style={{ fontSize: 11.5, color: 'var(--text-2)' }}>
+                            {hist.per100g.calories} קק״ל · ח׳ {hist.per100g.protein}
+                            {hist.useCount > 1 ? ` · ×${hist.useCount}` : ''}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -2381,7 +2788,7 @@ export function AddMealDrawer({
                   }}
                 >
                   <span style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text-2)' }}>
-                    תוצאות מהמאגר הישראלי והסופרים:
+                    תוצאות משולבות (היסטוריה, סופרים ומאגר ישראלי):
                   </span>
                   <button
                     type="button"
@@ -2405,76 +2812,156 @@ export function AddMealDrawer({
                   </button>
                 </div>
 
+                {/* 4 מסננים סמנטיים ברורים במקום 16 שמות ספקים */}
                 <div
                   style={{
                     display: 'flex',
                     gap: 6,
                     overflowX: 'auto',
                     paddingBottom: 2,
+                    alignItems: 'center',
                   }}
                 >
-                  {[
-                    { id: 'all', label: 'הכל (מאגר משולב)' },
-                    { id: 'shufersal', label: 'שופרסל (DB)' },
-                    { id: 'victory', label: 'ויקטורי' },
-                    { id: 'nizat', label: 'ניצת הדובדבן' },
-                    { id: 'tevabari', label: 'טבע בריא' },
-                    { id: 'fuder', label: 'Fuder סופרים' },
-                    { id: 'foodgroups', label: 'FoodGroups' },
-                    { id: 'sugat', label: 'סוגת' },
-                    { id: 'tara', label: 'טרה' },
-                    { id: 'berman', label: 'ברמן' },
-                    { id: 'foodsdictionary', label: 'FoodsDictionary' },
-                    { id: 'foodik', label: 'Foodik' },
-                    { id: 'netogreen', label: 'NetoGreen' },
-                    { id: 'moh_gov', label: 'משרד הבריאות' },
-                    { id: 'openfoodfacts', label: 'ברקוד / סופרים' },
-                    { id: 'local', label: 'בסיס SPOT' },
-                  ].map((src) => {
-                    const active = sourceFilter === src.id;
+                  {SEMANTIC_SOURCE_TABS.map((tab) => {
+                    const active = sourceGroup === tab.id;
                     return (
                       <button
-                        key={src.id}
+                        key={tab.id}
                         type="button"
-                        onClick={() => setSourceFilter(src.id)}
+                        onClick={() => {
+                          setSourceGroup(tab.id);
+                          if (tab.id !== 'retail') setRetailSubSite('all');
+                        }}
                         style={{
                           flexShrink: 0,
                           fontSize: 13,
                           fontWeight: 700,
-                          padding: '4px 10px',
+                          padding: '5px 12px',
                           borderRadius: 999,
                           cursor: 'pointer',
-                          border: active ? '1px solid var(--sel-border)'
+                          border: active
+                            ? '1px solid var(--sel-border)'
                             : '1px solid var(--border-subtle)',
-                          background: active ? 'var(--sel-bg)'
-                            : 'var(--bg-surface-2)',
-                          color: active ? 'var(--sel-text)'
-                            : 'var(--text-2)',
+                          background: active ? 'var(--sel-bg)' : 'var(--bg-surface-2)',
+                          color: active ? 'var(--sel-text)' : 'var(--text-2)',
                         }}
                       >
-                        {src.label}
+                        {tab.label}
+                        {tab.id === 'favorites_recent' && personalHistory.length + favoriteIds.length > 0
+                          ? ` (${personalHistory.length})`
+                          : ''}
                       </button>
                     );
                   })}
+
+                  {sourceGroup === 'retail' && (
+                    <select
+                      aria-label="סינון לפי רשת ספציפית"
+                      value={retailSubSite}
+                      onChange={(e) => setRetailSubSite(e.target.value)}
+                      style={{
+                        flexShrink: 0,
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        padding: '5px 10px',
+                        borderRadius: 999,
+                        border: '1px solid var(--border-subtle)',
+                        background: 'var(--bg-surface-2)',
+                        color: 'var(--text)',
+                        fontFamily: 'inherit',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {RETAIL_SITE_OPTIONS.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 <div
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
-                    fontSize: 13.5,
+                    alignItems: 'center',
+                    gap: 8,
+                    fontSize: 13,
                     color: 'var(--text-muted)',
                   }}
                 >
-                  <span>
-                    {searchLoading
-                      ? 'מחפש במאגר המשולב (סופרים ישראליים, חנויות טבע + משרד הבריאות)...'
-                      : `${searchResults.length} תוצאות מתוך ${totalAvailable.toLocaleString('he-IL')}+ פריטים`}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    {(searchLoading || liveExpanding) && (
+                      <Loader2 size={13} className="spot-spinner" />
+                    )}
+                    {liveExpanding
+                      ? 'מרחיב תוצאות אוטומטית באתרי הסופרים אונליין...'
+                      : searchLoading
+                      ? 'מחפש במהירות במאגר ה-DB...'
+                      : `${searchResults.length} תוצאות${totalAvailable > searchResults.length ? ` (מתוך ${totalAvailable.toLocaleString('he-IL')}+)` : ''}`}
                   </span>
                   <span>לחץ לבחירת כמות</span>
                 </div>
 
-                {searchResults.length === 0 && !searchLoading ? (
+                {searchError && (
+                  <div
+                    role="alert"
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: 14,
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.25)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 8,
+                      fontSize: 12.5,
+                      color: 'var(--danger-text)',
+                    }}
+                  >
+                    <span>{searchError}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSearchRetryNonce((n) => n + 1)}
+                      className="btn-surface"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '4px 10px',
+                        fontSize: 12,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <RefreshCw size={12} />
+                      נסה שוב
+                    </button>
+                  </div>
+                )}
+
+                {showSkeletons ? (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))',
+                      gap: 8,
+                    }}
+                  >
+                    {[1, 2, 3, 4, 5, 6].map((idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          height: 76,
+                          borderRadius: 18,
+                          background: 'var(--surface-2)',
+                          border: '1px solid var(--border-subtle)',
+                          opacity: 0.65,
+                        }}
+                      />
+                    ))}
+                  </div>
+                ) : searchResults.length === 0 && !searchLoading && !liveExpanding ? (
                   <div
                     style={{
                       padding: 18,
@@ -2484,127 +2971,220 @@ export function AddMealDrawer({
                       border: '1px solid var(--border-subtle)',
                       color: 'var(--text-2)',
                       fontSize: 13,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 10,
+                      alignItems: 'center',
                     }}
                   >
-                    לא נמצאו מוצרים המתאימים ל־&ldquo;{searchQuery}&rdquo;. אפשר ללחוץ על כפתור <b>✨</b> בשורת החיפוש למעלה לפיענוח ב-AI!
+                    <span>
+                      לא נמצאו מוצרים המתאימים ל־&ldquo;{searchQuery}&rdquo;. אפשר ללחוץ על כפתור <b>✨</b> בשורת החיפוש למעלה לפיענוח ב-AI!
+                    </span>
+                    {trimmedQuery.length >= 2 && (
+                      <button
+                        type="button"
+                        onClick={() => void runManualLiveExpand()}
+                        className="btn-surface"
+                        style={{
+                          padding: '6px 12px',
+                          fontSize: 12.5,
+                          fontWeight: 700,
+                          borderRadius: 999,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        נסה לחפש בזמן אמת באתרי הסופרים
+                      </button>
+                    )}
                   </div>
                 ) : (
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))',
-                      gap: 8,
-                    }}
-                  >
-                    {searchResults.slice(0, 48).map((food) => {
-                      const isSelected = selectedFood?.id === food.id;
-                      const isFav = favoriteIds.includes(food.id);
-                      return (
-                        <div
-                          key={food.id}
-                          onClick={() => void handleSelectCatalogFood(food)}
-                          style={{
-                            padding: '10px 12px',
-                            borderRadius: 18,
-                            cursor: 'pointer',
-                            border: isSelected ? '1px solid var(--text-3)'
-                              : '1px solid var(--border-subtle)',
-                            background: isSelected ? 'var(--surface-3)'
-                              : 'var(--bg-surface-2)',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            gap: 6,
-                          }}
-                        >
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <div
-                              style={{
-                                fontSize: 13,
-                                fontWeight: 700,
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                              }}
-                            >
-                              {food.name}
-                            </div>
-                            <div
-                              className="num-mono"
-                              style={{
-                                fontSize: 13,
-                                color: 'var(--text-2)',
-                              }}
-                            >
-                              {food.per100g.calories} קק״ל · ח:{food.per100g.protein} פ:{food.per100g.carbs} ש:{food.per100g.fat}
-                            </div>
-                            {(food.sourceSiteName || food.barcode) && (
-                              <div
-                                style={{
-                                  marginTop: 2,
-                                  fontSize: 13,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  flexWrap: 'wrap',
-                                  gap: 6,
-                                  color: food.sourceSiteId
-                                    ? 'var(--accent-orange-bright)'
-                                    : 'var(--text-muted)',
-                                }}
-                              >
-                                {food.sourceSiteName && (
-                                  <span>
-                                    {food.brand && food.brand !== food.sourceSiteName
-                                      ? `${food.brand} · ${food.sourceSiteName}`
-                                      : food.sourceSiteName}
-                                  </span>
-                                )}
-                                {food.barcode && (
-                                  <span
-                                    dir="ltr"
-                                    className="num-mono"
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: 2,
-                                      padding: '0 5px',
-                                      borderRadius: 6,
-                                      background: 'var(--line)',
-                                      color: 'var(--text-2)',
-                                      fontSize: 13.5,
-                                    }}
-                                  >
-                                    <Barcode size={9} />
-                                    {food.barcode}
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onToggleFavorite(food.id);
-                            }}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div
+                      id="spot-food-search-listbox"
+                      role="listbox"
+                      aria-label="תוצאות חיפוש מזון"
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))',
+                        gap: 8,
+                      }}
+                    >
+                      {searchResults.map((food, idx) => {
+                        const isSelected = selectedFood?.id === food.id;
+                        const isKeyboardActive = idx === activeResultIndex && trimmedQuery.length > 0;
+                        const isFav = favoriteIds.includes(food.id);
+                        const histInfo = food as FoodCatalogItem & Partial<UserFoodHistoryItem>;
+                        const matchTok = trimmedQuery.split(/\s+/).find((w) => w.length >= 2);
+                        const highlightParts =
+                          matchTok && food.name
+                            ? food.name.split(
+                                new RegExp(
+                                  `(${matchTok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`,
+                                  'ig'
+                                )
+                              )
+                            : null;
+
+                        return (
+                          <div
+                            key={`${food.id}-${idx}`}
                             style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: isFav
-                                ? '#ff5e7e'
-                                : 'var(--text-muted)',
-                              cursor: 'pointer',
-                              padding: 4,
+                              borderRadius: 18,
+                              border: isSelected || isKeyboardActive
+                                ? '1px solid var(--sel-border)'
+                                : '1px solid var(--border-subtle)',
+                              background: isSelected ? 'var(--surface-3)' : 'var(--bg-surface-2)',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              gap: 4,
+                              overflow: 'hidden',
                             }}
                           >
-                            <Heart
-                              size={14}
-                              fill={isFav ? 'currentColor' : 'none'}
-                            />
-                          </button>
-                        </div>
-                      );
-                    })}
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={isSelected}
+                              onClick={() => void handleSelectCatalogFood(food)}
+                              style={{
+                                flex: 1,
+                                minWidth: 0,
+                                padding: '10px 12px 10px 4px',
+                                background: 'transparent',
+                                border: 'none',
+                                textAlign: 'right',
+                                cursor: 'pointer',
+                                color: 'inherit',
+                                fontFamily: 'inherit',
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                }}
+                              >
+                                {highlightParts
+                                  ? highlightParts.map((part, pIdx) =>
+                                      part.toLowerCase() === matchTok?.toLowerCase() ? (
+                                        <mark
+                                          key={pIdx}
+                                          style={{
+                                            background: 'rgba(235, 147, 28, 0.25)',
+                                            color: 'inherit',
+                                            borderRadius: 4,
+                                            padding: '0 1px',
+                                          }}
+                                        >
+                                          {part}
+                                        </mark>
+                                      ) : (
+                                        <React.Fragment key={pIdx}>{part}</React.Fragment>
+                                      )
+                                    )
+                                  : food.name}
+                              </div>
+                              <div
+                                className="num-mono"
+                                style={{
+                                  fontSize: 12.5,
+                                  color: 'var(--text-2)',
+                                }}
+                              >
+                                {food.per100g.calories} קק״ל · ח:{food.per100g.protein} פ:{food.per100g.carbs} ש:{food.per100g.fat}
+                              </div>
+                              {(food.sourceSiteName || food.barcode || histInfo.useCount) && (
+                                <div
+                                  style={{
+                                    marginTop: 2,
+                                    fontSize: 12,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    flexWrap: 'wrap',
+                                    gap: 5,
+                                    color: histInfo.useCount
+                                      ? 'var(--ok-text)'
+                                      : food.sourceSiteId
+                                      ? 'var(--accent-orange-bright)'
+                                      : 'var(--text-muted)',
+                                  }}
+                                >
+                                  {histInfo.useCount && (
+                                    <span>
+                                      {histInfo.actionKind === 'barcode'
+                                        ? 'נסרק לאחרונה'
+                                        : `נבחר ×${histInfo.useCount}`}
+                                    </span>
+                                  )}
+                                  {food.sourceSiteName && (
+                                    <span>
+                                      {food.brand && food.brand !== food.sourceSiteName
+                                        ? `${food.brand} · ${food.sourceSiteName}`
+                                        : food.sourceSiteName}
+                                    </span>
+                                  )}
+                                  {food.barcode && (
+                                    <span
+                                      dir="ltr"
+                                      className="num-mono"
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: 2,
+                                        padding: '0 5px',
+                                        borderRadius: 6,
+                                        background: 'var(--line)',
+                                        color: 'var(--text-2)',
+                                        fontSize: 12,
+                                      }}
+                                    >
+                                      <Barcode size={9} />
+                                      {food.barcode}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={isFav ? `הסר את ${food.name} ממועדפים` : `סמן את ${food.name} כמועדף`}
+                              onClick={() => onToggleFavorite(food.id)}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: isFav ? '#ff5e7e' : 'var(--text-muted)',
+                                cursor: 'pointer',
+                                padding: '8px 10px 8px 8px',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <Heart size={14} fill={isFav ? 'currentColor' : 'none'} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {canManualExpandLive && !liveExpanding && (
+                      <button
+                        type="button"
+                        onClick={() => void runManualLiveExpand()}
+                        className="btn-surface"
+                        style={{
+                          alignSelf: 'center',
+                          padding: '7px 14px',
+                          fontSize: 12.5,
+                          fontWeight: 700,
+                          borderRadius: 999,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        הרחב חיפוש בזמן אמת באתרי הסופרים
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -3158,111 +3738,143 @@ export function AddMealDrawer({
               </div>
             )}
 
-            {/* לשונית 4: מועדפים */}
-            {activeTab === 'favorites' && (
-              <>
-                {ISRAELI_FOOD_CATALOG.filter((f) =>
-                  favoriteIds.includes(f.id)
-                ).length === 0 ? (
-                  <div
-                    style={{
-                      padding: 24,
-                      textAlign: 'center',
-                      borderRadius: 14,
-                      background: 'var(--bg-surface-2)',
-                      border: '1px solid var(--border-subtle)',
-                      color: 'var(--text-secondary)',
-                      fontSize: 12,
-                    }}
-                  >
-                    טרם סימנת מאכלים מועדפים.
-                    <div style={{ marginTop: 10 }}>
-                      <button
-                        type="button"
-                        onClick={() => navigateTab('catalog')}
-                        className="btn-volt"
-                        style={{ padding: '7px 14px', fontSize: 12, cursor: 'pointer' }}
-                      >
-                        עיון במאגר המזון המלא
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))',
-                      gap: 8,
-                    }}
-                  >
-                    {ISRAELI_FOOD_CATALOG.filter((f) =>
-                      favoriteIds.includes(f.id)
-                    ).map((food) => {
-                      const defaultUnit = food.units[0];
-                      const macros = calculateMacrosForGrams(
-                        food.per100g,
-                        defaultUnit.grams
-                      );
-                      return (
-                        <div
-                          key={food.id}
-                          style={{
-                            background: 'var(--bg-surface-2)',
-                            border: '1px solid var(--border-subtle)',
-                            borderRadius: 12,
-                            padding: 12,
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                          }}
+            {/* לשונית 4: מועדפים והיסטוריה אישית */}
+            {activeTab === 'favorites' && (() => {
+              const combinedFavAndHist = getInstantLocalFoods({
+                query: '',
+                sourceGroup: 'favorites_recent',
+                retailSubSite: 'all',
+                personalHistory,
+                favoriteIds,
+                limit: 48,
+              });
+              return (
+                <>
+                  {combinedFavAndHist.length === 0 ? (
+                    <div
+                      style={{
+                        padding: 24,
+                        textAlign: 'center',
+                        borderRadius: 14,
+                        background: 'var(--bg-surface-2)',
+                        border: '1px solid var(--border-subtle)',
+                        color: 'var(--text-secondary)',
+                        fontSize: 12.5,
+                      }}
+                    >
+                      טרם סימנת מועדפים או בחרת/סרקת מוצרים. כל מוצר שתסמן, תסרוק או תבחר יישמר כאן אוטומטית!
+                      <div style={{ marginTop: 10 }}>
+                        <button
+                          type="button"
+                          onClick={() => navigateTab('catalog')}
+                          className="btn-volt"
+                          style={{ padding: '7px 14px', fontSize: 12, cursor: 'pointer' }}
                         >
-                          <div>
-                            <div style={{ fontSize: 13, fontWeight: 700 }}>
-                              {food.name}
-                            </div>
-                            <div
-                              className="num-mono"
-                              style={{
-                                fontSize: 12,
-                                color: 'var(--text-secondary)',
-                              }}
-                            >
-                              {defaultUnit.label} · {macros.calories} קק״ל
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => {
-                              setItems((prev) => [
-                                ...prev,
-                                {
-                                  id: `fav-${Date.now()}-${Math.random()
-                                    .toString(36)
-                                    .slice(2, 6)}`,
-                                  name: food.name,
-                                  unitLabel: defaultUnit.label,
-                                  quantity: 1,
-                                  grams: defaultUnit.grams,
-                                  macros,
-                                  source: 'catalog',
-                                },
-                              ]);
-                            }}
-                            className="btn-surface"
+                          עיון במאגר המזון המלא
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))',
+                        gap: 8,
+                      }}
+                    >
+                      {combinedFavAndHist.map((food) => {
+                        const defaultUnit = food.units?.[0] || { label: '100 גרם', grams: 100 };
+                        const macros = calculateMacrosForGrams(food.per100g, defaultUnit.grams);
+                        const isFav = favoriteIds.includes(food.id);
+                        return (
+                          <div
+                            key={food.id}
                             style={{
-                              padding: '6px 10px',
-                              fontSize: 12,
-                              cursor: 'pointer',
+                              background: 'var(--bg-surface-2)',
+                              border: '1px solid var(--border-subtle)',
+                              borderRadius: 14,
+                              padding: 12,
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              gap: 8,
                             }}
                           >
-                            + הוסף
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
-            )}
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div
+                                style={{
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                }}
+                              >
+                                {food.name}
+                              </div>
+                              <div
+                                className="num-mono"
+                                style={{
+                                  fontSize: 12,
+                                  color: 'var(--text-secondary)',
+                                }}
+                              >
+                                {defaultUnit.label} · {macros.calories} קק״ל
+                                {food.useCount ? ` · ×${food.useCount}` : ''}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                              <button
+                                type="button"
+                                aria-label="סמן מועדף"
+                                onClick={() => onToggleFavorite(food.id)}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: isFav ? '#ff5e7e' : 'var(--text-muted)',
+                                  cursor: 'pointer',
+                                  padding: 4,
+                                }}
+                              >
+                                <Heart size={14} fill={isFav ? 'currentColor' : 'none'} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  trackFoodInteraction(food, 'picked', defaultUnit.label, defaultUnit.grams);
+                                  setItems((prev) => [
+                                    ...prev,
+                                    {
+                                      id: `fav-${Date.now()}-${Math.random()
+                                        .toString(36)
+                                        .slice(2, 6)}`,
+                                      name: food.brand ? `${food.name} (${food.brand})` : food.name,
+                                      unitLabel: defaultUnit.label,
+                                      quantity: 1,
+                                      grams: defaultUnit.grams,
+                                      macros,
+                                      source: food.actionKind === 'barcode' ? 'barcode' : 'catalog',
+                                    },
+                                  ]);
+                                }}
+                                className="btn-surface"
+                                style={{
+                                  padding: '6px 10px',
+                                  fontSize: 12,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                + הוסף
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             {(isSlotBgProcessing || aiLoading) && (
               <div
@@ -4386,6 +4998,7 @@ export function AddMealDrawer({
             label: '100 גרם',
             grams: 100,
           };
+          trackFoodInteraction(product, 'barcode', defaultUnit.label, defaultUnit.grams);
           const macros = calculateMacrosForGrams(
             product.per100g,
             defaultUnit.grams

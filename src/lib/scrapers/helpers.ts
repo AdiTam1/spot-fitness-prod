@@ -3,6 +3,93 @@ import { FoodUnit, MacroTargets } from '@/types/nutrition';
 export const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
+export const SPOT_OFF_USER_AGENT =
+  'SpotFitnessIsrael - Web - v1.0 - https://spot-fitness.app (support@spot-fitness.app)';
+
+export const ALLOWED_SCRAPER_HOSTS: Record<string, readonly string[]> = {
+  foodsdictionary: ['foodsdictionary.co.il'],
+  sugat: ['sugat.com'],
+  victory: ['victoryonline.co.il'],
+  moh_gov: ['data.gov.il'],
+  foodik: ['foodik.co.il'],
+  netogreen: ['netogreen.co.il'],
+  nizat: ['nizat.com'],
+  tevabari: ['tevabari.co.il'],
+  fuder: ['fuder.co.il'],
+  foodgroups: ['foodgroups.co.il'],
+  tara: ['tara.co.il'],
+  berman: ['berman.co.il'],
+  shufersal: ['shufersal.co.il'],
+  openfoodfacts: ['world.openfoodfacts.org', 'il.openfoodfacts.org'],
+};
+
+function isPrivateOrReservedHostname(hostname: string): boolean {
+  const h = hostname.trim().toLowerCase().replace(/^\[|\]$/g, '');
+  if (!h) return true;
+  if (
+    h === 'localhost' ||
+    h.endsWith('.localhost') ||
+    h.endsWith('.local') ||
+    h.endsWith('.internal') ||
+    h.includes(':')
+  ) {
+    return true;
+  }
+  const ipv4 = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) {
+    const a = Number(ipv4[1]);
+    const b = Number(ipv4[2]);
+    if (a === 10 || a === 127 || a === 0) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    return true; // חסימת כל IP מספרי גולמי בנתיבי העשרה
+  }
+  return false;
+}
+
+function hostMatchesDomain(hostname: string, domain: string): boolean {
+  const h = hostname.toLowerCase();
+  const d = domain.toLowerCase();
+  return h === d || h.endsWith(`.${d}`);
+}
+
+/**
+ * מוודא שכתובת מקור להעשרה היא HTTPS תקינה ומשויכת אך ורק לדומיין מאושר ברשימה הסגורה (מונע SSRF).
+ */
+export function assertAllowedScraperUrl(
+  rawUrl: string,
+  expectedSiteId?: string
+): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(String(rawUrl || '').trim());
+  } catch {
+    throw new Error('כתובת מקור אינה תקינה');
+  }
+
+  if (parsed.protocol !== 'https:') {
+    throw new Error('מותרות כתובות HTTPS בלבד');
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error('אסורים פרטי הזדהות בכתובת');
+  }
+  if (isPrivateOrReservedHostname(parsed.hostname)) {
+    throw new Error('כתובת יעד חסומה מטעמי אבטחה');
+  }
+
+  const candidateDomains =
+    expectedSiteId && ALLOWED_SCRAPER_HOSTS[expectedSiteId]
+      ? ALLOWED_SCRAPER_HOSTS[expectedSiteId]
+      : Object.values(ALLOWED_SCRAPER_HOSTS).flat();
+
+  if (!candidateDomains.some((dom) => hostMatchesDomain(parsed.hostname, dom))) {
+    throw new Error('דומיין המקור אינו מאושר להעשרה');
+  }
+
+  return parsed;
+}
+
 export interface FetchResponse {
   ok: boolean;
   status: number;
@@ -177,10 +264,22 @@ export function isValidMacroSet(m: MacroTargets | null | undefined): m is MacroT
   return true;
 }
 
+export function escapeSqlLikePattern(raw: string): string {
+  return String(raw || '').replace(/[\\%_]/g, '\\$&');
+}
+
+export function normalizeFoodSearchQuery(raw: string): string {
+  return decodeHtmlEntities(String(raw || ''))
+    .toLowerCase()
+    .replace(/['"`׳״\-–—,.()/\\_%:;]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function normalizeFoodKey(name: string): string {
   return decodeHtmlEntities(name)
     .toLowerCase()
-    .replace(/['"`׳״\-–—,.()/]/g, ' ')
+    .replace(/['"`׳״\-–—,.()/\\_%:;]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
