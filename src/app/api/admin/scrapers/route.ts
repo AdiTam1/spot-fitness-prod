@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest, sanitizeText, verifyCsrfOrigin } from '@/lib/serverAuth';
 import { isValidMacroSet, roundMacros } from '@/lib/scrapers/helpers';
 import {
+  backfillCachedScraperBrands,
   getScraperState,
   isScraperReportStale,
   persistCatalogItemsToDb,
@@ -11,6 +12,7 @@ import {
   syncScrapersCatalog,
   testSingleScraperSearch,
 } from '@/lib/scrapers/scraperStore';
+import { getServerDbState, updateServerDbState } from '@/lib/serverStore';
 import { backfillFoodCatalogBarcodesAndUnits } from '@/lib/supabase';
 import { FoodCatalogItem, ScraperSourceId } from '@/types/nutrition';
 import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
@@ -51,7 +53,10 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const autoCheck = searchParams.get('autoCheck') === '1';
 
-  let { report, catalog } = await getScraperState();
+  const [{ report: initialReport, catalog: initialCatalog }, serverState] =
+    await Promise.all([getScraperState(), getServerDbState()]);
+  let report = initialReport;
+  let catalog = initialCatalog;
   const stale = isScraperReportStale(report);
   let ranAutoCheck = false;
   let ranInitialSync = false;
@@ -70,6 +75,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     report,
+    showScraperSourcesToAdmin: Boolean(serverState.showScraperSourcesToAdmin),
     isStale: isScraperReportStale(report),
     ranAutoCheck,
     ranInitialSync,
@@ -114,6 +120,7 @@ export const POST = withTelemetryHandler('/api/admin/scrapers', async (request, 
       scraperId?: ScraperSourceId;
       query?: string;
       pages?: number;
+      enabled?: boolean;
       items?: FoodCatalogItem[];
     };
     ctx.setActionName(body.action);
@@ -179,11 +186,26 @@ export const POST = withTelemetryHandler('/api/admin/scrapers', async (request, 
         return NextResponse.json({ ok: true, ...res });
       }
       case 'backfill_catalog_meta': {
-        const stats = await backfillFoodCatalogBarcodesAndUnits();
+        const [stats, updatedCachedBrands] = await Promise.all([
+          backfillFoodCatalogBarcodesAndUnits(),
+          backfillCachedScraperBrands(),
+        ]);
         const { report } = await getScraperState(true);
         return NextResponse.json({
           ...stats,
+          updatedCachedBrands,
           report,
+        });
+      }
+      case 'set_show_scraper_sources': {
+        const enabled = Boolean(body.enabled);
+        await updateServerDbState((prev) => ({
+          ...prev,
+          showScraperSourcesToAdmin: enabled,
+        }));
+        return NextResponse.json({
+          ok: true,
+          showScraperSourcesToAdmin: enabled,
         });
       }
       case 'seed_items': {

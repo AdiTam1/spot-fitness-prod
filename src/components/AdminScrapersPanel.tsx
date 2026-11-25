@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import React, { useState } from 'react';
+import { Switch } from '@mantine/core';
 import {
   Activity,
   AlertTriangle,
@@ -25,6 +26,8 @@ import {
 interface AdminScrapersPanelProps {
   report: ScraperSuiteReport | null;
   loading: boolean;
+  showScraperSourcesToAdmin?: boolean;
+  onShowScraperSourcesChange?: (next: boolean) => void;
   onReportUpdate: (next: ScraperSuiteReport) => void;
   onNotify: (msg: string, isError?: boolean) => void;
 }
@@ -46,6 +49,8 @@ function formatHeDateTime(iso: string | null | undefined): string {
 export function AdminScrapersPanel({
   report,
   loading,
+  showScraperSourcesToAdmin = false,
+  onShowScraperSourcesChange,
   onReportUpdate,
   onNotify,
 }: AdminScrapersPanelProps) {
@@ -164,16 +169,42 @@ export function AdminScrapersPanel({
       const data = await callScraperApi({ action: 'backfill_catalog_meta' });
       if (data.report) onReportUpdate(data.report);
       if (data.ok) {
+        const totalBrandUpdates =
+          Number(data.updatedBrands || 0) + Number(data.updatedCachedBrands || 0);
         onNotify(
-          `נסרקו ${Number(data.scanned || 0).toLocaleString('he-IL')} שורות ב-DB: הושלמו ${Number(
+          `נסרקו ${Number(data.scanned || 0).toLocaleString('he-IL')} שורות ב-DB: עודכנו ${totalBrandUpdates} מותגים, ${Number(
             data.updatedBarcodes || 0
           )} ברקודים ו-${Number(data.updatedUnits || 0)} מידות חבילה/אריזה.`
         );
       } else {
-        onNotify(data.error || 'עדכון הברקודים נכשל', true);
+        onNotify(data.error || 'עדכון המאגר נכשל', true);
       }
     } catch (err) {
-      onNotify(err instanceof Error ? err.message : 'השלמת ברקודים נכשלה', true);
+      onNotify(err instanceof Error ? err.message : 'השלמת נתוני המאגר נכשלה', true);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleToggleScraperVisibility = async (next: boolean) => {
+    setBusyAction('toggle_visibility');
+    onShowScraperSourcesChange?.(next);
+    try {
+      await callScraperApi({
+        action: 'set_show_scraper_sources',
+        enabled: next,
+      });
+      onNotify(
+        next
+          ? 'מקורות הסקרייפר מוצגים כעת בחיפוש המזון עבור חשבון המנהל בלבד.'
+          : 'מקורות הסקרייפר הוסתרו בחיפוש המזון גם אצל המנהל (מוצג מותג המוצר בלבד).'
+      );
+    } catch (err) {
+      onShowScraperSourcesChange?.(!next);
+      onNotify(
+        err instanceof Error ? err.message : 'שמירת הגדרת התצוגה נכשלה',
+        true
+      );
     } finally {
       setBusyAction(null);
     }
@@ -295,6 +326,37 @@ export function AdminScrapersPanel({
               </span>
             </button>
           </div>
+        </div>
+
+        {/* הגדרת מנהל ייעודית: הצגת מקור סקרייפר בחיפוש המזון (למנהל מערכת בלבד) */}
+        <div
+          className="pro-card"
+          style={{
+            padding: '12px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            flexWrap: 'wrap',
+            borderColor: showScraperSourcesToAdmin ? 'var(--accent)' : 'var(--border-subtle)',
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: '1 1 260px' }}>
+            <span style={{ fontSize: 13.5, fontWeight: 800 }}>
+              הצג מקור סקרייפר וסינון לפי רשת/סקרייפר בחיפוש המזון
+            </span>
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              ברירת מחדל: מוסתר לכלל המשתמשים (כולל מנהל). הפעלה מציגה למנהל המערכת בלבד את שם האתר ממנו הגיע המוצר ואת מסנן האתרים.
+            </span>
+          </div>
+          <Switch
+            color="orange"
+            size="md"
+            disabled={busyAction === 'toggle_visibility'}
+            checked={Boolean(showScraperSourcesToAdmin)}
+            onChange={(e) => void handleToggleScraperVisibility(e.currentTarget.checked)}
+            label={showScraperSourcesToAdmin ? 'מוצג למנהל' : 'מוסתר (מותג בלבד)'}
+          />
         </div>
 
         {/* באנר חיווי תקלה או תקינות */}
@@ -529,8 +591,8 @@ export function AdminScrapersPanel({
             )}
             <span>
               {busyAction === 'backfill_meta'
-                ? 'משלים ברקודים ומידות...'
-                : 'השלם ברקודים ומידות אריזה ב-DB'}
+                ? 'משלים מותגים, ברקודים ומידות...'
+                : 'השלם מותגים, ברקודים ומידות ב-DB'}
             </span>
           </button>
 

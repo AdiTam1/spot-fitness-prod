@@ -158,6 +158,7 @@ export default function HomePage() {
   const [appReleasePolicy, setAppReleasePolicy] = useState<AppReleasePolicy>({
     androidBlockedUpToVersionCode: 0,
   });
+  const [adminShowScraperSources, setAdminShowScraperSources] = useState(false);
   const [pendingWebUpdateBuildId, setPendingWebUpdateBuildId] = useState<
     string | null
   >(null);
@@ -242,6 +243,7 @@ export default function HomePage() {
       setCoachDirectory([]);
       setCoachPreviewTraineeId(null);
       setCoachPushSettings(null);
+      setAdminShowScraperSources(false);
       bgJobAbortControllersRef.current.forEach((ctrl) => ctrl.abort());
       bgJobAbortControllersRef.current.clear();
       setLiveBgJobIds([]);
@@ -427,6 +429,9 @@ export default function HomePage() {
         }
         if (remoteData.appReleasePolicy) {
           setAppReleasePolicy(remoteData.appReleasePolicy as AppReleasePolicy);
+        }
+        if (typeof remoteData.adminShowScraperSources === 'boolean') {
+          setAdminShowScraperSources(remoteData.adminShowScraperSources);
         }
         if (remoteData.dbError) {
           setSyncError(remoteData.dbError);
@@ -1205,6 +1210,7 @@ export default function HomePage() {
       setWebPushPromptOpen(false);
       setShowIosA2hsBanner(false);
       setCoachPushSettings(null);
+      setAdminShowScraperSources(false);
       await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {});
       setCurrentUser(null);
       setTrainees([]);
@@ -3241,6 +3247,7 @@ export default function HomePage() {
             onPushPreferencesUpdated={handlePushPreferencesUpdated}
             onUpdateMealShortcuts={handleUpdateMealShortcuts}
             onSyncNativeStepsNow={syncNativeAndroidSteps}
+            showScraperSources={false}
           />
         ) : (currentUser.role === 'admin' || currentUser.role === 'coach') &&
           coachPreviewTraineeId &&
@@ -3287,6 +3294,9 @@ export default function HomePage() {
             onConsumeExternalSectionRequest={handleConsumeExternalSectionRequest}
             onUpdateMealShortcuts={handleUpdateMealShortcuts}
             onSyncNativeStepsNow={syncNativeAndroidSteps}
+            showScraperSources={
+              currentUser.role === 'admin' && adminShowScraperSources
+            }
           />
         ) : (
           <CoachDashboardView
@@ -3354,6 +3364,8 @@ export default function HomePage() {
             onUpdateCoachCredentials={handleUpdateCoachCredentials}
             onDeleteCoach={handleDeleteCoach}
             appReleasePolicy={appReleasePolicy}
+            adminShowScraperSources={adminShowScraperSources}
+            onAdminShowScraperSourcesChange={setAdminShowScraperSources}
             onUpdateAppPolicy={handleUpdateAppPolicy}
             onApkReleasePublished={(policy) => setAppReleasePolicy(policy)}
             onPreviewTraineeMobile={(id) => setCoachPreviewTraineeId(id)}

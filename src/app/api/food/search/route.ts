@@ -6,6 +6,10 @@ import { authenticateActiveSession } from '@/lib/liveAuth';
 import { checkRateLimit, sanitizeText } from '@/lib/serverAuth';
 import { mergeUniqueUnits, normalizeFoodKey, normalizeFoodSearchQuery } from '@/lib/scrapers/helpers';
 import {
+  getDisplayBrandForFood,
+  matchesBrandSelection,
+} from '@/lib/foodBrands';
+import {
   persistCatalogItemsToDb,
   searchLiveScrapers,
   searchSqlAndCachedCatalog,
@@ -63,16 +67,33 @@ function mergeFoodMetadata(winner: FoodCatalogItem, fallback: FoodCatalogItem): 
   };
 }
 
+function collectTopBrandsFromItems(items: FoodCatalogItem[], limit = 18): string[] {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const b = getDisplayBrandForFood(item);
+    if (!b) continue;
+    counts.set(b, (counts.get(b) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'he'))
+    .slice(0, limit)
+    .map(([b]) => b);
+}
+
 function rankAndDedupeMatches(
   candidates: FoodCatalogItem[],
   qNorm: string,
   digitsQ: string,
   limit: number,
-  interleaveBySource: boolean
+  interleaveBySource: boolean,
+  brandFilter?: string
 ): Array<{ item: FoodCatalogItem; score: number }> {
   const scoredByKey = new Map<string, { item: FoodCatalogItem; score: number }>();
 
   for (const item of candidates) {
+    if (brandFilter && brandFilter !== 'all' && !matchesBrandSelection(item, brandFilter)) {
+      continue;
+    }
     const score = scoreMatch(item, qNorm, digitsQ);
     if (score <= 0) continue;
     const key = `${normalizeFoodKey(item.name)}:${Math.round(item.per100g.calories)}`;
@@ -154,6 +175,7 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
   const { searchParams } = new URL(request.url);
   const rawQuery = sanitizeText(searchParams.get('q') || '', 80);
   const sourceFilter = sanitizeText(searchParams.get('source') || 'all', 30);
+  const brandFilter = sanitizeText(searchParams.get('brand') || 'all', 60);
   const requestedMode = searchParams.get('mode') === 'live' || searchParams.get('forceLive') === '1'
     ? 'live'
     : 'db';
@@ -207,19 +229,24 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
             query: '',
             sourceMode,
             sourceFilter: specificSiteFilter,
+            brand: brandFilter !== 'all' ? brandFilter : undefined,
             limit,
           });
 
+    const combinedRaw = [...localPool, ...sqlBrowse.items];
+    const availableBrands = collectTopBrandsFromItems(combinedRaw);
     const combined = rankAndDedupeMatches(
-      [...localPool, ...sqlBrowse.items],
+      combinedRaw,
       '',
       '',
       limit,
-      !specificSiteFilter
+      !specificSiteFilter,
+      brandFilter
     ).map((x) => x.item);
 
     return NextResponse.json({
       items: combined,
+      availableBrands,
       mode: 'db',
       fastPath: true,
       needsLiveFallback: false,
@@ -236,15 +263,21 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
     query: rawQuery.trim(),
     sourceMode,
     sourceFilter: specificSiteFilter,
+    brand: brandFilter !== 'all' ? brandFilter : undefined,
     limit,
   });
 
+  const fastPool = [...localPool, ...sqlRes.items];
   const fastRanked = rankAndDedupeMatches(
-    [...localPool, ...sqlRes.items],
+    fastPool,
     qNorm,
     digitsQ,
     limit,
-    !specificSiteFilter
+    !specificSiteFilter,
+    brandFilter
+  );
+  const availableBrands = collectTopBrandsFromItems(
+    brandFilter !== 'all' ? fastRanked.map((e) => e.item) : fastPool
   );
 
   const retailSitesSeen = new Set<string>();
@@ -278,6 +311,7 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
     const items = fastRanked.map((e) => e.item);
     return NextResponse.json({
       items,
+      availableBrands,
       mode: 'db',
       fastPath: true,
       needsLiveFallback,
@@ -308,17 +342,23 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
     }
   }
 
+  const livePool = [...localPool, ...sqlRes.items, ...liveMatches];
   const finalRanked = rankAndDedupeMatches(
-    [...localPool, ...sqlRes.items, ...liveMatches],
+    livePool,
     qNorm,
     digitsQ,
     limit,
-    !specificSiteFilter
+    !specificSiteFilter,
+    brandFilter
   );
   const deduped = finalRanked.map((e) => e.item);
+  const finalBrands = collectTopBrandsFromItems(
+    brandFilter !== 'all' ? deduped : livePool
+  );
 
   return NextResponse.json({
     items: deduped,
+    availableBrands: finalBrands,
     mode: 'live',
     fastPath: false,
     needsLiveFallback: false,

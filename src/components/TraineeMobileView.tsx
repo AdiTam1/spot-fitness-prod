@@ -229,6 +229,7 @@ interface TraineeMobileViewProps {
     shortcuts: MealCardShortcutId[]
   ) => void | Promise<void>;
   onSyncNativeStepsNow?: () => Promise<void>;
+  showScraperSources?: boolean;
 }
 
 function CompactMiniRing({
@@ -305,6 +306,7 @@ export function TraineeMobileView({
   onPushPreferencesUpdated,
   onUpdateMealShortcuts,
   onSyncNativeStepsNow,
+  showScraperSources = false,
 }: TraineeMobileViewProps) {
   const todayIso = getTodayIso();
   const [selectedDate, setSelectedDate] = useState<string>(todayIso);
@@ -3133,6 +3135,7 @@ export function TraineeMobileView({
         }
         onManageQuickChips={onManageQuickChips}
         actorRole={actorRole}
+        showScraperSources={actorRole === 'admin' && Boolean(showScraperSources)}
         customFoods={customFoods}
         onCustomFoodsUpdated={onCustomFoodsUpdated}
         selectedDate={selectedDate}

@@ -34,6 +34,11 @@ import {
   normalizeFoodSearchQuery,
   roundMacros,
 } from '@/lib/scrapers/helpers';
+import {
+  canonicalizeBrandName,
+  extractRealBrandFromProduct,
+  getBrandSearchTerms,
+} from '@/lib/foodBrands';
 
 const cleanEnv = (v?: string) =>
   (v || '')
@@ -421,6 +426,7 @@ export async function loadStateFromSupabase(): Promise<{
   coachCustomFoods: Record<string, CustomFoodItem[]>;
   coachPushSettings: Record<string, CoachPushSubscriptionSettings>;
   appReleasePolicy?: AppReleasePolicy;
+  showScraperSourcesToAdmin?: boolean;
   userClientVersions?: Record<string, UserClientVersionInfo>;
   appUpdatePushHistory?: AppUpdatePushHistoryEntry[];
   readErrors: string[];
@@ -436,6 +442,7 @@ export async function loadStateFromSupabase(): Promise<{
       coachCustomFoods: {},
       coachPushSettings: {},
       appReleasePolicy: undefined,
+      showScraperSourcesToAdmin: false,
       userClientVersions: {},
       appUpdatePushHistory: [],
       readErrors: [],
@@ -477,6 +484,7 @@ export async function loadStateFromSupabase(): Promise<{
   let coachCustomFoods: Record<string, CustomFoodItem[]> = {};
   let coachPushSettings: Record<string, CoachPushSubscriptionSettings> = {};
   let appReleasePolicy: AppReleasePolicy | undefined;
+  let showScraperSourcesToAdmin = false;
   let userClientVersions: Record<string, UserClientVersionInfo> = {};
   let appUpdatePushHistory: AppUpdatePushHistoryEntry[] = [];
 
@@ -493,6 +501,7 @@ export async function loadStateFromSupabase(): Promise<{
       coachCustomFoods?: Record<string, CustomFoodItem[]>;
       coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
       appReleasePolicy?: AppReleasePolicy;
+      showScraperSourcesToAdmin?: boolean;
       userClientVersions?: Record<string, UserClientVersionInfo>;
       appUpdatePushHistory?: AppUpdatePushHistoryEntry[];
     };
@@ -525,6 +534,9 @@ export async function loadStateFromSupabase(): Promise<{
       typeof metaObj.appReleasePolicy === 'object'
     ) {
       appReleasePolicy = metaObj.appReleasePolicy;
+    }
+    if (typeof metaObj.showScraperSourcesToAdmin === 'boolean') {
+      showScraperSourcesToAdmin = metaObj.showScraperSourcesToAdmin;
     }
     if (
       metaObj.userClientVersions &&
@@ -616,6 +628,7 @@ export async function loadStateFromSupabase(): Promise<{
     coachCustomFoods,
     coachPushSettings,
     appReleasePolicy,
+    showScraperSourcesToAdmin,
     userClientVersions,
     appUpdatePushHistory,
     readErrors,
@@ -887,6 +900,7 @@ export interface SystemMetaShape {
   coachCustomFoods?: Record<string, CustomFoodItem[]>;
   coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
   appReleasePolicy?: AppReleasePolicy;
+  showScraperSourcesToAdmin?: boolean;
   userClientVersions?: Record<string, UserClientVersionInfo>;
   appUpdatePushHistory?: AppUpdatePushHistoryEntry[];
 }
@@ -946,6 +960,10 @@ async function mutateSystemMetaBackup(
         partial.appReleasePolicy !== undefined
           ? partial.appReleasePolicy
           : currentMeta.appReleasePolicy,
+      showScraperSourcesToAdmin:
+        partial.showScraperSourcesToAdmin !== undefined
+          ? partial.showScraperSourcesToAdmin
+          : currentMeta.showScraperSourcesToAdmin,
       userClientVersions:
         partial.userClientVersions !== undefined
           ? partial.userClientVersions
@@ -1101,6 +1119,15 @@ export async function saveAppReleasePolicyToSupabase(
   const res = await saveSystemMetaBackup({ appReleasePolicy });
   if (!res.ok) {
     throw new Error(res.error || 'Supabase app release policy save failed');
+  }
+}
+
+export async function saveShowScraperSourcesToSupabase(
+  showScraperSourcesToAdmin: boolean
+) {
+  const res = await saveSystemMetaBackup({ showScraperSourcesToAdmin });
+  if (!res.ok) {
+    throw new Error(res.error || 'Supabase admin visibility setting save failed');
   }
 }
 
@@ -1681,18 +1708,25 @@ function mapSqlRowToFoodCatalogItem(row: Record<string, unknown>): FoodCatalogIt
   const units =
     rawUnits.length > 0 ? rawUnits : [{ label: '100 גרם', grams: 100 }];
 
+  const sourceSiteId = row.source_site_id
+    ? (String(row.source_site_id) as FoodCatalogSourceId)
+    : undefined;
+  const resolvedBrand = extractRealBrandFromProduct({
+    explicitBrand: row.brand ? String(row.brand) : undefined,
+    productName: name,
+    sourceSiteId,
+  });
+
   return {
     id: String(row.id),
     name,
-    brand: row.brand ? String(row.brand) : undefined,
+    ...(resolvedBrand ? { brand: resolvedBrand } : {}),
     category: String(row.category || 'מאגר סופרים'),
     barcode: row.barcode ? String(row.barcode) : undefined,
     per100g,
     units,
     source: (row.source as FoodCatalogItem['source']) || 'scraper',
-    sourceSiteId: row.source_site_id
-      ? (String(row.source_site_id) as FoodCatalogSourceId)
-      : undefined,
+    sourceSiteId,
     sourceSiteName: row.source_site_name ? String(row.source_site_name) : undefined,
     sourceUrl: row.source_url ? String(row.source_url) : undefined,
     pickCount: typeof row.pick_count === 'number' ? row.pick_count : Number(row.pick_count) || 0,
@@ -1719,7 +1753,12 @@ export async function upsertFoodCatalogItemsToSupabase(
     if (!isValidMacroSet(rounded)) continue;
 
     const cleanName = item.name.replace(/\s+/g, ' ').trim().slice(0, 180);
-    const cleanBrand = (item.brand || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+    const extractedBrand = extractRealBrandFromProduct({
+      explicitBrand: item.brand,
+      productName: cleanName,
+      sourceSiteId: item.sourceSiteId,
+    });
+    const cleanBrand = (extractedBrand || '').replace(/\s+/g, ' ').trim().slice(0, 100);
     const nameNorm = [normalizeFoodKey(cleanName), normalizeFoodKey(cleanBrand)]
       .filter(Boolean)
       .join(' ')
@@ -1813,12 +1852,15 @@ export async function searchFoodCatalogSql(opts: {
   query?: string;
   sourceMode?: 'all' | 'retail' | 'moh_gov' | 'openfoodfacts';
   sourceSiteId?: string;
+  brand?: string;
   limit?: number;
 }): Promise<{ items: FoodCatalogItem[]; tableReady: boolean; usedHybridRpc?: boolean }> {
   if (!supabase) return { items: [], tableReady: false };
   const limit = Math.min(60, Math.max(1, opts.limit || 36));
   const qRaw = (opts.query || '').trim();
   const qNorm = normalizeFoodSearchQuery(qRaw);
+  const brandFilterRaw =
+    opts.brand && opts.brand !== 'all' ? String(opts.brand).trim() : '';
   const specificSite =
     opts.sourceSiteId &&
     opts.sourceSiteId !== 'all' &&
@@ -1840,6 +1882,55 @@ export async function searchFoodCatalogSql(opts: {
       : 'all');
 
   try {
+    if (brandFilterRaw) {
+      let req = supabase
+        .from('food_catalog_items')
+        .select(FOOD_CATALOG_SELECT_COLS);
+      if (specificSite) {
+        req = req.eq('source_site_id', specificSite);
+      } else if (sourceMode === 'retail') {
+        req = req.neq('source_site_id', 'moh_gov');
+      } else if (sourceMode === 'moh_gov') {
+        req = req.eq('source_site_id', 'moh_gov');
+      } else if (sourceMode === 'openfoodfacts') {
+        req = req.eq('source_site_id', 'openfoodfacts');
+      }
+
+      if (/^[0-9]{6,16}$/.test(qRaw)) {
+        req = req.or(`barcode.eq.${qRaw},id.eq.shufersal-P_${qRaw}`);
+      } else if (qNorm) {
+        for (const tok of qNorm.split(/\s+/).filter(Boolean).slice(0, 4)) {
+          const safeTok = escapeSqlLikePattern(tok);
+          req = tok.length <= 2
+            ? req.ilike('name_norm', `${safeTok}%`)
+            : req.ilike('name_norm', `%${safeTok}%`);
+        }
+      }
+
+      const brandTerms = getBrandSearchTerms(brandFilterRaw).slice(0, 4);
+      const orClauses: string[] = [];
+      for (const term of brandTerms) {
+        const cleanTerm = escapeSqlLikePattern(term.replace(/[,()]/g, ' ').trim());
+        const normTerm = escapeSqlLikePattern(normalizeFoodKey(term));
+        if (cleanTerm) orClauses.push(`brand.ilike.%${cleanTerm}%`);
+        if (normTerm && normTerm.length >= 2) orClauses.push(`name_norm.ilike.%${normTerm}%`);
+      }
+      if (orClauses.length > 0) {
+        req = req.or(orClauses.join(','));
+      }
+
+      const { data, error } = await req
+        .order('updated_at', { ascending: false })
+        .limit(limit);
+      if (error) {
+        return { items: [], tableReady: !isMissingFoodTableError(error), usedHybridRpc: false };
+      }
+      const items = (data || [])
+        .map((r) => mapSqlRowToFoodCatalogItem(r as Record<string, unknown>))
+        .filter((x): x is FoodCatalogItem => Boolean(x));
+      return { items, tableReady: true, usedHybridRpc: false };
+    }
+
     const { data: rpcRows, error: rpcErr } = await supabase.rpc(
       'search_food_catalog_hybrid',
       {
@@ -2154,17 +2245,18 @@ export async function findFoodByBarcodeSql(
 }
 
 /**
- * סורק שורות קיימות ב-food_catalog_items בבאצ'ים ומשלים ברקודים (למשל משופרסל P_729...) ומידות אריזה מתוך שם המוצר.
+ * סורק שורות קיימות ב-food_catalog_items בבאצ'ים ומשלים ברקודים, מידות אריזה ושמות מותגים אמיתיים מתוך שם/מקור המוצר.
  */
 export async function backfillFoodCatalogBarcodesAndUnits(): Promise<{
   ok: boolean;
   scanned: number;
   updatedBarcodes: number;
   updatedUnits: number;
+  updatedBrands: number;
   error?: string;
 }> {
   if (!supabase) {
-    return { ok: false, scanned: 0, updatedBarcodes: 0, updatedUnits: 0, error: 'Supabase לא מוגדר' };
+    return { ok: false, scanned: 0, updatedBarcodes: 0, updatedUnits: 0, updatedBrands: 0, error: 'Supabase לא מוגדר' };
   }
 
   let offset = 0;
@@ -2172,6 +2264,7 @@ export async function backfillFoodCatalogBarcodesAndUnits(): Promise<{
   let scanned = 0;
   let updatedBarcodes = 0;
   let updatedUnits = 0;
+  let updatedBrands = 0;
 
   try {
     while (offset < 30000) {
@@ -2187,6 +2280,7 @@ export async function backfillFoodCatalogBarcodesAndUnits(): Promise<{
           scanned,
           updatedBarcodes,
           updatedUnits,
+          updatedBrands,
           error: formatSupabaseError('food_catalog_items', error),
         };
       }
@@ -2197,6 +2291,7 @@ export async function backfillFoodCatalogBarcodesAndUnits(): Promise<{
 
       const toUpsert: FoodCatalogItem[] = [];
       for (const row of rows) {
+        const rawStoredBrand = row.brand ? String(row.brand).trim() : '';
         const mapped = mapSqlRowToFoodCatalogItem(row);
         if (!mapped) continue;
 
@@ -2235,11 +2330,21 @@ export async function backfillFoodCatalogBarcodesAndUnits(): Promise<{
           }
         }
 
-        if (changedBarcode || changedUnits) {
+        const nextBrand =
+          extractRealBrandFromProduct({
+            explicitBrand: rawStoredBrand || undefined,
+            productName: mapped.name,
+            sourceSiteId: mapped.sourceSiteId,
+          }) || '';
+        const changedBrand = rawStoredBrand !== nextBrand;
+
+        if (changedBarcode || changedUnits || changedBrand) {
           if (changedBarcode) updatedBarcodes += 1;
           if (changedUnits) updatedUnits += 1;
+          if (changedBrand) updatedBrands += 1;
           toUpsert.push({
             ...mapped,
+            brand: nextBrand || undefined,
             ...(nextBarcode ? { barcode: nextBarcode } : {}),
             units: nextUnits,
           });
@@ -2254,13 +2359,14 @@ export async function backfillFoodCatalogBarcodesAndUnits(): Promise<{
       offset += pageSize;
     }
 
-    return { ok: true, scanned, updatedBarcodes, updatedUnits };
+    return { ok: true, scanned, updatedBarcodes, updatedUnits, updatedBrands };
   } catch (err) {
     return {
       ok: false,
       scanned,
       updatedBarcodes,
       updatedUnits,
+      updatedBrands,
       error: err instanceof Error ? err.message : 'שגיאה בעדכון DB',
     };
   }

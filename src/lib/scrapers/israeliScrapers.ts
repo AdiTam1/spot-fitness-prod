@@ -25,6 +25,7 @@ import {
   SPOT_OFF_USER_AGENT,
   stripHtmlTags,
 } from './helpers';
+import { extractRealBrandFromProduct } from '@/lib/foodBrands';
 
 export interface IsraeliScraperMeta {
   id: ScraperSourceId;
@@ -78,10 +79,16 @@ function makeCatalogItem(params: {
       ? [{ label: `חבילה / יחידה (${pkgFromName} גרם)`, grams: pkgFromName }]
       : [];
 
+  const resolvedBrand = extractRealBrandFromProduct({
+    explicitBrand: params.brand ? decodeHtmlEntities(params.brand).trim() : undefined,
+    productName: cleanName,
+    sourceSiteId: params.sourceSiteId,
+  });
+
   return {
     id: `${params.sourceSiteId}-${params.idSuffix}`,
     name: cleanName,
-    brand: params.brand ? decodeHtmlEntities(params.brand).trim() : params.sourceSiteName,
+    ...(resolvedBrand ? { brand: resolvedBrand } : {}),
     category: params.category || 'מאגר ישראלי',
     ...(params.barcode ? { barcode: params.barcode } : {}),
     per100g: rounded,
@@ -214,7 +221,7 @@ async function scrapeFoodsDictionaryProduct(
   const item = makeCatalogItem({
     idSuffix: slugSlug || String(Date.now()),
     name: rawName,
-    brand: brandMatch ? stripHtmlTags(brandMatch[1]) : 'FoodsDictionary',
+    brand: brandMatch ? stripHtmlTags(brandMatch[1]) : undefined,
     category: 'מותגי סופר ישראליים',
     barcode,
     per100g: { calories, protein, carbs, fat },
@@ -603,10 +610,15 @@ async function scrapeVictoryProduct(productPath: string): Promise<{
       if (isLiquid) smartUnits.push({ label: '100 מ״ל', grams: 100 });
       const units = mergeUniqueUnits(pkgUnits, smartUnits);
 
+      const jsonLdBrandRaw =
+        res.text.match(/"@type"\s*:\s*"Brand"\s*,\s*"name"\s*:\s*"([^"]+)"/i)?.[1] ||
+        unescaped.match(/"brand"\s*:\s*\{\s*"@type"\s*:\s*"Brand"\s*,\s*"name"\s*:\s*"([^"]+)"/i)?.[1] ||
+        localCtx.match(/"brand(?:Name)?"\s*:\s*"([^"]+)"/i)?.[1];
+
       parsedItem = makeCatalogItem({
         idSuffix: normalizeFoodKey(rawName).slice(0, 44),
         name: rawName,
-        brand: 'ויקטורי אונליין',
+        brand: jsonLdBrandRaw ? stripHtmlTags(jsonLdBrandRaw) : undefined,
         category: 'סופרמרקט ויקטורי',
         barcode,
         per100g: { calories, protein, carbs, fat },
@@ -749,7 +761,6 @@ async function queryMohGov(params: { q?: string; limit?: number; offset?: number
         return makeCatalogItem({
           idSuffix: code,
           name,
-          brand: 'משרד הבריאות',
           category: 'מאגר הצמרת הלאומי',
           per100g: {
             calories: Number(rec.food_energy) || 0,
@@ -864,7 +875,6 @@ async function queryFoodik(query: string): Promise<{
         return makeCatalogItem({
           idSuffix: String(entry.id || entry.slug || Math.random()),
           name: String(entry.name || ''),
-          brand: 'Foodik',
           category: entry.categorySlug || 'מאגר Foodik',
           per100g: {
             calories: Number(entry.nutrients?.energy) || 0,
@@ -1004,7 +1014,6 @@ async function queryNetoGreenFoodMacros(
     return makeCatalogItem({
       idSuffix: String(foodId),
       name,
-      brand: 'נטוגרין',
       category: 'מחשבון תזונה ישראלי',
       per100g: { calories, protein, carbs, fat },
       sourceSiteId: 'netogreen',
@@ -1161,7 +1170,6 @@ async function scrapeNizatProduct(
   const item = makeCatalogItem({
     idSuffix: String(prodId),
     name,
-    brand: 'ניצת הדובדבן',
     category: 'טבע ואורגני — ניצת הדובדבן',
     barcode,
     per100g: {
@@ -1410,7 +1418,7 @@ async function scrapeTevaBariProduct(
   const item = makeCatalogItem({
     idSuffix: slug.slice(0, 48),
     name,
-    brand: brandMatch || 'טבע בריא',
+    brand: brandMatch || undefined,
     category: 'חנות טבע ותזונה — טבע בריא',
     barcode,
     per100g: { calories, protein, carbs, fat },
@@ -1659,7 +1667,6 @@ function parseFuderApiPost(post: FuderWpPost): FoodCatalogItem | null {
   return makeCatalogItem({
     idSuffix: normalizeFoodKey(rawSlug || titleName).slice(0, 48),
     name: titleName,
-    brand: 'Fuder סופרים',
     category: 'מותגי סופרים — Fuder',
     barcode,
     per100g: {
@@ -1742,7 +1749,6 @@ async function scrapeFuderProductHtml(
   const item = makeCatalogItem({
     idSuffix: normalizeFoodKey(slug || titleName).slice(0, 48),
     name: titleName,
-    brand: 'Fuder סופרים',
     category: 'מותגי סופרים — Fuder',
     barcode,
     per100g: {
@@ -1997,7 +2003,6 @@ async function scrapeFoodGroupsProduct(
   const item = makeCatalogItem({
     idSuffix: normalizeFoodKey(slug || name).slice(0, 46),
     name,
-    brand: 'FoodGroups מוצרי מדף',
     category: 'מוצרי מדף — FoodGroups',
     barcode,
     per100g: { calories, protein, carbs, fat },
@@ -2375,10 +2380,15 @@ export async function fetchOpenFoodFactsIsraelItems(
           continue;
         }
 
-        const brand = String(p.brands || '').split(',')[0]?.trim() || 'סופרים בישראל';
+        const rawBrand = String(p.brands || '').split(',')[0]?.trim();
+        const resolvedOffBrand = extractRealBrandFromProduct({
+          explicitBrand: rawBrand,
+          productName: rawName,
+          sourceSiteId: 'openfoodfacts',
+        });
         const displayName =
-          brand && brand !== 'סופרים בישראל' && !rawName.includes(brand)
-            ? `${rawName} — ${brand}`
+          resolvedOffBrand && !rawName.includes(resolvedOffBrand)
+            ? `${rawName} — ${resolvedOffBrand}`
             : rawName;
         const extraUnits: FoodUnit[] = [];
         const srvG = Number(p.serving_quantity);
@@ -2400,7 +2410,7 @@ export async function fetchOpenFoodFactsIsraelItems(
         const item = makeCatalogItem({
           idSuffix: code,
           name: displayName,
-          brand,
+          brand: resolvedOffBrand,
           category: p.stores ? `ברקוד וסופרים (${String(p.stores).slice(0, 36)})` : 'ברקוד וסופרים — ישראל',
           barcode: code,
           per100g: { calories: calRaw, protein: proRaw, carbs: carbRaw, fat: fatRaw },
@@ -2467,6 +2477,8 @@ async function scrapeShufersalProductPage(url: string, codeHint?: string): Promi
     extractBarcodeFromText(res.text) ||
     (codeHint ? codeHint.replace(/[^0-9]/g, '') : undefined);
   const smallSizeText = res.text.match(/<div class="smallText[^"]*">([\s\S]*?)<\/div>/i)?.[1] || '';
+  const subTitleHtml = res.text.match(/<h2[^>]*class=["'][^"']*subTitle[^"']*["'][^>]*>([\s\S]*?)<\/h2>/i)?.[1] || '';
+  const subBrandPart = stripHtmlTags(subTitleHtml).split('|').slice(1).pop()?.trim();
   const pkgGrams =
     extractPackageGramsFromText(smallSizeText) ||
     extractPackageGramsFromText(name);
@@ -2481,7 +2493,7 @@ async function scrapeShufersalProductPage(url: string, codeHint?: string): Promi
   return makeCatalogItem({
     idSuffix: codeHint ? `P_${codeHint}` : normalizeFoodKey(name).slice(0, 40),
     name,
-    brand: 'שופרסל אונליין',
+    brand: subBrandPart || undefined,
     category: 'סופרמרקט שופרסל',
     barcode,
     per100g: { calories, protein, carbs, fat },
@@ -2592,9 +2604,15 @@ export async function enrichCatalogItemFromSourceUrl(item: FoodCatalogItem): Pro
     if (!fresh) return item;
     const mergedUnits = mergeUniqueUnits(fresh.units, item.units);
     const barcode = fresh.barcode || item.barcode;
+    const resolvedBrand = extractRealBrandFromProduct({
+      explicitBrand: fresh.brand || item.brand,
+      productName: item.name,
+      sourceSiteId: item.sourceSiteId,
+    });
     return {
       ...item,
       ...(barcode ? { barcode } : {}),
+      ...(resolvedBrand ? { brand: resolvedBrand } : {}),
       units: mergedUnits,
       updatedAt: new Date().toISOString(),
     };

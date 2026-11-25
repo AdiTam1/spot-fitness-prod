@@ -79,6 +79,7 @@ import {
 } from '@/data/israeliFoodCatalog';
 import {
   buildSearchCacheKey,
+  canDisplayFoodSourceName,
   getCachedFoodSearch,
   getInstantLocalFoods,
   loadLocalFoodHistory,
@@ -92,6 +93,11 @@ import {
   setCachedFoodSearch,
   upsertLocalHistoryList,
 } from '@/lib/foodSearchClient';
+import {
+  FEATURED_ISRAELI_BRANDS,
+  getDisplayBrandForFood,
+  matchesBrandSelection,
+} from '@/lib/foodBrands';
 import { compressMealImage } from '@/utils/imageCompression';
 import {
   compressDataUrlToThumbnail,
@@ -195,6 +201,7 @@ interface AddMealDrawerProps {
     chipId?: string;
   }) => Promise<{ error?: string }>;
   actorRole?: UserRole;
+  showScraperSources?: boolean;
   customFoods?: CustomFoodItem[];
   onCustomFoodsUpdated?: (res: CustomFoodsMutationResult) => void;
   selectedDate?: string;
@@ -242,6 +249,7 @@ export function AddMealDrawer({
   onManageToolsAndUnits,
   onManageQuickChips,
   actorRole = 'trainee',
+  showScraperSources = false,
   customFoods = [],
   onCustomFoodsUpdated,
   selectedDate,
@@ -314,9 +322,12 @@ export function AddMealDrawer({
     fallbackReason?: string;
   } | null>(null);
 
+  const canShowScraperSources = actorRole === 'admin' && Boolean(showScraperSources);
   const [searchQuery, setSearchQuery] = useState('');
   const [sourceGroup, setSourceGroup] = useState<SemanticSourceGroup>('all');
   const [retailSubSite, setRetailSubSite] = useState<string>('all');
+  const [selectedBrand, setSelectedBrand] = useState<string>('all');
+  const [remoteAvailableBrands, setRemoteAvailableBrands] = useState<string[]>([]);
   const [personalHistory, setPersonalHistory] = useState<UserFoodHistoryItem[]>([]);
   const [remoteResults, setRemoteResults] = useState<FoodCatalogItem[]>([]);
   const [hasRemoteSynced, setHasRemoteSynced] = useState(false);
@@ -506,6 +517,8 @@ export function AddMealDrawer({
         setSearchQuery('');
         setSourceGroup('all');
         setRetailSubSite('all');
+        setSelectedBrand('all');
+        setRemoteAvailableBrands([]);
         setRemoteResults([]);
         setHasRemoteSynced(false);
         setSearchError(null);
@@ -709,53 +722,97 @@ export function AddMealDrawer({
     [customFoods]
   );
 
+  const effectiveRetailSubSite =
+    canShowScraperSources && sourceGroup === 'retail' ? retailSubSite : 'all';
+
   const instantLocalResults = useMemo(
     () =>
       getInstantLocalFoods({
         query: searchQuery,
         sourceGroup,
-        retailSubSite,
+        retailSubSite: effectiveRetailSubSite,
+        selectedBrand,
         personalHistory,
         favoriteIds,
         customFoods: customCatalogItems,
         limit: 36,
       }),
-    [searchQuery, sourceGroup, retailSubSite, personalHistory, favoriteIds, customCatalogItems]
+    [searchQuery, sourceGroup, effectiveRetailSubSite, selectedBrand, personalHistory, favoriteIds, customCatalogItems]
   );
 
   const searchResults = useMemo(() => {
+    let base: Array<FoodCatalogItem & Partial<UserFoodHistoryItem>>;
     if (sourceGroup === 'favorites_recent' || sourceGroup === 'custom_only') {
-      return instantLocalResults;
+      base = instantLocalResults;
+    } else if (!hasRemoteSynced) {
+      base = instantLocalResults;
+    } else {
+      base = mergeLocalAndRemoteFoodResults(
+        instantLocalResults,
+        remoteResults,
+        searchQuery,
+        personalHistory,
+        favoriteIds,
+        36
+      );
     }
-    if (!hasRemoteSynced) {
-      return instantLocalResults;
+
+    if (selectedBrand && selectedBrand !== 'all') {
+      return base.filter((it) => matchesBrandSelection(it, selectedBrand));
     }
-    return mergeLocalAndRemoteFoodResults(
-      instantLocalResults,
-      remoteResults,
-      searchQuery,
-      personalHistory,
-      favoriteIds,
-      36
-    );
+    return base;
   }, [
     sourceGroup,
     hasRemoteSynced,
     instantLocalResults,
     remoteResults,
     searchQuery,
+    selectedBrand,
     personalHistory,
     favoriteIds,
   ]);
 
+  const brandFilterOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    const addBrand = (raw?: string, weight = 1) => {
+      if (!raw) return;
+      counts.set(raw, (counts.get(raw) || 0) + weight);
+    };
+    for (const item of [...instantLocalResults, ...remoteResults]) {
+      const b = getDisplayBrandForFood(item);
+      if (b) addBrand(b, 2);
+    }
+    for (const b of remoteAvailableBrands) {
+      addBrand(b, 1);
+    }
+    const dynamicSorted = Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'he'))
+      .map(([b]) => b);
+
+    const out: string[] = [];
+    const seen = new Set<string>();
+    if (selectedBrand && selectedBrand !== 'all') {
+      seen.add(selectedBrand);
+      out.push(selectedBrand);
+    }
+    for (const b of [...dynamicSorted, ...FEATURED_ISRAELI_BRANDS]) {
+      if (!seen.has(b)) {
+        seen.add(b);
+        out.push(b);
+      }
+      if (out.length >= 28) break;
+    }
+    return out;
+  }, [instantLocalResults, remoteResults, remoteAvailableBrands, selectedBrand]);
+
   const effectiveSourceParam =
-    sourceGroup === 'retail' && retailSubSite && retailSubSite !== 'all'
+    canShowScraperSources && sourceGroup === 'retail' && retailSubSite && retailSubSite !== 'all'
       ? retailSubSite
       : sourceGroup;
 
   useEffect(() => {
     setActiveResultIndex(0);
-  }, [searchQuery, sourceGroup, retailSubSite]);
+  }, [searchQuery, sourceGroup, effectiveRetailSubSite, selectedBrand]);
 
   useEffect(() => {
     if (!opened) return;
@@ -772,13 +829,16 @@ export function AddMealDrawer({
     const qTrim = searchQuery.trim();
     const cleanLen = normalizeClientFoodText(qTrim).replace(/\s+/g, '').length;
     const isBarcodeDigits = /^[0-9]{6,16}$/.test(qTrim);
+    const hasActiveBrand = Boolean(selectedBrand && selectedBrand !== 'all');
     const shouldQueryRemote =
       isBarcodeDigits ||
       cleanLen >= 2 ||
+      hasActiveBrand ||
       (activeTab === 'catalog' && qTrim.length === 0);
 
     if (!shouldQueryRemote) {
       setRemoteResults([]);
+      setRemoteAvailableBrands([]);
       setHasRemoteSynced(false);
       setSearchLoading(false);
       setShowSkeletons(false);
@@ -788,10 +848,18 @@ export function AddMealDrawer({
       return;
     }
 
-    const cacheKey = buildSearchCacheKey(qTrim, sourceGroup, retailSubSite);
+    const cacheKey = buildSearchCacheKey(
+      qTrim,
+      sourceGroup,
+      effectiveRetailSubSite,
+      selectedBrand
+    );
     const cached = getCachedFoodSearch(cacheKey);
     if (cached) {
       setRemoteResults(cached.items);
+      if (Array.isArray(cached.availableBrands)) {
+        setRemoteAvailableBrands(cached.availableBrands);
+      }
       setHasRemoteSynced(true);
       setSearchLoading(false);
       setShowSkeletons(false);
@@ -832,6 +900,9 @@ export function AddMealDrawer({
         if (effectiveSourceParam && effectiveSourceParam !== 'all') {
           qs.set('source', effectiveSourceParam);
         }
+        if (hasActiveBrand) {
+          qs.set('brand', selectedBrand);
+        }
         const res = await fetch(`/api/food/search?${qs.toString()}`, {
           signal: controller.signal,
         });
@@ -843,11 +914,13 @@ export function AddMealDrawer({
         if (controller.signal.aborted) return;
 
         const dbItems = (Array.isArray(data.items) ? data.items : []) as FoodCatalogItem[];
+        const dbBrands = (Array.isArray(data.availableBrands) ? data.availableBrands : []) as string[];
         const needsLive = Boolean(data.needsLiveFallback) && cleanLen >= 3;
         const mCount = data.mohCount || 0;
         const sCount = data.scraperCount || data.syncedCount || 0;
 
         setRemoteResults(dbItems);
+        if (dbBrands.length > 0) setRemoteAvailableBrands(dbBrands);
         setHasRemoteSynced(true);
         setShowSkeletons(false);
         setSearchLoading(false);
@@ -857,6 +930,7 @@ export function AddMealDrawer({
 
         setCachedFoodSearch(cacheKey, {
           items: dbItems,
+          availableBrands: dbBrands,
           needsLiveFallback: needsLive,
           liveDone: false,
           mohCount: mCount,
@@ -864,7 +938,7 @@ export function AddMealDrawer({
           totalAvailable: data.totalAvailable,
         });
 
-        // שלב 2 אוטומטי לא-חוסם: מרחיב ברקע מול סופרים חיים רק כשחסרות תוצאות ב-DB
+        // שלב 2 אוטומטי לא-חוסם: מרחיב ברקע מול מאגרי מוצרים חיים רק כשחסרות תוצאות ב-DB
         if (needsLive) {
           setLiveExpanding(true);
           try {
@@ -876,19 +950,27 @@ export function AddMealDrawer({
             if (effectiveSourceParam && effectiveSourceParam !== 'all') {
               liveQs.set('source', effectiveSourceParam);
             }
+            if (hasActiveBrand) {
+              liveQs.set('brand', selectedBrand);
+            }
             const liveRes = await fetch(`/api/food/search?${liveQs.toString()}`, {
               signal: controller.signal,
             });
             if (liveRes.ok && !controller.signal.aborted) {
               const liveData = await liveRes.json();
               const liveItems = (Array.isArray(liveData.items) ? liveData.items : []) as FoodCatalogItem[];
+              const liveBrands = (Array.isArray(liveData.availableBrands)
+                ? liveData.availableBrands
+                : dbBrands) as string[];
               const nextM = liveData.mohCount ?? mCount;
               const nextS = liveData.scraperCount ?? sCount;
               setRemoteResults(liveItems);
+              if (liveBrands.length > 0) setRemoteAvailableBrands(liveBrands);
               setMohCount(nextM);
               setScraperCount(nextS);
               setCachedFoodSearch(cacheKey, {
                 items: liveItems,
+                availableBrands: liveBrands,
                 needsLiveFallback: false,
                 liveDone: true,
                 mohCount: nextM,
@@ -926,7 +1008,7 @@ export function AddMealDrawer({
       controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, sourceGroup, retailSubSite, activeTab, opened, searchRetryNonce]);
+  }, [searchQuery, sourceGroup, effectiveRetailSubSite, selectedBrand, activeTab, opened, searchRetryNonce]);
 
   const runManualLiveExpand = async () => {
     const qTrim = searchQuery.trim();
@@ -942,15 +1024,26 @@ export function AddMealDrawer({
       if (effectiveSourceParam && effectiveSourceParam !== 'all') {
         qs.set('source', effectiveSourceParam);
       }
+      if (selectedBrand && selectedBrand !== 'all') {
+        qs.set('brand', selectedBrand);
+      }
       const res = await fetch(`/api/food/search?${qs.toString()}`);
       if (res.ok) {
         const data = await res.json();
         const items = (Array.isArray(data.items) ? data.items : []) as FoodCatalogItem[];
+        const brands = (Array.isArray(data.availableBrands) ? data.availableBrands : []) as string[];
         setRemoteResults(items);
+        if (brands.length > 0) setRemoteAvailableBrands(brands);
         setHasRemoteSynced(true);
-        const cacheKey = buildSearchCacheKey(qTrim, sourceGroup, retailSubSite);
+        const cacheKey = buildSearchCacheKey(
+          qTrim,
+          sourceGroup,
+          effectiveRetailSubSite,
+          selectedBrand
+        );
         setCachedFoodSearch(cacheKey, {
           items,
+          availableBrands: brands,
           needsLiveFallback: false,
           liveDone: true,
           mohCount: data.mohCount || mohCount,
@@ -1171,11 +1264,13 @@ export function AddMealDrawer({
     );
 
     const normalizedItemTime = normalizeHhMmTime(customItemTime);
+    const cleanSelectedBrand = getDisplayBrandForFood(selectedFood);
     const newItem: LoggedFoodItem = {
       id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      name: selectedFood.brand
-        ? `${selectedFood.name} (${selectedFood.brand})`
-        : selectedFood.name,
+      name:
+        cleanSelectedBrand && !selectedFood.name.includes(cleanSelectedBrand)
+          ? `${selectedFood.name} (${cleanSelectedBrand})`
+          : selectedFood.name,
       unitLabel:
         selectedUnitLabel === 'custom-grams'
           ? `${totalGrams} גרם`
@@ -3634,7 +3729,7 @@ export function AddMealDrawer({
                   </button>
                 </div>
 
-                {/* 4 מסננים סמנטיים ברורים במקום 16 שמות ספקים */}
+                {/* 4 מסננים סמנטיים + סינון לפי מותג + סינון סקרייפרים למנהל מסומן בלבד */}
                 <div
                   className="h-scroll"
                   style={{
@@ -3653,6 +3748,9 @@ export function AddMealDrawer({
                         onClick={() => {
                           setSourceGroup(tab.id);
                           if (tab.id !== 'retail') setRetailSubSite('all');
+                          if (tab.id === 'moh_gov' || tab.id === 'custom_only') {
+                            setSelectedBrand('all');
+                          }
                         }}
                         style={{
                           flexShrink: 0,
@@ -3676,9 +3774,40 @@ export function AddMealDrawer({
                     );
                   })}
 
-                  {sourceGroup === 'retail' && (
+                  {sourceGroup !== 'moh_gov' && sourceGroup !== 'custom_only' && (
                     <select
-                      aria-label="סינון לפי רשת ספציפית"
+                      aria-label="סינון לפי מותג"
+                      value={selectedBrand}
+                      onChange={(e) => setSelectedBrand(e.target.value)}
+                      style={{
+                        flexShrink: 0,
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        padding: '5px 10px',
+                        borderRadius: 999,
+                        border:
+                          selectedBrand !== 'all'
+                            ? '1px solid var(--sel-border)'
+                            : '1px solid var(--border-subtle)',
+                        background:
+                          selectedBrand !== 'all' ? 'var(--sel-bg)' : 'var(--bg-surface-2)',
+                        color: selectedBrand !== 'all' ? 'var(--sel-text)' : 'var(--text)',
+                        fontFamily: 'inherit',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <option value="all">כל המותגים</option>
+                      {brandFilterOptions.map((brandOpt) => (
+                        <option key={brandOpt} value={brandOpt}>
+                          מותג: {brandOpt}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {canShowScraperSources && sourceGroup === 'retail' && (
+                    <select
+                      aria-label="סינון לפי מקור סקרייפר (מנהל)"
                       value={retailSubSite}
                       onChange={(e) => setRetailSubSite(e.target.value)}
                       style={{
@@ -3687,7 +3816,7 @@ export function AddMealDrawer({
                         fontWeight: 700,
                         padding: '5px 10px',
                         borderRadius: 999,
-                        border: '1px solid var(--border-subtle)',
+                        border: '1px solid var(--accent-orange-bright)',
                         background: 'var(--bg-surface-2)',
                         color: 'var(--text)',
                         fontFamily: 'inherit',
@@ -3702,6 +3831,74 @@ export function AddMealDrawer({
                     </select>
                   )}
                 </div>
+
+                {/* צ׳יפים מהירים למותגים מובילים בלחיצה אחת */}
+                {sourceGroup !== 'moh_gov' &&
+                  sourceGroup !== 'custom_only' &&
+                  (sourceGroup === 'retail' || selectedBrand !== 'all') &&
+                  brandFilterOptions.length > 0 && (
+                    <div
+                      className="h-scroll"
+                      style={{
+                        display: 'flex',
+                        gap: 6,
+                        alignItems: 'center',
+                        paddingBottom: 2,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBrand('all')}
+                        style={{
+                          flexShrink: 0,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          padding: '3px 10px',
+                          borderRadius: 999,
+                          cursor: 'pointer',
+                          border:
+                            selectedBrand === 'all'
+                              ? '1px solid var(--sel-border)'
+                              : '1px solid var(--border-subtle)',
+                          background:
+                            selectedBrand === 'all' ? 'var(--sel-bg)' : 'var(--bg-surface-2)',
+                          color:
+                            selectedBrand === 'all' ? 'var(--sel-text)' : 'var(--text-2)',
+                        }}
+                      >
+                        כל המותגים
+                      </button>
+                      {brandFilterOptions.slice(0, 12).map((brandName) => {
+                        const isBrandActive = selectedBrand === brandName;
+                        return (
+                          <button
+                            key={brandName}
+                            type="button"
+                            onClick={() =>
+                              setSelectedBrand(isBrandActive ? 'all' : brandName)
+                            }
+                            style={{
+                              flexShrink: 0,
+                              fontSize: 12,
+                              fontWeight: 700,
+                              padding: '3px 10px',
+                              borderRadius: 999,
+                              cursor: 'pointer',
+                              border: isBrandActive
+                                ? '1px solid var(--sel-border)'
+                                : '1px solid var(--border-subtle)',
+                              background: isBrandActive
+                                ? 'var(--sel-bg)'
+                                : 'var(--bg-surface-2)',
+                              color: isBrandActive ? 'var(--sel-text)' : 'var(--text-2)',
+                            }}
+                          >
+                            {brandName}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
 
                 <div
                   style={{
@@ -3719,7 +3916,9 @@ export function AddMealDrawer({
                       <Loader2 size={13} className="spot-spinner" />
                     )}
                     {liveExpanding
-                      ? 'מרחיב תוצאות אוטומטית באתרי הסופרים אונליין...'
+                      ? canShowScraperSources
+                        ? 'מרחיב תוצאות אוטומטית באתרי הסופרים אונליין...'
+                        : 'מרחיב חיפוש מוצרים ומותגים אונליין...'
                       : searchLoading
                       ? 'מחפש במהירות במאגר ה-DB...'
                       : `${searchResults.length} תוצאות${totalAvailable > searchResults.length ? ` (מתוך ${totalAvailable.toLocaleString('he-IL')}+)` : ''}`}
@@ -3893,7 +4092,9 @@ export function AddMealDrawer({
                           cursor: 'pointer',
                         }}
                       >
-                        נסה לחפש בזמן אמת באתרי הסופרים
+                        {canShowScraperSources
+                          ? 'נסה לחפש בזמן אמת באתרי הסופרים'
+                          : 'נסה לחפש מוצרים ומותגים נוספים אונליין'}
                       </button>
                     )}
                   </div>
@@ -3914,6 +4115,13 @@ export function AddMealDrawer({
                         const isKeyboardActive = idx === activeResultIndex && trimmedQuery.length > 0;
                         const isFav = favoriteIds.includes(food.id);
                         const histInfo = food as FoodCatalogItem & Partial<UserFoodHistoryItem>;
+                        const displayBrand = getDisplayBrandForFood(food);
+                        const visibleSourceName = canDisplayFoodSourceName(
+                          food,
+                          canShowScraperSources
+                        )
+                          ? food.sourceSiteName
+                          : undefined;
                         const matchTok = trimmedQuery.split(/\s+/).find((w) => w.length >= 2);
                         const highlightParts =
                           matchTok && food.name
@@ -4015,10 +4223,10 @@ export function AddMealDrawer({
                               >
                                 {food.per100g.calories} קק״ל · ח:{food.per100g.protein} פ:{food.per100g.carbs} ש:{food.per100g.fat}
                               </div>
-                              {(food.sourceSiteName || food.barcode || histInfo.useCount) && (
+                              {(displayBrand || visibleSourceName || food.barcode || histInfo.useCount) && (
                                 <div
                                   style={{
-                                    marginTop: 2,
+                                    marginTop: 3,
                                     fontSize: 12,
                                     display: 'flex',
                                     alignItems: 'center',
@@ -4029,11 +4237,25 @@ export function AddMealDrawer({
                                         ? '#10b981'
                                         : histInfo.useCount
                                         ? 'var(--ok-text)'
-                                        : food.sourceSiteId
+                                        : displayBrand || visibleSourceName
                                         ? 'var(--accent-orange-bright)'
                                         : 'var(--text-muted)',
                                   }}
                                 >
+                                  {displayBrand && (
+                                    <span
+                                      style={{
+                                        padding: '0 6px',
+                                        borderRadius: 999,
+                                        background: 'rgba(235, 147, 28, 0.14)',
+                                        color: 'var(--accent-orange-bright)',
+                                        fontWeight: 700,
+                                        fontSize: 11.5,
+                                      }}
+                                    >
+                                      {displayBrand}
+                                    </span>
+                                  )}
                                   {histInfo.useCount && (
                                     <span>
                                       {histInfo.actionKind === 'barcode'
@@ -4041,11 +4263,14 @@ export function AddMealDrawer({
                                         : `נבחר ×${histInfo.useCount}`}
                                     </span>
                                   )}
-                                  {food.sourceSiteName && (
-                                    <span>
-                                      {food.brand && food.brand !== food.sourceSiteName
-                                        ? `${food.brand} · ${food.sourceSiteName}`
-                                        : food.sourceSiteName}
+                                  {visibleSourceName && visibleSourceName !== displayBrand && (
+                                    <span
+                                      style={{
+                                        opacity: 0.9,
+                                        fontSize: 11.5,
+                                      }}
+                                    >
+                                      {visibleSourceName}
                                     </span>
                                   )}
                                   {food.barcode && (
@@ -4105,7 +4330,9 @@ export function AddMealDrawer({
                           cursor: 'pointer',
                         }}
                       >
-                        הרחב חיפוש בזמן אמת באתרי הסופרים
+                        {canShowScraperSources
+                          ? 'הרחב חיפוש בזמן אמת באתרי הסופרים'
+                          : 'חפש עוד מוצרי מדף ומותגים אונליין'}
                       </button>
                     )}
                   </div>
@@ -5731,7 +5958,10 @@ export function AddMealDrawer({
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 15.5, fontWeight: 900, lineHeight: 1.3 }}>
                   {selectedFood.name}
-                  {selectedFood.brand ? ` (${selectedFood.brand})` : ''}
+                  {(() => {
+                    const b = getDisplayBrandForFood(selectedFood);
+                    return b && !selectedFood.name.includes(b) ? ` (${b})` : '';
+                  })()}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
                   <span>
@@ -6348,9 +6578,12 @@ export function AddMealDrawer({
             ...prev,
             {
               id: `bc-${Date.now()}`,
-              name: product.brand
-                ? `${product.name} (${product.brand})`
-                : product.name,
+              name: (() => {
+                const b = getDisplayBrandForFood(product);
+                return b && !product.name.includes(b)
+                  ? `${product.name} (${b})`
+                  : product.name;
+              })(),
               unitLabel: defaultUnit.label,
               quantity: 1,
               grams: defaultUnit.grams,

@@ -46,6 +46,7 @@ import {
   saveGlobalCustomFoodsToSupabase,
   saveGlobalQuickChipsToSupabase,
   saveGroupsToSupabase,
+  saveShowScraperSourcesToSupabase,
   saveTemplatesToSupabase,
   saveTraineesToSupabase,
   touchUserLastSeenInSupabase,
@@ -66,6 +67,7 @@ export interface ServerDatabaseState {
   coachCustomFoods?: Record<string, CustomFoodItem[]>;
   coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
   appReleasePolicy?: AppReleasePolicy;
+  showScraperSourcesToAdmin?: boolean;
   userClientVersions?: Record<string, UserClientVersionInfo>;
   appUpdatePushHistory?: AppUpdatePushHistoryEntry[];
   readErrors?: string[];
@@ -120,6 +122,7 @@ function createCleanInitialState(): ServerDatabaseState {
     coachCustomFoods: {},
     coachPushSettings: {},
     appReleasePolicy: { androidBlockedUpToVersionCode: 0 },
+    showScraperSourcesToAdmin: false,
     userClientVersions: {},
     appUpdatePushHistory: [],
   };
@@ -236,6 +239,7 @@ export async function getServerDbState(): Promise<ServerDatabaseState> {
       appReleasePolicy: remote.appReleasePolicy || {
         androidBlockedUpToVersionCode: 0,
       },
+      showScraperSourcesToAdmin: Boolean(remote.showScraperSourcesToAdmin),
       userClientVersions: remote.userClientVersions || {},
       appUpdatePushHistory: remote.appUpdatePushHistory || [],
       readErrors: remote.readErrors,
@@ -515,6 +519,9 @@ export async function updateServerDbState(
     }
     if (next.appReleasePolicy !== current.appReleasePolicy && next.appReleasePolicy) {
       tasks.push(saveAppReleasePolicyToSupabase(next.appReleasePolicy));
+    }
+    if (next.showScraperSourcesToAdmin !== current.showScraperSourcesToAdmin) {
+      tasks.push(saveShowScraperSourcesToSupabase(Boolean(next.showScraperSourcesToAdmin)));
     }
     if (tasks.length > 0) {
       await Promise.all(tasks);

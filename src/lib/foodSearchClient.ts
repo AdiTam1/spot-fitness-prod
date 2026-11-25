@@ -1,10 +1,12 @@
 import { ISRAELI_FOOD_CATALOG } from '@/data/israeliFoodCatalog';
 import { FoodCatalogItem, UserFoodHistoryItem } from '@/types/nutrition';
+import { matchesBrandSelection } from '@/lib/foodBrands';
 
 export type SemanticSourceGroup = 'all' | 'favorites_recent' | 'custom_only' | 'retail' | 'moh_gov';
 
 export interface SearchCachePayload {
   items: FoodCatalogItem[];
+  availableBrands?: string[];
   needsLiveFallback: boolean;
   liveDone: boolean;
   mohCount: number;
@@ -20,9 +22,19 @@ export const SEMANTIC_SOURCE_TABS: ReadonlyArray<{
   { id: 'all', label: 'הכל' },
   { id: 'favorites_recent', label: 'מועדפים והיסטוריה' },
   { id: 'custom_only', label: 'מוצרים אישיים' },
-  { id: 'retail', label: 'סופרים ומותגים' },
+  { id: 'retail', label: 'מותגים ומוצרי מדף' },
   { id: 'moh_gov', label: 'מזון בסיסי (משה״ב)' },
 ];
+
+export function canDisplayFoodSourceName(
+  food: Pick<FoodCatalogItem, 'source' | 'sourceSiteId' | 'sourceSiteName'>,
+  canShowScraperSources: boolean
+): boolean {
+  if (!food.sourceSiteName) return false;
+  if (food.source === 'custom') return true;
+  if (food.source === 'moh' || food.sourceSiteId === 'moh_gov') return true;
+  return Boolean(canShowScraperSources);
+}
 
 export const RETAIL_SITE_OPTIONS: ReadonlyArray<{ id: string; label: string }> = [
   { id: 'all', label: 'כל הרשתות והמותגים' },
@@ -73,13 +85,15 @@ export function makeFoodDedupeKey(item: Pick<FoodCatalogItem, 'name' | 'per100g'
 export function buildSearchCacheKey(
   query: string,
   sourceGroup: SemanticSourceGroup,
-  retailSubSite: string
+  retailSubSite: string,
+  selectedBrand = 'all'
 ): string {
   const effectiveSource =
     sourceGroup === 'retail' && retailSubSite && retailSubSite !== 'all'
       ? retailSubSite
       : sourceGroup;
-  return `${normalizeClientFoodText(query)}|${effectiveSource}`;
+  const brandPart = selectedBrand && selectedBrand !== 'all' ? normalizeClientFoodText(selectedBrand) : 'all';
+  return `${normalizeClientFoodText(query)}|${effectiveSource}|b:${brandPart}`;
 }
 
 export function getCachedFoodSearch(key: string): SearchCachePayload | null {
@@ -241,6 +255,7 @@ export function getInstantLocalFoods(opts: {
   query: string;
   sourceGroup: SemanticSourceGroup;
   retailSubSite: string;
+  selectedBrand?: string;
   personalHistory: UserFoodHistoryItem[];
   favoriteIds: string[];
   customFoods?: FoodCatalogItem[];
@@ -291,6 +306,14 @@ export function getInstantLocalFoods(opts: {
       ) {
         continue;
       }
+    }
+
+    if (
+      opts.selectedBrand &&
+      opts.selectedBrand !== 'all' &&
+      !matchesBrandSelection(item, opts.selectedBrand)
+    ) {
+      continue;
     }
 
     const score = scoreLocalCandidate(item, qNorm, digitsQ, favSet, histSet);

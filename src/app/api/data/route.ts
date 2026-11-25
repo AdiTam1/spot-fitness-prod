@@ -625,6 +625,7 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
       appReleasePolicy: state.appReleasePolicy || {
         androidBlockedUpToVersionCode: 0,
       },
+      adminShowScraperSources: Boolean(state.showScraperSourcesToAdmin),
       role: 'admin',
       dbError,
     },

@@ -18,6 +18,7 @@ import {
   ScraperSuiteReport,
 } from '@/types/nutrition';
 import { normalizeFoodKey, normalizeFoodSearchQuery } from './helpers';
+import { extractRealBrandFromProduct } from '@/lib/foodBrands';
 import {
   fetchOpenFoodFactsIsraelItems,
   getScraperById,
@@ -531,12 +532,46 @@ export function markBarcodeMissCached(barcode: string): void {
 }
 
 /**
+ * מעדכן שמות מותג אמיתיים גם בקטלוג המטמון השמור של הסקרייפרים (JSON/Meta) עבור פריטים ישנים.
+ */
+export async function backfillCachedScraperBrands(): Promise<number> {
+  const { report, catalog } = await getScraperState(true);
+  let updated = 0;
+  const nextCatalog = catalog.map((item) => {
+    const resolved = extractRealBrandFromProduct({
+      explicitBrand: item.brand,
+      productName: item.name,
+      sourceSiteId: item.sourceSiteId,
+    });
+    const prev = (item.brand || '').trim();
+    const next = (resolved || '').trim();
+    if (prev !== next) {
+      updated += 1;
+      return {
+        ...item,
+        brand: next || undefined,
+      };
+    }
+    return item;
+  });
+
+  if (updated > 0) {
+    await persistScraperState(report, nextCatalog, {
+      saveMeta: false,
+      saveCatalog: true,
+    });
+  }
+  return updated;
+}
+
+/**
  * חיפוש מהיר ישיר: שאילתת SQL היברידית אחת בלי לטעון את קאש ה-BLOB המלא של הסקרייפרים.
  */
 export async function searchSqlAndCachedCatalog(opts: {
   query?: string;
   sourceMode?: 'all' | 'retail' | 'moh_gov' | 'openfoodfacts';
   sourceFilter?: string;
+  brand?: string;
   limit?: number;
 }): Promise<{ items: FoodCatalogItem[]; sqlCount: number; usedHybridRpc?: boolean }> {
   const limit = Math.min(60, Math.max(8, opts.limit || 36));
@@ -547,6 +582,7 @@ export async function searchSqlAndCachedCatalog(opts: {
         query: opts.query,
         sourceMode: opts.sourceMode,
         sourceSiteId: opts.sourceFilter && opts.sourceFilter !== 'all' ? opts.sourceFilter : undefined,
+        brand: opts.brand && opts.brand !== 'all' ? opts.brand : undefined,
         limit,
       })
     : { items: [], tableReady: false, usedHybridRpc: false };

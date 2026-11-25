@@ -227,6 +227,8 @@ interface CoachDashboardViewProps {
   ) => Promise<{ error?: string }> | void;
   onDeleteCoach: (coachId: string) => Promise<{ error?: string }> | void;
   appReleasePolicy?: AppReleasePolicy;
+  adminShowScraperSources?: boolean;
+  onAdminShowScraperSourcesChange?: (next: boolean) => void;
   onUpdateAppPolicy?: (policy: AppReleasePolicy) => Promise<{ error?: string }> | void;
   onApkReleasePublished?: (policy: AppReleasePolicy) => void;
   onPreviewTraineeMobile: (traineeId: string) => void;
@@ -322,6 +324,8 @@ export function CoachDashboardView({
   onUpdateCoachCredentials,
   onDeleteCoach,
   appReleasePolicy,
+  adminShowScraperSources,
+  onAdminShowScraperSourcesChange,
   onUpdateAppPolicy,
   onApkReleasePublished,
   onPreviewTraineeMobile,
@@ -364,8 +368,13 @@ export function CoachDashboardView({
     fetch('/api/admin/scrapers?autoCheck=1', { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (cancelled || !data?.report) return;
-        setScraperReport(data.report as ScraperSuiteReport);
+        if (cancelled) return;
+        if (typeof data?.showScraperSourcesToAdmin === 'boolean') {
+          onAdminShowScraperSourcesChange?.(data.showScraperSourcesToAdmin);
+        }
+        if (data?.report) {
+          setScraperReport(data.report as ScraperSuiteReport);
+        }
       })
       .catch(() => undefined)
       .finally(() => {
@@ -7165,6 +7174,8 @@ export function CoachDashboardView({
         <AdminScrapersPanel
           report={scraperReport}
           loading={scraperLoading}
+          showScraperSourcesToAdmin={adminShowScraperSources}
+          onShowScraperSourcesChange={onAdminShowScraperSourcesChange}
           onReportUpdate={(next) => setScraperReport(next)}
           onNotify={(msg, isErr) => showToast(msg, isErr)}
         />

@@ -7,6 +7,7 @@ import {
   normalizeFoodKey,
   SPOT_OFF_USER_AGENT,
 } from '@/lib/scrapers/helpers';
+import { extractRealBrandFromProduct } from '@/lib/foodBrands';
 import {
   isBarcodeMissCached,
   lookupBarcodeUnified,
@@ -124,7 +125,12 @@ export const GET = withTelemetryHandler('/api/food/barcode', async (request: Nex
           p.product_name ||
           p.generic_name_he ||
           `מוצר בסריקת ברקוד (${code})`;
-        const brand = p.brands || 'Open Food Facts';
+        const rawOffBrand = p.brands ? String(p.brands).split(',')[0]?.trim() : undefined;
+        const brand = extractRealBrandFromProduct({
+          explicitBrand: rawOffBrand,
+          productName: name,
+          sourceSiteId: 'openfoodfacts',
+        });
 
         const calories =
           Number(nutriments['energy-kcal_100g']) ||
