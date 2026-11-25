@@ -22,10 +22,11 @@ import {
 } from '@/lib/pushDispatcher';
 import { getTodayIso } from '@/data/israeliFoodCatalog';
 import { TraineePushHistoryEntry } from '@/types/nutrition';
+import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
 
 const ALLOWED_SCREENS = new Set(['meal', 'journal', 'metrics', 'profile']);
 
-export async function POST(request: NextRequest) {
+export const POST = withTelemetryHandler('/api/push/send', async (request, ctx) => {
   try {
     if (!verifyCsrfOrigin(request)) {
       return NextResponse.json(
@@ -36,9 +37,11 @@ export async function POST(request: NextRequest) {
 
     const auth = await authenticateActiveSession(request, { touchLastSeen: true });
     if (!auth.ok) {
+      ctx.setErrorCode(auth.code, auth.message);
       return auth.response;
     }
     const session = auth.session;
+    ctx.setActor(session);
     if (session.role !== 'coach' && session.role !== 'admin') {
       return NextResponse.json(
         { error: 'רק מאמן או מנהל ראשי יכולים לשלוח הודעות פוש למתאמנים' },
@@ -148,6 +151,14 @@ export async function POST(request: NextRequest) {
     }));
 
     if (sendRes.sentCount === 0 && sendRes.configError) {
+      ctx.setErrorCode('PUSH_CONFIG_ERROR', sendRes.configError);
+      ctx.recordAudit({
+        category: 'push',
+        action: 'push_send_failed',
+        status: 'failed',
+        targetTraineeId: traineeId,
+        metadata: { reason: sendRes.configError },
+      });
       return NextResponse.json(
         { error: sendRes.configError },
         { status: 422 }
@@ -155,6 +166,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (sendRes.sentCount === 0) {
+      ctx.setErrorCode('PUSH_DELIVERY_FAILED', sendRes.errors[0]);
+      ctx.recordAudit({
+        category: 'push',
+        action: 'push_send_failed',
+        status: 'failed',
+        targetTraineeId: traineeId,
+        metadata: { reason: sendRes.errors[0] },
+      });
       return NextResponse.json(
         {
           error: `שליחת ההודעה נכשלה (${sendRes.errors[0] || 'המנוי פג תוקף במכשיר'})`,
@@ -163,6 +182,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    ctx.recordAudit({
+      category: 'push',
+      action: 'push_sent',
+      targetTraineeId: traineeId,
+      metadata: {
+        sentCount: sendRes.sentCount,
+        targetScreen,
+      },
+    });
+
     return NextResponse.json({
       ok: true,
       sentCount: sendRes.sentCount,
@@ -170,9 +199,10 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Coach push send error:', error);
+    ctx.setErrorCode('PUSH_SEND_ERROR', error instanceof Error ? error.message : '');
     return NextResponse.json(
       { error: 'שגיאה בשליחת הודעת הפוש' },
       { status: 500 }
     );
   }
-}
+});

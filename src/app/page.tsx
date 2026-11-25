@@ -76,12 +76,18 @@ import {
 } from '@/lib/capacitorSteps';
 import {
   cleanRefreshQueryParamOnMount,
+  CLIENT_WEB_BUILD_ID,
   isSpotEditingBusy,
   isWebVersionMismatch,
   performHardRefresh,
   subscribeAuthKicked,
   subscribeSpotEditingBusy,
 } from '@/lib/webVersionGuard';
+import {
+  detectClientPlatform,
+  initClientTelemetry,
+  trackClientEvent,
+} from '@/lib/telemetry/clientTracker';
 import {
   PushDeepLinkTarget,
   getAndroidPushStatus,
@@ -244,6 +250,7 @@ export default function HomePage() {
 
   useEffect(() => {
     cleanRefreshQueryParamOnMount();
+    const stopClientTelemetry = initClientTelemetry();
     const unsubKick = subscribeAuthKicked((detail) => {
       clearAllClientSessionState(detail);
     });
@@ -260,6 +267,9 @@ export default function HomePage() {
       ) {
         return;
       }
+      trackClientEvent('performance', 'chunk_load_recovery', {
+        details: { message: text.slice(0, 180) },
+      });
       void fetch(`/api/app-version?t=${Date.now()}`, { cache: 'no-store' })
         .then((r) => (r.ok ? r.json() : null))
         .then((data: { webBuildId?: string } | null) => {
@@ -277,11 +287,29 @@ export default function HomePage() {
     window.addEventListener('error', onWinErr);
     window.addEventListener('unhandledrejection', onUnhandled);
     return () => {
+      stopClientTelemetry();
       unsubKick();
       window.removeEventListener('error', onWinErr);
       window.removeEventListener('unhandledrejection', onUnhandled);
     };
   }, [clearAllClientSessionState]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const screenKey = !currentUser
+      ? 'auth_gate'
+      : currentUser.status === 'pending'
+      ? 'pending_approval'
+      : currentUser.role === 'trainee'
+      ? 'trainee_app'
+      : coachPreviewTraineeId
+      ? 'coach_preview_trainee'
+      : 'coach_dashboard';
+    trackClientEvent('screen_view', `view_${screenKey}`, {
+      screen: screenKey,
+      details: { role: currentUser?.role || 'guest' },
+    });
+  }, [hydrated, currentUser, coachPreviewTraineeId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -380,6 +408,8 @@ export default function HomePage() {
       const hbHeaders: Record<string, string> = {
         'Cache-Control': 'no-cache',
         Pragma: 'no-cache',
+        'x-spot-client-platform': detectClientPlatform(),
+        'x-spot-web-build-id': CLIENT_WEB_BUILD_ID,
       };
       if (localAndroid) {
         hbHeaders['x-spot-android-version-code'] = String(
@@ -531,7 +561,8 @@ export default function HomePage() {
     window.addEventListener('focus', onReturnToForeground);
     document.addEventListener('visibilitychange', onReturnToForeground);
 
-    const hbIntervalMs = currentUser ? 5000 : 30000;
+    // ריווח חכם של בדיקת הסשן והנוכחות (35s למשתמש מחובר, 60s למסך כניסה) כדי לשמור על מכסת Vercel/Supabase
+    const hbIntervalMs = currentUser ? 35000 : 60000;
     const hbInterval = setInterval(() => {
       if (document.visibilityState === 'visible' && window.navigator.onLine) {
         void runHeartbeatAndVersionCheck();

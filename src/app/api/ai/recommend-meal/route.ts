@@ -26,6 +26,8 @@ import {
   TraineeProfile,
 } from '@/types/nutrition';
 import { sumMacros } from '@/data/israeliFoodCatalog';
+import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
+import { finalizeAiRouteResponse } from '@/lib/telemetry/aiTelemetry';
 
 /**
  * מחלץ כלל תזונתי מובנה לעתיד מתוך הערת המתאמן (ללא צ'אט!)
@@ -376,19 +378,28 @@ function buildSmartConstrainedSuggestions(
   return options;
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withTelemetryHandler('/api/ai/recommend-meal', async (request, ctx) => {
+  const aiStartedAt = Date.now();
+  let telemetryMode = 'recommend';
+  let telemetryTargetTraineeId: string | undefined;
+
+  const response = await (async (): Promise<NextResponse> => {
   if (!verifyCsrfOrigin(request)) {
     return NextResponse.json({ error: 'בקשה אינה מורשית' }, { status: 403 });
   }
 
   const auth = await authenticateActiveSession(request, { touchLastSeen: true });
   if (!auth.ok) {
+    ctx.setErrorCode(auth.code, auth.message);
     return auth.response;
   }
   const session = auth.session;
+  telemetryTargetTraineeId = session.id;
+  ctx.setActor(session);
 
   const rl = checkRateLimit(`ai-rec-${session.id}`, 30, 3600);
   if (!rl.allowed) {
+    ctx.setErrorCode('RATE_LIMITED', 'מכסת המלצות שעתית מוצתה');
     return NextResponse.json(
       { error: 'הגעת למכסת ההמלצות לשעה זו' },
       { status: 429 }
@@ -419,6 +430,8 @@ export async function POST(request: NextRequest) {
 
     const targetTraineeId =
       session.role === 'trainee' ? session.id : String(traineeId || '');
+    telemetryMode = action || 'recommend';
+    telemetryTargetTraineeId = targetTraineeId;
     const trainee = await getSingleTraineeFromServer(targetTraineeId);
 
     if (!trainee) {
@@ -668,9 +681,18 @@ ${contextLines.join('\n') || 'ללא מגבלות מיוחדות'}
     });
   } catch (err) {
     console.error('[POST /api/ai/recommend-meal Error]:', err);
+    ctx.setErrorCode('AI_RECOMMEND_ERROR', err instanceof Error ? err.message : '');
     return NextResponse.json(
       { error: 'שגיאה ביצירת המלצות ארוחה' },
       { status: 500 }
     );
   }
-}
+  })();
+
+  return await finalizeAiRouteResponse(ctx, response, {
+    endpoint: 'recommend-meal',
+    defaultMode: telemetryMode,
+    targetTraineeId: telemetryTargetTraineeId,
+    durationMs: Date.now() - aiStartedAt,
+  });
+});

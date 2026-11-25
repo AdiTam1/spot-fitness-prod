@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
+import {
+  ApiTelemetryContext,
+  withTelemetryHandler,
+} from '@/lib/telemetry/withApiTelemetry';
+import { mapDataActionToAudit } from '@/lib/telemetry/dataActionAudit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -432,12 +437,14 @@ function buildSanitizedSavedPreset(
   };
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
   const auth = await authenticateActiveSession(request, { touchLastSeen: true });
   if (!auth.ok) {
+    ctx.setErrorCode(auth.code, auth.message);
     return auth.response;
   }
   const session = auth.session;
+  ctx.setActor(session);
 
   // 1. מתאמן מחובר: מקבל אך ורק את הפרופיל של עצמו + צ'יפים קבוצתיים/כלליים לקונטקסט AI
   if (session.role === 'trainee') {
@@ -561,22 +568,38 @@ export async function GET(request: NextRequest) {
     },
     { headers: { 'Cache-Control': 'no-store, max-age=0' } }
   );
-}
+});
 
-export async function POST(request: NextRequest) {
+async function handleDataPost(
+  request: NextRequest,
+  ctx: ApiTelemetryContext
+): Promise<NextResponse> {
   if (!verifyCsrfOrigin(request)) {
+    ctx.setErrorCode('CSRF_BLOCKED', 'בקשה אינה מורשית');
     return NextResponse.json({ error: 'בקשה אינה מורשית' }, { status: 403 });
   }
 
   const auth = await authenticateActiveSession(request, { touchLastSeen: true });
   if (!auth.ok) {
+    ctx.setErrorCode(auth.code, auth.message);
     return auth.response;
   }
   const session = auth.session;
+  ctx.setActor(session);
 
   try {
     const body = await request.json();
-    const { action } = body as { action: string };
+    const action = typeof body?.action === 'string' ? body.action : '';
+    ctx.setActionName(action);
+    const mappedAudit = mapDataActionToAudit(action, body);
+    if (mappedAudit) {
+      ctx.setPendingAudit({
+        category: mappedAudit.category,
+        action: mappedAudit.auditAction,
+        targetTraineeId: mappedAudit.targetTraineeId,
+        metadata: mappedAudit.metadata,
+      });
+    }
 
     // =========================================================================
     // 0. פעולות משותפות למתאמן ולמאמן (כלי הגשה, יחידות מידה וצ'יפים מהירים עם RBAC)
@@ -2404,6 +2427,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error('[POST /api/data Error]:', err);
     const rawMsg = err instanceof Error ? err.message : '';
+    ctx.setErrorCode('DATA_POST_ERROR', rawMsg);
     return NextResponse.json(
       {
         error: rawMsg
@@ -2414,3 +2438,8 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withTelemetryHandler('/api/data', async (request, ctx) => {
+  const response = await handleDataPost(request, ctx);
+  return response;
+});

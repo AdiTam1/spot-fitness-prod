@@ -43,6 +43,8 @@ import {
   buildMealAlertEvent,
   notifySubscribedCoachesForEvents,
 } from '@/lib/coachAlertEngine';
+import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
+import { finalizeAiRouteResponse } from '@/lib/telemetry/aiTelemetry';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -409,23 +411,35 @@ function adjustMealFallback(
   return next;
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request, ctx) => {
+  const aiStartedAt = Date.now();
+  let telemetryMode = 'analyze';
+  let telemetryTargetTraineeId: string | undefined;
+  let telemetryImageCount = 0;
+  let telemetryImageKB = 0;
+
+  const response = await (async (): Promise<NextResponse> => {
   try {
     // 0. הגנת CSRF
     if (!verifyCsrfOrigin(request)) {
+      ctx.setErrorCode('CSRF_BLOCKED', 'בקשה אינה מורשית');
       return NextResponse.json({ error: 'בקשה אינה מורשית' }, { status: 403 });
     }
 
     // 1. אימות סשן חי מלא מול מסד הנתונים (חתימה, סטטוס פעיל ו-sessionVersion)
     const auth = await authenticateActiveSession(request, { touchLastSeen: true });
     if (!auth.ok) {
+      ctx.setErrorCode(auth.code, auth.message);
       return auth.response;
     }
     const sessionUser = auth.session;
+    telemetryTargetTraineeId = sessionUser.id;
+    ctx.setActor(sessionUser);
 
     // 2. הגנת Rate-Limit על מכסת ה-AI (עד 50 קריאות בשעה למשתמש)
     const rl = checkRateLimit(`ai-${sessionUser.id}`, 50, 3600);
     if (!rl.allowed) {
+      ctx.setErrorCode('RATE_LIMITED', 'מכסת AI שעתית מוצתה');
       return NextResponse.json(
         { error: 'הגעת למכסת פענוחי ה-AI לשעה זו. ניתן להזין מוצרים מהמאגר.' },
         { status: 429 }
@@ -470,8 +484,11 @@ export async function POST(request: NextRequest) {
         summaryHint?: string;
       };
     };
+    telemetryMode = mode;
+    if (backgroundJob?.traineeId) {
+      telemetryTargetTraineeId = backgroundJob.traineeId;
+    }
 
-    // 3. בדיקת תקינות וגודל הקלט
     if (textPrompt && textPrompt.length > 600) {
       return NextResponse.json(
         { error: 'תיאור הארוחה ארוך מדי (מקסימום 600 תווים)' },
@@ -550,6 +567,12 @@ export async function POST(request: NextRequest) {
     );
     const hasRealImage = validatedImages.length > 0;
     const sourceType: 'ai-photo' | 'ai-text' = hasRealImage ? 'ai-photo' : 'ai-text';
+    telemetryMode = mode;
+    telemetryTargetTraineeId = backgroundJob?.traineeId || sessionUser.id;
+    telemetryImageCount = validatedImages.length;
+    telemetryImageKB = Math.round(
+      validatedImages.reduce((acc, im) => acc + ((im.data?.length || 0) * 0.75) / 1024, 0)
+    );
 
     // 3ב. אם הבקשה כוללת סנכרון ברקע (backgroundJob): רשום סטטוס "processing" ב-DB מראש
     let authorizedBgJob: PendingAiMealJob | null = null;
@@ -1241,6 +1264,17 @@ ${contextBlock ? `\nנתוני הקשר מעודכנים מהמשתמש:\n${cont
     return await workPromise;
   } catch (error) {
     console.error('AI analyze error:', error);
+    ctx.setErrorCode('AI_ANALYZE_ERROR', error instanceof Error ? error.message : '');
     return NextResponse.json({ error: 'שגיאה בפענוח הארוחה' }, { status: 500 });
   }
-}
+  })();
+
+  return await finalizeAiRouteResponse(ctx, response, {
+    endpoint: 'analyze-meal',
+    defaultMode: telemetryMode,
+    targetTraineeId: telemetryTargetTraineeId,
+    imageCount: telemetryImageCount,
+    totalImageKB: telemetryImageKB,
+    durationMs: Date.now() - aiStartedAt,
+  });
+});

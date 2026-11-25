@@ -24,6 +24,7 @@ import {
   TraineeProfile,
 } from '@/types/nutrition';
 import { DEFAULT_TEMPLATES, getTodayIso } from '@/data/israeliFoodCatalog';
+import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
 
 export async function GET(request: NextRequest) {
   const auth = await authenticateActiveSession(request, { touchLastSeen: true });
@@ -51,9 +52,10 @@ export async function GET(request: NextRequest) {
   );
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withTelemetryHandler('/api/auth/session', async (request, ctx) => {
   try {
     if (!verifyCsrfOrigin(request)) {
+      ctx.setErrorCode('CSRF_BLOCKED', 'בקשה אינה מורשית');
       return NextResponse.json(
         { error: 'בקשה אינה מורשית' },
         { status: 403 }
@@ -66,6 +68,12 @@ export async function POST(request: NextRequest) {
 
     const rl = checkRateLimit(`auth-${ip}`, 12, 60);
     if (!rl.allowed) {
+      ctx.setErrorCode('RATE_LIMITED', 'יותר מדי ניסיונות התחברות');
+      ctx.recordAudit({
+        category: 'auth',
+        action: 'login_rate_limited',
+        status: 'denied',
+      });
       return NextResponse.json(
         { error: 'יותר מדי ניסיונות התחברות. אנא המתן דקה ונסה שוב.' },
         { status: 429 }
@@ -74,6 +82,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { action } = body as { action: 'login' | 'register' };
+    ctx.setActionName(action || 'login');
     const dbState = await getServerDbState();
 
     // =========================================================================
@@ -238,6 +247,14 @@ export async function POST(request: NextRequest) {
         isPending: initialStatus === 'pending',
       });
 
+      ctx.setActor(sessionUser);
+      ctx.recordAudit({
+        category: 'auth',
+        action: 'register_submitted',
+        status: 'success',
+        metadata: { initialStatus, coachId: assignedPrimaryCoachId },
+      });
+
       if (initialStatus === 'active') {
         return attachSessionCookie(res, sessionUser);
       }
@@ -270,6 +287,8 @@ export async function POST(request: NextRequest) {
         role: 'admin',
         status: 'active',
       };
+      ctx.setActor(adminUser);
+      ctx.recordAudit({ category: 'auth', action: 'login_success', status: 'success' });
       const res = NextResponse.json({ user: adminUser });
       return attachSessionCookie(res, adminUser);
     }
@@ -282,7 +301,10 @@ export async function POST(request: NextRequest) {
     );
 
     if (matchedCoach) {
+      ctx.setActor({ id: matchedCoach.id, role: 'coach' });
       if (matchedCoach.status === 'paused') {
+        ctx.setErrorCode('ACCOUNT_BLOCKED', 'חשבון המאמן מושהה');
+        ctx.recordAudit({ category: 'auth', action: 'login_blocked', status: 'denied' });
         return NextResponse.json(
           { error: 'חשבון המאמן שלך מושהה כרגע. אנא פנה למנהל הראשי.' },
           { status: 403 }
@@ -296,6 +318,7 @@ export async function POST(request: NextRequest) {
         status: 'active',
         sv: Math.max(1, Number(matchedCoach.sessionVersion) || 1),
       };
+      ctx.recordAudit({ category: 'auth', action: 'login_success', status: 'success' });
       const res = NextResponse.json({ user: coachUser });
       return attachSessionCookie(res, coachUser);
     }
@@ -308,13 +331,18 @@ export async function POST(request: NextRequest) {
     );
 
     if (!matchedTrainee) {
+      ctx.setErrorCode('INVALID_CREDENTIALS', 'אימייל או סיסמה שגויים');
+      ctx.recordAudit({ category: 'auth', action: 'login_failed', status: 'failed' });
       return NextResponse.json(
         { error: 'אימייל או סיסמה שגויים' },
         { status: 401 }
       );
     }
 
+    ctx.setActor({ id: matchedTrainee.id, role: 'trainee' });
     if (matchedTrainee.status === 'pending') {
+      ctx.setErrorCode('ACCOUNT_PENDING', 'חשבון ממתין לאישור מאמן');
+      ctx.recordAudit({ category: 'auth', action: 'login_pending', status: 'denied' });
       return NextResponse.json(
         {
           error: `שלום ${matchedTrainee.name}, החשבון שלך ממתין לאישור מאמן.`,
@@ -325,6 +353,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (matchedTrainee.status === 'paused') {
+      ctx.setErrorCode('ACCOUNT_BLOCKED', 'חשבון מושהה');
+      ctx.recordAudit({ category: 'auth', action: 'login_blocked', status: 'denied' });
       return NextResponse.json(
         { error: 'החשבון שלך מושהה כרגע. אנא פנה למאמן שלך.' },
         { status: 403 }
@@ -340,17 +370,24 @@ export async function POST(request: NextRequest) {
       sv: Math.max(1, Number(matchedTrainee.sessionVersion) || 1),
     };
 
+    ctx.recordAudit({ category: 'auth', action: 'login_success', status: 'success' });
     const res = NextResponse.json({ user: traineeUser });
     return attachSessionCookie(res, traineeUser);
-  } catch {
+  } catch (err) {
+    ctx.setErrorCode('AUTH_EXCEPTION', err instanceof Error ? err.message : '');
     return NextResponse.json({ error: 'שגיאת שרת באימות' }, { status: 500 });
   }
-}
+});
 
-export async function DELETE(request: NextRequest) {
+export const DELETE = withTelemetryHandler('/api/auth/session', async (request, ctx) => {
   if (!verifyCsrfOrigin(request)) {
     return NextResponse.json({ error: 'CSRF Blocked' }, { status: 403 });
   }
+  const auth = await authenticateActiveSession(request, { touchLastSeen: false });
+  if (auth.ok) {
+    ctx.setActor(auth.session);
+    ctx.recordAudit({ category: 'auth', action: 'logout', status: 'success' });
+  }
   const res = NextResponse.json({ ok: true });
   return clearSessionCookie(res);
-}
+});

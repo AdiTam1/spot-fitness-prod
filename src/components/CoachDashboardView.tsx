@@ -50,6 +50,7 @@ import {
   Lock,
   LogOut,
   Smartphone,
+  Activity,
 } from 'lucide-react';
 import {
   AccountStatus,
@@ -78,6 +79,7 @@ import { CoachPushModal } from './CoachPushModal';
 import { CoachAlertSettingsModal } from './CoachAlertSettingsModal';
 import { AdminScrapersPanel } from './AdminScrapersPanel';
 import { AdminApkUploadPanel } from './AdminApkUploadPanel';
+import { AdminMonitoringPanel } from './AdminMonitoringPanel';
 import {
   DEFAULT_TEMPLATES,
   getTodayIso,
@@ -307,7 +309,7 @@ export function CoachDashboardView({
   );
 
   const [activeSection, setActiveSection] = useState<
-    'roster' | 'templates' | 'inspector' | 'users' | 'coaches' | 'scrapers'
+    'roster' | 'templates' | 'inspector' | 'users' | 'coaches' | 'scrapers' | 'monitoring'
   >('roster');
 
   const [scraperReport, setScraperReport] = useState<ScraperSuiteReport | null>(
@@ -1175,6 +1177,12 @@ export function CoachDashboardView({
               icon: Globe,
               show: isSuperAdmin, // בדיקה אוטומטית אצל מנהל המערכת!
             },
+            {
+              id: 'monitoring',
+              label: 'ניטור ומערכת',
+              icon: Activity,
+              show: isSuperAdmin,
+            },
           ]
             .filter((t) => t.show)
             .map((tab) => {
@@ -1192,6 +1200,7 @@ export function CoachDashboardView({
                         | 'users'
                         | 'coaches'
                         | 'scrapers'
+                        | 'monitoring'
                     )
                   }
                   style={{
@@ -5975,6 +5984,17 @@ export function CoachDashboardView({
           report={scraperReport}
           loading={scraperLoading}
           onReportUpdate={(next) => setScraperReport(next)}
+          onNotify={(msg, isErr) => showToast(msg, isErr)}
+        />
+      )}
+
+      {/* ===================================================================== */}
+      {/* לשונית ניטור, פעילות משתמשים ולוגים (SUPER ADMIN בלבד)              */}
+      {/* ===================================================================== */}
+      {activeSection === 'monitoring' && isSuperAdmin && (
+        <AdminMonitoringPanel
+          trainees={trainees}
+          coaches={coaches}
           onNotify={(msg, isErr) => showToast(msg, isErr)}
         />
       )}

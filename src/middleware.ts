@@ -28,7 +28,20 @@ export function middleware(request: NextRequest) {
     );
   }
 
-  const response = NextResponse.next();
+  const headerReqId = request.headers.get('x-spot-request-id')?.trim();
+  const requestId =
+    headerReqId && /^[a-zA-Z0-9_-]{8,64}$/.test(headerReqId)
+      ? headerReqId
+      : crypto.randomUUID();
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-spot-request-id', requestId);
+
+  const response = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
+  response.headers.set('x-spot-request-id', requestId);
 
   // 2. מניעת שמירת מידע אישי ב-Cache עבור כל נתיבי ה-API
   if (pathname.startsWith('/api/')) {

@@ -16,6 +16,7 @@ import {
   updateServerDbState,
 } from '@/lib/serverStore';
 import { DailyLog, StepsSyncSource } from '@/types/nutrition';
+import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
 
 const VALID_SOURCES = new Set<StepsSyncSource>([
   'health-connect',
@@ -33,11 +34,13 @@ interface IncomingStepEntry {
   syncedAt?: unknown;
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withTelemetryHandler('/api/steps/sync', async (request, ctx) => {
   const auth = await authenticateActiveSession(request, { touchLastSeen: true });
   if (!auth.ok) {
+    ctx.setErrorCode(auth.code, auth.message);
     return auth.response;
   }
+  ctx.setActor(auth.session);
   if (auth.session.role !== 'trainee') {
     return NextResponse.json(
       { error: 'נדרשת התחברות כמתאמן' },
@@ -53,11 +56,12 @@ export async function GET(request: NextRequest) {
     },
     { headers: { 'Cache-Control': 'no-store, max-age=0' } }
   );
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withTelemetryHandler('/api/steps/sync', async (request, ctx) => {
   try {
     if (!verifyCsrfOrigin(request)) {
+      ctx.setErrorCode('CSRF_BLOCKED', 'בקשה אינה מורשית');
       return NextResponse.json(
         { error: 'בקשה אינה מורשית' },
         { status: 403 }
@@ -65,12 +69,14 @@ export async function POST(request: NextRequest) {
     }
 
     let authorizedTraineeId: string | null = null;
+    let syncOrigin: 'foreground_cookie' | 'background_worker' = 'foreground_cookie';
     const cookieSession = getSessionFromRequest(request);
     if (cookieSession?.role === 'trainee') {
       const auth = await authenticateActiveSession(request, {
         touchLastSeen: true,
       });
       if (!auth.ok) {
+        ctx.setErrorCode(auth.code, auth.message);
         return auth.response;
       }
       authorizedTraineeId = auth.session.id;
@@ -81,16 +87,19 @@ export async function POST(request: NextRequest) {
         : '';
       const parsedToken = verifyStepsSyncToken(bearer);
       if (parsedToken) {
+        syncOrigin = 'background_worker';
         const liveTrainee = await getTraineeAuthStateFromServer(
           parsedToken.traineeId
         );
         if (!liveTrainee || liveTrainee.status !== 'active') {
+          ctx.setErrorCode('ACCOUNT_BLOCKED', 'החשבון אינו פעיל');
           return NextResponse.json(
             { error: 'החשבון אינו פעיל', code: 'ACCOUNT_BLOCKED' },
             { status: 403 }
           );
         }
         if ((liveTrainee.sessionVersion ?? 1) !== parsedToken.sv) {
+          ctx.setErrorCode('SESSION_REVOKED', 'הסשן פג תוקף מרחוק');
           return NextResponse.json(
             { error: 'הסשן פג תוקף מרחוק', code: 'SESSION_REVOKED' },
             { status: 401 }
@@ -101,11 +110,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (!authorizedTraineeId) {
+      ctx.setErrorCode('UNAUTHENTICATED', 'נדרש אימות מתאמן תקף לסנכרון צעדים');
       return NextResponse.json(
         { error: 'נדרש אימות מתאמן תקף לסנכרון צעדים' },
         { status: 401 }
       );
     }
+    ctx.setActor({ id: authorizedTraineeId, role: 'trainee' });
+    ctx.setActionName(syncOrigin);
 
     const body = (await request.json()) as { entries?: unknown };
     const rawEntries = Array.isArray(body?.entries)
@@ -214,15 +226,32 @@ export async function POST(request: NextRequest) {
       }),
     }));
 
+    const latestSynced = cleanedEntries[cleanedEntries.length - 1];
+    ctx.recordAudit({
+      category: 'steps',
+      action:
+        syncOrigin === 'background_worker'
+          ? 'steps_synced_bg_worker'
+          : 'steps_synced_fg',
+      targetTraineeId: authorizedTraineeId,
+      metadata: {
+        daysCount: cleanedEntries.length,
+        latestDate: latestSynced?.date,
+        latestSteps: latestSynced?.steps,
+        source: latestSynced?.source,
+      },
+    });
+
     return NextResponse.json(
       { ok: true, synced: syncedResult },
       { headers: { 'Cache-Control': 'no-store, max-age=0' } }
     );
   } catch (error) {
     console.error('Steps sync API error:', error);
+    ctx.setErrorCode('STEPS_SYNC_ERROR', error instanceof Error ? error.message : '');
     return NextResponse.json(
       { error: 'שגיאה בסנכרון הצעדים לשרת' },
       { status: 500 }
     );
   }
-}
+});

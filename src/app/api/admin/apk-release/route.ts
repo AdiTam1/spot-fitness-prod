@@ -12,6 +12,7 @@ import {
 } from '@/lib/serverStore';
 import { resolveAppVersionInfo } from '@/lib/appVersionServer';
 import { AppReleasePolicy } from '@/types/nutrition';
+import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -167,7 +168,7 @@ export async function GET(request: NextRequest) {
  * 1) prepare_upload: יוצר Signed Upload URL ישיר מול Supabase Storage (עוקף מגבלת 4.5MB של Vercel)
  * 2) publish_release: מאמת את הקובץ שהועלה ומפרסם את appReleasePolicy לכל המשתמשים מיד
  */
-export async function POST(request: NextRequest) {
+export const POST = withTelemetryHandler('/api/admin/apk-release', async (request, ctx) => {
   if (!verifyCsrfOrigin(request)) {
     return NextResponse.json({ error: 'בקשה אינה מורשית' }, { status: 403 });
   }
@@ -179,6 +180,7 @@ export async function POST(request: NextRequest) {
       { status: 403 }
     );
   }
+  ctx.setActor(session);
 
   let body: Record<string, unknown>;
   try {
@@ -188,6 +190,7 @@ export async function POST(request: NextRequest) {
   }
 
   const action = String(body.action || '');
+  ctx.setActionName(action);
 
   if (action === 'prepare_upload') {
     const rawName = sanitizeText(body.fileName, 120);
@@ -345,6 +348,17 @@ export async function POST(request: NextRequest) {
       appReleasePolicy: nextPolicy,
     }));
 
+    ctx.recordAudit({
+      category: 'apk',
+      action: 'apk_release_published',
+      metadata: {
+        versionCode: nextPolicy.androidLatestVersionCode,
+        versionName: nextPolicy.androidLatestVersionName,
+        sizeBytes: apkSizeBytes,
+        blockedUpTo: nextPolicy.androidBlockedUpToVersionCode,
+      },
+    });
+
     return NextResponse.json({
       ok: true,
       appReleasePolicy: nextPolicy,
@@ -352,4 +366,4 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ error: 'פעולה לא מזוהה' }, { status: 400 });
-}
+});

@@ -13,6 +13,7 @@ import {
 } from '@/lib/scrapers/scraperStore';
 import { backfillFoodCatalogBarcodesAndUnits } from '@/lib/supabase';
 import { FoodCatalogItem, ScraperSourceId } from '@/types/nutrition';
+import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
 
 function hasValidSyncSecret(request: NextRequest): boolean {
   const secret = process.env.CRON_SECRET?.trim() || '';
@@ -89,7 +90,7 @@ export async function GET(request: NextRequest) {
  * POST /api/admin/scrapers
  * פעולות מנהל: check_all, check_one, sync_catalog, sync_one, test_search, sync_openfoodfacts, seed_items
  */
-export async function POST(request: NextRequest) {
+export const POST = withTelemetryHandler('/api/admin/scrapers', async (request, ctx) => {
   const secretAuthed = hasValidSyncSecret(request);
   if (!secretAuthed) {
     if (!verifyCsrfOrigin(request)) {
@@ -102,6 +103,9 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
+    ctx.setActor(session);
+  } else {
+    ctx.setActor({ id: 'cron-secret', role: 'admin' });
   }
 
   try {
@@ -112,6 +116,12 @@ export async function POST(request: NextRequest) {
       pages?: number;
       items?: FoodCatalogItem[];
     };
+    ctx.setActionName(body.action);
+    ctx.setPendingAudit({
+      category: 'admin',
+      action: `scraper_${body.action || 'unknown'}`,
+      metadata: { scraperId: body.scraperId },
+    });
 
     if (
       secretAuthed &&
@@ -209,4 +219,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

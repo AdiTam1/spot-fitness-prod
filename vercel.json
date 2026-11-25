@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/cron/telemetry",
+      "schedule": "30 3 * * *"
+    },
+    {
       "path": "/api/cron/scrapers",
       "schedule": "0 4 * * *"
     }
