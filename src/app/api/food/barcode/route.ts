@@ -18,6 +18,7 @@ import { lookupRetailerByBarcodeLive } from '@/lib/scrapers/israeliScrapers';
 import { FoodCatalogItem } from '@/types/nutrition';
 import { authenticateActiveSession } from '@/lib/liveAuth';
 import { checkRateLimit, sanitizeText } from '@/lib/serverAuth';
+import { resolveVisibleCustomCatalogForActor } from '@/lib/customFoodsServer';
 import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
 
 export const runtime = 'nodejs';
@@ -79,6 +80,14 @@ export const GET = withTelemetryHandler('/api/food/barcode', async (request: Nex
       { error: 'קוד ברקוד לא תקין (מספרים בלבד)' },
       { status: 400 }
     );
+  }
+
+  // 0. בדיקה בעדיפות ראשונה במוצרים האישיים/משותפים של המתאמן והמאמן
+  const customCatalog = await resolveVisibleCustomCatalogForActor(session);
+  const customMatch = customCatalog.find((cf) => cf.barcode && cf.barcode === code);
+  if (customMatch) {
+    scheduleBarcodeHistorySave(session.id, customMatch, code);
+    return NextResponse.json({ item: customMatch, source: 'custom' });
   }
 
   // 1. בדיקה במאגר המוצרים המשולב (מקומי + טבלת SQL + קאש חם)

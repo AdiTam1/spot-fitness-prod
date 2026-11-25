@@ -29,6 +29,7 @@ import {
   CoachProfile,
   CoachOnboardingData,
   CoachPushSubscriptionSettings,
+  CustomFoodItem,
   DailyCardioLog,
   DailyWorkoutLog,
   DayType,
@@ -55,6 +56,11 @@ import { CoachDashboardView } from '@/components/CoachDashboardView';
 import { AuthGateView } from '@/components/AuthGateView';
 import { CoachOnboardingWizard } from '@/components/CoachOnboardingWizard';
 import { BackgroundAiSyncBanner } from '@/components/BackgroundAiSyncBanner';
+import type { CustomFoodsMutationResult } from '@/components/CustomFoodModal';
+import {
+  resolveVisibleCustomFoodsForCoach,
+  resolveVisibleCustomFoodsForTrainee,
+} from '@/lib/customFoods';
 import {
   AI_JOB_STALE_TIMEOUT_MS,
   isAiJobActivelyProcessing,
@@ -122,6 +128,11 @@ export default function HomePage() {
   const [traineeGroupQuickChips, setTraineeGroupQuickChips] = useState<
     QuickContextChip[]
   >([]);
+  const [globalCustomFoods, setGlobalCustomFoods] = useState<CustomFoodItem[]>([]);
+  const [myCoachCustomFoods, setMyCoachCustomFoods] = useState<CustomFoodItem[]>([]);
+  const [sharedCoachCustomFoods, setSharedCoachCustomFoods] = useState<
+    Record<string, CustomFoodItem[]>
+  >({});
   const [coaches, setCoaches] = useState<CoachProfile[]>([]);
   const [myCoachProfile, setMyCoachProfile] = useState<CoachProfile | null>(
     null
@@ -221,6 +232,9 @@ export default function HomePage() {
       setGroups([]);
       setGlobalQuickChips([]);
       setTraineeGroupQuickChips([]);
+      setGlobalCustomFoods([]);
+      setMyCoachCustomFoods([]);
+      setSharedCoachCustomFoods({});
       setCoaches([]);
       setMyCoachProfile(null);
       setCoachDirectory([]);
@@ -381,6 +395,18 @@ export default function HomePage() {
         }
         if (Array.isArray(remoteData.groupQuickChips)) {
           setTraineeGroupQuickChips(remoteData.groupQuickChips);
+        }
+        if (Array.isArray(remoteData.globalCustomFoods)) {
+          setGlobalCustomFoods(remoteData.globalCustomFoods);
+        }
+        if (Array.isArray(remoteData.myCoachCustomFoods)) {
+          setMyCoachCustomFoods(remoteData.myCoachCustomFoods);
+        }
+        if (
+          remoteData.sharedCoachCustomFoods &&
+          typeof remoteData.sharedCoachCustomFoods === 'object'
+        ) {
+          setSharedCoachCustomFoods(remoteData.sharedCoachCustomFoods);
         }
         if (Array.isArray(remoteData.coaches)) {
           setCoaches(remoteData.coaches);
@@ -1108,6 +1134,9 @@ export default function HomePage() {
       setGroups([]);
       setGlobalQuickChips([]);
       setTraineeGroupQuickChips([]);
+      setGlobalCustomFoods([]);
+      setMyCoachCustomFoods([]);
+      setSharedCoachCustomFoods({});
       setCoaches([]);
       setMyCoachProfile(null);
       setCoachDirectory([]);
@@ -1449,6 +1478,24 @@ export default function HomePage() {
       )
     );
     return {};
+  };
+
+  const handleCustomFoodsUpdated = (res: CustomFoodsMutationResult) => {
+    if (res.traineeId && Array.isArray(res.traineeCustomFoods)) {
+      setTrainees((prev) =>
+        prev.map((t) =>
+          t.id === res.traineeId
+            ? { ...t, customFoods: res.traineeCustomFoods }
+            : t
+        )
+      );
+    }
+    if (Array.isArray(res.myCoachCustomFoods)) {
+      setMyCoachCustomFoods(res.myCoachCustomFoods);
+    }
+    if (Array.isArray(res.globalCustomFoods)) {
+      setGlobalCustomFoods(res.globalCustomFoods);
+    }
   };
 
   const handleManageQuickChips = async (payload: {
@@ -2994,6 +3041,13 @@ export default function HomePage() {
             onSavedMealAction={handleSavedMealAction}
             onManageToolsAndUnits={handleManageToolsAndUnits}
             onManageQuickChips={handleManageQuickChips}
+            actorRole={currentUser.role}
+            customFoods={resolveVisibleCustomFoodsForTrainee(
+              loggedInTraineeProfile,
+              sharedCoachCustomFoods,
+              globalCustomFoods
+            )}
+            onCustomFoodsUpdated={handleCustomFoodsUpdated}
             backgroundAiJobs={mergeTraineeBgJobs(loggedInTraineeProfile)}
             onStartBackgroundAiAnalysis={handleStartBackgroundAiAnalysis}
             externalOpenMealRequest={externalOpenMealRequest}
@@ -3031,6 +3085,16 @@ export default function HomePage() {
             onSavedMealAction={handleSavedMealAction}
             onManageToolsAndUnits={handleManageToolsAndUnits}
             onManageQuickChips={handleManageQuickChips}
+            actorRole={currentUser.role}
+            customFoods={resolveVisibleCustomFoodsForTrainee(
+              loggedInTraineeProfile,
+              {
+                ...sharedCoachCustomFoods,
+                [currentUser.id]: myCoachCustomFoods,
+              },
+              globalCustomFoods
+            )}
+            onCustomFoodsUpdated={handleCustomFoodsUpdated}
             backgroundAiJobs={mergeTraineeBgJobs(loggedInTraineeProfile)}
             onStartBackgroundAiAnalysis={handleStartBackgroundAiAnalysis}
             externalOpenMealRequest={externalOpenMealRequest}
@@ -3050,6 +3114,14 @@ export default function HomePage() {
             coachDirectory={coachDirectory}
             coachInviteCode={coachInviteCode}
             globalQuickChips={globalQuickChips}
+            myCoachCustomFoods={resolveVisibleCustomFoodsForCoach(
+              currentUser.id,
+              currentUser.role,
+              { [currentUser.id]: myCoachCustomFoods },
+              []
+            )}
+            globalCustomFoods={globalCustomFoods}
+            onCustomFoodsUpdated={handleCustomFoodsUpdated}
             onManageToolsAndUnits={handleManageToolsAndUnits}
             onManageQuickChips={handleManageQuickChips}
             onReplySavedMeal={handleReplySavedMeal}

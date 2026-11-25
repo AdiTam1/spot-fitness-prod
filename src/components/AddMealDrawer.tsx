@@ -47,6 +47,7 @@ import {
 import {
   AiContextParams,
   AiMealSuggestionOption,
+  CustomFoodItem,
   DailyLog,
   FoodCatalogItem,
   LoggedFoodItem,
@@ -58,7 +59,16 @@ import {
   TraineeCustomUnit,
   TraineeServingTool,
   UserFoodHistoryItem,
+  UserRole,
 } from '@/types/nutrition';
+import {
+  customFoodToCatalogItem,
+} from '@/lib/customFoods';
+import {
+  CustomFoodModal,
+  type CustomFoodsMutationResult,
+} from './CustomFoodModal';
+import { CustomFoodsLibraryPanel } from './CustomFoodsLibraryPanel';
 import {
   ISRAELI_FOOD_CATALOG,
   calculateMacrosForGrams,
@@ -175,6 +185,9 @@ interface AddMealDrawerProps {
     chips?: Partial<QuickContextChip>[];
     chipId?: string;
   }) => Promise<{ error?: string }>;
+  actorRole?: UserRole;
+  customFoods?: CustomFoodItem[];
+  onCustomFoodsUpdated?: (res: CustomFoodsMutationResult) => void;
   selectedDate?: string;
   backgroundAiJobs?: PendingAiMealJob[];
   onStartBackgroundAiAnalysis?: (payload: {
@@ -201,6 +214,7 @@ export function AddMealDrawer({
   geminiApiKey,
   initialTab = 'catalog',
   traineeId,
+  traineeName,
   learnedPreferences = [],
   onPreferenceLearned,
   savedMeals = [],
@@ -215,6 +229,9 @@ export function AddMealDrawer({
   onSavedMealAction,
   onManageToolsAndUnits,
   onManageQuickChips,
+  actorRole = 'trainee',
+  customFoods = [],
+  onCustomFoodsUpdated,
   selectedDate,
   backgroundAiJobs = [],
   onStartBackgroundAiAnalysis,
@@ -243,6 +260,9 @@ export function AddMealDrawer({
   const [freeTextPrompt, setFreeTextPrompt] = useState('');
   const [contextParams, setContextParams] = useState<AiContextParams>({});
   const [toolsModalOpen, setToolsModalOpen] = useState(false);
+  const [customFoodModalOpen, setCustomFoodModalOpen] = useState(false);
+  const [customFoodInitialName, setCustomFoodInitialName] = useState('');
+  const [customFoodsManagerOpen, setCustomFoodsManagerOpen] = useState(false);
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const [correctionText, setCorrectionText] = useState('');
   const [correctionLoading, setCorrectionLoading] = useState(false);
@@ -584,6 +604,11 @@ export function AddMealDrawer({
     }).catch(() => undefined);
   };
 
+  const customCatalogItems = useMemo(
+    () => customFoods.map(customFoodToCatalogItem),
+    [customFoods]
+  );
+
   const instantLocalResults = useMemo(
     () =>
       getInstantLocalFoods({
@@ -592,9 +617,10 @@ export function AddMealDrawer({
         retailSubSite,
         personalHistory,
         favoriteIds,
+        customFoods: customCatalogItems,
         limit: 36,
       }),
-    [searchQuery, sourceGroup, retailSubSite, personalHistory, favoriteIds]
+    [searchQuery, sourceGroup, retailSubSite, personalHistory, favoriteIds, customCatalogItems]
   );
 
   const searchResults = useMemo(() => {
@@ -1582,6 +1608,7 @@ export function AddMealDrawer({
           baseItems: items,
           adjustmentPrompt: cleanPrompt,
           contextParams,
+          traineeId,
           imageDataUrl: allMealPhotos[0],
           imageDataUrls: allMealPhotos.length > 0 ? allMealPhotos : undefined,
         }),
@@ -3023,6 +3050,7 @@ export function AddMealDrawer({
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
+                    flexWrap: 'wrap',
                     gap: 8,
                     fontSize: 13,
                     color: 'var(--text-muted)',
@@ -3038,7 +3066,51 @@ export function AddMealDrawer({
                       ? 'מחפש במהירות במאגר ה-DB...'
                       : `${searchResults.length} תוצאות${totalAvailable > searchResults.length ? ` (מתוך ${totalAvailable.toLocaleString('he-IL')}+)` : ''}`}
                   </span>
-                  <span>לחץ לבחירת כמות</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomFoodInitialName(trimmedQuery);
+                        setCustomFoodModalOpen(true);
+                      }}
+                      className="btn-surface"
+                      style={{
+                        padding: '5px 11px',
+                        borderRadius: 999,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        cursor: 'pointer',
+                        borderColor: 'var(--line-2)',
+                        color: 'var(--text)',
+                      }}
+                    >
+                      <Plus size={12} />
+                      <span>
+                        {trimmedQuery.length >= 2
+                          ? `צור "${trimmedQuery.slice(0, 18)}" כמוצר אישי`
+                          : 'מוצר אישי חדש'}
+                      </span>
+                    </button>
+                    {customFoods.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setCustomFoodsManagerOpen(true)}
+                        className="btn-surface"
+                        style={{
+                          padding: '5px 10px',
+                          borderRadius: 999,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        נהל מוצרים ({customFoods.length})
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {searchError && (
@@ -3115,8 +3187,33 @@ export function AddMealDrawer({
                     }}
                   >
                     <span>
-                      לא נמצאו מוצרים המתאימים ל־&ldquo;{searchQuery}&rdquo;. אפשר ללחוץ על כפתור <b>✨</b> בשורת החיפוש למעלה לפיענוח ב-AI!
+                      לא נמצאו מוצרים המתאימים ל־&ldquo;{searchQuery}&rdquo;. אפשר ללחוץ על כפתור <b>✨</b> בשורת החיפוש למעלה לפיענוח ב-AI, או להוסיף מוצר אישי משלך!
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomFoodInitialName(trimmedQuery);
+                        setCustomFoodModalOpen(true);
+                      }}
+                      className="btn-volt"
+                      style={{
+                        padding: '8px 16px',
+                        fontSize: 13,
+                        fontWeight: 700,
+                        borderRadius: 999,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Plus size={14} />
+                      <span>
+                        {trimmedQuery
+                          ? `הוסף "${trimmedQuery}" כמוצר אישי`
+                          : 'הוסף מוצר אישי חדש'}
+                      </span>
+                    </button>
                     {trimmedQuery.length >= 2 && (
                       <button
                         type="button"
@@ -3242,11 +3339,14 @@ export function AddMealDrawer({
                                     alignItems: 'center',
                                     flexWrap: 'wrap',
                                     gap: 5,
-                                    color: histInfo.useCount
-                                      ? 'var(--ok-text)'
-                                      : food.sourceSiteId
-                                      ? 'var(--accent-orange-bright)'
-                                      : 'var(--text-muted)',
+                                    color:
+                                      food.source === 'custom'
+                                        ? '#10b981'
+                                        : histInfo.useCount
+                                        ? 'var(--ok-text)'
+                                        : food.sourceSiteId
+                                        ? 'var(--accent-orange-bright)'
+                                        : 'var(--text-muted)',
                                   }}
                                 >
                                   {histInfo.useCount && (
@@ -3939,7 +4039,7 @@ export function AddMealDrawer({
               </div>
             )}
 
-            {/* לשונית 4: מועדפים והיסטוריה אישית */}
+            {/* לשונית 4: מועדפים והיסטוריה אישית + מוצרים אישיים */}
             {activeTab === 'favorites' && (() => {
               const combinedFavAndHist = getInstantLocalFoods({
                 query: '',
@@ -3947,10 +4047,75 @@ export function AddMealDrawer({
                 retailSubSite: 'all',
                 personalHistory,
                 favoriteIds,
+                customFoods: customCatalogItems,
                 limit: 48,
               });
               return (
                 <>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                      flexWrap: 'wrap',
+                      marginBottom: 8,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomFoodInitialName('');
+                        setCustomFoodModalOpen(true);
+                      }}
+                      className="btn-volt"
+                      style={{
+                        padding: '7px 14px',
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        borderRadius: 999,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Plus size={13} />
+                      <span>מוצר אישי חדש</span>
+                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {customFoods.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setCustomFoodsManagerOpen(true)}
+                          className="btn-surface"
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            borderRadius: 999,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          נהל מוצרים ({customFoods.length})
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => navigateTab('catalog')}
+                        className="btn-surface"
+                        style={{
+                          padding: '6px 12px',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          borderRadius: 999,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        מאגר המזון המלא
+                      </button>
+                    </div>
+                  </div>
                   {combinedFavAndHist.length === 0 ? (
                     <div
                       style={{
@@ -3963,17 +4128,7 @@ export function AddMealDrawer({
                         fontSize: 12.5,
                       }}
                     >
-                      טרם סימנת מועדפים או בחרת/סרקת מוצרים. כל מוצר שתסמן, תסרוק או תבחר יישמר כאן אוטומטית!
-                      <div style={{ marginTop: 10 }}>
-                        <button
-                          type="button"
-                          onClick={() => navigateTab('catalog')}
-                          className="btn-volt"
-                          style={{ padding: '7px 14px', fontSize: 12, cursor: 'pointer' }}
-                        >
-                          עיון במאגר המזון המלא
-                        </button>
-                      </div>
+                      טרם סימנת מועדפים או בחרת/סרקת מוצרים. כל מוצר שתסמן, תסרוק, תבחר או תוסיף כמוצר אישי יופיע כאן!
                     </div>
                   ) : (
                     <div
@@ -5481,6 +5636,52 @@ export function AddMealDrawer({
           return await onManageToolsAndUnits(payload);
         }}
       />
+
+      <CustomFoodModal
+        opened={customFoodModalOpen}
+        onClose={() => setCustomFoodModalOpen(false)}
+        actorRole={actorRole}
+        traineeId={traineeId}
+        traineeName={traineeName}
+        initialName={customFoodInitialName}
+        defaultScope="trainee"
+        zIndex={280}
+        onSaved={(res) => {
+          onCustomFoodsUpdated?.(res);
+          if (res.item) {
+            const catItem = customFoodToCatalogItem(res.item);
+            void handleSelectCatalogFood(catItem);
+            notifications.show({
+              color: 'teal',
+              title: 'מוצר אישי נשמר',
+              message: `"${res.item.name}" נוצר — בחר משקל/כמות להוספה לארוחה!`,
+            });
+          }
+        }}
+      />
+
+      <Modal
+        opened={customFoodsManagerOpen}
+        onClose={() => setCustomFoodsManagerOpen(false)}
+        title="ניהול מוצרים אישיים"
+        centered
+        size="md"
+        zIndex={275}
+        styles={{
+          content: { borderRadius: 24, maxWidth: 'calc(100vw - 24px)' },
+        }}
+      >
+        <CustomFoodsLibraryPanel
+          mode="trainee-self"
+          actorRole={actorRole}
+          traineeId={traineeId}
+          traineeName={traineeName}
+          foods={customFoods}
+          onMutated={(res) => onCustomFoodsUpdated?.(res)}
+          title="המוצרים האישיים והמשותפים שלך"
+          subtitle="תוכל לערוך או למחוק מוצרים שיצרת, ולהוסיף מוצרים חדשים עם חלוקת הקלוריות שלך."
+        />
+      </Modal>
 
       <BarcodeScannerModal
         opened={barcodeModalOpen}

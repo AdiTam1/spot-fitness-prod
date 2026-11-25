@@ -6,6 +6,7 @@ import {
   CoachOnboardingData,
   CoachProfile,
   CoachPushSubscriptionSettings,
+  CustomFoodItem,
   FoodCatalogItem,
   FoodCatalogSourceId,
   FoodUnit,
@@ -145,6 +146,7 @@ interface EmbeddedTraineeMeta {
   savedMeals?: SavedMealPreset[];
   customServingTools?: TraineeServingTool[];
   customFoodUnits?: TraineeCustomUnit[];
+  customFoods?: CustomFoodItem[];
   recentContextChips?: QuickContextChip[];
   pendingAiJobs?: PendingAiMealJob[];
   fcmTokens?: TraineeProfile['fcmTokens'];
@@ -308,6 +310,9 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
       : Array.isArray(row.custom_food_units)
       ? (row.custom_food_units as TraineeCustomUnit[])
       : [],
+    customFoods: Array.isArray(embeddedMeta.customFoods)
+      ? (embeddedMeta.customFoods as CustomFoodItem[])
+      : [],
     recentContextChips: Array.isArray(embeddedMeta.recentContextChips)
       ? embeddedMeta.recentContextChips
       : Array.isArray(row.recent_context_chips)
@@ -408,6 +413,8 @@ export async function loadStateFromSupabase(): Promise<{
   templates: NutritionTemplate[];
   trainees: TraineeProfile[];
   globalQuickChips: QuickContextChip[];
+  globalCustomFoods: CustomFoodItem[];
+  coachCustomFoods: Record<string, CustomFoodItem[]>;
   coachPushSettings: Record<string, CoachPushSubscriptionSettings>;
   appReleasePolicy?: AppReleasePolicy;
   readErrors: string[];
@@ -419,6 +426,8 @@ export async function loadStateFromSupabase(): Promise<{
       templates: [],
       trainees: [],
       globalQuickChips: [],
+      globalCustomFoods: [],
+      coachCustomFoods: {},
       coachPushSettings: {},
       appReleasePolicy: undefined,
       readErrors: [],
@@ -456,6 +465,8 @@ export async function loadStateFromSupabase(): Promise<{
   let fallbackCoaches: CoachProfile[] = [];
   let fallbackGroups: TraineeGroup[] = [];
   let globalQuickChips: QuickContextChip[] = [];
+  let globalCustomFoods: CustomFoodItem[] = [];
+  let coachCustomFoods: Record<string, CustomFoodItem[]> = {};
   let coachPushSettings: Record<string, CoachPushSubscriptionSettings> = {};
   let appReleasePolicy: AppReleasePolicy | undefined;
 
@@ -468,6 +479,8 @@ export async function loadStateFromSupabase(): Promise<{
       coaches?: CoachProfile[];
       groups?: TraineeGroup[];
       globalQuickChips?: QuickContextChip[];
+      globalCustomFoods?: CustomFoodItem[];
+      coachCustomFoods?: Record<string, CustomFoodItem[]>;
       coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
       appReleasePolicy?: AppReleasePolicy;
     };
@@ -479,6 +492,15 @@ export async function loadStateFromSupabase(): Promise<{
     }
     if (Array.isArray(metaObj.globalQuickChips)) {
       globalQuickChips = metaObj.globalQuickChips;
+    }
+    if (Array.isArray(metaObj.globalCustomFoods)) {
+      globalCustomFoods = metaObj.globalCustomFoods;
+    }
+    if (
+      metaObj.coachCustomFoods &&
+      typeof metaObj.coachCustomFoods === 'object'
+    ) {
+      coachCustomFoods = metaObj.coachCustomFoods;
     }
     if (
       metaObj.coachPushSettings &&
@@ -569,6 +591,8 @@ export async function loadStateFromSupabase(): Promise<{
     templates,
     trainees,
     globalQuickChips,
+    globalCustomFoods,
+    coachCustomFoods,
     coachPushSettings,
     appReleasePolicy,
     readErrors,
@@ -788,10 +812,56 @@ export async function loadQuickChipsContextForTraineeFromSupabase(
   return { globalQuickChips, groupQuickChips };
 }
 
+export async function loadCustomFoodsContextFromSupabase(
+  coachIds?: string[]
+): Promise<{
+  globalCustomFoods: CustomFoodItem[];
+  coachCustomFoods: Record<string, CustomFoodItem[]>;
+}> {
+  if (!supabase) return { globalCustomFoods: [], coachCustomFoods: {} };
+  try {
+    const { data } = await supabase
+      .from('nutrition_templates')
+      .select('meals')
+      .eq('id', SYSTEM_META_TEMPLATE_ID)
+      .maybeSingle();
+
+    const metaMeals = data?.meals as
+      | {
+          globalCustomFoods?: CustomFoodItem[];
+          coachCustomFoods?: Record<string, CustomFoodItem[]>;
+        }
+      | undefined;
+
+    const globalCustomFoods = Array.isArray(metaMeals?.globalCustomFoods)
+      ? metaMeals.globalCustomFoods
+      : [];
+    const rawCoachFoods =
+      metaMeals?.coachCustomFoods && typeof metaMeals.coachCustomFoods === 'object'
+        ? metaMeals.coachCustomFoods
+        : {};
+
+    if (!Array.isArray(coachIds)) {
+      return { globalCustomFoods, coachCustomFoods: rawCoachFoods };
+    }
+    const filtered: Record<string, CustomFoodItem[]> = {};
+    for (const cId of coachIds) {
+      if (Array.isArray(rawCoachFoods[cId])) {
+        filtered[cId] = rawCoachFoods[cId];
+      }
+    }
+    return { globalCustomFoods, coachCustomFoods: filtered };
+  } catch {
+    return { globalCustomFoods: [], coachCustomFoods: {} };
+  }
+}
+
 export async function saveSystemMetaBackup(partial: {
   coaches?: CoachProfile[];
   groups?: TraineeGroup[];
   globalQuickChips?: QuickContextChip[];
+  globalCustomFoods?: CustomFoodItem[];
+  coachCustomFoods?: Record<string, CustomFoodItem[]>;
   coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
   appReleasePolicy?: AppReleasePolicy;
 }): Promise<{ ok: boolean; error?: string }> {
@@ -810,6 +880,8 @@ export async function saveSystemMetaBackup(partial: {
             coaches?: CoachProfile[];
             groups?: TraineeGroup[];
             globalQuickChips?: QuickContextChip[];
+            globalCustomFoods?: CustomFoodItem[];
+            coachCustomFoods?: Record<string, CustomFoodItem[]>;
             coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
             appReleasePolicy?: AppReleasePolicy;
           })
@@ -828,6 +900,14 @@ export async function saveSystemMetaBackup(partial: {
         partial.globalQuickChips !== undefined
           ? partial.globalQuickChips
           : currentMeta.globalQuickChips || [],
+      globalCustomFoods:
+        partial.globalCustomFoods !== undefined
+          ? partial.globalCustomFoods
+          : currentMeta.globalCustomFoods || [],
+      coachCustomFoods:
+        partial.coachCustomFoods !== undefined
+          ? partial.coachCustomFoods
+          : currentMeta.coachCustomFoods || {},
       coachPushSettings:
         partial.coachPushSettings !== undefined
           ? partial.coachPushSettings
@@ -898,6 +978,24 @@ export async function saveGlobalQuickChipsToSupabase(
   const res = await saveSystemMetaBackup({ globalQuickChips });
   if (!res.ok) {
     throw new Error(res.error || 'Supabase global quick chips save failed');
+  }
+}
+
+export async function saveGlobalCustomFoodsToSupabase(
+  globalCustomFoods: CustomFoodItem[]
+) {
+  const res = await saveSystemMetaBackup({ globalCustomFoods });
+  if (!res.ok) {
+    throw new Error(res.error || 'Supabase global custom foods save failed');
+  }
+}
+
+export async function saveCoachCustomFoodsToSupabase(
+  coachCustomFoods: Record<string, CustomFoodItem[]>
+) {
+  const res = await saveSystemMetaBackup({ coachCustomFoods });
+  if (!res.ok) {
+    throw new Error(res.error || 'Supabase coach custom foods save failed');
   }
 }
 
@@ -1161,6 +1259,7 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
       savedMeals: t.savedMeals || [],
       customServingTools: t.customServingTools || [],
       customFoodUnits: t.customFoodUnits || [],
+      customFoods: t.customFoods || [],
       recentContextChips: t.recentContextChips || [],
       pendingAiJobs: t.pendingAiJobs || [],
       fcmTokens: t.fcmTokens || [],

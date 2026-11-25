@@ -118,11 +118,39 @@ export interface FoodCatalogItem {
   units: FoodUnit[];
   isPopular?: boolean;
   pickCount?: number;
-  source?: 'local' | 'moh' | 'openfoodfacts' | 'scraper';
+  source?: 'local' | 'moh' | 'openfoodfacts' | 'scraper' | 'custom';
   sourceSiteId?: FoodCatalogSourceId;
   sourceSiteName?: string;
   sourceUrl?: string;
+  customScope?: CustomFoodScope;
+  customFoodOwnerId?: string;
   updatedAt?: string;
+}
+
+export type CustomFoodScope =
+  | 'trainee'
+  | 'coach-private'
+  | 'coach-trainees'
+  | 'global';
+
+export interface CustomFoodItem {
+  id: string;
+  name: string;
+  brand?: string;
+  category?: string;
+  barcode?: string;
+  per100g: MacroTargets;
+  units: FoodUnit[];
+  inputMode?: 'per100g' | 'serving';
+  defaultServingLabel?: string;
+  defaultServingGrams?: number;
+  scope: CustomFoodScope;
+  ownerId: string;
+  ownerRole: UserRole;
+  ownerName?: string;
+  traineeId?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface UserFoodHistoryItem extends FoodCatalogItem {
@@ -575,6 +603,7 @@ export interface TraineeProfile {
   savedMeals?: SavedMealPreset[]; // ספריית ארוחות שמורות (מועדפים, נעיצה, פופולריות, התאמת AI, שאלות למאמן)
   customServingTools?: TraineeServingTool[]; // צלחות / קערות / קופסאות / כוסות מוגדרות אישית
   customFoodUnits?: TraineeCustomUnit[]; // יחידות מידה מוגדרות אישית בגרמים
+  customFoods?: CustomFoodItem[]; // מוצרי מזון אישיים שהמתאמן או המאמן הגדירו במיוחד
   recentContextChips?: QuickContextChip[]; // צ'יפים מהירים פר-משתמש מסודרים לפי MRU
   pendingAiJobs?: PendingAiMealJob[]; // משימות פענוח AI שמתבצעות ברקע ומסתנכרנות אוטומטית ליומן
   fcmTokens?: TraineeFcmTokenEntry[]; // טוקנים רשומים של אפליקציית האנדרואיד (FCM)

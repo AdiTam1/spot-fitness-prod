@@ -35,6 +35,7 @@ import {
 import {
   AiContextParams,
   BodyMeasurementEntry,
+  CustomFoodItem,
   DailyCardioLog,
   DailyWorkoutLog,
   DayType,
@@ -50,8 +51,10 @@ import {
   TraineeProfile,
   TraineePushPreferences,
   TraineeServingTool,
+  UserRole,
   WeeklyCheckInEntry,
 } from '@/types/nutrition';
+import type { CustomFoodsMutationResult } from '@/components/CustomFoodModal';
 import { getTodayIso, sumMacros } from '@/data/israeliFoodCatalog';
 import {
   ALL_MEAL_SHORTCUT_OPTIONS,
@@ -174,6 +177,9 @@ interface TraineeMobileViewProps {
     chips?: Partial<QuickContextChip>[];
     chipId?: string;
   }) => Promise<{ error?: string }>;
+  actorRole?: UserRole;
+  customFoods?: CustomFoodItem[];
+  onCustomFoodsUpdated?: (res: CustomFoodsMutationResult) => void;
   backgroundAiJobs?: PendingAiMealJob[];
   onStartBackgroundAiAnalysis?: (payload: {
     traineeId: string;
@@ -270,6 +276,9 @@ export function TraineeMobileView({
   onSavedMealAction,
   onManageToolsAndUnits,
   onManageQuickChips,
+  actorRole = 'trainee',
+  customFoods = [],
+  onCustomFoodsUpdated,
   backgroundAiJobs = [],
   onStartBackgroundAiAnalysis,
   externalOpenMealRequest,
@@ -3007,6 +3016,9 @@ export function TraineeMobileView({
             : undefined
         }
         onManageQuickChips={onManageQuickChips}
+        actorRole={actorRole}
+        customFoods={customFoods}
+        onCustomFoodsUpdated={onCustomFoodsUpdated}
         selectedDate={selectedDate}
         backgroundAiJobs={backgroundAiJobs}
         onStartBackgroundAiAnalysis={onStartBackgroundAiAnalysis}

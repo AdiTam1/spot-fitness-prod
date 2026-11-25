@@ -7,6 +7,7 @@ import {
   CoachDirectoryItem,
   CoachProfile,
   CoachPushSubscriptionSettings,
+  CustomFoodItem,
   NutritionTemplate,
   QuickContextChip,
   TraineeFcmTokenEntry,
@@ -25,14 +26,17 @@ import {
   LiveAuthRecord,
   loadAppReleasePolicyFromSupabase,
   loadCoachLiveAuthState,
+  loadCustomFoodsContextFromSupabase,
   loadQuickChipsContextForTraineeFromSupabase,
   loadSingleCoachFromSupabase,
   loadSingleTraineeFromSupabase,
   loadStateFromSupabase,
   loadTraineeLiveAuthState,
   saveAppReleasePolicyToSupabase,
+  saveCoachCustomFoodsToSupabase,
   saveCoachPushSettingsToSupabase,
   saveCoachesToSupabase,
+  saveGlobalCustomFoodsToSupabase,
   saveGlobalQuickChipsToSupabase,
   saveGroupsToSupabase,
   saveTemplatesToSupabase,
@@ -49,6 +53,8 @@ export interface ServerDatabaseState {
   templates: NutritionTemplate[];
   trainees: TraineeProfile[];
   globalQuickChips?: QuickContextChip[];
+  globalCustomFoods?: CustomFoodItem[];
+  coachCustomFoods?: Record<string, CustomFoodItem[]>;
   coachPushSettings?: Record<string, CoachPushSubscriptionSettings>;
   appReleasePolicy?: AppReleasePolicy;
   readErrors?: string[];
@@ -97,6 +103,8 @@ function createCleanInitialState(): ServerDatabaseState {
     templates: DEFAULT_TEMPLATES,
     trainees: [],
     globalQuickChips: [],
+    globalCustomFoods: [],
+    coachCustomFoods: {},
     coachPushSettings: {},
     appReleasePolicy: { androidBlockedUpToVersionCode: 0 },
   };
@@ -119,6 +127,13 @@ function loadLocalServerFile(): ServerDatabaseState {
       parsed.globalQuickChips = Array.isArray(parsed.globalQuickChips)
         ? parsed.globalQuickChips
         : [];
+      parsed.globalCustomFoods = Array.isArray(parsed.globalCustomFoods)
+        ? parsed.globalCustomFoods
+        : [];
+      parsed.coachCustomFoods =
+        parsed.coachCustomFoods && typeof parsed.coachCustomFoods === 'object'
+          ? parsed.coachCustomFoods
+          : {};
       parsed.coachPushSettings =
         parsed.coachPushSettings && typeof parsed.coachPushSettings === 'object'
           ? parsed.coachPushSettings
@@ -193,6 +208,8 @@ export async function getServerDbState(): Promise<ServerDatabaseState> {
       templates,
       trainees: remote.trainees,
       globalQuickChips: remote.globalQuickChips || [],
+      globalCustomFoods: remote.globalCustomFoods || [],
+      coachCustomFoods: remote.coachCustomFoods || {},
       coachPushSettings: remote.coachPushSettings || {},
       appReleasePolicy: remote.appReleasePolicy || {
         androidBlockedUpToVersionCode: 0,
@@ -327,6 +344,32 @@ export async function getQuickChipsContextForTrainee(
   return { globalQuickChips, groupQuickChips };
 }
 
+export async function getCustomFoodsContextForUser(opts: {
+  coachIds?: string[];
+}): Promise<{
+  globalCustomFoods: CustomFoodItem[];
+  coachCustomFoods: Record<string, CustomFoodItem[]>;
+}> {
+  if (isSupabaseConfigured) {
+    return await loadCustomFoodsContextFromSupabase(opts.coachIds);
+  }
+  const state = await getServerDbState();
+  const globalCustomFoods = Array.isArray(state.globalCustomFoods)
+    ? state.globalCustomFoods
+    : [];
+  const rawCoach = state.coachCustomFoods || {};
+  if (!Array.isArray(opts.coachIds)) {
+    return { globalCustomFoods, coachCustomFoods: rawCoach };
+  }
+  const coachCustomFoods: Record<string, CustomFoodItem[]> = {};
+  for (const id of opts.coachIds) {
+    if (Array.isArray(rawCoach[id])) {
+      coachCustomFoods[id] = rawCoach[id];
+    }
+  }
+  return { globalCustomFoods, coachCustomFoods };
+}
+
 export async function updateServerDbState(
   updater: (prev: ServerDatabaseState) => ServerDatabaseState
 ): Promise<ServerDatabaseState> {
@@ -356,6 +399,12 @@ export async function updateServerDbState(
     }
     if (next.globalQuickChips !== current.globalQuickChips) {
       tasks.push(saveGlobalQuickChipsToSupabase(next.globalQuickChips || []));
+    }
+    if (next.globalCustomFoods !== current.globalCustomFoods) {
+      tasks.push(saveGlobalCustomFoodsToSupabase(next.globalCustomFoods || []));
+    }
+    if (next.coachCustomFoods !== current.coachCustomFoods) {
+      tasks.push(saveCoachCustomFoodsToSupabase(next.coachCustomFoods || {}));
     }
     if (next.coachPushSettings !== current.coachPushSettings) {
       tasks.push(saveCoachPushSettingsToSupabase(next.coachPushSettings || {}));

@@ -45,6 +45,7 @@ import {
 } from '@/lib/coachAlertEngine';
 import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
 import { finalizeAiRouteResponse } from '@/lib/telemetry/aiTelemetry';
+import { resolveVisibleCustomCatalogForActor } from '@/lib/customFoodsServer';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -479,6 +480,7 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
       toolName,
       baseItems,
       adjustmentPrompt,
+      traineeId: bodyTraineeId,
       backgroundJob,
     } = body as {
       mode?: 'analyze' | 'adjust-meal' | 'measure-tool' | 'transcribe-audio';
@@ -493,6 +495,7 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
       toolName?: string;
       baseItems?: LoggedFoodItem[];
       adjustmentPrompt?: string;
+      traineeId?: string;
       backgroundJob?: {
         jobId: string;
         traineeId: string;
@@ -1009,6 +1012,21 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
         );
       }
 
+      const priorityCustomCatalog = await resolveVisibleCustomCatalogForActor(
+        sessionUser,
+        backgroundJob?.traineeId || bodyTraineeId
+      );
+      const customFoodsHint =
+        priorityCustomCatalog.length > 0
+          ? `\nמוצרים אישיים מוגדרים של המשתמש (עדיפות עליונה לשם ולערכים ל-100 גרם אם מוזכרים!): ${priorityCustomCatalog
+              .slice(0, 35)
+              .map(
+                (cf) =>
+                  `${cf.name} (${Math.round(cf.per100g.calories)} קק״ל/100g, ח:${cf.per100g.protein}, פ:${cf.per100g.carbs}, ש:${cf.per100g.fat})`
+              )
+              .join(' | ')}`
+          : '';
+
       const contextBlock = formatContextParamsPrompt(contextParams);
       let geminiErrorMsg = '';
       if (apiKey) {
@@ -1018,7 +1036,7 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
 ${JSON.stringify(cleanBaseItems)}
 
 ${cleanAdjustment ? `הוראת התיקון של המתאמן (עובדה מחייבת — עדיפות עליונה!): "${cleanAdjustment}"` : ''}
-${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : ''}
+${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : ''}${customFoodsHint}
 
 כללי חובה בעת תיקון:
 1. שמור את כל המרכיבים שהמתאמן לא ביקש לשנות/להסיר עם השם, הגרמים והמאקרו המקוריים שלהם ללא פגיעה.
@@ -1055,7 +1073,10 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
             sourceType,
             res.modelName || GEMINI_VISION_MODELS[0]
           );
-          const items = await groundAndNormalizeAiItems(rawMapped);
+          const items = await groundAndNormalizeAiItems(
+            rawMapped,
+            priorityCustomCatalog
+          );
           return NextResponse.json({
             items,
             summary:
@@ -1093,6 +1114,10 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
     // =========================================================================
     // מצב C (ברירת מחדל): ניתוח תמונות מרובות + הקשר מדויק + טקסט
     // =========================================================================
+    const priorityCustomCatalog = await resolveVisibleCustomCatalogForActor(
+      sessionUser,
+      backgroundJob?.traineeId || bodyTraineeId
+    );
     const contextBlock = formatContextParamsPrompt(contextParams);
     const hasUserText = Boolean(textPrompt && textPrompt.trim().length >= 2);
     const strictUserList = Boolean(contextParams?.strictUserList);
@@ -1153,6 +1178,17 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
       if (contextBlock) {
         parts.push({ text: `פרמטרי דיוק שנבחרו ע"י המתאמן:\n${contextBlock}` });
       }
+      if (priorityCustomCatalog.length > 0) {
+        parts.push({
+          text: `מוצרים אישיים מוגדרים של המשתמש (עדיפות עליונה לשמות ולערכי המאקרו אם מוזכרים או תואמים!): ${priorityCustomCatalog
+            .slice(0, 35)
+            .map(
+              (cf) =>
+                `${cf.name} (${Math.round(cf.per100g.calories)} קק״ל/100g, ח:${cf.per100g.protein}, פ:${cf.per100g.carbs}, ש:${cf.per100g.fat})`
+            )
+            .join(' | ')}`,
+        });
+      }
       validatedImages.forEach((img, idx) => {
         parts.push({ text: `תמונה ${idx + 1}: ${img.angleLabel}` });
         parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
@@ -1198,9 +1234,9 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
             : [];
 
         const [items, suggestedExtras] = await Promise.all([
-          groundAndNormalizeAiItems(rawItems),
+          groundAndNormalizeAiItems(rawItems, priorityCustomCatalog),
           rawExtras.length > 0
-            ? groundAndNormalizeAiItems(rawExtras)
+            ? groundAndNormalizeAiItems(rawExtras, priorityCustomCatalog)
             : Promise.resolve([]),
         ]);
 
@@ -1250,7 +1286,11 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
           }))
         : Promise.resolve({ items: [] as FoodCatalogItem[], sqlCount: 0 }),
     ]);
-    const mergedCatalogPool = [...sqlFallbackRes.items, ...cachedPool];
+    const mergedCatalogPool = [
+      ...priorityCustomCatalog,
+      ...sqlFallbackRes.items,
+      ...cachedPool,
+    ];
     let items = smartHebrewMealParser(
       combinedFallbackText,
       sourceType,

@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Select, Textarea } from '@mantine/core';
+import { Modal, Select, Textarea } from '@mantine/core';
 import {
   Bookmark,
   Check,
@@ -10,16 +10,21 @@ import {
   Ruler,
   Send,
   Star,
+  Utensils,
 } from 'lucide-react';
 import {
   TraineeCustomUnit,
   TraineeProfile,
   TraineeServingTool,
+  UserRole,
 } from '@/types/nutrition';
 import { ServingToolsManagerModal } from './ServingToolsManagerModal';
+import { CustomFoodsLibraryPanel } from './CustomFoodsLibraryPanel';
+import type { CustomFoodsMutationResult } from './CustomFoodModal';
 
 interface CoachSavedMealsPanelProps {
   trainee: TraineeProfile;
+  actorRole?: UserRole;
   onReplySavedMeal?: (
     traineeId: string,
     payload: { presetId: string; reply: string; promoteToSlotId?: string }
@@ -31,17 +36,21 @@ interface CoachSavedMealsPanelProps {
       customFoodUnits?: TraineeCustomUnit[];
     }
   ) => Promise<{ error?: string }>;
+  onCustomFoodsUpdated?: (res: CustomFoodsMutationResult) => void;
 }
 
 export function CoachSavedMealsPanel({
   trainee,
+  actorRole = 'coach',
   onReplySavedMeal,
   onManageToolsAndUnits,
+  onCustomFoodsUpdated,
 }: CoachSavedMealsPanelProps) {
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const [promoteSlots, setPromoteSlots] = useState<Record<string, string>>({});
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [toolsModalOpen, setToolsModalOpen] = useState(false);
+  const [customFoodsOpen, setCustomFoodsOpen] = useState(false);
   const [banner, setBanner] = useState<{ msg: string; isError?: boolean } | null>(null);
 
   const sortedMeals = useMemo(() => {
@@ -129,29 +138,53 @@ export function CoachSavedMealsPanel({
           </div>
         </div>
 
-        {onManageToolsAndUnits && (
-          <button
-            type="button"
-            onClick={() => setToolsModalOpen(true)}
-            className="btn-surface"
-            style={{
-              padding: '7px 12px',
-              fontSize: 13,
-              fontWeight: 700,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              cursor: 'pointer',
-              borderColor: 'var(--line-2)',
-            }}
-          >
-            <Ruler size={13} color="currentColor" />
-            <span>
-              ניהול כלים ויחידות למתאמן ({(trainee.customServingTools || []).length} כלים ·{' '}
-              {(trainee.customFoodUnits || []).length} יחידות)
-            </span>
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {onCustomFoodsUpdated && (
+            <button
+              type="button"
+              onClick={() => setCustomFoodsOpen(true)}
+              className="btn-surface"
+              style={{
+                padding: '7px 12px',
+                fontSize: 13,
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                cursor: 'pointer',
+                borderColor: 'var(--line-2)',
+              }}
+            >
+              <Utensils size={13} color="currentColor" />
+              <span>
+                מוצרים אישיים של המתאמן ({(trainee.customFoods || []).length})
+              </span>
+            </button>
+          )}
+          {onManageToolsAndUnits && (
+            <button
+              type="button"
+              onClick={() => setToolsModalOpen(true)}
+              className="btn-surface"
+              style={{
+                padding: '7px 12px',
+                fontSize: 13,
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                cursor: 'pointer',
+                borderColor: 'var(--line-2)',
+              }}
+            >
+              <Ruler size={13} color="currentColor" />
+              <span>
+                ניהול כלים ויחידות למתאמן ({(trainee.customServingTools || []).length} כלים ·{' '}
+                {(trainee.customFoodUnits || []).length} יחידות)
+              </span>
+            </button>
+          )}
+        </div>
       </div>
 
       {banner && (
@@ -355,6 +388,31 @@ export function CoachSavedMealsPanel({
           customUnits={trainee.customFoodUnits || []}
           onSave={(payload) => onManageToolsAndUnits(trainee.id, payload)}
         />
+      )}
+
+      {onCustomFoodsUpdated && (
+        <Modal
+          opened={customFoodsOpen}
+          onClose={() => setCustomFoodsOpen(false)}
+          title={`מוצרים אישיים — ${trainee.name}`}
+          centered
+          size="md"
+          zIndex={265}
+          styles={{
+            content: { borderRadius: 24, maxWidth: 'calc(100vw - 24px)' },
+          }}
+        >
+          <CustomFoodsLibraryPanel
+            mode="trainee-inspector"
+            actorRole={actorRole}
+            traineeId={trainee.id}
+            traineeName={trainee.name}
+            foods={trainee.customFoods || []}
+            onMutated={(res) => onCustomFoodsUpdated(res)}
+            title={`מוצרים אישיים של ${trainee.name}`}
+            subtitle="תוכל להוסיף מוצר במיוחד למתאמן זה, או לשתף מוצר קיים שלו לשאר המתאמנים שלך."
+          />
+        </Modal>
       )}
     </div>
   );

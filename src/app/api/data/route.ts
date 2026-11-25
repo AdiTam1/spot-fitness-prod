@@ -28,6 +28,7 @@ import {
   deleteGroupOnServer,
   deleteTemplateOnServer,
   deleteTraineeOnServer,
+  getCustomFoodsContextForUser,
   getQuickChipsContextForTrainee,
   getServerDbState,
   getSingleCoachFromServer,
@@ -476,7 +477,23 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
       }
     }
 
-    const chipsCtx = await getQuickChipsContextForTrainee(myProfile.groupId);
+    const coachIdsForTrainee = [
+      myProfile.primaryCoachId,
+      ...(Array.isArray(myProfile.sharedCoachIds) ? myProfile.sharedCoachIds : []),
+    ].filter(Boolean);
+
+    const [chipsCtx, customFoodsCtx] = await Promise.all([
+      getQuickChipsContextForTrainee(myProfile.groupId),
+      getCustomFoodsContextForUser({ coachIds: coachIdsForTrainee }),
+    ]);
+
+    const sharedCoachCustomFoods: Record<string, typeof customFoodsCtx.globalCustomFoods> = {};
+    for (const cId of coachIdsForTrainee) {
+      const list = customFoodsCtx.coachCustomFoods[cId];
+      if (Array.isArray(list) && list.length > 0) {
+        sharedCoachCustomFoods[cId] = list.filter((cf) => cf.scope === 'coach-trainees');
+      }
+    }
 
     return NextResponse.json(
       {
@@ -487,6 +504,8 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
         coachDirectory: [],
         globalQuickChips: chipsCtx.globalQuickChips,
         groupQuickChips: chipsCtx.groupQuickChips,
+        globalCustomFoods: customFoodsCtx.globalCustomFoods,
+        sharedCoachCustomFoods,
         role: 'trainee',
       },
       { headers: { 'Cache-Control': 'no-store, max-age=0' } }
@@ -528,6 +547,8 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
         coachDirectory: buildCoachDirectory(state), // שמות בלבד לצורך שיתוף
         coachInviteCode: liveCoach.inviteCode,
         globalQuickChips: state.globalQuickChips || [],
+        globalCustomFoods: state.globalCustomFoods || [],
+        myCoachCustomFoods: state.coachCustomFoods?.[session.id] || [],
         coachPushSettings: sanitizeCoachPushSettingsForClient(
           state.coachPushSettings?.[session.id],
           session.id
@@ -559,6 +580,8 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
       coachDirectory: buildCoachDirectory(state),
       coachInviteCode: state.coachInviteCode,
       globalQuickChips: state.globalQuickChips || [],
+      globalCustomFoods: state.globalCustomFoods || [],
+      myCoachCustomFoods: state.coachCustomFoods?.['coach-admin'] || [],
       coachPushSettings: sanitizeCoachPushSettingsForClient(
         state.coachPushSettings?.[session.id],
         session.id

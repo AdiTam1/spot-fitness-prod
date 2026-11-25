@@ -118,7 +118,8 @@ function areFoodVariantsCompatible(queryName: string, candidateName: string): bo
 function scoreCatalogMatch(
   queryName: string,
   candidate: FoodCatalogItem,
-  aiPer100g?: MacroTargets
+  aiPer100g?: MacroTargets,
+  skipCaloriePlausibility = false
 ): number {
   if (!candidate.per100g || !Number.isFinite(candidate.per100g.calories)) {
     return 0;
@@ -143,7 +144,13 @@ function scoreCatalogMatch(
   if (extraTokens > 3) return 0;
 
   // שער סבירות קלורי: מונע קפיצות חדות ממאגר חיצוני עקב מצב צבירה שונה
-  if (aiPer100g && aiPer100g.calories >= 30 && candidate.per100g.calories >= 0) {
+  // במוצרים אישיים שהמשתמש הגדיר בעצמו — מכבדים את הערכים שבחר ללא פסילה
+  if (
+    !skipCaloriePlausibility &&
+    aiPer100g &&
+    aiPer100g.calories >= 30 &&
+    candidate.per100g.calories >= 0
+  ) {
     const ratio = candidate.per100g.calories / aiPer100g.calories;
     if (ratio < 0.55 || ratio > 1.75) {
       return 0;
@@ -151,6 +158,7 @@ function scoreCatalogMatch(
   }
 
   let score = 100 - extraTokens * 8;
+  if (candidate.source === 'custom') score += 45;
   if (candidate.source === 'local') score += 15;
   if (candidate.source === 'moh' || candidate.sourceSiteId === 'moh_gov') score += 10;
 
@@ -196,12 +204,18 @@ function derivePer100gFromMacros(macros: MacroTargets, grams: number): MacroTarg
 function findBestCandidate(
   queryName: string,
   pool: FoodCatalogItem[],
-  aiPer100g?: MacroTargets
+  aiPer100g?: MacroTargets,
+  skipCaloriePlausibility = false
 ): FoodCatalogItem | undefined {
   let best: FoodCatalogItem | undefined;
   let bestScore = 0;
   for (const cand of pool) {
-    const score = scoreCatalogMatch(queryName, cand, aiPer100g);
+    const score = scoreCatalogMatch(
+      queryName,
+      cand,
+      aiPer100g,
+      skipCaloriePlausibility || cand.source === 'custom'
+    );
     if (score > bestScore) {
       bestScore = score;
       best = cand;
@@ -237,7 +251,8 @@ async function querySupabaseCatalogWithTimeout(
  * ומחשב את הקלוריות והמאקרו דטרמיניסטית מתוך (grams / 100) * per100g כדי לבטל טעויות חשבון.
  */
 export async function groundAndNormalizeAiItems(
-  items: LoggedFoodItem[]
+  items: LoggedFoodItem[],
+  priorityCatalog?: FoodCatalogItem[]
 ): Promise<LoggedFoodItem[]> {
   if (!Array.isArray(items) || items.length === 0) return [];
 
@@ -247,7 +262,14 @@ export async function groundAndNormalizeAiItems(
       const validAiPer100g =
         sanitizePer100g(item.per100g) || derivePer100gFromMacros(item.macros, grams);
 
-      let matched = findBestCandidate(item.name, ISRAELI_FOOD_CATALOG, validAiPer100g);
+      let matched =
+        Array.isArray(priorityCatalog) && priorityCatalog.length > 0
+          ? findBestCandidate(item.name, priorityCatalog, validAiPer100g, true)
+          : undefined;
+
+      if (!matched) {
+        matched = findBestCandidate(item.name, ISRAELI_FOOD_CATALOG, validAiPer100g);
+      }
 
       if (!matched) {
         const dbCandidates = await querySupabaseCatalogWithTimeout(item.name);

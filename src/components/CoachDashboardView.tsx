@@ -60,6 +60,7 @@ import {
   CoachDirectoryItem,
   CoachProfile,
   CoachPushSubscriptionSettings,
+  CustomFoodItem,
   DayType,
   MealTemplateSlot,
   NutritionTemplate,
@@ -75,6 +76,8 @@ import {
 import { computeAgeFromBirthDate } from '@/lib/dateUtils';
 import { QuickChipsAdminPanel } from './QuickChipsAdminPanel';
 import { CoachSavedMealsPanel } from './CoachSavedMealsPanel';
+import { CustomFoodsLibraryPanel } from './CustomFoodsLibraryPanel';
+import type { CustomFoodsMutationResult } from './CustomFoodModal';
 import { CLIENT_WEB_BUILD_ID } from '@/lib/webVersionGuard';
 import { CoachPushModal } from './CoachPushModal';
 import { CoachAlertSettingsModal } from './CoachAlertSettingsModal';
@@ -200,6 +203,9 @@ interface CoachDashboardViewProps {
   onApkReleasePublished?: (policy: AppReleasePolicy) => void;
   onPreviewTraineeMobile: (traineeId: string) => void;
   globalQuickChips?: QuickContextChip[];
+  myCoachCustomFoods?: CustomFoodItem[];
+  globalCustomFoods?: CustomFoodItem[];
+  onCustomFoodsUpdated?: (res: CustomFoodsMutationResult) => void;
   onManageToolsAndUnits?: (
     traineeId: string,
     payload: {
@@ -292,6 +298,9 @@ export function CoachDashboardView({
   onApkReleasePublished,
   onPreviewTraineeMobile,
   globalQuickChips = [],
+  myCoachCustomFoods = [],
+  globalCustomFoods = [],
+  onCustomFoodsUpdated,
   onManageToolsAndUnits,
   onManageQuickChips,
   onReplySavedMeal,
@@ -528,7 +537,14 @@ export function CoachDashboardView({
   const [accountsFilter, setAccountsFilter] = useState<'all' | 'pending' | 'active' | 'paused'>('all');
   const [expandedAccountId, setExpandedAccountId] = useState<string | null>(null);
   const [inspTab, setInspTab] = useState<'data' | 'plan' | 'journal'>('data');
-  const [tplScope, setTplScope] = useState<'all' | 'system' | 'mine'>('all');
+  const [tplScope, setTplScope] = useState<'all' | 'system' | 'mine' | 'foods'>('all');
+  const coachAndGlobalFoods = React.useMemo(() => {
+    const map = new Map<string, CustomFoodItem>();
+    for (const f of [...myCoachCustomFoods, ...globalCustomFoods]) {
+      if (f?.id && !map.has(f.id)) map.set(f.id, f);
+    }
+    return Array.from(map.values());
+  }, [myCoachCustomFoods, globalCustomFoods]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || rosterViewPinned) return;
@@ -3844,8 +3860,10 @@ export function CoachDashboardView({
               {/* פאנל ספריית ארוחות שמורות, שאלות מתאמן וניהול כלים מוגדרים */}
               <CoachSavedMealsPanel
                 trainee={selectedTrainee}
+                actorRole={currentUser.role}
                 onReplySavedMeal={onReplySavedMeal}
                 onManageToolsAndUnits={onManageToolsAndUnits}
+                onCustomFoodsUpdated={onCustomFoodsUpdated}
               />
 
               {/* כרטיס צ'ק-אין שבועי אחרון של המתאמן + העתקת דו"ח לוואטסאפ */}
@@ -4514,13 +4532,33 @@ export function CoachDashboardView({
           <SegmentedPill
             ariaLabel="סוג טמפלייט"
             value={tplScope}
-            onChange={(v) => setTplScope(v as 'all' | 'system' | 'mine')}
+            onChange={(v) => setTplScope(v as 'all' | 'system' | 'mine' | 'foods')}
             options={[
               { value: 'all', label: 'הכל' },
               { value: 'system', label: 'מערכת' },
               { value: 'mine', label: 'האישיים שלי' },
+              { value: 'foods', label: `מוצרים אישיים (${coachAndGlobalFoods.length})` },
             ]}
           />
+          {tplScope === 'foods' ? (
+            <CustomFoodsLibraryPanel
+              mode="coach-library"
+              actorRole={currentUser.role}
+              foods={coachAndGlobalFoods}
+              onMutated={(res) => onCustomFoodsUpdated?.(res)}
+              title={
+                isSuperAdmin
+                  ? 'מאגר מוצרים אישיים וגלובליים (מנהל ראשי)'
+                  : 'המוצרים האישיים שלי'
+              }
+              subtitle={
+                isSuperAdmin
+                  ? 'צור מוצרים פרטיים למאמן, משותפים למתאמנים שלך, או משותפים לכל המשתמשים באפליקציה.'
+                  : 'מוצר שתסמן כמשותף יופיע אצל כל המתאמנים שלך בחיפוש ובפענוח ה-AI. תוכל גם לשתף מוצר של מתאמן ספציפי מכרטיס המתאמן.'
+              }
+            />
+          ) : (
+            <>
           {templates
             .filter((t) => {
               const isGlobal = !t.ownerCoachId || t.ownerCoachId === 'coach-admin';
@@ -5047,6 +5085,8 @@ export function CoachDashboardView({
             </div>
           </div>
         </div>
+            </>
+          )}
         </div>
       )}
 

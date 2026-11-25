@@ -192,10 +192,14 @@ function scoreLocalCandidate(
   const catNorm = normalizeClientFoodText(item.category || '');
   const isHist = historyKeySet.has(item.id) || (item.foodKey ? historyKeySet.has(item.foodKey) : false);
   const isFav = favoriteSet.has(item.id);
-  const personalBoost = (isHist ? 36 + Math.min(18, (item.useCount || 1) * 3) : 0) + (isFav ? 20 : 0);
+  const isCustom = item.source === 'custom';
+  const personalBoost =
+    (isCustom ? 75 : 0) +
+    (isHist ? 36 + Math.min(18, (item.useCount || 1) * 3) : 0) +
+    (isFav ? 20 : 0);
 
   if (!qNorm && !digitsQ) {
-    if (!isHist && !isFav && !item.isPopular) return 5;
+    if (!isCustom && !isHist && !isFav && !item.isPopular) return 5;
     return 20 + personalBoost + (item.isPopular ? 10 : 0);
   }
 
@@ -238,6 +242,7 @@ export function getInstantLocalFoods(opts: {
   retailSubSite: string;
   personalHistory: UserFoodHistoryItem[];
   favoriteIds: string[];
+  customFoods?: FoodCatalogItem[];
   limit?: number;
 }): Array<FoodCatalogItem & Partial<UserFoodHistoryItem>> {
   const limit = opts.limit || 36;
@@ -248,8 +253,14 @@ export function getInstantLocalFoods(opts: {
 
   const deduped = new Map<string, FoodCatalogItem & Partial<UserFoodHistoryItem>>();
 
+  for (const cf of opts.customFoods || []) {
+    deduped.set(makeFoodDedupeKey(cf), cf);
+  }
   for (const h of opts.personalHistory) {
-    deduped.set(makeFoodDedupeKey(h), h);
+    const k = makeFoodDedupeKey(h);
+    if (!deduped.has(k)) {
+      deduped.set(k, h);
+    }
   }
   for (const loc of ISRAELI_FOOD_CATALOG) {
     const k = makeFoodDedupeKey(loc);
@@ -265,7 +276,7 @@ export function getInstantLocalFoods(opts: {
   const scored: Array<{ item: FoodCatalogItem & Partial<UserFoodHistoryItem>; score: number }> = [];
   for (const item of Array.from(deduped.values())) {
     if (opts.sourceGroup === 'favorites_recent') {
-      if (!histSet.has(item.id) && !favSet.has(item.id)) continue;
+      if (item.source !== 'custom' && !histSet.has(item.id) && !favSet.has(item.id)) continue;
     } else if (opts.sourceGroup === 'moh_gov') {
       if (item.source !== 'moh' && item.sourceSiteId !== 'moh_gov') continue;
     } else if (opts.sourceGroup === 'retail') {
@@ -332,14 +343,18 @@ export function mergeLocalAndRemoteFoodResults(
   const all = Array.from(byKey.values());
   // שמור סדר היסטורי/מועדפים בראש כשיש התאמה טקסטואלית, ואת שאר סדר השרת כמות שהוא
   const scored = all.map((item, idx) => {
+    const isCustom = item.source === 'custom';
     const isHist = histSet.has(item.id);
     const isFav = favSet.has(item.id);
     const localRelevance = qNorm || digitsQ
       ? scoreLocalCandidate(item, qNorm, digitsQ, favSet, histSet)
-      : (isHist ? 60 : 0) + (isFav ? 40 : 0);
+      : (isCustom ? 95 : 0) + (isHist ? 60 : 0) + (isFav ? 40 : 0);
     // שומר מיקום יחסי מתוצאות ה-Hybrid SQL RPC עבור פריטים שאינם בהיסטוריה אישית
     const baseOrderBoost = Math.max(0, 50 - idx);
-    const finalScore = isHist || isFav ? localRelevance + 60 : Math.max(localRelevance, baseOrderBoost + 20);
+    const finalScore =
+      isCustom || isHist || isFav
+        ? localRelevance + 60
+        : Math.max(localRelevance, baseOrderBoost + 20);
     return { item, finalScore };
   });
 
