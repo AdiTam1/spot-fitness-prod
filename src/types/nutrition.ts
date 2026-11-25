@@ -216,6 +216,7 @@ export interface AppReleasePolicy {
   androidLatestVersionCode?: number;
   androidLatestVersionName?: string;
   androidApkDownloadUrl?: string;
+  androidApkSizeBytes?: number;
   androidReleaseNotes?: string;
   updatedAt?: string;
 }

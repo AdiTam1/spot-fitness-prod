@@ -2326,6 +2326,14 @@ export async function POST(request: NextRequest) {
         );
       }
       const releaseNotesRaw = sanitizeText(body.androidReleaseNotes, 400);
+      const apkSizeRaw =
+        body.androidApkSizeBytes !== undefined &&
+        body.androidApkSizeBytes !== null &&
+        Number(body.androidApkSizeBytes) > 0
+          ? Math.round(
+              sanitizeNumber(body.androidApkSizeBytes, 0, 200_000_000, 0)
+            )
+          : undefined;
 
       const nextPolicy: AppReleasePolicy = {
         androidBlockedUpToVersionCode: blockedUpTo,
@@ -2333,6 +2341,7 @@ export async function POST(request: NextRequest) {
           latestCodeRaw && latestCodeRaw > 0 ? latestCodeRaw : undefined,
         androidLatestVersionName: latestNameRaw || undefined,
         androidApkDownloadUrl: rawUrl || undefined,
+        androidApkSizeBytes: apkSizeRaw,
         androidReleaseNotes: releaseNotesRaw || undefined,
         updatedAt: new Date().toISOString(),
       };

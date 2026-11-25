@@ -193,7 +193,12 @@ export async function resolveAppVersionInfo(
     androidBlockedUpToVersionCode,
     minSupportedVersionCode: androidBlockedUpToVersionCode + 1,
     apkDownloadUrl: resolveAbsoluteUrl(apkDownloadUrl, originUrl),
-    apkSizeBytes: Number(hostedApkMeta?.sizeBytes || 0) || null,
+    apkSizeBytes:
+      policy.androidApkDownloadUrl?.trim() &&
+      policy.androidApkSizeBytes &&
+      policy.androidApkSizeBytes > 0
+        ? policy.androidApkSizeBytes
+        : Number(hostedApkMeta?.sizeBytes || 0) || null,
     releasesPageUrl,
     releaseNotes,
     localApkDetected: Boolean(localHostedRel),

@@ -77,6 +77,7 @@ import { CLIENT_WEB_BUILD_ID } from '@/lib/webVersionGuard';
 import { CoachPushModal } from './CoachPushModal';
 import { CoachAlertSettingsModal } from './CoachAlertSettingsModal';
 import { AdminScrapersPanel } from './AdminScrapersPanel';
+import { AdminApkUploadPanel } from './AdminApkUploadPanel';
 import {
   DEFAULT_TEMPLATES,
   getTodayIso,
@@ -192,6 +193,7 @@ interface CoachDashboardViewProps {
   onDeleteCoach: (coachId: string) => Promise<{ error?: string }> | void;
   appReleasePolicy?: AppReleasePolicy;
   onUpdateAppPolicy?: (policy: AppReleasePolicy) => Promise<{ error?: string }> | void;
+  onApkReleasePublished?: (policy: AppReleasePolicy) => void;
   onPreviewTraineeMobile: (traineeId: string) => void;
   globalQuickChips?: QuickContextChip[];
   onManageToolsAndUnits?: (
@@ -282,6 +284,7 @@ export function CoachDashboardView({
   onDeleteCoach,
   appReleasePolicy,
   onUpdateAppPolicy,
+  onApkReleasePublished,
   onPreviewTraineeMobile,
   globalQuickChips = [],
   onManageToolsAndUnits,
@@ -5789,12 +5792,28 @@ export function CoachDashboardView({
                 </div>
               </div>
 
+              <AdminApkUploadPanel
+                currentBlockedUpToVersionCode={
+                  appReleasePolicy?.androidBlockedUpToVersionCode ?? 0
+                }
+                onPublished={(policy) => {
+                  onApkReleasePublished?.(policy);
+                }}
+                onNotify={(msg, isErr) => showToast(msg, isErr)}
+              />
+
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   const parsedLatestCode = policyLatestCode.trim()
                     ? Math.max(0, Math.round(Number(policyLatestCode) || 0))
                     : undefined;
+                  const cleanUrl = policyApkUrl.trim() || undefined;
+                  const preservedSize =
+                    cleanUrl &&
+                    cleanUrl === appReleasePolicy?.androidApkDownloadUrl
+                      ? appReleasePolicy?.androidApkSizeBytes
+                      : undefined;
                   runBusy(
                     'save-app-policy',
                     () =>
@@ -5806,7 +5825,8 @@ export function CoachDashboardView({
                         androidLatestVersionCode: parsedLatestCode,
                         androidLatestVersionName:
                           policyLatestName.trim() || undefined,
-                        androidApkDownloadUrl: policyApkUrl.trim() || undefined,
+                        androidApkDownloadUrl: cleanUrl,
+                        androidApkSizeBytes: preservedSize,
                         androidReleaseNotes:
                           policyReleaseNotes.trim() || undefined,
                       }),

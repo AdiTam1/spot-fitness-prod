@@ -3000,6 +3000,7 @@ export default function HomePage() {
             onDeleteCoach={handleDeleteCoach}
             appReleasePolicy={appReleasePolicy}
             onUpdateAppPolicy={handleUpdateAppPolicy}
+            onApkReleasePublished={(policy) => setAppReleasePolicy(policy)}
             onPreviewTraineeMobile={(id) => setCoachPreviewTraineeId(id)}
           />
         )}
