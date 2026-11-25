@@ -43,7 +43,7 @@ function mealFingerprint(meal?: LoggedMealEntry): string {
   const itemsSig = (meal.items || [])
     .map(
       (i) =>
-        `${i.name}|${Math.round(i.grams || 0)}|${Math.round(i.macros?.calories || 0)}|${
+        `${i.name}|${Math.round(i.grams || 0)}|${i.itemTime || ''}|${Math.round(i.macros?.calories || 0)}|${
           Math.round((i.macros?.protein || 0) * 10)
         }|${Math.round((i.macros?.carbs || 0) * 10)}|${Math.round((i.macros?.fat || 0) * 10)}`
     )

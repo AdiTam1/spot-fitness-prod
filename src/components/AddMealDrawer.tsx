@@ -97,12 +97,14 @@ import {
   HEBREW_MONTH_NAMES,
 } from '@/lib/dateUtils';
 import {
+  normalizeHhMmTime,
   parseOptionalDecimal,
   sanitizeIntegerInput,
 } from '@/lib/numericInput';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { ServingToolsManagerModal } from './ServingToolsManagerModal';
 import { GlassButton } from './ui/GlassButton';
+import { ItemTimePill } from './ui/ItemTimePill';
 import { SegmentedPill } from './ui/SegmentedPill';
 import { SavedMealsLibraryTab } from './SavedMealsLibraryTab';
 import { AiQuickContextPanel } from './AiQuickContextPanel';
@@ -154,6 +156,7 @@ interface AddMealDrawerProps {
   ) => void | Promise<void>;
   geminiApiKey?: string;
   initialTab?: string;
+  isObservationDay?: boolean;
   traineeId?: string;
   traineeName?: string;
   learnedPreferences?: string[];
@@ -220,6 +223,7 @@ export function AddMealDrawer({
   onSaveMeal,
   geminiApiKey,
   initialTab = 'catalog',
+  isObservationDay = false,
   traineeId,
   traineeName,
   learnedPreferences = [],
@@ -327,6 +331,7 @@ export function AddMealDrawer({
   const [selectedUnitLabel, setSelectedUnitLabel] = useState<string>('custom-grams');
   const [quantity, setQuantity] = useState<number | string>(1);
   const [customGrams, setCustomGrams] = useState<number | string>(100);
+  const [customItemTime, setCustomItemTime] = useState<string>('');
   const [cameraChooserOpen, setCameraChooserOpen] = useState(false);
   const [mealTime, setMealTime] = useState<string>('');
   const [toolsInitialSection, setToolsInitialSection] = useState<'tools' | 'units'>('units');
@@ -504,6 +509,7 @@ export function AddMealDrawer({
         setInlineUnitOpen(false);
         setInlineUnitName('');
         setInlineUnitGrams(100);
+        setCustomItemTime('');
         setEnrichingFood(false);
         setAiRecommendations([]);
         setAiRecDebug(null);
@@ -1002,6 +1008,7 @@ export function AddMealDrawer({
     setSelectedUnitLabel(firstUnit.label);
     setQuantity(1);
     setCustomGrams(firstUnit.grams);
+    setCustomItemTime('');
 
     // שמירה מיידית של הבחירה בהיסטוריה האישית + הגדלת פופולריות גלובלית ברקע
     trackFoodInteraction(food, 'picked', firstUnit.label, firstUnit.grams);
@@ -1131,6 +1138,7 @@ export function AddMealDrawer({
       totalGrams
     );
 
+    const normalizedItemTime = normalizeHhMmTime(customItemTime);
     const newItem: LoggedFoodItem = {
       id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       name: selectedFood.brand
@@ -1145,6 +1153,7 @@ export function AddMealDrawer({
       quantity: safeQuantity,
       grams: totalGrams,
       per100g: { ...selectedFood.per100g },
+      ...(normalizedItemTime ? { itemTime: normalizedItemTime } : {}),
       macros: calculatedMacros,
       source: sourceOverride,
     };
@@ -1639,6 +1648,13 @@ export function AddMealDrawer({
     );
   };
 
+  const updateLoggedItemTime = (id: string, nextTime: string) => {
+    const clean = normalizeHhMmTime(nextTime);
+    setItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, itemTime: clean } : item))
+    );
+  };
+
   const removeItem = (id: string) => {
     setItems((prev) => prev.filter((i) => i.id !== id));
     delete itemScaleBaseRef.current[id];
@@ -1852,7 +1868,18 @@ export function AddMealDrawer({
       }
 
       setPreCorrectionItems([...items]);
-      setItems(data.items);
+      const prevTimeByName = new Map<string, string>();
+      for (const prevIt of items) {
+        if (prevIt.itemTime) {
+          prevTimeByName.set(prevIt.name.trim().toLowerCase(), prevIt.itemTime);
+        }
+      }
+      const nextItemsWithTimes = (data.items as LoggedFoodItem[]).map((it) => {
+        if (it.itemTime) return it;
+        const t = prevTimeByName.get(it.name.trim().toLowerCase());
+        return t ? { ...it, itemTime: t } : it;
+      });
+      setItems(nextItemsWithTimes);
       setItemFieldDrafts({});
       itemScaleBaseRef.current = {};
       const nextNames = new Set(
@@ -2104,11 +2131,17 @@ export function AddMealDrawer({
                   </label>
                   <span aria-hidden>·</span>
                   <span>
-                    {activeTab === 'hub' ? `נרשם ל${mealSlot.name}` : 'יעד'}{' '}
-                    {activeTab !== 'hub' && (
-                      <span className="num-mono" dir="ltr" style={{ color: 'var(--text)', fontWeight: 600 }}>
-                        {mealSlot.targets.calories}
-                      </span>
+                    {activeTab === 'hub' ? (
+                      `נרשם ל${mealSlot.name}`
+                    ) : isObservationDay ? (
+                      'יום תשקיף'
+                    ) : (
+                      <>
+                        יעד{' '}
+                        <span className="num-mono" dir="ltr" style={{ color: 'var(--text)', fontWeight: 600 }}>
+                          {mealSlot.targets.calories}
+                        </span>
+                      </>
                     )}
                   </span>
                 </div>
@@ -3058,7 +3091,9 @@ export function AddMealDrawer({
                         השלמת מאקרו חכמה
                         <Sparkles size={15} color="var(--accent)" />
                       </span>
-                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>יתרה להשלמה בארוחה זו</span>
+                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                        {isObservationDay ? 'הצעות מותאמות ליום תשקיף' : 'יתרה להשלמה בארוחה זו'}
+                      </span>
                     </span>
                     <span
                       className="num-mono"
@@ -3076,13 +3111,19 @@ export function AddMealDrawer({
                         flex: 'none',
                       }}
                     >
-                      <bdi dir="ltr" className="ltr-num">
-                        {Math.max(0, mealSlot.targets.calories - currentTotals.calories)}
-                      </bdi>{' '}
-                      קק״ל · ח׳{' '}
-                      <bdi dir="ltr" className="ltr-num">
-                        {Math.max(0, Math.round(mealSlot.targets.protein - currentTotals.protein))}
-                      </bdi>
+                      {isObservationDay ? (
+                        <span>יום תשקיף</span>
+                      ) : (
+                        <>
+                          <bdi dir="ltr" className="ltr-num">
+                            {Math.max(0, mealSlot.targets.calories - currentTotals.calories)}
+                          </bdi>{' '}
+                          קק״ל · ח׳{' '}
+                          <bdi dir="ltr" className="ltr-num">
+                            {Math.max(0, Math.round(mealSlot.targets.protein - currentTotals.protein))}
+                          </bdi>
+                        </>
+                      )}
                     </span>
                   </div>
 
@@ -4658,8 +4699,14 @@ export function AddMealDrawer({
                       </label>
                     ) : (
                       <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
-                        <bdi className="ltr-num">{items.length}</bdi> מרכיבים · יעד{' '}
-                        <bdi className="ltr-num">{mealSlot.targets.calories}</bdi>
+                        <bdi className="ltr-num">{items.length}</bdi> מרכיבים
+                        {isObservationDay ? (
+                          ' · יום תשקיף'
+                        ) : (
+                          <>
+                            {' '}· יעד <bdi className="ltr-num">{mealSlot.targets.calories}</bdi>
+                          </>
+                        )}
                       </span>
                     )}
                     <span>
@@ -4686,7 +4733,13 @@ export function AddMealDrawer({
                           <div
                             style={{
                               height: '100%',
-                              width: `${Math.min(100, Math.round((m.v / Math.max(1, m.g)) * 100))}%`,
+                              width: `${
+                                isObservationDay
+                                  ? items.length > 0 && m.v > 0
+                                    ? 50
+                                    : 0
+                                  : Math.min(100, Math.round((m.v / Math.max(1, m.g)) * 100))
+                              }%`,
                               background: m.c,
                               borderRadius: 9,
                             }}
@@ -4694,9 +4747,13 @@ export function AddMealDrawer({
                         </div>
                         <span style={{ fontSize: 14, fontWeight: 600 }}>
                           <bdi dir="ltr" className="num-mono ltr-num">{Math.round(m.v)}</bdi>
-                          <span style={{ color: 'var(--text-3)', fontWeight: 500 }}>
-                            {' '}/ <bdi dir="ltr" className="num-mono ltr-num">{Math.round(m.g)}</bdi> ג׳
-                          </span>
+                          {isObservationDay ? (
+                            <span style={{ color: 'var(--text-3)', fontWeight: 500 }}> ג׳</span>
+                          ) : (
+                            <span style={{ color: 'var(--text-3)', fontWeight: 500 }}>
+                              {' '}/ <bdi dir="ltr" className="num-mono ltr-num">{Math.round(m.g)}</bdi> ג׳
+                            </span>
+                          )}
                         </span>
                       </div>
                     ))}
@@ -4966,9 +5023,18 @@ export function AddMealDrawer({
                               style={{ minWidth: 0, flex: 1, background: 'transparent', border: 0, padding: 0, textAlign: 'start', color: 'inherit', fontFamily: 'inherit', cursor: 'pointer', minHeight: 44 }}
                             >
                               <div style={{ fontSize: 16, fontWeight: 600 }}>{item.name}</div>
-                              <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
-                                <bdi dir="ltr" className="num-mono ltr-num">{item.macros.calories}</bdi> קק״ל
-                                {item.isAiFallback ? ' · לא AI' : item.aiEngine ? ' · AI' : ''}
+                              <div style={{ fontSize: 13, color: 'var(--text-2)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                                <span>
+                                  <bdi dir="ltr" className="num-mono ltr-num">{item.macros.calories}</bdi> קק״ל
+                                </span>
+                                {item.itemTime ? (
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontWeight: 600 }}>
+                                    <span>·</span>
+                                    <Clock size={11} />
+                                    <bdi dir="ltr" className="num-mono ltr-num">{item.itemTime}</bdi>
+                                  </span>
+                                ) : null}
+                                {item.isAiFallback ? <span>· לא AI</span> : item.aiEngine ? <span>· AI</span> : null}
                               </div>
                             </button>
                             <span
@@ -5015,14 +5081,37 @@ export function AddMealDrawer({
                                 gap: 8,
                               }}
                             >
-                              <TextInput
-                                size="xs"
-                                label="שם המרכיב"
-                                value={item.name}
-                                onChange={(e) =>
-                                  updateLoggedItemName(item.id, e.currentTarget.value)
-                                }
-                              />
+                              <div
+                                style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: 'minmax(0, 1fr) auto',
+                                  gap: 8,
+                                  alignItems: 'end',
+                                }}
+                              >
+                                <TextInput
+                                  size="xs"
+                                  label="שם המרכיב"
+                                  value={item.name}
+                                  onChange={(e) =>
+                                    updateLoggedItemName(item.id, e.currentTarget.value)
+                                  }
+                                />
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)' }}>
+                                    שעה למנה
+                                  </span>
+                                  <ItemTimePill
+                                    value={item.itemTime}
+                                    fallbackTime={mealTime || mealSlot.timeHint || '12:00'}
+                                    placeholderLabel="לפי הארוחה"
+                                    ariaLabel={`שעה עבור ${item.name}`}
+                                    clearAriaLabel={`אפס שעה עבור ${item.name}`}
+                                    height={30}
+                                    onChange={(val) => updateLoggedItemTime(item.id, val)}
+                                  />
+                                </div>
+                              </div>
                               <div
                                 style={{
                                   display: 'grid',
@@ -5744,6 +5833,28 @@ export function AddMealDrawer({
                 max={2000}
                 step={5}
                 clampBehavior="none"
+              />
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+              }}
+            >
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>
+                שעה למנה (אופציונלי)
+              </span>
+              <ItemTimePill
+                value={customItemTime}
+                fallbackTime={mealTime || mealSlot.timeHint || '12:00'}
+                placeholderLabel="לפי שעת הארוחה"
+                ariaLabel="שעה ייעודית למנה"
+                clearAriaLabel="אפס שעה למנה"
+                height={34}
+                onChange={(val) => setCustomItemTime(normalizeHhMmTime(val) || '')}
               />
             </div>
 

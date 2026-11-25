@@ -587,7 +587,7 @@ export function TraineeMobileView({
   const circumference = 2 * Math.PI * radius;
   const arcLength = circumference * 0.72;
   const filledArc = isObservationDay
-    ? arcLength * Math.min(1, dailyConsumed.calories / 2200)
+    ? arcLength * (dailyConsumed.calories > 0 ? 0.5 : 0)
     : Math.min(arcLength, arcLength * Math.min(1, calRatio));
 
   // Default slot for quick-add / FAB: on today, the slot whose time hint is
@@ -634,7 +634,9 @@ export function TraineeMobileView({
   const prevActiveDate = findAdjacentActiveDate(-1);
   const nextActiveDate = findAdjacentActiveDate(1);
   const stickyCalPct = isObservationDay
-    ? Math.min(100, Math.round((dailyConsumed.calories / 2200) * 100))
+    ? dailyConsumed.calories > 0
+      ? 50
+      : 0
     : Math.min(100, Math.round((dailyConsumed.calories / Math.max(1, dailyTarget.calories)) * 100));
 
   return (
@@ -1316,7 +1318,13 @@ export function TraineeMobileView({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
                 <ProgressRing
-                  value={isObservationDay ? 1 : dailyConsumed.calories}
+                  value={
+                    isObservationDay
+                      ? dailyConsumed.calories > 0
+                        ? 0.5
+                        : 0
+                      : dailyConsumed.calories
+                  }
                   max={isObservationDay ? 1 : dailyTarget.calories}
                   color={
                     isObservationDay
@@ -1384,7 +1392,9 @@ export function TraineeMobileView({
                   { label: 'שומן', consumed: dailyConsumed.fat, target: dailyTarget.fat, color: 'var(--macro-fat)' },
                 ].map((m) => {
                   const pct = isObservationDay
-                    ? Math.min(100, Math.round((m.consumed / 150) * 100))
+                    ? m.consumed > 0
+                      ? 50
+                      : 0
                     : Math.min(100, Math.round((m.consumed / Math.max(1, m.target)) * 100));
                   return (
                     <div key={m.label} style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
@@ -2012,7 +2022,9 @@ export function TraineeMobileView({
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
                           {slotMacrosList.map((mc) => {
                             const barPct = isObservationDay
-                              ? Math.min(100, Math.round((mc.v / 50) * 100))
+                              ? hasItems && mc.v > 0
+                                ? 50
+                                : 0
                               : Math.min(100, Math.round((mc.v / Math.max(1, mc.t)) * 100));
                             return (
                               <div key={mc.k} style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -2132,6 +2144,14 @@ export function TraineeMobileView({
                                         {item.name}
                                       </div>
                                       <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                                        {item.itemTime ? (
+                                          <>
+                                            <bdi dir="ltr" className="num-mono ltr-num">
+                                              {item.itemTime}
+                                            </bdi>
+                                            {' · '}
+                                          </>
+                                        ) : null}
                                         {item.unitLabel} · ח׳ {item.macros.protein}g · פ׳ {item.macros.carbs}g · ש׳ {item.macros.fat}g
                                       </div>
                                     </div>
@@ -3011,6 +3031,7 @@ export function TraineeMobileView({
           )
         }
         initialTab={drawerTab}
+        isObservationDay={isObservationDay}
         traineeId={trainee.id}
         traineeName={trainee.name}
         learnedPreferences={trainee.aiLearnedPreferences || []}

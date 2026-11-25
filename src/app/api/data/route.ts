@@ -18,6 +18,7 @@ import {
   verifyCsrfOrigin,
 } from '@/lib/serverAuth';
 import { authenticateActiveSession } from '@/lib/liveAuth';
+import { normalizeHhMmTime } from '@/lib/numericInput';
 import {
   buildCoachDirectory,
   canCoachAccessTrainee,
@@ -374,6 +375,9 @@ function sanitizeLoggedItems(raw: unknown): LoggedFoodItem[] {
       quantity: sanitizeNumber(obj.quantity, 0.05, 500, 1),
       grams,
       ...(sanitizedPer100g ? { per100g: sanitizedPer100g } : {}),
+      ...(normalizeHhMmTime(obj.itemTime)
+        ? { itemTime: normalizeHhMmTime(obj.itemTime) }
+        : {}),
       macros: {
         calories: sanitizeNumber(obj.macros?.calories, 0, 10000, 0),
         protein: sanitizeNumber(obj.macros?.protein, 0, 1000, 0),

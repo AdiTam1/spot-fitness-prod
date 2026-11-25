@@ -21,6 +21,7 @@ import {
   verifyCsrfOrigin,
 } from '@/lib/serverAuth';
 import { authenticateActiveSession } from '@/lib/liveAuth';
+import { normalizeHhMmTime } from '@/lib/numericInput';
 import {
   canCoachAccessTrainee,
   getSingleTraineeFromServer,
@@ -1172,10 +1173,22 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
             sourceType,
             res.modelName || GEMINI_VISION_MODELS[0]
           );
-          const items = await groundAndNormalizeAiItems(
+          const groundedItems = await groundAndNormalizeAiItems(
             rawMapped,
             priorityCustomCatalog
           );
+          const baseTimeByName = new Map<string, string>();
+          for (const bi of cleanBaseItems as LoggedFoodItem[]) {
+            const nt = normalizeHhMmTime(bi?.itemTime);
+            if (bi?.name && nt) {
+              baseTimeByName.set(bi.name.trim().toLowerCase(), nt);
+            }
+          }
+          const items = groundedItems.map((it) => {
+            if (it.itemTime) return it;
+            const prevTime = baseTimeByName.get(it.name.trim().toLowerCase());
+            return prevTime ? { ...it, itemTime: prevTime } : it;
+          });
           const syncedJob = await syncAnalyzeResultToServer({
             items,
             engine: res.modelName,

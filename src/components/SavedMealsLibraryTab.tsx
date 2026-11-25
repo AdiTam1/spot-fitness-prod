@@ -31,7 +31,8 @@ import {
 } from '@/types/nutrition';
 import { calculateMacrosForGrams, sumMacros } from '@/data/israeliFoodCatalog';
 import { computePer100gFromServing } from '@/lib/customFoods';
-import { parseOptionalDecimal } from '@/lib/numericInput';
+import { normalizeHhMmTime, parseOptionalDecimal } from '@/lib/numericInput';
+import { ItemTimePill } from './ui/ItemTimePill';
 import {
   startUnifiedVoiceCapture,
   VoiceCaptureController,
@@ -954,7 +955,12 @@ export function SavedMealsLibraryTab({
 
                   {/* פירוט רכיבים */}
                   <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                    {preset.items.map((it) => `${it.name} (${it.unitLabel})`).join(' · ')}
+                    {preset.items
+                      .map(
+                        (it) =>
+                          `${it.name} (${it.unitLabel}${it.itemTime ? ` · ${it.itemTime}` : ''})`
+                      )
+                      .join(' · ')}
                   </div>
 
                   {/* סטטוס התייעצות מול המאמן */}
@@ -1157,7 +1163,7 @@ export function SavedMealsLibraryTab({
                           key={it.id}
                           style={{
                             display: 'grid',
-                            gridTemplateColumns: '1.4fr 0.7fr',
+                            gridTemplateColumns: '1.25fr 0.6fr auto',
                             gap: 6,
                             alignItems: 'end',
                           }}
@@ -1224,6 +1230,28 @@ export function SavedMealsLibraryTab({
                               );
                             }}
                           />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {idx === 0 && (
+                              <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)' }}>
+                                שעה
+                              </span>
+                            )}
+                            <ItemTimePill
+                              value={it.itemTime}
+                              placeholderLabel="שעה"
+                              ariaLabel={`שעה עבור ${it.name}`}
+                              clearAriaLabel={`אפס שעה עבור ${it.name}`}
+                              height={30}
+                              onChange={(nextT) => {
+                                const clean = normalizeHhMmTime(nextT);
+                                setEditItems((prev) =>
+                                  prev.map((x, i) =>
+                                    i === idx ? { ...x, itemTime: clean } : x
+                                  )
+                                );
+                              }}
+                            />
+                          </div>
                         </div>
                       ))}
                       <button

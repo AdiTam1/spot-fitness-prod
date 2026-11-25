@@ -178,6 +178,7 @@ export interface LoggedFoodItem {
   grams: number;
   macros: MacroTargets;
   per100g?: MacroTargets;
+  itemTime?: string; // שעה ייעודית למנה/פריט בתוך הארוחה (HH:MM)
   source: FoodEntrySource;
   aiEngine?: string;
   isAiFallback?: boolean;

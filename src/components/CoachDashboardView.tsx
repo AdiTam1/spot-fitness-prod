@@ -4600,6 +4600,15 @@ export function CoachDashboardView({
                             }}
                           >
                             <span>
+                              {it.itemTime && (
+                                <span
+                                  dir="ltr"
+                                  className="num-mono"
+                                  style={{ color: 'var(--text-2)', marginLeft: 5 }}
+                                >
+                                  {it.itemTime} ·
+                                </span>
+                              )}
                               {it.name}{' '}
                               <span style={{ color: 'var(--text-muted)' }}>
                                 ({it.unitLabel})

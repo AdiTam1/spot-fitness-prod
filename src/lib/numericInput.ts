@@ -56,3 +56,13 @@ export function resolveNumericValue(
   if (options?.max !== undefined) next = Math.min(options.max, next);
   return next;
 }
+
+export function normalizeHhMmTime(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  const m = trimmed.match(/^(\d{1,2}):([0-5]\d)(?::\d{2})?$/);
+  if (!m) return undefined;
+  const hh = Number(m[1]);
+  if (!Number.isFinite(hh) || hh < 0 || hh > 23) return undefined;
+  return `${String(hh).padStart(2, '0')}:${m[2]}`;
+}
