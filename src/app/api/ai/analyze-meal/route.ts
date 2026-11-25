@@ -1170,11 +1170,16 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
         });
 
         const res = await callGeminiStructured(apiKey, parts, {
-          perAttemptTimeoutMs: 32_000,
-          totalBudgetMs: 95_000,
+          perAttemptTimeoutMs: 18_000,
+          fallbackAttemptTimeoutMs: 13_500,
+          totalBudgetMs: 90_000,
           shouldCancel: checkBgJobCancelled,
-          onAttemptModel: (m) =>
-            updateBgJobStage(`מתקן את הארוחה מול מודל ${m}...`),
+          onAttemptModel: (m, _idx, meta) =>
+            updateBgJobStage(
+              meta?.isRetry
+                ? `עומס זמני במודל ${m} — מנסה שוב אוטומטית...`
+                : `מתקן את הארוחה מול מודל ${m}...`
+            ),
         });
         if (res.cancelled) {
           return NextResponse.json({ cancelled: true, items: [] });
@@ -1361,11 +1366,16 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
       });
 
       const res = await callGeminiStructured(apiKey, parts, {
-        perAttemptTimeoutMs: 32_000,
-        totalBudgetMs: 95_000,
+        perAttemptTimeoutMs: 18_000,
+        fallbackAttemptTimeoutMs: 13_500,
+        totalBudgetMs: 90_000,
         shouldCancel: checkBgJobCancelled,
-        onAttemptModel: (m) =>
-          updateBgJobStage(`מפענח מרכיבים וכמויות מול מודל ${m}...`),
+        onAttemptModel: (m, _idx, meta) =>
+          updateBgJobStage(
+            meta?.isRetry
+              ? `עומס זמני במודל ${m} — מנסה שוב אוטומטית...`
+              : `מפענח מרכיבים וכמויות מול מודל ${m}...`
+          ),
       });
       if (res.cancelled) {
         return NextResponse.json({ cancelled: true, items: [] });

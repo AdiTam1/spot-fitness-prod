@@ -164,7 +164,9 @@ export function BackgroundAiSyncBanner({
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
                     {isOk
-                      ? `${job.itemsCount || 1} מרכיבים`
+                      ? `${job.itemsCount || 1} מרכיבים${
+                          job.isAiFallback ? ' · זיהוי גיבוי מקומי (בדוק כמויות)' : ''
+                        }`
                       : job.errorMsg || 'נסה שוב או הוסף ידנית מהמאגר'}
                   </div>
                 </div>

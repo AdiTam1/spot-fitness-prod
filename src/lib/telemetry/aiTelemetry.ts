@@ -7,19 +7,34 @@ export function classifyAiFailureReason(
   statusCode?: number
 ): { reasonCode: string; labelHe: string } {
   const msg = (rawReason || '').toLowerCase();
-  if (statusCode === 429 || /rate|מכסת|quota|429|resource_exhausted/.test(msg)) {
+  if (
+    statusCode === 429 ||
+    /\b429\b|rate.?limit|מכסת|quota|resource_exhausted|dailyquota/.test(msg)
+  ) {
     return {
       reasonCode: 'RATE_LIMIT_OR_QUOTA',
       labelHe: 'חריגת מכסה / Rate Limit',
     };
   }
-  if (/gemini_api_key|לא הוגדר מפתח|missing.*key|api key/.test(msg)) {
+  if (/503|high.?demand|service unavailable|overloaded/.test(msg)) {
+    return {
+      reasonCode: 'UPSTREAM_HIGH_DEMAND',
+      labelHe: 'עומס זמני בשרתי Google (503)',
+    };
+  }
+  if (/gemini_api_key|לא הוגדר מפתח|missing.*key|api key|401|403|auth/.test(msg)) {
+    if (statusCode === 401 || statusCode === 403 || /\b401\b|\b403\b|הרשאה|אימות|csrf/.test(msg)) {
+      return {
+        reasonCode: 'AUTH_OR_PERMISSION',
+        labelHe: 'שגיאת אימות / הרשאה',
+      };
+    }
     return {
       reasonCode: 'MISSING_API_KEY',
       labelHe: 'מפתח Gemini חסר בשרת',
     };
   }
-  if (/timeout|timed out|abort|הופסק|deadline|504/.test(msg)) {
+  if (/timeout|timed out|abort|הופסק|deadline|504|budgetexceeded/.test(msg)) {
     return {
       reasonCode: 'TIMEOUT_OR_ABORTED',
       labelHe: 'Timeout / חריגת זמן תגובה',
@@ -37,13 +52,13 @@ export function classifyAiFailureReason(
       labelHe: 'קלט לא תקין / חסר',
     };
   }
-  if (/json|לא החזיר|נכשל|לא זוהה|unpars|422/.test(msg) || statusCode === 422) {
+  if (/json|badjson|לא החזיר|נכשל|לא זוהה|unpars|422/.test(msg) || statusCode === 422) {
     return {
       reasonCode: 'AI_MODEL_OR_PARSE_FAIL',
       labelHe: 'המודל לא זיהה / תגובה לא תקינה',
     };
   }
-  if ((statusCode ?? 0) >= 500 || /network|fetch|500|502|503/.test(msg)) {
+  if ((statusCode ?? 0) >= 500 || /network|fetch|500|502|503|5xx/.test(msg)) {
     return {
       reasonCode: 'SERVER_OR_UPSTREAM_ERROR',
       labelHe: 'שגיאת שרת / תקשורת מול Gemini',
