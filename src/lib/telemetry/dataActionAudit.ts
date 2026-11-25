@@ -82,6 +82,10 @@ const DATA_ACTION_MAP: Record<
     category: 'coach',
     auditAction: 'trainee_force_logged_out',
   },
+  'coach-reset-trainee-onboarding': {
+    category: 'coach',
+    auditAction: 'trainee_onboarding_reset',
+  },
   'coach-update-credentials': {
     category: 'coach',
     auditAction: 'trainee_credentials_updated',

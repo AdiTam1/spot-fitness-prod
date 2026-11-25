@@ -189,6 +189,7 @@ export default function HomePage() {
   const currentUserRef = useRef<AuthSessionUser | null>(null);
   const traineesRef = useRef<TraineeProfile[]>([]);
   const syncingCountRef = useRef<number>(0);
+  const activePostOpsRef = useRef<Map<symbol, AbortController>>(new Map());
   const mutationEpochRef = useRef<number>(0);
   const lastFetchAtRef = useRef<number>(0);
   const lastHeartbeatAtRef = useRef<number>(0);
@@ -199,10 +200,20 @@ export default function HomePage() {
     traineesRef.current = trainees;
   }, [trainees]);
 
+  const abortAllPendingPostActions = useCallback(() => {
+    activePostOpsRef.current.forEach((ctrl) => ctrl.abort());
+    activePostOpsRef.current.clear();
+    syncingCountRef.current = 0;
+    setSyncingCount(0);
+  }, []);
+
   const clearAllClientSessionState = useCallback(
     (notice?: { code: AuthRejectionCode; message: string }) => {
       const hadUser = Boolean(currentUserRef.current);
+      abortAllPendingPostActions();
       currentUserRef.current = null;
+      setSyncError(null);
+      setManualSyncing(false);
       setCurrentUser(null);
       setTrainees([]);
       traineesRef.current = [];
@@ -245,7 +256,7 @@ export default function HomePage() {
         }).catch(() => {});
       }
     },
-    []
+    [abortAllPendingPostActions]
   );
 
   useEffect(() => {
@@ -953,15 +964,20 @@ export default function HomePage() {
   );
 
   const postDataAction = async (payload: Record<string, unknown>) => {
-    syncingCountRef.current += 1;
+    const opToken = Symbol('postDataAction');
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20_000);
+    activePostOpsRef.current.set(opToken, controller);
+    syncingCountRef.current = activePostOpsRef.current.size;
     mutationEpochRef.current += 1;
-    setSyncingCount((c) => c + 1);
+    setSyncingCount(activePostOpsRef.current.size);
     setSyncError(null);
     try {
       const res = await fetch('/api/data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       });
       if (res.status === 401 || res.status === 403) {
         const cloned = await res
@@ -986,11 +1002,20 @@ export default function HomePage() {
       }
       return res;
     } catch {
-      setSyncError('אין תקשורת עם השרת – השינויים האחרונים לא נשמרו');
+      if (currentUserRef.current) {
+        setSyncError(
+          controller.signal.aborted
+            ? 'בקשת השמירה ארכה זמן רב מדי – נסה שוב'
+            : 'אין תקשורת עם השרת – השינויים האחרונים לא נשמרו'
+        );
+      }
       return null;
     } finally {
-      syncingCountRef.current = Math.max(0, syncingCountRef.current - 1);
-      setSyncingCount((c) => Math.max(0, c - 1));
+      clearTimeout(timeoutId);
+      activePostOpsRef.current.delete(opToken);
+      const remaining = activePostOpsRef.current.size;
+      syncingCountRef.current = remaining;
+      setSyncingCount(remaining);
     }
   };
 
@@ -1043,17 +1068,19 @@ export default function HomePage() {
   };
 
   const handleLoginSuccess = async (user: AuthSessionUser) => {
+    abortAllPendingPostActions();
     setSessionNotice(null);
     setCurrentUser(user);
     setCoachPreviewTraineeId(null);
     setSkippedCoachOnboarding(false);
     setSyncError(null);
-    await fetchAuthorizedData();
+    await fetchAuthorizedData({ force: true });
   };
 
   const handleLogout = async () => {
     if (loggingOut) return;
     setLoggingOut(true);
+    abortAllPendingPostActions();
     try {
       await Promise.all([
         configureBackgroundStepsSync({
@@ -2419,6 +2446,46 @@ export default function HomePage() {
     return {};
   };
 
+  const handleResetTraineeOnboarding = async (
+    traineeId: string
+  ): Promise<{ error?: string }> => {
+    if (!currentUser || currentUser.role === 'trainee') return {};
+    const res = await postDataAction({
+      action: 'coach-reset-trainee-onboarding',
+      traineeId,
+    });
+    if (!res || !res.ok) {
+      return {
+        error: await extractApiError(res, 'שגיאה בהגדרת התחברות ראשונה מחדש'),
+      };
+    }
+    const data = await res.json().catch(() => null);
+    const resetOnboarding: TraineeOnboardingData = data?.onboarding || {
+      completed: false,
+      measurementsCompleted: false,
+      dietaryPreferences: [],
+      favoriteMustHaveFoods: [],
+      dislikedOrAllergies: [],
+      eatingChallenges: [],
+    };
+    setTrainees((prev) =>
+      prev.map((t) =>
+        t.id === traineeId
+          ? {
+              ...t,
+              onboarding: resetOnboarding,
+              lastSeenAt: undefined,
+              sessionVersion:
+                typeof data?.sessionVersion === 'number'
+                  ? data.sessionVersion
+                  : (t.sessionVersion || 1) + 1,
+            }
+          : t
+      )
+    );
+    return {};
+  };
+
   const handleForceLogoutCoach = async (
     coachId: string
   ): Promise<{ error?: string }> => {
@@ -3024,6 +3091,7 @@ export default function HomePage() {
             onOpenCoachOnboarding={() => setEditingCoachOnboarding(true)}
             onDeleteTrainee={handleDeleteTrainee}
             onForceLogoutTrainee={handleForceLogoutTrainee}
+            onResetTraineeOnboarding={handleResetTraineeOnboarding}
             onCreateCoach={handleCreateCoach}
             onUpdateCoachStatus={handleUpdateCoachStatus}
             onForceLogoutCoach={handleForceLogoutCoach}

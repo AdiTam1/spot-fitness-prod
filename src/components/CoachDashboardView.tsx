@@ -49,6 +49,7 @@ import {
   Ban,
   Lock,
   LogOut,
+  RotateCcw,
   Smartphone,
   Activity,
 } from 'lucide-react';
@@ -177,6 +178,7 @@ interface CoachDashboardViewProps {
   onOpenCoachOnboarding?: () => void;
   onDeleteTrainee: (traineeId: string) => Promise<{ error?: string }> | void;
   onForceLogoutTrainee?: (traineeId: string) => Promise<{ error?: string }> | void;
+  onResetTraineeOnboarding?: (traineeId: string) => Promise<{ error?: string }> | void;
   onCreateCoach: (data: {
     name: string;
     email: string;
@@ -279,6 +281,7 @@ export function CoachDashboardView({
   onOpenCoachOnboarding,
   onDeleteTrainee,
   onForceLogoutTrainee,
+  onResetTraineeOnboarding,
   onCreateCoach,
   onUpdateCoachStatus,
   onForceLogoutCoach,
@@ -635,6 +638,22 @@ export function CoachDashboardView({
   // בדיקה האם המשתמש הנוכחי הוא הבעלים הראשי של המתאמן (ולא רק מאמן שותף)
   const isOwnerOfTrainee = (t: TraineeProfile) => {
     return isSuperAdmin || t.primaryCoachId === currentUser.id;
+  };
+
+  const triggerResetTraineeOnboarding = (trainee: TraineeProfile) => {
+    if (!onResetTraineeOnboarding) return;
+    if (
+      !confirmDanger(
+        `להגדיר את "${trainee.name}" כלא התחבר בפעם הראשונה מחדש? החשבון ינותק ממכשירים פעילים ובכניסה הבאה יוצג לו כל שאלון ה-Onboarding (יומני התזונה והתפריט יישמרו).`
+      )
+    ) {
+      return;
+    }
+    runBusy(
+      `rst-ob-${trainee.id}`,
+      () => onResetTraineeOnboarding(trainee.id),
+      `${trainee.name} הוגדר כהתחברות ראשונה — בפעם הבאה שיתחבר יוצג לו ה-Onboarding המלא`
+    );
   };
 
   const getCoachNameById = (coachId: string) => {
@@ -2338,11 +2357,16 @@ export function CoachDashboardView({
                               }}
                             >
                               <span style={{ fontWeight: 800 }}>
-                                {st.consumed.calories} / {st.target.calories}{' '}
+                                <bdi dir="ltr" className="num-mono ltr-num">
+                                  {st.consumed.calories} / {st.target.calories}
+                                </bdi>{' '}
                                 קק״ל
                               </span>
                               <span style={{ color: 'var(--macro-protein)' }}>
-                                ח׳ {st.consumed.protein}/{st.target.protein}g
+                                ח׳{' '}
+                                <bdi dir="ltr" className="num-mono ltr-num">
+                                  {st.consumed.protein}/{st.target.protein}g
+                                </bdi>
                               </span>
                             </div>
                             <div
@@ -2614,6 +2638,38 @@ export function CoachDashboardView({
                   <Bell size={14} />
                   <span>שלח פוש אישי</span>
                 </button>
+                {onResetTraineeOnboarding && isOwnerOfTrainee(selectedTrainee) && (
+                  <button
+                    type="button"
+                    disabled={isBusy(`rst-ob-${selectedTrainee.id}`)}
+                    onClick={() => triggerResetTraineeOnboarding(selectedTrainee)}
+                    className="btn-surface"
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: 18,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      color: 'var(--warn-text)',
+                      borderColor: 'var(--line-2)',
+                      alignSelf: 'center',
+                    }}
+                  >
+                    {isBusy(`rst-ob-${selectedTrainee.id}`) ? (
+                      <BusyIcon size={14} />
+                    ) : (
+                      <RotateCcw size={14} />
+                    )}
+                    <span>
+                      {isBusy(`rst-ob-${selectedTrainee.id}`)
+                        ? 'מאפס…'
+                        : 'אפס להתחברות ראשונה (Onboarding)'}
+                    </span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -5199,6 +5255,7 @@ export function CoachDashboardView({
                             <span style={{ fontSize: 12, color: liveBadge.isOnline ? 'var(--ok-text)' : 'var(--text-3)' }}>{liveBadge.label}</span>
                           )}
                         </span>
+                        {!t.onboarding?.completed && pill('ממתין ל-Onboarding', 'warn')}
                         {t.status === 'active' ? pill('פעיל', 'ok') : t.status === 'pending' ? pill('ממתין לאישור', 'warn') : pill('מושהה', 'off')}
                         {isOwner && (
                           <button
@@ -5274,6 +5331,18 @@ export function CoachDashboardView({
                                 {isBusy(`st-tr-${t.id}`) ? 'חוסם…' : 'חסום'}
                               </button>
                             </>
+                          )}
+                          {onResetTraineeOnboarding && (
+                            <button
+                              type="button"
+                              className="glass"
+                              style={act}
+                              disabled={isBusy(`rst-ob-${t.id}`)}
+                              onClick={() => triggerResetTraineeOnboarding(t)}
+                            >
+                              {isBusy(`rst-ob-${t.id}`) ? <BusyIcon size={15} /> : <RotateCcw size={16} />}
+                              {isBusy(`rst-ob-${t.id}`) ? 'מאפס…' : 'התחברות ראשונה (Onboarding)'}
+                            </button>
                           )}
                           <button
                             type="button"

@@ -663,9 +663,9 @@ export function TraineeMobileView({
               />
             </div>
             {!isObservationDay && (
-              <span className="num-mono" style={{ fontSize: 12, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>
+              <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 12, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>
                 {dailyConsumed.calories.toLocaleString()}/{dailyTarget.calories.toLocaleString()}
-              </span>
+              </bdi>
             )}
           </div>
         </div>
@@ -1343,9 +1343,9 @@ export function TraineeMobileView({
                       {idx > 0 && <div style={{ height: 1, background: 'var(--line)' }} />}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
                         <span style={{ fontSize: 14, color: 'var(--text-2)' }}>{row.label}</span>
-                        <span className="num-mono" style={{ fontSize: 18, fontWeight: 600 }}>
+                        <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 18, fontWeight: 600 }}>
                           {row.value}
-                        </span>
+                        </bdi>
                       </div>
                     </React.Fragment>
                   ))}
@@ -1378,13 +1378,30 @@ export function TraineeMobileView({
                           }}
                         />
                       </div>
-                      <span className="num-mono" style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap' }}>
-                        {Math.round(m.consumed)}
-                        {!isObservationDay && (
-                          <span style={{ color: 'var(--text-3)', fontWeight: 500 }}> / {Math.round(m.target)} ג׳</span>
-                        )}
-                        {isObservationDay && <span style={{ color: 'var(--text-3)', fontWeight: 500 }}> ג׳</span>}
-                      </span>
+                      <div style={{ textAlign: 'right' }}>
+                        <bdi
+                          dir="ltr"
+                          className="num-mono ltr-num"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'baseline',
+                            gap: 3,
+                            fontSize: 14,
+                            fontWeight: 600,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          <span>{Math.round(m.consumed)}</span>
+                          {!isObservationDay && (
+                            <span style={{ color: 'var(--text-3)', fontWeight: 500 }}>
+                              / {Math.round(m.target)}
+                            </span>
+                          )}
+                          <span dir="rtl" style={{ color: 'var(--text-3)', fontWeight: 500 }}>
+                            ג׳
+                          </span>
+                        </bdi>
+                      </div>
                     </div>
                   );
                 })}
@@ -1542,11 +1559,18 @@ export function TraineeMobileView({
                 onUpdateDailyActivity(trainee.id, selectedDate, { sleepHours: next });
               };
               const stepsSubtitle =
-                currentSteps > 0
-                  ? `${currentSteps.toLocaleString()} / ${dailyStepsTarget.toLocaleString()} צעדים`
-                  : hasSyncedSteps
-                  ? 'סנכרון צעדים'
-                  : 'חבר מד צעדים';
+                currentSteps > 0 ? (
+                  <>
+                    <bdi dir="ltr" className="num-mono ltr-num">
+                      {currentSteps.toLocaleString()} / {dailyStepsTarget.toLocaleString()}
+                    </bdi>{' '}
+                    צעדים
+                  </>
+                ) : hasSyncedSteps ? (
+                  'סנכרון צעדים'
+                ) : (
+                  'חבר מד צעדים'
+                );
 
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -1940,11 +1964,21 @@ export function TraineeMobileView({
                             </span>
                           </span>
                           <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flex: 'none' }}>
-                            <span className="num-mono" style={{ fontSize: 20, fontWeight: 700, lineHeight: 1 }}>
+                            <bdi dir="ltr" className="num-mono ltr-num" style={{ fontSize: 20, fontWeight: 700, lineHeight: 1 }}>
                               {mealMacros.calories}
-                            </span>
-                            <span className="num-mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>
-                              {!isObservationDay ? `/ ${slot.targets.calories} קק״ל` : 'קק״ל'}
+                            </bdi>
+                            <span className="num-mono" style={{ fontSize: 11, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
+                              {!isObservationDay ? (
+                                <>
+                                  מתוך{' '}
+                                  <bdi dir="ltr" className="num-mono ltr-num">
+                                    {slot.targets.calories}
+                                  </bdi>{' '}
+                                  קק״ל
+                                </>
+                              ) : (
+                                'קק״ל'
+                              )}
                             </span>
                           </span>
                         </button>

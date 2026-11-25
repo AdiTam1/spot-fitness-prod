@@ -1214,7 +1214,7 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
     pending_ai_jobs: t.pendingAiJobs || [],
     logs: packLogsWithMeta(t),
     session_version: Math.max(1, Number(t.sessionVersion) || 1),
-    ...(t.lastSeenAt ? { last_seen_at: t.lastSeenAt } : {}),
+    last_seen_at: t.lastSeenAt || null,
     updated_at: new Date().toISOString(),
   }));
 

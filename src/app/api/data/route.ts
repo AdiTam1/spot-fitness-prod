@@ -64,6 +64,7 @@ import {
   TraineeActiveDateRange,
   TraineeCustomUnit,
   TraineeGroup,
+  TraineeOnboardingData,
   TraineeProfile,
   TraineeServingTool,
 } from '@/types/nutrition';
@@ -2102,6 +2103,48 @@ async function handleDataPost(
       }));
 
       return NextResponse.json({ ok: true, sessionVersion: nextSessionVersion });
+    }
+
+    // יא-3. איפוס מתאמן כהתחברות ראשונה מחדש (איפוס Onboarding + ניתוק סשן פעיל להצגה בכניסה הבאה)
+    if (action === 'coach-reset-trainee-onboarding') {
+      const traineeId = String(body.traineeId || '');
+      const target = state.trainees.find((t) => t.id === traineeId);
+      if (!target || !isPrimaryOwnerOfTrainee(session, target)) {
+        return NextResponse.json(
+          { error: 'רק המאמן הראשי של המתאמן או המנהל הראשי רשאים להגדיר התחברות ראשונה מחדש' },
+          { status: 403 }
+        );
+      }
+
+      const nextSessionVersion = Math.max(1, Number(target.sessionVersion) || 1) + 1;
+      const resetOnboarding: TraineeOnboardingData = {
+        completed: false,
+        measurementsCompleted: false,
+        dietaryPreferences: [],
+        favoriteMustHaveFoods: [],
+        dislikedOrAllergies: [],
+        eatingChallenges: [],
+      };
+
+      await updateServerDbState((prev) => ({
+        ...prev,
+        trainees: prev.trainees.map((t) =>
+          t.id === traineeId
+            ? {
+                ...t,
+                onboarding: resetOnboarding,
+                lastSeenAt: undefined,
+                sessionVersion: nextSessionVersion,
+              }
+            : t
+        ),
+      }));
+
+      return NextResponse.json({
+        ok: true,
+        sessionVersion: nextSessionVersion,
+        onboarding: resetOnboarding,
+      });
     }
 
     // יב. איפוס אימייל וסיסמה למתאמן - בעלים ראשי או מנהל ראשי בלבד!
