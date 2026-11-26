@@ -305,9 +305,10 @@ drop policy if exists "Allow public read food catalog" on public.food_catalog_it
 create policy "Allow public read food catalog"
   on public.food_catalog_items for select using (true);
 
--- 9. טבלת היסטוריית מוצרים וברקודים פר משתמש + פונקציות החיפוש ההיברידי והסמנטי
+-- 9. טבלת היסטוריית מוצרים וברקודים פר משתמש + פונקציות החיפוש ההיברידי והסמנטי + Rate Limits לפי תפקיד
 -- מנוהלות בקובצי המיגרציה:
 --   supabase/migrations/20261125_food_search_and_history.sql
 --   supabase/migrations/20261126_semantic_food_search.sql (חיפוש סמנטי עם pgvector halfvec + RRF)
+--   supabase/migrations/20261126_role_rate_limits.sql (מגבלות דקה/שעה/יום עמידות לפי תפקיד)
 -- רענון מיידי של Schema Cache ב-PostgREST
 notify pgrst, 'reload schema';

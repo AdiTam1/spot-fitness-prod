@@ -15,11 +15,14 @@ import {
   TraineeCustomUnit,
 } from '@/types/nutrition';
 import {
-  checkRateLimit,
   sanitizeNumber,
   sanitizeText,
   verifyCsrfOrigin,
 } from '@/lib/serverAuth';
+import {
+  buildRateLimitHeaders,
+  consumeRoleRateLimit,
+} from '@/lib/roleRateLimit';
 import { authenticateActiveSession } from '@/lib/liveAuth';
 import { normalizeHhMmTime } from '@/lib/numericInput';
 import {
@@ -488,13 +491,25 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
     telemetryTargetTraineeId = sessionUser.id;
     ctx.setActor(sessionUser);
 
-    // 2. הגנת Rate-Limit על מכסת ה-AI (עד 50 קריאות בשעה למשתמש)
-    const rl = checkRateLimit(`ai-${sessionUser.id}`, 50, 3600);
+    // 2. הגנת Rate-Limit לפי תפקיד (דקה / שעה / יום)
+    const rl = await consumeRoleRateLimit(sessionUser, 'ai_analyze');
     if (!rl.allowed) {
-      ctx.setErrorCode('RATE_LIMITED', 'מכסת AI שעתית מוצתה');
+      ctx.setErrorCode('RATE_LIMITED', rl.messageHe || 'מכסת AI מוצתה');
       return NextResponse.json(
-        { error: 'הגעת למכסת פענוחי ה-AI לשעה זו. ניתן להזין מוצרים מהמאגר.' },
-        { status: 429 }
+        {
+          error:
+            rl.messageHe ||
+            'הגעת למכסת פענוחי ה-AI. ניתן להזין מוצרים מהמאגר.',
+          rateLimit: {
+            window: rl.blockedWindow,
+            retryAfterSec: rl.retryAfterSec,
+            role: rl.role,
+          },
+        },
+        {
+          status: 429,
+          headers: buildRateLimitHeaders(rl),
+        }
       );
     }
 

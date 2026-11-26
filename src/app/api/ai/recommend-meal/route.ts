@@ -3,11 +3,14 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 import {
-  checkRateLimit,
   sanitizeNumber,
   sanitizeText,
   verifyCsrfOrigin,
 } from '@/lib/serverAuth';
+import {
+  buildRateLimitHeaders,
+  consumeRoleRateLimit,
+} from '@/lib/roleRateLimit';
 import { authenticateActiveSession } from '@/lib/liveAuth';
 import {
   canCoachAccessTrainee,
@@ -564,12 +567,22 @@ export const POST = withTelemetryHandler('/api/ai/recommend-meal', async (reques
   telemetryTargetTraineeId = session.id;
   ctx.setActor(session);
 
-  const rl = checkRateLimit(`ai-rec-${session.id}`, 30, 3600);
+  const rl = await consumeRoleRateLimit(session, 'ai_recommend');
   if (!rl.allowed) {
-    ctx.setErrorCode('RATE_LIMITED', 'מכסת המלצות שעתית מוצתה');
+    ctx.setErrorCode('RATE_LIMITED', rl.messageHe || 'מכסת המלצות מוצתה');
     return NextResponse.json(
-      { error: 'הגעת למכסת ההמלצות לשעה זו' },
-      { status: 429 }
+      {
+        error: rl.messageHe || 'הגעת למכסת ההמלצות',
+        rateLimit: {
+          window: rl.blockedWindow,
+          retryAfterSec: rl.retryAfterSec,
+          role: rl.role,
+        },
+      },
+      {
+        status: 429,
+        headers: buildRateLimitHeaders(rl),
+      }
     );
   }
 

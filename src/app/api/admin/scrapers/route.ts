@@ -18,7 +18,11 @@ import {
   backfillFoodCatalogBarcodesAndUnits,
   backfillFoodCatalogEmbeddingsBatch,
 } from '@/lib/supabase';
-import { FoodCatalogItem, ScraperSourceId } from '@/types/nutrition';
+import { AuthSessionUser, FoodCatalogItem, ScraperSourceId } from '@/types/nutrition';
+import {
+  buildRateLimitHeaders,
+  consumeRoleRateLimit,
+} from '@/lib/roleRateLimit';
 import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
 
 function hasValidSyncSecret(request: NextRequest): boolean {
@@ -104,6 +108,7 @@ export async function GET(request: NextRequest) {
  */
 export const POST = withTelemetryHandler('/api/admin/scrapers', async (request, ctx) => {
   const secretAuthed = hasValidSyncSecret(request);
+  let actorSession: AuthSessionUser | null = null;
   if (!secretAuthed) {
     if (!verifyCsrfOrigin(request)) {
       return NextResponse.json({ error: 'בקשה אינה מורשית' }, { status: 403 });
@@ -115,6 +120,7 @@ export const POST = withTelemetryHandler('/api/admin/scrapers', async (request, 
         { status: 403 }
       );
     }
+    actorSession = session;
     ctx.setActor(session);
   } else {
     ctx.setActor({ id: 'cron-secret', role: 'admin' });
@@ -228,6 +234,32 @@ export const POST = withTelemetryHandler('/api/admin/scrapers', async (request, 
         });
       }
       case 'backfill_embeddings': {
+        if (!secretAuthed && actorSession) {
+          const rl = await consumeRoleRateLimit(
+            actorSession,
+            'admin_backfill_embeddings'
+          );
+          if (!rl.allowed) {
+            ctx.setErrorCode(
+              'RATE_LIMITED',
+              rl.messageHe || 'מכסת אינדוקס Embeddings מוצתה'
+            );
+            return NextResponse.json(
+              {
+                error: rl.messageHe || 'חריגה ממכסת אינדוקס Embeddings',
+                rateLimit: {
+                  window: rl.blockedWindow,
+                  retryAfterSec: rl.retryAfterSec,
+                  role: rl.role,
+                },
+              },
+              {
+                status: 429,
+                headers: buildRateLimitHeaders(rl),
+              }
+            );
+          }
+        }
         const batchSize = Math.min(250, Math.max(10, Number(body.pages) || 50));
         const res = await backfillFoodCatalogEmbeddingsBatch(batchSize, {
           bypassCooldown: !secretAuthed,

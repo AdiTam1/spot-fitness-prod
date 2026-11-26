@@ -3,7 +3,11 @@ import { waitUntil } from '@vercel/functions';
 import { ISRAELI_FOOD_CATALOG } from '@/data/israeliFoodCatalog';
 import { FoodCatalogItem, ScraperSourceId } from '@/types/nutrition';
 import { authenticateActiveSession } from '@/lib/liveAuth';
-import { checkRateLimit, sanitizeText } from '@/lib/serverAuth';
+import { sanitizeText } from '@/lib/serverAuth';
+import {
+  buildRateLimitHeaders,
+  consumeRoleRateLimit,
+} from '@/lib/roleRateLimit';
 import { mergeUniqueUnits, normalizeFoodKey, normalizeFoodSearchQuery } from '@/lib/scrapers/helpers';
 import {
   getDisplayBrandForFood,
@@ -216,20 +220,29 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
     : 'db';
   ctx.setActionName(`search_${requestedMode}`);
 
-  const rl =
-    requestedMode === 'live'
-      ? checkRateLimit(`food-search-live:${session.id}`, 10, 60)
-      : checkRateLimit(`food-search-db:${session.id}`, 60, 60);
+  const rl = await consumeRoleRateLimit(
+    session,
+    requestedMode === 'live' ? 'food_search_live' : 'food_search_db'
+  );
   if (!rl.allowed) {
-    ctx.setErrorCode('RATE_LIMITED', 'חריגה ממכסת בקשות חיפוש');
+    ctx.setErrorCode('RATE_LIMITED', rl.messageHe || 'חריגה ממכסת בקשות חיפוש');
     return NextResponse.json(
       {
         error:
-          requestedMode === 'live'
+          rl.messageHe ||
+          (requestedMode === 'live'
             ? 'בוצעו יותר מדי חיפושים חיים ברשת. המתן כדקה ונסה שוב.'
-            : 'קצב החיפוש מהיר מדי. המתן רגע ונסה שוב.',
+            : 'קצב החיפוש מהיר מדי. המתן רגע ונסה שוב.'),
+        rateLimit: {
+          window: rl.blockedWindow,
+          retryAfterSec: rl.retryAfterSec,
+          role: rl.role,
+        },
       },
-      { status: 429 }
+      {
+        status: 429,
+        headers: buildRateLimitHeaders(rl),
+      }
     );
   }
 
@@ -346,13 +359,15 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
         isBarcode: isBarcodeQuery,
       }))
   ) {
-    const queryVecText =
-      cachedQueryVecText ||
-      (
+    let queryVecText = cachedQueryVecText;
+    if (!queryVecText) {
+      const embedRl = await consumeRoleRateLimit(session, 'food_search_embed');
+      queryVecText = (
         await getOrCreateQueryEmbeddingText(rawQuery.trim(), {
-          allowGeminiCall: true,
+          allowGeminiCall: embedRl.allowed,
         })
       ).vectorText;
+    }
 
     if (queryVecText) {
       const semanticRes = await searchSqlAndCachedCatalog({

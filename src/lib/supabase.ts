@@ -2881,3 +2881,66 @@ export async function getSqlFoodCatalogStats(
     return { available: false, totalCount: 0, bySource: {} };
   }
 }
+
+/**
+ * בודק ומקדם מונה שעה ויום באופן אטומי מול Supabase (נסיגה בטוחה אם הטבלה טרם הורצה).
+ */
+export async function consumePersistentRateLimitsSql(opts: {
+  actorKey: string;
+  hourLimit: number;
+  dayLimit: number;
+}): Promise<{
+  available: boolean;
+  allowed: boolean;
+  blockedWindow?: 'hour' | 'day';
+  hourCount?: number;
+  dayCount?: number;
+  retryAfterSec?: number;
+}> {
+  if (!supabase) {
+    return { available: false, allowed: true };
+  }
+  try {
+    const { data, error } = await supabase.rpc('consume_api_rate_limits', {
+      p_actor_key: opts.actorKey,
+      p_hour_limit: opts.hourLimit,
+      p_day_limit: opts.dayLimit,
+    });
+
+    if (error) {
+      if (isMissingRpcOrTableError(error)) {
+        return { available: false, allowed: true };
+      }
+      return { available: false, allowed: true };
+    }
+
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row || typeof row !== 'object') {
+      return { available: false, allowed: true };
+    }
+
+    const rec = row as {
+      allowed?: boolean;
+      blocked_window?: string | null;
+      hour_count?: number;
+      day_count?: number;
+      retry_after_sec?: number;
+    };
+
+    const blockedWindow =
+      rec.blocked_window === 'hour' || rec.blocked_window === 'day'
+        ? rec.blocked_window
+        : undefined;
+
+    return {
+      available: true,
+      allowed: Boolean(rec.allowed),
+      blockedWindow,
+      hourCount: Number(rec.hour_count) || 0,
+      dayCount: Number(rec.day_count) || 0,
+      retryAfterSec: Number(rec.retry_after_sec) || 60,
+    };
+  } catch {
+    return { available: false, allowed: true };
+  }
+}

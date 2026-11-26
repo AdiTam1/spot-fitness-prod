@@ -217,7 +217,7 @@ export function checkRateLimit(
   key: string,
   maxRequests: number,
   windowSeconds: number
-): { allowed: boolean; remaining: number } {
+): { allowed: boolean; remaining: number; resetInSec: number } {
   const now = Date.now();
   const record = rateLimitStore.get(key);
 
@@ -226,15 +226,42 @@ export function checkRateLimit(
       count: 1,
       resetAt: now + windowSeconds * 1000,
     });
-    return { allowed: true, remaining: maxRequests - 1 };
+    return {
+      allowed: true,
+      remaining: Math.max(0, maxRequests - 1),
+      resetInSec: windowSeconds,
+    };
   }
 
+  const resetInSec = Math.max(1, Math.ceil((record.resetAt - now) / 1000));
   if (record.count >= maxRequests) {
-    return { allowed: false, remaining: 0 };
+    return { allowed: false, remaining: 0, resetInSec };
   }
 
   record.count += 1;
-  return { allowed: true, remaining: maxRequests - record.count };
+  return {
+    allowed: true,
+    remaining: Math.max(0, maxRequests - record.count),
+    resetInSec,
+  };
+}
+
+/**
+ * מציץ למונה בזיכרון בלי לקדם אותו (לשימוש כשחלון ארוך יותר נכשל או להחזרת סטטוס).
+ */
+export function getRateLimitStatusInMemory(
+  key: string,
+  maxRequests: number
+): { count: number; remaining: number } {
+  const now = Date.now();
+  const record = rateLimitStore.get(key);
+  if (!record || now > record.resetAt) {
+    return { count: 0, remaining: maxRequests };
+  }
+  return {
+    count: record.count,
+    remaining: Math.max(0, maxRequests - record.count),
+  };
 }
 
 /**
