@@ -48,6 +48,7 @@ import {
   Minimize2,
   RotateCcw,
   AlertTriangle,
+  Maximize2,
 } from 'lucide-react';
 import {
   AiContextParams,
@@ -444,6 +445,11 @@ export function AddMealDrawer({
   const [customGrams, setCustomGrams] = useState<number | string>(100);
   const [customItemTime, setCustomItemTime] = useState<string>('');
   const [cameraChooserOpen, setCameraChooserOpen] = useState(false);
+  const [mealItemsPhotoPickerOpen, setMealItemsPhotoPickerOpen] = useState(false);
+  const [heroLightboxOpen, setHeroLightboxOpen] = useState(false);
+  const [activeHeroPhotoIdx, setActiveHeroPhotoIdx] = useState(0);
+  const heroSwipeTouchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const heroSwipedRecentlyRef = useRef(false);
   const [mealTime, setMealTime] = useState<string>('');
   const [toolsInitialSection, setToolsInitialSection] = useState<'tools' | 'units'>('units');
   const [enrichingFood, setEnrichingFood] = useState(false);
@@ -483,6 +489,7 @@ export function AddMealDrawer({
     if (nextTab === 'favorites') {
       setSourceGroup('favorites_recent');
     }
+    setMealItemsPhotoPickerOpen(false);
     setTabHistory((prev) => {
       if (options?.replace) {
         return prev.length > 0 ? [...prev.slice(0, -1), resolvedTab] : [resolvedTab];
@@ -639,6 +646,9 @@ export function AddMealDrawer({
         setActiveResultIndex(-1);
         setSelectedFood(null);
         setCameraChooserOpen(false);
+        setMealItemsPhotoPickerOpen(false);
+        setHeroLightboxOpen(false);
+        setActiveHeroPhotoIdx(0);
         setMealTime(existingEntry?.mealTime || mealSlot.timeHint || '');
         setInlineUnitOpen(false);
         setInlineUnitName('');
@@ -1910,15 +1920,38 @@ export function AddMealDrawer({
     preferredAngle?: PhotoAngleKind,
     options?: { stayOnTab?: boolean }
   ) => {
-    const files = Array.from(e.target.files || []).slice(
-      0,
-      Math.max(0, 8 - photoItems.length)
-    );
-    if (files.length === 0) {
+    const rawFiles = Array.from(e.target.files || []);
+    if (rawFiles.length === 0) {
       e.target.value = '';
       return;
     }
-    const invalid = files.find((f) => !f.type.startsWith('image/'));
+
+    const existingPhotos = Array.from(
+      new Set(
+        [
+          ...photoItems.map((im) => im.dataUrl),
+          ...(photoDataUrl && !photoDataUrl.endsWith(',DEMO') ? [photoDataUrl] : []),
+          ...resolveMealPhotos(existingEntry),
+        ].filter(Boolean)
+      )
+    );
+    const remainingSlots = Math.max(0, 8 - existingPhotos.length);
+    if (remainingSlots <= 0) {
+      setAiSummary({
+        msg: 'ניתן לשמור עד 8 תמונות בארוחה סה״כ (כבר קיימות 8 תמונות)',
+        isError: true,
+      });
+      setCameraChooserOpen(false);
+      setMealItemsPhotoPickerOpen(false);
+      e.target.value = '';
+      return;
+    }
+
+    const files = rawFiles.slice(0, remainingSlots);
+    const isImageFile = (f: File) =>
+      f.type.startsWith('image/') ||
+      /\.(jpe?g|png|webp|heic|heif|avif|bmp|gif)$/i.test(f.name || '');
+    const invalid = files.find((f) => !isImageFile(f));
     if (invalid) {
       setAiSummary({ msg: 'נא לבחור קבצי תמונה תקינים (JPG, PNG, WebP)', isError: true });
       e.target.value = '';
@@ -1933,7 +1966,7 @@ export function AddMealDrawer({
     setPhotoUploading(true);
     setAiSummary(null);
     try {
-      const projectedTotal = Math.min(8, photoItems.length + files.length);
+      const projectedTotal = Math.min(8, existingPhotos.length + files.length);
       // תקציב משקל דינמי <= ~2.5MB מול מגבלת Vercel: ב-5 עד 8 תמונות מכווצים קצת יותר חסכוני (~105KB)
       const perImageTargetBytes = projectedTotal > 4 ? 105_000 : 155_000;
       const maxDim = projectedTotal > 4 ? 600 : 640;
@@ -1946,7 +1979,11 @@ export function AddMealDrawer({
         labelProductName?: string;
         labelInputOpen?: boolean;
       }[] = [];
-      let cumulativeBytes = photoItems.reduce((acc, p) => acc + p.dataUrl.length, 0);
+      const externalExistingCount = existingPhotos.filter(
+        (u) => !photoItems.some((p) => p.dataUrl === u)
+      ).length;
+      const maxNewPhotoItems = Math.max(0, 8 - externalExistingCount);
+      let cumulativeBytes = existingPhotos.reduce((acc, u) => acc + u.length, 0);
 
       for (let i = 0; i < files.length; i++) {
         const compressed = await compressMealImage(files[i], 800, 0.72);
@@ -1974,14 +2011,24 @@ export function AddMealDrawer({
         });
       }
       setPhotoItems((prev) => {
-        const merged = [...prev, ...newEntries].slice(0, 8);
-        setPhotoDataUrl(merged[0]?.dataUrl);
+        const merged = [...newEntries, ...prev].slice(0, maxNewPhotoItems);
+        setPhotoDataUrl(merged[0]?.dataUrl || existingPhotos[0]);
         setPhotoSizeKB(merged[0]?.sizeKB ?? null);
         setPhotoFormatLabel(merged[0]?.formatLabel ?? 'WebP');
         return merged;
       });
       setCameraChooserOpen(false);
-      if (!options?.stayOnTab) {
+      setMealItemsPhotoPickerOpen(false);
+      if (options?.stayOnTab) {
+        if (newEntries.length > 0) {
+          setActiveHeroPhotoIdx(0);
+        }
+        if (rawFiles.length > remainingSlots && newEntries.length > 0) {
+          setAiSummary({
+            msg: `נוספו ${newEntries.length} תמונות (מגבלה של עד 8 תמונות סה״כ בארוחה)`,
+          });
+        }
+      } else {
         navigateTab('ai-photo');
       }
     } catch {
@@ -2537,7 +2584,9 @@ export function AddMealDrawer({
       ...(photoDataUrl && !photoDataUrl.endsWith(',DEMO') ? [photoDataUrl] : []),
       ...initialEntryPhotos,
     ];
-    return merged.filter((u, idx, arr) => Boolean(u) && arr.indexOf(u) === idx);
+    return merged
+      .filter((u, idx, arr) => Boolean(u) && arr.indexOf(u) === idx)
+      .slice(0, 8);
   }, [photoItems, photoDataUrl, initialEntryPhotos]);
 
   const hasPendingItemFieldEdits = useMemo(
@@ -3363,126 +3412,347 @@ export function AddMealDrawer({
   const dateInfo = formatDrawerDateLabel(selectedDate);
   const fullScreen = activeTab !== 'hub' && activeTab !== 'catalog';
   const heroScreen = activeTab === 'meal-items' && allMealPhotos.length > 0;
+  const safeHeroPhotoIdx =
+    allMealPhotos.length > 0
+      ? Math.min(Math.max(0, activeHeroPhotoIdx), allMealPhotos.length - 1)
+      : 0;
 
-  const renderMealItemsToolbar = (title: string) => (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: 8,
-        flexWrap: 'wrap',
-      }}
-    >
-      <span style={{ fontSize: 17, fontWeight: 700 }}>{title}</span>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-        <button
-          type="button"
-          className="glass"
-          onClick={() => {
-            setHighlightedHistoryEventId(null);
-            navigateTab('meal-history');
-          }}
+  const stepHeroPhoto = (delta: -1 | 1) => {
+    if (allMealPhotos.length <= 1) return;
+    setActiveHeroPhotoIdx((prev) => {
+      const cur = Math.min(Math.max(0, prev), allMealPhotos.length - 1);
+      return Math.max(0, Math.min(allMealPhotos.length - 1, cur + delta));
+    });
+  };
+
+  const handlePhotoTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    if (!t) return;
+    heroSwipeTouchStartRef.current = { x: t.clientX, y: t.clientY };
+  };
+
+  const handlePhotoTouchEnd = (e: React.TouchEvent) => {
+    const start = heroSwipeTouchStartRef.current;
+    heroSwipeTouchStartRef.current = null;
+    if (!start || allMealPhotos.length <= 1) return;
+    const t = e.changedTouches[0];
+    if (!t) return;
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) >= 34 && Math.abs(dx) > Math.abs(dy) * 1.1) {
+      heroSwipedRecentlyRef.current = true;
+      setTimeout(() => {
+        heroSwipedRecentlyRef.current = false;
+      }, 250);
+      stepHeroPhoto(dx < 0 ? 1 : -1);
+    }
+  };
+
+  const renderPhotoSourceOptions = (
+    stayOnTab: boolean,
+    onCloseChooser?: () => void
+  ) => {
+    const usedCount = allMealPhotos.length;
+    const remainingSlots = Math.max(0, 8 - usedCount);
+    const limitReached = remainingSlots <= 0;
+
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          padding: 10,
+          borderRadius: 16,
+          background: 'var(--bg-surface-2)',
+          border: '1px solid var(--line-2)',
+        }}
+      >
+        <div
           style={{
-            padding: '8px 12px',
-            borderRadius: 999,
-            fontSize: 13,
-            fontWeight: 700,
-            fontFamily: 'inherit',
-            cursor: 'pointer',
-            display: 'inline-flex',
+            display: 'flex',
             alignItems: 'center',
-            gap: 5,
-            whiteSpace: 'nowrap',
-            color: 'var(--text)',
+            justifyContent: 'space-between',
+            gap: 8,
           }}
         >
-          <History size={14} />
-          <span>
-            היסטוריה
-            {(existingEntry?.history?.length || 0) > 0
-              ? ` (${existingEntry!.history!.length})`
-              : ''}
+          <span style={{ fontSize: 12, fontWeight: 700, color: limitReached ? 'var(--warn-text)' : 'var(--text-2)' }}>
+            {limitReached
+              ? 'הגעת למקסימום של 8 תמונות בארוחה (8/8)'
+              : `הוספת תמונה (${usedCount}/8 קיימות · ניתן לבחור עוד ${remainingSlots})`}
           </span>
-        </button>
-        {items.length > 0 && (
+          {onCloseChooser && (
+            <button
+              type="button"
+              aria-label="סגור בחירת תמונה"
+              onClick={onCloseChooser}
+              style={{
+                width: 24,
+                height: 24,
+                border: 0,
+                borderRadius: 999,
+                background: 'var(--surface-2)',
+                color: 'var(--text-2)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+              }}
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: 6,
+            opacity: limitReached ? 0.45 : 1,
+            pointerEvents: limitReached ? 'none' : 'auto',
+          }}
+        >
+          <label
+            className="btn-surface"
+            style={{
+              padding: '9px 6px',
+              fontSize: 12,
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              cursor: photoUploading || limitReached ? 'not-allowed' : 'pointer',
+              borderColor: 'var(--line-2)',
+            }}
+          >
+            <Camera size={13} color="currentColor" />
+            <span>מצלמה בלייב</span>
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              hidden
+              disabled={photoUploading || limitReached}
+              onChange={(e) =>
+                void handlePhotoUpload(e, undefined, stayOnTab ? { stayOnTab: true } : undefined)
+              }
+            />
+          </label>
+          <label
+            className="btn-surface"
+            style={{
+              padding: '9px 6px',
+              fontSize: 12,
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              cursor: photoUploading || limitReached ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <ImageIcon size={13} color="var(--text-2)" />
+            <span>גלריה</span>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              disabled={photoUploading || limitReached}
+              onChange={(e) =>
+                void handlePhotoUpload(e, undefined, stayOnTab ? { stayOnTab: true } : undefined)
+              }
+            />
+          </label>
+          <label
+            className="btn-surface"
+            style={{
+              padding: '9px 6px',
+              fontSize: 12,
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              cursor: photoUploading || limitReached ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <FolderOpen size={13} color="#a78bfa" />
+            <span>קבצים</span>
+            <input
+              type="file"
+              accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.avif"
+              multiple
+              hidden
+              disabled={photoUploading || limitReached}
+              onChange={(e) =>
+                void handlePhotoUpload(e, undefined, stayOnTab ? { stayOnTab: true } : undefined)
+              }
+            />
+          </label>
+        </div>
+      </div>
+    );
+  };
+
+  const renderMealItemsToolbar = (title: string) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'stretch',
+          gap: 8,
+        }}
+      >
+        <span style={{ fontSize: 17, fontWeight: 700 }}>{title}</span>
+        {/* בסדר RTL: האלמנט הראשון (הוסף עוד פריטים) הוא תמיד הימני ביותר */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-start',
+            gap: 6,
+            flexWrap: 'wrap',
+          }}
+        >
           <button
             type="button"
             onClick={() => {
-              if (selectionMode) {
-                setSelectionMode(false);
-                setSelectedIds(new Set());
-              } else {
-                setSelectionMode(true);
-              }
+              setTargetDishIdForAdd(null);
+              navigateTab('hub');
             }}
+            style={{
+              padding: '7px 12px',
+              borderRadius: 999,
+              border: 'none',
+              background: 'var(--contrast-btn-bg)',
+              color: 'var(--contrast-btn-text)',
+              fontSize: 12.5,
+              fontWeight: 700,
+              fontFamily: 'inherit',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            + הוסף עוד פריטים
+          </button>
+          <button
+            type="button"
             className="glass"
+            onClick={() => setMealItemsPhotoPickerOpen((v) => !v)}
+            style={{
+              padding: '7px 11px',
+              borderRadius: 999,
+              fontSize: 12.5,
+              fontWeight: 700,
+              fontFamily: 'inherit',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              whiteSpace: 'nowrap',
+              borderColor: mealItemsPhotoPickerOpen ? 'var(--accent)' : undefined,
+              color: mealItemsPhotoPickerOpen ? 'var(--accent)' : 'var(--text)',
+            }}
+          >
+            {photoUploading ? <Loader2 size={14} className="spot-spinner" /> : <Camera size={14} />}
+            <span>
+              {allMealPhotos.length > 0
+                ? `תמונות (${allMealPhotos.length}/8)`
+                : 'הוסף תמונה'}
+            </span>
+          </button>
+          {items.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                if (selectionMode) {
+                  setSelectionMode(false);
+                  setSelectedIds(new Set());
+                } else {
+                  setSelectionMode(true);
+                }
+              }}
+              className="glass"
+              style={{
+                padding: '7px 11px',
+                borderRadius: 999,
+                fontSize: 12.5,
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                cursor: 'pointer',
+                borderColor: selectionMode ? 'var(--accent)' : undefined,
+                color: selectionMode ? 'var(--accent)' : 'var(--text)',
+              }}
+            >
+              <CheckSquare size={14} />
+              <span>{selectionMode ? 'סיים בחירה' : 'בחר'}</span>
+            </button>
+          )}
+          {selectionMode && items.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedIds.size > 0) {
+                  setSelectedIds(new Set());
+                } else {
+                  const all = new Set<string>();
+                  for (const it of items) {
+                    all.add(it.id);
+                    for (const c of it.components || []) all.add(c.id);
+                  }
+                  setSelectedIds(all);
+                }
+              }}
+              className="glass"
+              style={{
+                padding: '8px 10px',
+                borderRadius: 999,
+                fontSize: 12.5,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              {selectedIds.size > 0 ? 'נקה' : 'בחר הכל'}
+            </button>
+          )}
+          <button
+            type="button"
+            className="glass"
+            onClick={() => {
+              setHighlightedHistoryEventId(null);
+              navigateTab('meal-history');
+            }}
             style={{
               padding: '8px 12px',
               borderRadius: 999,
               fontSize: 13,
               fontWeight: 700,
+              fontFamily: 'inherit',
+              cursor: 'pointer',
               display: 'inline-flex',
               alignItems: 'center',
               gap: 5,
-              cursor: 'pointer',
-              borderColor: selectionMode ? 'var(--accent)' : undefined,
-              color: selectionMode ? 'var(--accent)' : 'var(--text)',
+              whiteSpace: 'nowrap',
+              color: 'var(--text)',
             }}
           >
-            <CheckSquare size={14} />
-            <span>{selectionMode ? 'סיים בחירה' : 'בחר'}</span>
+            <History size={14} />
+            <span>
+              היסטוריה
+              {(existingEntry?.history?.length || 0) > 0
+                ? ` (${existingEntry!.history!.length})`
+                : ''}
+            </span>
           </button>
-        )}
-        {selectionMode && items.length > 0 && (
-          <button
-            type="button"
-            onClick={() => {
-              if (selectedIds.size > 0) {
-                setSelectedIds(new Set());
-              } else {
-                const all = new Set<string>();
-                for (const it of items) {
-                  all.add(it.id);
-                  for (const c of it.components || []) all.add(c.id);
-                }
-                setSelectedIds(all);
-              }
-            }}
-            className="glass"
-            style={{
-              padding: '8px 10px',
-              borderRadius: 999,
-              fontSize: 12.5,
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            {selectedIds.size > 0 ? 'נקה' : 'בחר הכל'}
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => {
-            setTargetDishIdForAdd(null);
-            navigateTab('hub');
-          }}
-          style={{
-            padding: '8px 14px',
-            borderRadius: 999,
-            border: 'none',
-            background: 'var(--contrast-btn-bg)',
-            color: 'var(--contrast-btn-text)',
-            fontSize: 13,
-            fontWeight: 700,
-            fontFamily: 'inherit',
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          + הוסף עוד פריטים
-        </button>
+        </div>
       </div>
+      {mealItemsPhotoPickerOpen &&
+        renderPhotoSourceOptions(true, () => setMealItemsPhotoPickerOpen(false))}
     </div>
   );
 
@@ -3876,93 +4146,8 @@ export function AddMealDrawer({
                 </button>
               </div>
 
-              {cameraChooserOpen && (
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(3, 1fr)',
-                    gap: 6,
-                    padding: 6,
-                    borderRadius: 14,
-                    background: 'var(--bg-surface-2)',
-                    border: '1px solid var(--line-2)',
-                  }}
-                >
-                  <label
-                    className="btn-surface"
-                    style={{
-                      padding: '8px 6px',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 4,
-                      cursor: 'pointer',
-                      borderColor: 'var(--line-2)',
-                    }}
-                  >
-                    <Camera size={13} color="currentColor" />
-                    <span>מצלמה בלייב</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      hidden
-                      disabled={photoUploading}
-                      onChange={(e) => void handlePhotoUpload(e)}
-                    />
-                  </label>
-                  <label
-                    className="btn-surface"
-                    style={{
-                      padding: '8px 6px',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 4,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <ImageIcon size={13} color="var(--text-2)" />
-                    <span>גלריה (מרובה)</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      hidden
-                      disabled={photoUploading}
-                      onChange={(e) => void handlePhotoUpload(e)}
-                    />
-                  </label>
-                  <label
-                    className="btn-surface"
-                    style={{
-                      padding: '8px 6px',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 4,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <FolderOpen size={13} color="#a78bfa" />
-                    <span>בחירת קבצים</span>
-                    <input
-                      type="file"
-                      accept="image/*,.heic,.heif,.webp,.png,.jpg,.jpeg"
-                      multiple
-                      hidden
-                      disabled={photoUploading}
-                      onChange={(e) => void handlePhotoUpload(e)}
-                    />
-                  </label>
-                </div>
-              )}
+              {cameraChooserOpen &&
+                renderPhotoSourceOptions(false, () => setCameraChooserOpen(false))}
             </div>
           )}
 
@@ -4071,12 +4256,12 @@ export function AddMealDrawer({
                 <ChevronRight size={22} strokeWidth={2.3} />
               </GlassButton>
               <GlassButton
-                label="צלם שוב"
+                label="צפה בתמונה במסך מלא"
                 size={50}
-                onClick={() => navigateTab('ai-photo')}
+                onClick={() => setHeroLightboxOpen(true)}
                 style={{ pointerEvents: 'auto' }}
               >
-                <Camera size={21} strokeWidth={2} />
+                <Maximize2 size={20} strokeWidth={2} />
               </GlassButton>
             </div>
           )}
@@ -5952,7 +6137,7 @@ export function AddMealDrawer({
                     </div>
                   )}
 
-                  {photoItems.length < 8 && (
+                  {allMealPhotos.length < 8 && (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <label
                         className="btn-volt"
@@ -6430,38 +6615,150 @@ export function AddMealDrawer({
             {/* פאנל נפרד לניהול ועריכת המרכיבים שכבר בארוחה (נפתח מלחיצה על הכרטיסייה התחתונה) */}
             {activeTab === 'meal-items' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {!heroScreen &&
-                  renderMealItemsToolbar(`מרכיבי הארוחה הנוכחית (${items.length})`)}
-
-                {/* Result header (design: PhotoResult) — photo hero + totals vs meal target */}
+                {/* Result header (design: PhotoResult) — swipeable hero photos carousel */}
                 {allMealPhotos.length > 0 && (
-                  <div style={{ position: 'relative', margin: '0 -16px', overflow: 'hidden', background: 'var(--surface-2)' }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={allMealPhotos[0]}
-                      alt="תמונת הארוחה"
-                      onClick={() => navigateTab('ai-photo')}
-                      style={{ display: 'block', width: '100%', height: 'calc(300px + var(--sa-top, 0px))', objectFit: 'cover', cursor: 'pointer' }}
-                    />
+                  <div
+                    dir="ltr"
+                    onTouchStart={handlePhotoTouchStart}
+                    onTouchEnd={handlePhotoTouchEnd}
+                    style={{
+                      position: 'relative',
+                      margin: '0 -16px',
+                      overflow: 'hidden',
+                      background: 'var(--surface-2)',
+                      touchAction: 'pan-y',
+                      userSelect: 'none',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        width: '100%',
+                        transform: `translateX(-${safeHeroPhotoIdx * 100}%)`,
+                        transition: 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)',
+                      }}
+                    >
+                      {allMealPhotos.map((photoUrl, idx) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          key={`${photoUrl.slice(0, 32)}-${idx}`}
+                          src={photoUrl}
+                          alt={`תמונת הארוחה ${idx + 1} מתוך ${allMealPhotos.length}`}
+                          onClick={() => {
+                            if (heroSwipedRecentlyRef.current) return;
+                            setHeroLightboxOpen(true);
+                          }}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            flex: '0 0 100%',
+                            height: 'calc(300px + var(--sa-top, 0px))',
+                            objectFit: 'cover',
+                            cursor: 'pointer',
+                          }}
+                        />
+                      ))}
+                    </div>
 
                     {allMealPhotos.length > 1 && (
-                      <span
+                      <div
                         className="glass"
+                        dir="ltr"
+                        onClick={(e) => e.stopPropagation()}
                         style={{
                           position: 'absolute',
-                          insetBlockEnd: 10,
-                          insetInlineStart: 10,
+                          insetBlockEnd: 60,
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          zIndex: 4,
                           height: 30,
-                          padding: '0 12px',
+                          padding: '0 8px',
                           borderRadius: 999,
-                          fontSize: 13,
-                          fontWeight: 600,
+                          background: 'rgba(15, 17, 22, 0.62)',
+                          color: '#ffffff',
+                          border: '1px solid rgba(255, 255, 255, 0.22)',
                           display: 'inline-flex',
                           alignItems: 'center',
+                          gap: 6,
+                          maxWidth: 'calc(100% - 28px)',
                         }}
                       >
-                        +<bdi className="ltr-num">{allMealPhotos.length - 1}</bdi> תמונות
-                      </span>
+                        <button
+                          type="button"
+                          aria-label="תמונה קודמת"
+                          disabled={safeHeroPhotoIdx <= 0}
+                          onClick={() => stepHeroPhoto(-1)}
+                          style={{
+                            width: 22,
+                            height: 22,
+                            border: 0,
+                            borderRadius: 999,
+                            background: 'transparent',
+                            color: 'inherit',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: safeHeroPhotoIdx <= 0 ? 'default' : 'pointer',
+                            opacity: safeHeroPhotoIdx <= 0 ? 0.35 : 0.95,
+                            padding: 0,
+                          }}
+                        >
+                          <ChevronLeft size={14} />
+                        </button>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          {allMealPhotos.map((_, idx) => {
+                            const active = idx === safeHeroPhotoIdx;
+                            return (
+                              <button
+                                key={idx}
+                                type="button"
+                                aria-label={`תמונה ${idx + 1}`}
+                                aria-current={active ? 'true' : undefined}
+                                onClick={() => setActiveHeroPhotoIdx(idx)}
+                                style={{
+                                  width: active ? 16 : 6,
+                                  height: 6,
+                                  borderRadius: 999,
+                                  border: 0,
+                                  padding: 0,
+                                  background: active ? 'var(--accent)' : 'rgba(255,255,255,0.45)',
+                                  transition: 'width 180ms ease, background 180ms ease',
+                                  cursor: 'pointer',
+                                }}
+                              />
+                            );
+                          })}
+                        </div>
+                        <span
+                          className="num-mono ltr-num"
+                          style={{ fontSize: 11.5, fontWeight: 700, paddingInline: 2 }}
+                        >
+                          {safeHeroPhotoIdx + 1}/{allMealPhotos.length}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label="תמונה הבאה"
+                          disabled={safeHeroPhotoIdx >= allMealPhotos.length - 1}
+                          onClick={() => stepHeroPhoto(1)}
+                          style={{
+                            width: 22,
+                            height: 22,
+                            border: 0,
+                            borderRadius: 999,
+                            background: 'transparent',
+                            color: 'inherit',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor:
+                              safeHeroPhotoIdx >= allMealPhotos.length - 1 ? 'default' : 'pointer',
+                            opacity: safeHeroPhotoIdx >= allMealPhotos.length - 1 ? 0.35 : 0.95,
+                            padding: 0,
+                          }}
+                        >
+                          <ChevronRight size={14} />
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
@@ -6569,8 +6866,11 @@ export function AddMealDrawer({
                   </div>
                 </div>
 
-                {heroScreen &&
-                  renderMealItemsToolbar(`פריטי הארוחה (${items.length})`)}
+                {renderMealItemsToolbar(
+                  heroScreen
+                    ? `פריטי הארוחה (${items.length})`
+                    : `מרכיבי הארוחה הנוכחית (${items.length})`
+                )}
 
                 {learnedRuleHint && (
                   <div
@@ -6905,111 +7205,6 @@ export function AddMealDrawer({
                         }
                       />
                     ))}
-                  </div>
-                )}
-
-                {allMealPhotos.length === 0 && (
-                  <div
-                    style={{
-                      background: 'var(--card)',
-                      borderRadius: 18,
-                      padding: '12px 14px',
-                      border: '1px solid var(--line)',
-                      boxShadow: 'var(--card-shadow)',
-                      marginBottom: 14,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 10,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 8,
-                      }}
-                    >
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        <span
-                          style={{
-                            fontSize: 13.5,
-                            fontWeight: 700,
-                            color: 'var(--text)',
-                          }}
-                        >
-                          תמונת הארוחה (אופציונלי)
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 11.5,
-                            color: 'var(--text-2)',
-                          }}
-                        >
-                          צילום או העלאה יציגו את התמונה בראש הארוחה
-                        </span>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <label
-                        style={{
-                          flex: 1,
-                          minWidth: 0,
-                          height: 44,
-                          borderRadius: 999,
-                          background: 'var(--btn-primary)',
-                          color: 'var(--btn-primary-text)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 6,
-                          fontSize: 13,
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <Camera size={15} />
-                        <span>צלם עכשיו</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          onChange={(e) =>
-                            handlePhotoUpload(e, undefined, { stayOnTab: true })
-                          }
-                          style={{ display: 'none' }}
-                        />
-                      </label>
-                      <label
-                        style={{
-                          flex: 1,
-                          minWidth: 0,
-                          height: 44,
-                          borderRadius: 999,
-                          background: 'var(--surface-2)',
-                          border: '1px solid var(--line-2)',
-                          color: 'var(--text)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 6,
-                          fontSize: 13,
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <ImageIcon size={15} />
-                        <span>מהגלריה / קובץ</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) =>
-                            handlePhotoUpload(e, undefined, { stayOnTab: true })
-                          }
-                          style={{ display: 'none' }}
-                        />
-                      </label>
-                    </div>
                   </div>
                 )}
 
@@ -8069,6 +8264,192 @@ export function AddMealDrawer({
           }
         }}
       />
+
+      {/* צפייה במסך מלא בתמונות הארוחה עם החלקה ימינה/שמאלה */}
+      <Modal
+        opened={heroLightboxOpen && allMealPhotos.length > 0}
+        onClose={() => setHeroLightboxOpen(false)}
+        fullScreen
+        withCloseButton={false}
+        zIndex={310}
+        styles={{
+          content: { background: '#050608', color: '#fff', display: 'flex', flexDirection: 'column' },
+          body: { padding: 0, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' },
+        }}
+      >
+        <div
+          style={{
+            padding: 'calc(var(--sa-top, 0px) + 12px) 16px 10px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexShrink: 0,
+          }}
+        >
+          <GlassButton
+            label="סגור צפייה במסך מלא"
+            size={44}
+            onClick={() => setHeroLightboxOpen(false)}
+          >
+            <X size={20} strokeWidth={2.3} />
+          </GlassButton>
+          <span className="num-mono ltr-num" style={{ fontSize: 14, fontWeight: 700 }}>
+            {safeHeroPhotoIdx + 1} / {allMealPhotos.length}
+          </span>
+          <div style={{ width: 44 }} aria-hidden />
+        </div>
+
+        <div
+          dir="ltr"
+          onTouchStart={handlePhotoTouchStart}
+          onTouchEnd={handlePhotoTouchEnd}
+          style={{
+            position: 'relative',
+            flex: 1,
+            minHeight: 0,
+            overflow: 'hidden',
+            display: 'flex',
+            alignItems: 'center',
+            touchAction: 'pan-y',
+            userSelect: 'none',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              width: '100%',
+              height: '100%',
+              transform: `translateX(-${safeHeroPhotoIdx * 100}%)`,
+              transition: 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)',
+            }}
+          >
+            {allMealPhotos.map((photoUrl, idx) => (
+              <div
+                key={`${photoUrl.slice(0, 32)}-fs-${idx}`}
+                style={{
+                  flex: '0 0 100%',
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '8px 12px',
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photoUrl}
+                  alt={`תמונת ארוחה ${idx + 1} מתוך ${allMealPhotos.length}`}
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    objectFit: 'contain',
+                    borderRadius: 12,
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+
+          {allMealPhotos.length > 1 && (
+            <>
+              <button
+                type="button"
+                aria-label="תמונה קודמת"
+                disabled={safeHeroPhotoIdx <= 0}
+                onClick={() => stepHeroPhoto(-1)}
+                className="glass"
+                style={{
+                  position: 'absolute',
+                  left: 12,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  width: 40,
+                  height: 40,
+                  borderRadius: 999,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: safeHeroPhotoIdx <= 0 ? 'default' : 'pointer',
+                  opacity: safeHeroPhotoIdx <= 0 ? 0.3 : 0.9,
+                }}
+              >
+                <ChevronLeft size={20} />
+              </button>
+              <button
+                type="button"
+                aria-label="תמונה הבאה"
+                disabled={safeHeroPhotoIdx >= allMealPhotos.length - 1}
+                onClick={() => stepHeroPhoto(1)}
+                className="glass"
+                style={{
+                  position: 'absolute',
+                  right: 12,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  width: 40,
+                  height: 40,
+                  borderRadius: 999,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: safeHeroPhotoIdx >= allMealPhotos.length - 1 ? 'default' : 'pointer',
+                  opacity: safeHeroPhotoIdx >= allMealPhotos.length - 1 ? 0.3 : 0.9,
+                }}
+              >
+                <ChevronRight size={20} />
+              </button>
+            </>
+          )}
+        </div>
+
+        {allMealPhotos.length > 1 && (
+          <div
+            dir="ltr"
+            style={{
+              padding: '10px 16px calc(var(--sa-bottom, 0px) + 16px)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 10,
+              flexShrink: 0,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflowX: 'auto', maxWidth: '100%' }}>
+              {allMealPhotos.map((photoUrl, idx) => {
+                const active = idx === safeHeroPhotoIdx;
+                return (
+                  <button
+                    key={`thumb-${idx}`}
+                    type="button"
+                    aria-label={`בחר תמונה ${idx + 1}`}
+                    onClick={() => setActiveHeroPhotoIdx(idx)}
+                    style={{
+                      width: 46,
+                      height: 46,
+                      padding: 0,
+                      borderRadius: 10,
+                      overflow: 'hidden',
+                      flexShrink: 0,
+                      border: active ? '2px solid var(--accent)' : '1px solid rgba(255,255,255,0.22)',
+                      opacity: active ? 1 : 0.55,
+                      cursor: 'pointer',
+                      background: 'transparent',
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={photoUrl}
+                      alt=""
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </Modal>
     </>
   );
 }

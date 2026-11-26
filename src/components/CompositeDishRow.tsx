@@ -196,6 +196,43 @@ export function CompositeDishRow({
   const confidenceBadge = resolveConfidenceLabelHe(item.inputConfidence);
   const topStep = stepForGrams(item.grams);
 
+  const applyTopItemScale = (factor: number) => {
+    onDraftChange?.(item.id, null);
+    onUpdateItem(scaleCompositeDishByFactor(item, factor));
+  };
+
+  const renderScaleControls = (label: string, extraRight?: React.ReactNode) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 12, color: 'var(--text-2)', fontWeight: 600 }}>
+        {label}
+      </span>
+      {[
+        { label: '0.5×', f: 0.5 },
+        { label: '1.5×', f: 1.5 },
+        { label: '2×', f: 2 },
+      ].map((sc) => (
+        <button
+          key={sc.label}
+          type="button"
+          onClick={() => applyTopItemScale(sc.f)}
+          className="glass"
+          style={{
+            height: 28,
+            padding: '0 9px',
+            borderRadius: 999,
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: 'pointer',
+          }}
+        >
+          {sc.label}
+        </button>
+      ))}
+      <CustomDishScaleInput onApply={applyTopItemScale} />
+      {extraRight}
+    </div>
+  );
+
   return (
     <div
       style={{
@@ -480,36 +517,9 @@ export function CompositeDishRow({
             </div>
 
             {/* סקיילינג לכל המנה בלחיצה + עדכון Preset אם שונתה */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-2)', fontWeight: 600 }}>
-                הכפל / הקטן מנה:
-              </span>
-              {[
-                { label: '0.5×', f: 0.5 },
-                { label: '1.5×', f: 1.5 },
-                { label: '2×', f: 2 },
-              ].map((sc) => (
-                <button
-                  key={sc.label}
-                  type="button"
-                  onClick={() => onUpdateItem(scaleCompositeDishByFactor(item, sc.f))}
-                  className="glass"
-                  style={{
-                    height: 28,
-                    padding: '0 9px',
-                    borderRadius: 999,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {sc.label}
-                </button>
-              ))}
-              <CustomDishScaleInput
-                onApply={(factor) => onUpdateItem(scaleCompositeDishByFactor(item, factor))}
-              />
-              {canSyncBackPreset && onSyncBackPreset && (
+            {renderScaleControls(
+              'הכפל / הקטן מנה:',
+              canSyncBackPreset && onSyncBackPreset ? (
                 <button
                   type="button"
                   onClick={() => onSyncBackPreset(item)}
@@ -530,8 +540,8 @@ export function CompositeDishRow({
                   <RefreshCw size={11} />
                   <span>עדכן &quot;{item.name}&quot; בספרייה</span>
                 </button>
-              )}
-            </div>
+              ) : undefined
+            )}
 
             {/* רשימת מרכיבי המנה (רמה 3) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -928,6 +938,7 @@ export function CompositeDishRow({
                 />
               </div>
             </div>
+            {renderScaleControls('הכפל / הקטן פריט:')}
             <div className="spot-macro-5-grid">
               <NumberInput
                 size="xs"
