@@ -16,7 +16,7 @@ import { authenticateActiveSession } from '@/lib/liveAuth';
 import {
   canCoachAccessTrainee,
   getSingleTraineeFromServer,
-  updateServerDbState,
+  updateTraineeAtomic,
 } from '@/lib/serverStore';
 import {
   GEMINI_TEXT_MODELS,
@@ -640,11 +640,9 @@ export const POST = withTelemetryHandler('/api/ai/recommend-meal', async (reques
         new Set([...(trainee.aiLearnedPreferences || []), extracted.learnedRule])
       ).slice(-30);
 
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) =>
-          t.id === trainee.id ? { ...t, aiLearnedPreferences: nextPrefs } : t
-        ),
+      await updateTraineeAtomic(trainee.id, (t) => ({
+        ...t,
+        aiLearnedPreferences: nextPrefs,
       }));
 
       return NextResponse.json({

@@ -262,6 +262,13 @@ interface TraineeMobileViewProps {
   onSyncNativeStepsNow?: () => Promise<void>;
   showScraperSources?: boolean;
   semanticSearchEnabled?: boolean;
+  olderLogsInfo?: {
+    hasOlderLogs: boolean;
+    olderLogsCount: number;
+    cutoffDateIso: string;
+  } | null;
+  loadingOlderLogs?: boolean;
+  onLoadOlderLogs?: () => Promise<void> | void;
 }
 
 function CompactMiniRing({
@@ -344,9 +351,31 @@ export function TraineeMobileView({
   onSyncNativeStepsNow,
   showScraperSources = false,
   semanticSearchEnabled = false,
+  olderLogsInfo,
+  loadingOlderLogs = false,
+  onLoadOlderLogs,
 }: TraineeMobileViewProps) {
   const todayIso = getTodayIso();
   const [selectedDate, setSelectedDate] = useState<string>(todayIso);
+
+  useEffect(() => {
+    if (
+      !isCoachPreview &&
+      olderLogsInfo?.hasOlderLogs &&
+      !loadingOlderLogs &&
+      olderLogsInfo.cutoffDateIso &&
+      selectedDate < olderLogsInfo.cutoffDateIso
+    ) {
+      void onLoadOlderLogs?.();
+    }
+  }, [
+    isCoachPreview,
+    olderLogsInfo?.hasOlderLogs,
+    olderLogsInfo?.cutoffDateIso,
+    loadingOlderLogs,
+    selectedDate,
+    onLoadOlderLogs,
+  ]);
   const [dismissedCoachAlertIds, setDismissedCoachAlertIds] = useState<string[]>([]);
   const [sessionPinnedCoachAlertIds, setSessionPinnedCoachAlertIds] = useState<string[]>([]);
   const coachAlertVisitSentIdsRef = useRef<Set<string>>(new Set());
@@ -3274,6 +3303,9 @@ export function TraineeMobileView({
               onPushPreferencesUpdated={onPushPreferencesUpdated}
               onUpdateMealShortcuts={onUpdateMealShortcuts}
               onOpenOnboarding={() => setEditingOnboarding(true)}
+              olderLogsInfo={olderLogsInfo}
+              loadingOlderLogs={loadingOlderLogs}
+              onLoadOlderLogs={onLoadOlderLogs}
               onOpenMealFromHistory={(date, mealSlotId) => {
                 setDrawerReturnTarget({ section: mobileSection, date: selectedDate });
                 setMobileSection('journal');
@@ -3326,6 +3358,9 @@ export function TraineeMobileView({
         hasLog={(iso) => Boolean(trainee.logs[iso] && Object.keys(trainee.logs[iso].meals || {}).length > 0)}
         monthNames={HEBREW_MONTH_NAMES}
         weekdayLetters={HEBREW_WEEKDAY_LETTERS}
+        olderLogsInfo={olderLogsInfo}
+        loadingOlderLogs={loadingOlderLogs}
+        onLoadOlderLogs={onLoadOlderLogs}
       />
 
       {/* מודאל מדידת היקפים מונפש */}

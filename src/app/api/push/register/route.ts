@@ -12,7 +12,7 @@ import {
 import { authenticateActiveSession } from '@/lib/liveAuth';
 import {
   getSingleTraineeFromServer,
-  updateServerDbState,
+  updateTraineeAtomic,
 } from '@/lib/serverStore';
 import {
   hasAnyRegisteredPushTarget,
@@ -78,26 +78,22 @@ export async function POST(request: NextRequest) {
       const deviceLabel =
         sanitizeText(body.deviceLabel || 'Android APK', 60) || 'Android APK';
 
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) => {
-          if (t.id !== session.id) return t;
-          const remaining = (t.fcmTokens || []).filter((x) => x.token !== token);
-          const nextTokens = [
-            {
-              token,
-              platform: 'android' as const,
-              updatedAt: nowIso,
-              deviceLabel,
-            },
-            ...remaining,
-          ].slice(0, 5);
-          return {
-            ...t,
-            fcmTokens: nextTokens,
-          };
-        }),
-      }));
+      await updateTraineeAtomic(session.id, (t) => {
+        const remaining = (t.fcmTokens || []).filter((x) => x.token !== token);
+        const nextTokens = [
+          {
+            token,
+            platform: 'android' as const,
+            updatedAt: nowIso,
+            deviceLabel,
+          },
+          ...remaining,
+        ].slice(0, 5);
+        return {
+          ...t,
+          fcmTokens: nextTokens,
+        };
+      });
 
       return NextResponse.json({ ok: true });
     }
@@ -105,21 +101,15 @@ export async function POST(request: NextRequest) {
     if (op === 'unregister-token') {
       const token =
         typeof body.token === 'string' ? body.token.trim().slice(0, 500) : '';
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) => {
-          if (t.id !== session.id) return t;
-          return {
-            ...t,
-            fcmTokens: token
-              ? (t.fcmTokens || []).filter((x) => x.token !== token)
-              : [],
-            lastForegroundState: {
-              isInForeground: false,
-              updatedAt: nowIso,
-            },
-          };
-        }),
+      await updateTraineeAtomic(session.id, (t) => ({
+        ...t,
+        fcmTokens: token
+          ? (t.fcmTokens || []).filter((x) => x.token !== token)
+          : [],
+        lastForegroundState: {
+          isInForeground: false,
+          updatedAt: nowIso,
+        },
       }));
       return NextResponse.json({ ok: true });
     }
@@ -168,19 +158,15 @@ export async function POST(request: NextRequest) {
         isDeclarativeCapable: Boolean(body.isDeclarativeCapable),
       };
 
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) => {
-          if (t.id !== session.id) return t;
-          const remaining = (t.webPushSubscriptions || []).filter(
-            (x) => x.endpoint !== subEndpoint
-          );
-          return {
-            ...t,
-            webPushSubscriptions: [newEntry, ...remaining].slice(0, 8),
-          };
-        }),
-      }));
+      await updateTraineeAtomic(session.id, (t) => {
+        const remaining = (t.webPushSubscriptions || []).filter(
+          (x) => x.endpoint !== subEndpoint
+        );
+        return {
+          ...t,
+          webPushSubscriptions: [newEntry, ...remaining].slice(0, 8),
+        };
+      });
 
       return NextResponse.json({ ok: true });
     }
@@ -190,40 +176,28 @@ export async function POST(request: NextRequest) {
         typeof body.endpoint === 'string'
           ? body.endpoint.trim().slice(0, 1000)
           : '';
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) => {
-          if (t.id !== session.id) return t;
-          return {
-            ...t,
-            webPushSubscriptions: targetEndpoint
-              ? (t.webPushSubscriptions || []).filter(
-                  (x) => x.endpoint !== targetEndpoint
-                )
-              : [],
-            lastForegroundState: {
-              isInForeground: false,
-              updatedAt: nowIso,
-            },
-          };
-        }),
+      await updateTraineeAtomic(session.id, (t) => ({
+        ...t,
+        webPushSubscriptions: targetEndpoint
+          ? (t.webPushSubscriptions || []).filter(
+              (x) => x.endpoint !== targetEndpoint
+            )
+          : [],
+        lastForegroundState: {
+          isInForeground: false,
+          updatedAt: nowIso,
+        },
       }));
       return NextResponse.json({ ok: true });
     }
 
     if (op === 'heartbeat') {
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) => {
-          if (t.id !== session.id) return t;
-          return {
-            ...t,
-            lastForegroundState: {
-              isInForeground: Boolean(body.isInForeground),
-              updatedAt: nowIso,
-            },
-          };
-        }),
+      await updateTraineeAtomic(session.id, (t) => ({
+        ...t,
+        lastForegroundState: {
+          isInForeground: Boolean(body.isInForeground),
+          updatedAt: nowIso,
+        },
       }));
       return NextResponse.json({ ok: true });
     }
@@ -247,11 +221,9 @@ export async function POST(request: NextRequest) {
             ? body.coachMealChanges
             : liveTrainee.pushPreferences?.coachMealChanges !== false,
       };
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) =>
-          t.id === session.id ? { ...t, pushPreferences: nextPrefs } : t
-        ),
+      await updateTraineeAtomic(session.id, (t) => ({
+        ...t,
+        pushPreferences: nextPrefs,
       }));
       return NextResponse.json({ ok: true, pushPreferences: nextPrefs });
     }
@@ -285,18 +257,13 @@ export async function POST(request: NextRequest) {
         sendRes.invalidFcmTokens.length > 0 ||
         sendRes.expiredWebEndpoints.length > 0
       ) {
-        await updateServerDbState((prev) => ({
-          ...prev,
-          trainees: prev.trainees.map((t) =>
-            t.id === session.id
-              ? stripDeadPushTargetsFromTrainee(
-                  t,
-                  sendRes.invalidFcmTokens,
-                  sendRes.expiredWebEndpoints
-                )
-              : t
-          ),
-        }));
+        await updateTraineeAtomic(session.id, (t) =>
+          stripDeadPushTargetsFromTrainee(
+            t,
+            sendRes.invalidFcmTokens,
+            sendRes.expiredWebEndpoints
+          )
+        );
       }
 
       if (sendRes.sentCount === 0 && sendRes.configError) {

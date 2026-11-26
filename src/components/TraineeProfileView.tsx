@@ -65,6 +65,13 @@ interface TraineeProfileViewProps {
     traineeId: string,
     shortcuts: MealCardShortcutId[]
   ) => void | Promise<void>;
+  olderLogsInfo?: {
+    hasOlderLogs: boolean;
+    olderLogsCount: number;
+    cutoffDateIso: string;
+  } | null;
+  loadingOlderLogs?: boolean;
+  onLoadOlderLogs?: () => Promise<void> | void;
 }
 
 export function TraineeProfileView({
@@ -76,6 +83,9 @@ export function TraineeProfileView({
   onOpenOnboarding,
   onPushPreferencesUpdated,
   onUpdateMealShortcuts,
+  olderLogsInfo,
+  loadingOlderLogs,
+  onLoadOlderLogs,
 }: TraineeProfileViewProps) {
   const [nameInput, setNameInput] = useState(trainee.name);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -1353,6 +1363,37 @@ export function TraineeProfileView({
             }}
           />
         </div>
+
+        {(olderLogsInfo?.hasOlderLogs || loadingOlderLogs) && onLoadOlderLogs && !isCoachPreview && (
+          <button
+            type="button"
+            disabled={Boolean(loadingOlderLogs)}
+            onClick={() => void onLoadOlderLogs()}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              width: '100%',
+              padding: '10px 14px',
+              borderRadius: 16,
+              border: '1px dashed var(--line-2)',
+              background: 'var(--surface-2)',
+              color: 'var(--text)',
+              fontSize: 13,
+              fontWeight: 700,
+              fontFamily: 'inherit',
+              cursor: loadingOlderLogs ? 'wait' : 'pointer',
+            }}
+          >
+            {loadingOlderLogs && <Loader2 size={14} className="animate-spin" />}
+            <span>
+              {loadingOlderLogs
+                ? 'טוען ארוחות ישנות יותר...'
+                : `מוצגים הימים האחרונים בלבד · טען היסטוריה ישנה יותר (${olderLogsInfo?.olderLogsCount || 0} ימים)`}
+            </span>
+          </button>
+        )}
 
         {loggedMealsList.length === 0 ? (
           <div

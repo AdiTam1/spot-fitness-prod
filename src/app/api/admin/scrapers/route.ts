@@ -13,7 +13,11 @@ import {
   testSingleScraperSearch,
 } from '@/lib/scrapers/scraperStore';
 import { isEmbeddingConfigured } from '@/lib/foodSemanticEngine';
-import { getServerDbState, invalidateSemanticSearchFlagCache, updateServerDbState } from '@/lib/serverStore';
+import {
+  getServerMetaAndCoachesState,
+  invalidateSemanticSearchFlagCache,
+  updateServerMetaState,
+} from '@/lib/serverStore';
 import {
   backfillFoodCatalogBarcodesAndUnits,
   backfillFoodCatalogEmbeddingsBatch,
@@ -63,7 +67,7 @@ export async function GET(request: NextRequest) {
   const autoCheck = searchParams.get('autoCheck') === '1';
 
   const [{ report: initialReport, catalog: initialCatalog }, serverState] =
-    await Promise.all([getScraperState(), getServerDbState()]);
+    await Promise.all([getScraperState(), getServerMetaAndCoachesState()]);
   let report = initialReport;
   let catalog = initialCatalog;
   const stale = isScraperReportStale(report);
@@ -213,7 +217,7 @@ export const POST = withTelemetryHandler('/api/admin/scrapers', async (request, 
       }
       case 'set_show_scraper_sources': {
         const enabled = Boolean(body.enabled);
-        await updateServerDbState((prev) => ({
+        await updateServerMetaState((prev) => ({
           ...prev,
           showScraperSourcesToAdmin: enabled,
         }));
@@ -225,7 +229,7 @@ export const POST = withTelemetryHandler('/api/admin/scrapers', async (request, 
       case 'set_semantic_search': {
         const enabled = Boolean(body.enabled);
         invalidateSemanticSearchFlagCache(enabled);
-        await updateServerDbState((prev) => ({
+        await updateServerMetaState((prev) => ({
           ...prev,
           semanticSearchEnabled: enabled,
         }));

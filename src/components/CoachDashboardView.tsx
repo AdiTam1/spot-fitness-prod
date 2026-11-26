@@ -361,6 +361,17 @@ export function CoachDashboardView({
   const [activeSection, setActiveSection] = useState<
     'roster' | 'templates' | 'inspector' | 'users' | 'coaches' | 'scrapers' | 'monitoring'
   >('roster');
+  const [monitoringTabRequest, setMonitoringTabRequest] = useState<{
+    tab: 'diagnostics' | 'ai';
+    nonce: number;
+  } | null>(null);
+  const [healthPulseAlert, setHealthPulseAlert] = useState<{
+    dbErrors24h: number;
+    slowData24h: number;
+    heavyPayload24h: number;
+    maxPayloadKB24h: number;
+  } | null>(null);
+  const [healthAlertDismissed, setHealthAlertDismissed] = useState<boolean>(false);
   const [expandedCoachDishIds, setExpandedCoachDishIds] = useState<Record<string, boolean>>({});
 
   const [scraperReport, setScraperReport] = useState<ScraperSuiteReport | null>(
@@ -394,6 +405,31 @@ export function CoachDashboardView({
       .finally(() => {
         if (!cancelled) setScraperLoading(false);
       });
+
+    fetch('/api/admin/monitoring?healthPulse=1', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.alerts) return;
+        const a = data.alerts as {
+          dbErrors24h?: number;
+          slowData24h?: number;
+          heavyPayload24h?: number;
+          maxPayloadKB24h?: number;
+        };
+        const dbErr = Number(a.dbErrors24h) || 0;
+        const slow = Number(a.slowData24h) || 0;
+        const heavy = Number(a.heavyPayload24h) || 0;
+        if (dbErr > 0 || slow > 0 || heavy > 0) {
+          setHealthPulseAlert({
+            dbErrors24h: dbErr,
+            slowData24h: slow,
+            heavyPayload24h: heavy,
+            maxPayloadKB24h: Number(a.maxPayloadKB24h) || 0,
+          });
+        }
+      })
+      .catch(() => undefined);
+
     return () => {
       cancelled = true;
     };
@@ -1515,6 +1551,95 @@ export function CoachDashboardView({
           </button>
         </div>
       </div>
+
+      {isSuperAdmin &&
+        healthPulseAlert &&
+        !healthAlertDismissed &&
+        activeSection !== 'monitoring' && (
+          <div
+            role="alert"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
+              padding: '10px 14px',
+              marginBottom: 14,
+              borderRadius: 18,
+              background:
+                healthPulseAlert.dbErrors24h > 0
+                  ? 'rgba(239, 68, 68, 0.12)'
+                  : 'rgba(245, 158, 11, 0.12)',
+              border:
+                healthPulseAlert.dbErrors24h > 0
+                  ? '1px solid rgba(239, 68, 68, 0.4)'
+                  : '1px solid rgba(245, 158, 11, 0.4)',
+              fontSize: 13,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <AlertTriangle
+                size={16}
+                color={
+                  healthPulseAlert.dbErrors24h > 0
+                    ? 'var(--danger-text, #ef4444)'
+                    : 'var(--warn-text, #d97706)'
+                }
+              />
+              <strong>התראת תשתית וביצועים (24 שעות אחרונות):</strong>
+              <span>
+                {[
+                  healthPulseAlert.dbErrors24h > 0
+                    ? `${healthPulseAlert.dbErrors24h} שגיאות DB/שרת`
+                    : null,
+                  healthPulseAlert.slowData24h > 0
+                    ? `${healthPulseAlert.slowData24h} טעינות /api/data איטיות (>3.5s)`
+                    : null,
+                  healthPulseAlert.heavyPayload24h > 0
+                    ? `${healthPulseAlert.heavyPayload24h} סנכרונים כבדים (שיא ${healthPulseAlert.maxPayloadKB24h} KB)`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                type="button"
+                className="btn-surface"
+                onClick={() => {
+                  setMonitoringTabRequest({ tab: 'diagnostics', nonce: Date.now() });
+                  setActiveSection('monitoring');
+                }}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                }}
+              >
+                פתח אבחון וניתוקים
+              </button>
+              <button
+                type="button"
+                aria-label="סגור התראת מערכת"
+                onClick={() => setHealthAlertDismissed(true)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  fontSize: 14,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  padding: '4px 6px',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
 
       {/* Mobile-only floating coach dock (desktop keeps the top navigation) */}
       <div className="only-mobile">
@@ -7302,6 +7427,8 @@ export function CoachDashboardView({
           trainees={trainees}
           coaches={coaches}
           onNotify={(msg, isErr) => showToast(msg, isErr)}
+          requestedTab={monitoringTabRequest?.tab}
+          requestedTabNonce={monitoringTabRequest?.nonce}
         />
       )}
 

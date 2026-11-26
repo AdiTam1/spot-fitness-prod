@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "node --test scripts/architecture-guards.test.mjs",
     "cap:sync": "npx cap sync android"
   },
   "dependencies": {

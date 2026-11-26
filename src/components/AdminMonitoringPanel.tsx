@@ -35,6 +35,8 @@ interface AdminMonitoringPanelProps {
   trainees: TraineeProfile[];
   coaches: CoachProfile[];
   onNotify: (msg: string, isError?: boolean) => void;
+  requestedTab?: 'diagnostics' | 'ai' | 'rateLimits' | 'audit' | 'api' | 'client';
+  requestedTabNonce?: number;
 }
 
 interface MonitoringSummary {
@@ -228,9 +230,19 @@ export function AdminMonitoringPanel({
   trainees,
   coaches,
   onNotify,
+  requestedTab,
+  requestedTabNonce,
 }: AdminMonitoringPanelProps) {
   const [hours, setHours] = useState<string>('168');
-  const [viewTab, setViewTab] = useState<'diagnostics' | 'ai' | 'rateLimits' | 'audit' | 'api' | 'client'>('ai');
+  const [viewTab, setViewTab] = useState<'diagnostics' | 'ai' | 'rateLimits' | 'audit' | 'api' | 'client'>(
+    requestedTab || 'ai'
+  );
+  useEffect(() => {
+    if (requestedTab) {
+      setViewTab(requestedTab);
+      setPage(0);
+    }
+  }, [requestedTab, requestedTabNonce]);
   const [liveRefresh, setLiveRefresh] = useState<boolean>(false);
   const [userDiagnostics, setUserDiagnostics] = useState<UserDiagnosticsPayload | null>(null);
   const [actorFilter, setActorFilter] = useState<string>('');

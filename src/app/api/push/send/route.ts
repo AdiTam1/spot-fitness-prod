@@ -13,7 +13,7 @@ import { authenticateActiveSession } from '@/lib/liveAuth';
 import {
   canCoachAccessTrainee,
   getSingleTraineeFromServer,
-  updateServerDbState,
+  updateTraineeAtomic,
 } from '@/lib/serverStore';
 import {
   hasAnyRegisteredPushTarget,
@@ -131,24 +131,20 @@ export const POST = withTelemetryHandler('/api/push/send', async (request, ctx) 
       targetMealSlotId,
     };
 
-    await updateServerDbState((prev) => ({
-      ...prev,
-      trainees: prev.trainees.map((t) => {
-        if (t.id !== traineeId) return t;
-        const cleaned = stripDeadPushTargetsFromTrainee(
-          t,
-          sendRes.invalidFcmTokens,
-          sendRes.expiredWebEndpoints
-        );
-        return {
-          ...cleaned,
-          pushHistory:
-            sendRes.sentCount > 0
-              ? [historyEntry, ...(cleaned.pushHistory || [])].slice(0, 20)
-              : cleaned.pushHistory || [],
-        };
-      }),
-    }));
+    await updateTraineeAtomic(traineeId, (t) => {
+      const cleaned = stripDeadPushTargetsFromTrainee(
+        t,
+        sendRes.invalidFcmTokens,
+        sendRes.expiredWebEndpoints
+      );
+      return {
+        ...cleaned,
+        pushHistory:
+          sendRes.sentCount > 0
+            ? [historyEntry, ...(cleaned.pushHistory || [])].slice(0, 20)
+            : cleaned.pushHistory || [],
+      };
+    });
 
     if (sendRes.sentCount === 0 && sendRes.configError) {
       ctx.setErrorCode('PUSH_CONFIG_ERROR', sendRes.configError);

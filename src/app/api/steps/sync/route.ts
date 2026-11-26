@@ -13,7 +13,7 @@ import {
 import { authenticateActiveSession } from '@/lib/liveAuth';
 import {
   getTraineeAuthStateFromServer,
-  updateServerDbState,
+  updateTraineeAtomic,
 } from '@/lib/serverStore';
 import { DailyLog, StepsSyncSource } from '@/types/nutrition';
 import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
@@ -161,11 +161,9 @@ export const POST = withTelemetryHandler('/api/steps/sync', async (request, ctx)
       { steps: number; stepsSource: StepsSyncSource; stepsSyncedAt: string }
     > = {};
 
-    await updateServerDbState((prev) => ({
-      ...prev,
-      trainees: prev.trainees.map((existing) => {
-        if (existing.id !== authorizedTraineeId) return existing;
-
+    const { next: updatedStepsTrainee } = await updateTraineeAtomic(
+      authorizedTraineeId,
+      (existing) => {
         const nextLogs: Record<string, DailyLog> = { ...existing.logs };
         let changed = false;
 
@@ -230,8 +228,12 @@ export const POST = withTelemetryHandler('/api/steps/sync', async (request, ctx)
 
         if (!changed) return existing;
         return { ...existing, logs: nextLogs };
-      }),
-    }));
+      }
+    );
+
+    if (!updatedStepsTrainee) {
+      return NextResponse.json({ error: 'מתאמן לא נמצא' }, { status: 404 });
+    }
 
     const latestSynced = cleanedEntries[cleanedEntries.length - 1];
     ctx.recordAudit({

@@ -42,6 +42,7 @@ import {
   sanitizeCoachPushSettingsForClient,
   sanitizeTraineeForClient,
   sanitizeTraineeForRosterList,
+  trimTraineeLogsToWindow,
   updateServerDbState,
   updateServerMetaState,
   updateTraineeAtomic,
@@ -767,6 +768,15 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
 
   // 1. מתאמן מחובר: מקבל אך ורק את הפרופיל של עצמו + צ'יפים קבוצתיים/כלליים לקונטקסט AI
   if (session.role === 'trainee') {
+    const rawWindowDays = Number(searchParams.get('windowDays') || 0);
+    const fullHistoryReq = searchParams.get('fullHistory') === '1';
+    const includeDate = sanitizeText(searchParams.get('includeDate') || '', 12);
+    const effectiveWindowDays =
+      !fullHistoryReq && Number.isFinite(rawWindowDays) && rawWindowDays > 0
+        ? Math.max(7, Math.min(365, Math.round(rawWindowDays)))
+        : 0;
+    const windowScope = effectiveWindowDays > 0 ? `w${effectiveWindowDays}` : 'full';
+
     if (since) {
       const stampCheck = await getTraineeSyncStampOnServer(session.id);
       if (stampCheck.status && stampCheck.status !== 'active') {
@@ -777,11 +787,13 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
         );
         return clearSessionCookie(res);
       }
-      if (stampCheck.stamp && stampCheck.stamp === since) {
+      if (stampCheck.stamp && `${stampCheck.stamp}:${windowScope}` === since) {
         ctx.setActionName('trainee_sync_not_modified');
-        ctx.setAiUsage({ diag: { authMs, payloadKB: 0, notModified: true } });
+        ctx.setAiUsage({
+          diag: { authMs, payloadKB: 0, notModified: true, windowScope },
+        });
         return NextResponse.json(
-          { notModified: true, syncVersion: stampCheck.stamp },
+          { notModified: true, syncVersion: since },
           {
             headers: {
               'Cache-Control': 'no-store, max-age=0',
@@ -849,9 +861,41 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
       }
     }
 
-    const logEntries = Object.values(myProfile.logs || {});
+    const sanitizedFull = sanitizeTraineeForClient(myProfile);
+    const totalLogEntries = Object.values(sanitizedFull.logs || {});
+    let clientProfile = sanitizedFull;
+    let olderLogsInfo = {
+      hasOlderLogs: false,
+      olderLogsCount: 0,
+      cutoffDateIso: '',
+    };
+
+    if (effectiveWindowDays > 0) {
+      const coachPastDays = Math.min(
+        30,
+        Math.max(1, Number(myProfile.activeDateRange?.pastDays) || 1)
+      );
+      const daysBack = Math.max(effectiveWindowDays, coachPastDays);
+      const cutoffDateIso = getTodayIso(-daysBack);
+      const preserveDates = [
+        getTodayIso(),
+        ...(/^\d{4}-\d{2}-\d{2}$/.test(includeDate) ? [includeDate] : []),
+        ...(myProfile.pendingAiJobs || [])
+          .map((j) => j.date)
+          .filter((d): d is string => Boolean(d)),
+      ];
+      const trimmed = trimTraineeLogsToWindow(
+        sanitizedFull,
+        cutoffDateIso,
+        preserveDates
+      );
+      clientProfile = trimmed.trainee;
+      olderLogsInfo = trimmed.olderLogsInfo;
+    }
+
+    const sentLogEntries = Object.values(clientProfile.logs || {});
     let approxPhotosCount = 0;
-    for (const dayLog of logEntries) {
+    for (const dayLog of sentLogEntries) {
       for (const meal of Object.values(dayLog?.meals || {})) {
         const directCount = Array.isArray(meal?.photoDataUrls)
           ? meal.photoDataUrls.length
@@ -865,8 +909,12 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
       }
     }
 
+    const syncVersion = preStampRes.stamp
+      ? `${preStampRes.stamp}:${windowScope}`
+      : null;
+
     const responseBody = JSON.stringify({
-      trainees: [sanitizeTraineeForClient(myProfile)],
+      trainees: [clientProfile],
       templates: [],
       groups: [],
       coaches: [],
@@ -876,7 +924,8 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
       globalCustomFoods: bundle.globalCustomFoods,
       sharedCoachCustomFoods,
       semanticSearchEnabled: bundle.semanticSearchEnabled,
-      syncVersion: preStampRes.stamp,
+      olderLogsInfo,
+      syncVersion,
       role: 'trainee',
     });
     const payloadKB = Math.round(Buffer.byteLength(responseBody, 'utf8') / 1024);
@@ -888,7 +937,10 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
         profileMs,
         extrasMs,
         payloadKB,
-        logsDaysCount: logEntries.length,
+        windowScope,
+        logsDaysCount: sentLogEntries.length,
+        totalLogsDaysCount: totalLogEntries.length,
+        olderLogsOmitted: olderLogsInfo.olderLogsCount,
         approxPhotosCount,
       },
     });

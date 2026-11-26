@@ -8,7 +8,7 @@ import {
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import {
   getAppReleasePolicyFromServer,
-  updateServerDbState,
+  updateServerMetaState,
 } from '@/lib/serverStore';
 import { resolveAppVersionInfo } from '@/lib/appVersionServer';
 import {
@@ -363,7 +363,7 @@ export const POST = withTelemetryHandler('/api/admin/apk-release', async (reques
       updatedAt: new Date().toISOString(),
     };
 
-    await updateServerDbState((prev) => ({
+    await updateServerMetaState((prev) => ({
       ...prev,
       appReleasePolicy: nextPolicy,
     }));

@@ -122,3 +122,48 @@ export function serializeSyncTimestampRows(rows: unknown): string | null {
   items.sort();
   return items.join(',');
 }
+
+export interface OlderLogsInfo {
+  hasOlderLogs: boolean;
+  olderLogsCount: number;
+  cutoffDateIso: string;
+}
+
+/**
+ * חותך יומני מתאמן לטווח ימים אחרונים בלבד לפתיחה מהירה, תוך שמירה של ימים מוגנים (היום/משימות AI פתוחות/תאריך נבחר)
+ * וללא מוטציה על אובייקט המקור.
+ */
+export function trimTraineeLogsToWindow(
+  trainee: TraineeProfile,
+  cutoffDateIso: string,
+  preserveDates: string[] = []
+): { trainee: TraineeProfile; olderLogsInfo: OlderLogsInfo } {
+  const rawLogs = trainee.logs || {};
+  const preserveSet = new Set(preserveDates.filter(Boolean));
+  const windowedLogs: TraineeProfile['logs'] = {};
+  let olderLogsCount = 0;
+
+  for (const [dateKey, dayLog] of Object.entries(rawLogs)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+      windowedLogs[dateKey] = dayLog;
+      continue;
+    }
+    if (dateKey >= cutoffDateIso || preserveSet.has(dateKey)) {
+      windowedLogs[dateKey] = dayLog;
+    } else {
+      olderLogsCount += 1;
+    }
+  }
+
+  return {
+    trainee:
+      olderLogsCount > 0
+        ? { ...trainee, logs: windowedLogs }
+        : trainee,
+    olderLogsInfo: {
+      hasOlderLogs: olderLogsCount > 0,
+      olderLogsCount,
+      cutoffDateIso,
+    },
+  };
+}

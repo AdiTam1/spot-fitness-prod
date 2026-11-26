@@ -162,6 +162,12 @@ export default function HomePage() {
   const [hydrated, setHydrated] = useState(false);
 
   const [syncingCount, setSyncingCount] = useState(0);
+  const [olderLogsInfo, setOlderLogsInfo] = useState<{
+    hasOlderLogs: boolean;
+    olderLogsCount: number;
+    cutoffDateIso: string;
+  } | null>(null);
+  const [loadingOlderLogs, setLoadingOlderLogs] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -229,6 +235,7 @@ export default function HomePage() {
   const inFlightDataFetchRef = useRef<Promise<void> | null>(null);
   const lastSyncVersionRef = useRef<string | null>(null);
   const lastSyncUserKeyRef = useRef<string | null>(null);
+  const traineeFullHistoryLoadedRef = useRef<boolean>(false);
   const previewLoadingTraineeIdRef = useRef<string | null>(null);
   const lastHeartbeatAtRef = useRef<number>(0);
   const lastSlowDataDiagAtRef = useRef<number>(0);
@@ -281,6 +288,8 @@ export default function HomePage() {
       currentUserRef.current = null;
       lastSyncVersionRef.current = null;
       lastSyncUserKeyRef.current = null;
+      traineeFullHistoryLoadedRef.current = false;
+      setOlderLogsInfo(null);
       setSyncError(null);
       setManualSyncing(false);
       setCurrentUser(null);
@@ -424,12 +433,24 @@ export default function HomePage() {
       lastFetchAtRef.current = reqStartedAt;
       try {
         const activePreviewId = coachPreviewTraineeIdRef.current;
+        const isTraineeRole = currentUserRef.current?.role === 'trainee';
+        const useWindowed = isTraineeRole && !traineeFullHistoryLoadedRef.current;
         const previewQuery =
-          activePreviewId && currentUserRef.current?.role !== 'trainee'
+          activePreviewId && !isTraineeRole
             ? `&previewTraineeId=${encodeURIComponent(activePreviewId)}`
             : '';
+        const windowQuery = isTraineeRole
+          ? useWindowed
+            ? '&windowDays=14'
+            : '&fullHistory=1'
+          : '';
+        const historyScope = isTraineeRole
+          ? useWindowed
+            ? 'w14'
+            : 'full'
+          : activePreviewId || '';
         const curUserKey = currentUserRef.current
-          ? `${currentUserRef.current.id}:${currentUserRef.current.role}:${activePreviewId || ''}`
+          ? `${currentUserRef.current.id}:${currentUserRef.current.role}:${historyScope}`
           : '';
         const canUseSince =
           !opts?.force &&
@@ -440,7 +461,7 @@ export default function HomePage() {
           ? `&since=${encodeURIComponent(lastSyncVersionRef.current!)}`
           : '';
         const dataRes = await fetch(
-          `/api/data?t=${Date.now()}${previewQuery}${sinceQuery}`,
+          `/api/data?t=${Date.now()}${previewQuery}${windowQuery}${sinceQuery}`,
           {
             cache: 'no-store',
             headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
@@ -560,6 +581,15 @@ export default function HomePage() {
           if (remoteData.dbError) {
             setSyncError(remoteData.dbError);
           }
+          if (isTraineeRole) {
+            setOlderLogsInfo(
+              remoteData.olderLogsInfo && typeof remoteData.olderLogsInfo === 'object'
+                ? remoteData.olderLogsInfo
+                : { hasOlderLogs: false, olderLogsCount: 0, cutoffDateIso: '' }
+            );
+          } else {
+            setOlderLogsInfo(null);
+          }
           if (typeof remoteData.syncVersion === 'string' && curUserKey) {
             lastSyncVersionRef.current = remoteData.syncVersion;
             lastSyncUserKeyRef.current = curUserKey;
@@ -589,6 +619,29 @@ export default function HomePage() {
       }
     }
   }, [clearAllClientSessionState]);
+
+  const handleLoadOlderTraineeLogs = useCallback(async () => {
+    if (
+      currentUserRef.current?.role !== 'trainee' ||
+      traineeFullHistoryLoadedRef.current
+    ) {
+      return;
+    }
+    setLoadingOlderLogs(true);
+    traineeFullHistoryLoadedRef.current = true;
+    lastSyncVersionRef.current = null;
+    lastSyncUserKeyRef.current = null;
+    try {
+      await fetchAuthorizedData({ force: true });
+      if (!lastDataFetchDiagRef.current.ok) {
+        traineeFullHistoryLoadedRef.current = false;
+      }
+    } catch {
+      traineeFullHistoryLoadedRef.current = false;
+    } finally {
+      setLoadingOlderLogs(false);
+    }
+  }, [fetchAuthorizedData]);
 
   const enterCoachPreview = useCallback(async (id: string) => {
     coachPreviewTraineeIdRef.current = id;
@@ -1489,6 +1542,8 @@ export default function HomePage() {
     currentUserRef.current = user;
     lastSyncVersionRef.current = null;
     lastSyncUserKeyRef.current = null;
+    traineeFullHistoryLoadedRef.current = false;
+    setOlderLogsInfo(null);
     coachPreviewTraineeIdRef.current = null;
     setSessionNotice(null);
     setCurrentUser(user);
@@ -3869,6 +3924,9 @@ export default function HomePage() {
             onSyncNativeStepsNow={syncNativeAndroidSteps}
             showScraperSources={false}
             semanticSearchEnabled={semanticSearchEnabled}
+            olderLogsInfo={olderLogsInfo}
+            loadingOlderLogs={loadingOlderLogs}
+            onLoadOlderLogs={handleLoadOlderTraineeLogs}
           />
         ) : (currentUser.role === 'admin' || currentUser.role === 'coach') &&
           coachPreviewTraineeId &&

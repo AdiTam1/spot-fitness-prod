@@ -29,6 +29,7 @@ import { shouldPersistApiLogToDb } from '../telemetry/filterRules';
 import {
   sanitizeTraineeForRosterList,
   serializeSyncTimestampRows,
+  trimTraineeLogsToWindow,
 } from '../traineeSanitize';
 import type {
   AiConversationTraceRecord,
@@ -685,5 +686,56 @@ describe('sanitizeTraineeForRosterList payload trimming', () => {
       ]),
       null
     );
+  });
+
+  it('trims logs older than cutoff while preserving recent and protected dates without mutating source', () => {
+    const dayStub = (date: string): TraineeProfile['logs'][string] => ({
+      date,
+      dayType: 'workout',
+      waterCups: 5,
+      waterGoal: 10,
+      meals: {},
+    });
+    const base: TraineeProfile = {
+      id: 't-win-1',
+      email: 'win@example.com',
+      name: 'דנה',
+      avatar: 'ד',
+      phone: '050-0000000',
+      status: 'active',
+      goal: 'חיטוב',
+      currentWeight: 60,
+      targetWeight: 56,
+      tolerancePercent: 10,
+      primaryCoachId: 'coach-admin',
+      sharedCoachIds: [],
+      workoutTemplate: { id: 'w1', name: 'A', description: '', dayType: 'workout', tolerancePercent: 10, meals: [] },
+      restTemplate: { id: 'r1', name: 'B', description: '', dayType: 'rest', tolerancePercent: 10, meals: [] },
+      favoriteFoodIds: [],
+      weightHistory: [],
+      logs: {
+        '2026-10-01': dayStub('2026-10-01'),
+        '2026-10-15': dayStub('2026-10-15'),
+        '2026-11-12': dayStub('2026-11-12'),
+        '2026-11-26': dayStub('2026-11-26'),
+      },
+    };
+
+    const trimmed = trimTraineeLogsToWindow(base, '2026-11-12', ['2026-10-15']);
+    assert.equal(trimmed.olderLogsInfo.hasOlderLogs, true);
+    assert.equal(trimmed.olderLogsInfo.olderLogsCount, 1);
+    assert.equal(trimmed.olderLogsInfo.cutoffDateIso, '2026-11-12');
+    assert.deepEqual(Object.keys(trimmed.trainee.logs).sort(), [
+      '2026-10-15',
+      '2026-11-12',
+      '2026-11-26',
+    ]);
+    // Source logs untouched
+    assert.equal(Object.keys(base.logs).length, 4);
+
+    const noOlder = trimTraineeLogsToWindow(base, '2026-09-01');
+    assert.equal(noOlder.olderLogsInfo.hasOlderLogs, false);
+    assert.equal(noOlder.olderLogsInfo.olderLogsCount, 0);
+    assert.equal(noOlder.trainee, base);
   });
 });

@@ -314,6 +314,68 @@ export async function GET(request: NextRequest) {
   }
 
   const sp = request.nextUrl.searchParams;
+  const hasServiceRole = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim());
+
+  if (sp.get('healthPulse') === '1') {
+    if (!isSupabaseConfigured || !supabase || !hasServiceRole) {
+      return NextResponse.json({
+        ok: true,
+        alerts: { dbErrors24h: 0, slowData24h: 0, heavyPayload24h: 0, maxPayloadKB24h: 0 },
+      });
+    }
+    const pulseSince = new Date(Date.now() - 24 * 3600_000).toISOString();
+    try {
+      const [dbErrRes, slowDataRes, clientDataRes] = await Promise.all([
+        supabase
+          .from('api_request_logs')
+          .select('id', { count: 'exact', head: true })
+          .gte('created_at', pulseSince)
+          .or('error_code.eq.DB_UNAVAILABLE,status_code.gte.500,error_message.ilike.%57014%'),
+        supabase
+          .from('api_request_logs')
+          .select('id', { count: 'exact', head: true })
+          .eq('route_pattern', '/api/data')
+          .gte('created_at', pulseSince)
+          .gte('duration_ms', 3500),
+        supabase
+          .from('client_telemetry_events')
+          .select('details')
+          .in('event_name', ['api_data_profile', 'app_startup_profile'])
+          .gte('created_at', pulseSince)
+          .order('created_at', { ascending: false })
+          .limit(30),
+      ]);
+
+      let heavyPayload24h = 0;
+      let maxPayloadKB24h = 0;
+      for (const row of (clientDataRes.data || []) as Array<{ details?: Record<string, unknown> | null }>) {
+        const d = row?.details;
+        if (!d) continue;
+        const kb = Number(d.payloadKB ?? d.dataPayloadKB ?? 0) || 0;
+        if (kb > maxPayloadKB24h) maxPayloadKB24h = Math.round(kb);
+        if (kb >= 1500) heavyPayload24h += 1;
+      }
+
+      return NextResponse.json(
+        {
+          ok: true,
+          alerts: {
+            dbErrors24h: dbErrRes.count ?? 0,
+            slowData24h: slowDataRes.count ?? 0,
+            heavyPayload24h,
+            maxPayloadKB24h,
+          },
+        },
+        { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      );
+    } catch {
+      return NextResponse.json({
+        ok: true,
+        alerts: { dbErrors24h: 0, slowData24h: 0, heavyPayload24h: 0, maxPayloadKB24h: 0 },
+      });
+    }
+  }
+
   const isTraceDetailReq = sp.get('traceDetail') === '1';
   const traceIdParam = sanitizeIdentifier(sp.get('traceId'), 80);
 
@@ -339,7 +401,6 @@ export async function GET(request: NextRequest) {
   const errorsOnly = sp.get('errorsOnly') === '1';
   const traceSearch = sanitizeText(sp.get('traceSearch'), 80);
 
-  const hasServiceRole = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim());
   if (!isSupabaseConfigured || !supabase || !hasServiceRole) {
     const [localHistory, localCrashed] = await Promise.all([
       listAdminAiTraces({

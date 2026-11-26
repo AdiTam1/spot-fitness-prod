@@ -19,6 +19,13 @@ interface CalendarSheetProps {
   hasLog: (iso: string) => boolean;
   monthNames: string[];
   weekdayLetters: string[];
+  olderLogsInfo?: {
+    hasOlderLogs: boolean;
+    olderLogsCount: number;
+    cutoffDateIso: string;
+  } | null;
+  loadingOlderLogs?: boolean;
+  onLoadOlderLogs?: () => Promise<void> | void;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -43,6 +50,9 @@ export function CalendarSheet({
   hasLog,
   monthNames,
   weekdayLetters,
+  olderLogsInfo,
+  loadingOlderLogs,
+  onLoadOlderLogs,
 }: CalendarSheetProps) {
   const [view, setView] = useState<'days' | 'months'>('days');
   useEffect(() => {
@@ -50,6 +60,27 @@ export function CalendarSheet({
   }, [opened]);
 
   const { year, month } = cursor;
+  const cursorMonthPrefix = `${year}-${pad(month + 1)}`;
+  const cutoffMonthPrefix = olderLogsInfo?.cutoffDateIso?.slice(0, 7) || '';
+
+  useEffect(() => {
+    if (
+      opened &&
+      olderLogsInfo?.hasOlderLogs &&
+      !loadingOlderLogs &&
+      cutoffMonthPrefix &&
+      cursorMonthPrefix < cutoffMonthPrefix
+    ) {
+      void onLoadOlderLogs?.();
+    }
+  }, [
+    opened,
+    olderLogsInfo?.hasOlderLogs,
+    loadingOlderLogs,
+    cutoffMonthPrefix,
+    cursorMonthPrefix,
+    onLoadOlderLogs,
+  ]);
   const isDays = view === 'days';
 
   const monthHasActiveDays = (y: number, m: number) => {
@@ -124,6 +155,30 @@ export function CalendarSheet({
           <ChevronLeft size={18} />
         </GlassButton>
       </div>
+
+      {(olderLogsInfo?.hasOlderLogs || loadingOlderLogs) && onLoadOlderLogs && (
+        <button
+          type="button"
+          disabled={Boolean(loadingOlderLogs)}
+          onClick={() => void onLoadOlderLogs()}
+          style={{
+            width: '100%',
+            padding: '8px 12px',
+            borderRadius: 14,
+            border: '1px solid var(--line-2)',
+            background: 'var(--surface-2)',
+            color: 'var(--text-2)',
+            fontSize: 12,
+            fontWeight: 700,
+            fontFamily: 'inherit',
+            cursor: loadingOlderLogs ? 'wait' : 'pointer',
+          }}
+        >
+          {loadingOlderLogs
+            ? 'טוען היסטוריה ישנה יותר...'
+            : `מוצגים 14 הימים האחרונים · לחץ לטעינת ${olderLogsInfo?.olderLogsCount || 0} ימים קודמים`}
+        </button>
+      )}
 
       {isDays ? (
         <>

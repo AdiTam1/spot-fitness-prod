@@ -25,12 +25,19 @@ import {
 } from '@/types/nutrition';
 import { hashPassword } from '@/lib/serverAuth';
 import {
+  OlderLogsInfo,
   redactFcmTokens,
   redactWebPushSubscriptions,
   sanitizeTraineeForClient,
   sanitizeTraineeForRosterList,
+  trimTraineeLogsToWindow,
 } from '@/lib/traineeSanitize';
-export { sanitizeTraineeForClient, sanitizeTraineeForRosterList };
+export {
+  sanitizeTraineeForClient,
+  sanitizeTraineeForRosterList,
+  trimTraineeLogsToWindow,
+};
+export type { OlderLogsInfo };
 import {
   checkTraineeEmailExistsInSupabase,
   deleteCoachFromSupabase,
