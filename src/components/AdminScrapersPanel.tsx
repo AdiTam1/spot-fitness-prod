@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Switch } from '@mantine/core';
 import {
   Activity,
@@ -65,6 +65,28 @@ export function AdminScrapersPanel({
   const [testQuery, setTestQuery] = useState<string>("קוטג'");
   const [testResults, setTestResults] = useState<Record<string, FoodCatalogItem[]>>({});
   const [testingId, setTestingId] = useState<ScraperSourceId | null>(null);
+  const [embedProgress, setEmbedProgress] = useState<{
+    batchNum: number;
+    addedTotal: number;
+    embeddedCount: number;
+    totalCount: number;
+    remaining: number;
+  } | null>(null);
+  const embedCancelRef = useRef(false);
+  const [lastMetaBackfillSummary, setLastMetaBackfillSummary] = useState<{
+    scanned: number;
+    completedAll: boolean;
+    updatedTotal: number;
+    withBrandCount: number;
+    withBarcodeCount: number;
+    withPackageUnitCount: number;
+  } | null>(null);
+
+  useEffect(() => {
+    return () => {
+      embedCancelRef.current = true;
+    };
+  }, []);
 
   const callScraperApi = async (payload: Record<string, unknown>) => {
     const res = await fetch('/api/admin/scrapers', {
@@ -173,15 +195,65 @@ export function AdminScrapersPanel({
     setBusyAction('backfill_meta');
     try {
       const data = await callScraperApi({ action: 'backfill_catalog_meta' });
-      if (data.report) onReportUpdate(data.report);
+      const totalBrandUpdates =
+        Number(data.updatedBrands || 0) + Number(data.updatedCachedBrands || 0);
+      const updatedBarcodes = Number(data.updatedBarcodes || 0);
+      const updatedUnits = Number(data.updatedUnits || 0);
+      const updatedTotal = totalBrandUpdates + updatedBarcodes + updatedUnits;
+
+      if (data.report) {
+        const prevStats = data.report.sqlCatalogStats || {
+          available: true,
+          totalCount: Number(data.scanned || 0),
+          bySource: {},
+        };
+        onReportUpdate({
+          ...data.report,
+          sqlCatalogStats: {
+            ...prevStats,
+            withBrandCount:
+              typeof data.withBrandCount === 'number'
+                ? data.withBrandCount
+                : prevStats.withBrandCount,
+            withBarcodeCount:
+              typeof data.withBarcodeCount === 'number'
+                ? data.withBarcodeCount
+                : prevStats.withBarcodeCount,
+            withPackageUnitCount:
+              typeof data.withPackageUnitCount === 'number'
+                ? data.withPackageUnitCount
+                : prevStats.withPackageUnitCount,
+          },
+        });
+      }
       if (data.ok) {
-        const totalBrandUpdates =
-          Number(data.updatedBrands || 0) + Number(data.updatedCachedBrands || 0);
-        onNotify(
-          `נסרקו ${Number(data.scanned || 0).toLocaleString('he-IL')} שורות ב-DB: עודכנו ${totalBrandUpdates} מותגים, ${Number(
-            data.updatedBarcodes || 0
-          )} ברקודים ו-${Number(data.updatedUnits || 0)} מידות חבילה/אריזה.`
-        );
+        setLastMetaBackfillSummary({
+          scanned: Number(data.scanned || 0),
+          completedAll: Boolean(data.completedAll),
+          updatedTotal,
+          withBrandCount: Number(data.withBrandCount || 0),
+          withBarcodeCount: Number(data.withBarcodeCount || 0),
+          withPackageUnitCount: Number(data.withPackageUnitCount || 0),
+        });
+        if (updatedTotal === 0 && data.completedAll) {
+          onNotify(
+            `הכול כבר מעודכן! נסרקו כל ${Number(data.scanned || 0).toLocaleString(
+              'he-IL'
+            )} השורות — עם מותג: ${Number(data.withBrandCount || 0).toLocaleString(
+              'he-IL'
+            )} · עם ברקוד: ${Number(data.withBarcodeCount || 0).toLocaleString(
+              'he-IL'
+            )} · עם מידות אריזה: ${Number(
+              data.withPackageUnitCount || 0
+            ).toLocaleString('he-IL')}.`
+          );
+        } else {
+          onNotify(
+            `נסרקו ${Number(data.scanned || 0).toLocaleString('he-IL')} שורות${
+              data.completedAll ? ' (כל הטבלה)' : ' (נעצר בתקרת הסבב)'
+            }: עודכנו ${totalBrandUpdates} מותגים, ${updatedBarcodes} ברקודים ו-${updatedUnits} מידות אריזה.`
+          );
+        }
       } else {
         onNotify(data.error || 'עדכון המאגר נכשל', true);
       }
@@ -242,24 +314,86 @@ export function AdminScrapersPanel({
 
   const handleBackfillEmbeddings = async () => {
     setBusyAction('backfill_embeddings');
+    embedCancelRef.current = false;
+    let addedTotal = 0;
+    let batchNum = 0;
+    const initialEmbedded = Number(report?.sqlCatalogStats?.embeddedCount || 0);
+    const initialTotal = Number(report?.sqlCatalogStats?.totalCount || 0);
+    setEmbedProgress({
+      batchNum: 0,
+      addedTotal: 0,
+      embeddedCount: initialEmbedded,
+      totalCount: initialTotal,
+      remaining: Math.max(0, initialTotal - initialEmbedded),
+    });
+
     try {
-      const data = await callScraperApi({
-        action: 'backfill_embeddings',
-        pages: 250,
-      });
-      if (data.report) onReportUpdate(data.report);
-      if (!data.ok) {
-        onNotify(data.error || 'אינדוקס Embeddings נכשל', true);
-        return;
-      }
-      if (Number(data.embedded || 0) === 0 && Number(data.remainingEstimate || 0) === 0) {
-        onNotify('כל המוצרים בטבלת food_catalog_items כבר מאונדקסים עם Embeddings סמנטיים!');
-      } else {
-        onNotify(
-          `אונדקסו ${Number(data.embedded || 0).toLocaleString('he-IL')} מוצרים סמנטית (נותרו כ-${Number(
-            data.remainingEstimate || 0
-          ).toLocaleString('he-IL')} להשלמה באצוות הבאות / Cron לילי).`
+      for (let i = 0; i < 250; i++) {
+        batchNum = i + 1;
+        const data = await callScraperApi({
+          action: 'backfill_embeddings',
+          pages: 250,
+        });
+        if (data.report) onReportUpdate(data.report);
+
+        if (!data.ok) {
+          onNotify(data.error || 'אינדוקס Embeddings נכשל', true);
+          break;
+        }
+
+        const embeddedNow = Number(data.embedded || 0);
+        const remaining = Number(data.remainingEstimate || 0);
+        addedTotal += embeddedNow;
+
+        const nextStats = data.report?.sqlCatalogStats;
+        const totalCount = Number(nextStats?.totalCount ?? initialTotal);
+        const embeddedCount = Number(
+          nextStats?.embeddedCount ?? initialEmbedded + addedTotal
         );
+
+        setEmbedProgress({
+          batchNum,
+          addedTotal,
+          embeddedCount,
+          totalCount,
+          remaining,
+        });
+
+        if (remaining === 0) {
+          if (addedTotal === 0) {
+            onNotify(
+              `כל ${embeddedCount.toLocaleString('he-IL')} המוצרים בטבלה כבר מאונדקסים עם Embeddings סמנטיים!`
+            );
+          } else {
+            onNotify(
+              `האינדוקס הסמנטי הושלם במלואו! נוספו ${addedTotal.toLocaleString(
+                'he-IL'
+              )} Embeddings (סה״כ ${embeddedCount.toLocaleString('he-IL')} / ${totalCount.toLocaleString('he-IL')}).`
+            );
+          }
+          break;
+        }
+
+        if (embeddedNow === 0) {
+          onNotify(
+            `האינדוקס נעצר לאחר ${addedTotal.toLocaleString('he-IL')} עדכונים — נותרו כ-${remaining.toLocaleString(
+              'he-IL'
+            )} מוצרים (בדוק מכסות Gemini).`,
+            true
+          );
+          break;
+        }
+
+        if (embedCancelRef.current) {
+          onNotify(
+            `האינדוקס נעצר ידנית לאחר ${addedTotal.toLocaleString(
+              'he-IL'
+            )} Embeddings (התקדמות נשמרה ב-DB, נותרו כ-${remaining.toLocaleString('he-IL')}).`
+          );
+          break;
+        }
+
+        await new Promise((r) => setTimeout(r, 400));
       }
     } catch (err) {
       onNotify(
@@ -268,6 +402,7 @@ export function AdminScrapersPanel({
       );
     } finally {
       setBusyAction(null);
+      setEmbedProgress(null);
     }
   };
 
@@ -683,6 +818,201 @@ export function AdminScrapersPanel({
               </>
             )}
           </div>
+
+          {report?.sqlCatalogStats?.available && (
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 6,
+                marginTop: 8,
+              }}
+            >
+              {typeof report.sqlCatalogStats.withBrandCount === 'number' && (
+                <span
+                  className="num-mono"
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    padding: '3px 9px',
+                    borderRadius: 999,
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border-subtle)',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  עם מותג: {report.sqlCatalogStats.withBrandCount.toLocaleString('he-IL')} /{' '}
+                  {report.sqlCatalogStats.totalCount.toLocaleString('he-IL')}
+                </span>
+              )}
+              {typeof report.sqlCatalogStats.withBarcodeCount === 'number' && (
+                <span
+                  className="num-mono"
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    padding: '3px 9px',
+                    borderRadius: 999,
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border-subtle)',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  עם ברקוד: {report.sqlCatalogStats.withBarcodeCount.toLocaleString('he-IL')} /{' '}
+                  {report.sqlCatalogStats.totalCount.toLocaleString('he-IL')}
+                </span>
+              )}
+              {typeof report.sqlCatalogStats.withPackageUnitCount === 'number' && (
+                <span
+                  className="num-mono"
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    padding: '3px 9px',
+                    borderRadius: 999,
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border-subtle)',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  עם מידות אריזה: {report.sqlCatalogStats.withPackageUnitCount.toLocaleString('he-IL')} /{' '}
+                  {report.sqlCatalogStats.totalCount.toLocaleString('he-IL')}
+                </span>
+              )}
+              {report.sqlCatalogStats.semanticReady && (
+                <span
+                  className="num-mono"
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 800,
+                    padding: '3px 9px',
+                    borderRadius: 999,
+                    background:
+                      (report.sqlCatalogStats.embeddedCount || 0) >=
+                        report.sqlCatalogStats.totalCount &&
+                      report.sqlCatalogStats.totalCount > 0
+                        ? 'rgba(74, 222, 128, 0.14)'
+                        : 'rgba(250, 204, 21, 0.14)',
+                    color:
+                      (report.sqlCatalogStats.embeddedCount || 0) >=
+                        report.sqlCatalogStats.totalCount &&
+                      report.sqlCatalogStats.totalCount > 0
+                        ? 'var(--ok-text)'
+                        : 'var(--warn-text)',
+                  }}
+                >
+                  {(report.sqlCatalogStats.embeddedCount || 0) >=
+                    report.sqlCatalogStats.totalCount &&
+                  report.sqlCatalogStats.totalCount > 0
+                    ? `Embeddings מלא: ${report.sqlCatalogStats.embeddedCount?.toLocaleString('he-IL')}/${report.sqlCatalogStats.totalCount.toLocaleString('he-IL')} ✓`
+                    : `Embeddings: ${(report.sqlCatalogStats.embeddedCount || 0).toLocaleString('he-IL')}/${report.sqlCatalogStats.totalCount.toLocaleString('he-IL')}`}
+                </span>
+              )}
+              {lastMetaBackfillSummary && lastMetaBackfillSummary.completedAll && (
+                <span
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 800,
+                    padding: '3px 9px',
+                    borderRadius: 999,
+                    background: 'rgba(74, 222, 128, 0.14)',
+                    color: 'var(--ok-text)',
+                  }}
+                >
+                  {lastMetaBackfillSummary.updatedTotal === 0
+                    ? `סריקת מותגים/ברקודים/מידות הושלמה על כל ${lastMetaBackfillSummary.scanned.toLocaleString('he-IL')} השורות ✓`
+                    : `עודכנו ${lastMetaBackfillSummary.updatedTotal} שורות מתוך ${lastMetaBackfillSummary.scanned.toLocaleString('he-IL')} ✓`}
+                </span>
+              )}
+            </div>
+          )}
+
+          {busyAction === 'backfill_embeddings' && embedProgress && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: '10px 12px',
+                borderRadius: 12,
+                background: 'var(--surface-2)',
+                border: '1px solid var(--border-subtle)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 8,
+                  flexWrap: 'wrap',
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                <span>
+                  אצווה #{embedProgress.batchNum} · נוספו{' '}
+                  {embedProgress.addedTotal.toLocaleString('he-IL')} · כיסוי:{' '}
+                  {embedProgress.embeddedCount.toLocaleString('he-IL')} /{' '}
+                  {Math.max(embedProgress.totalCount, embedProgress.embeddedCount).toLocaleString('he-IL')} (
+                  {embedProgress.totalCount > 0
+                    ? Math.min(
+                        100,
+                        Math.round(
+                          (embedProgress.embeddedCount / embedProgress.totalCount) * 100
+                        )
+                      )
+                    : 0}
+                  %)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    embedCancelRef.current = true;
+                  }}
+                  style={{
+                    padding: '3px 10px',
+                    borderRadius: 999,
+                    border: '1px solid var(--line-2)',
+                    background: 'var(--card)',
+                    color: 'var(--danger-text)',
+                    fontSize: 11.5,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                  }}
+                >
+                  עצור אינדוקס
+                </button>
+              </div>
+              <div
+                style={{
+                  height: 6,
+                  borderRadius: 999,
+                  background: 'var(--card)',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${
+                      embedProgress.totalCount > 0
+                        ? Math.min(
+                            100,
+                            Math.round(
+                              (embedProgress.embeddedCount / embedProgress.totalCount) * 100
+                            )
+                          )
+                        : 15
+                    }%`,
+                    background: 'var(--accent)',
+                    transition: 'width 240ms ease',
+                  }}
+                />
+              </div>
+            </div>
+          )}
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
             להזנה מלאה של אלפי מוצרים (שופרסל, משרד הבריאות 4,624+, Fuder וברקודים):{' '}
             <bdi dir="ltr">
@@ -773,8 +1103,20 @@ export function AdminScrapersPanel({
             )}
             <span>
               {busyAction === 'backfill_embeddings'
-                ? 'מאנדקס Embeddings סמנטיים...'
-                : 'אנדקס Embeddings סמנטיים (אצווה)'}
+                ? 'מאנדקס ברצף (ניתן לעצור בכל רגע)...'
+                : report?.sqlCatalogStats?.semanticReady &&
+                    report.sqlCatalogStats.totalCount > 0 &&
+                    (report.sqlCatalogStats.embeddedCount || 0) >=
+                      report.sqlCatalogStats.totalCount
+                  ? 'כל ה-Embeddings מעודכנים (בדוק שוב) ✓'
+                  : report?.sqlCatalogStats?.semanticReady &&
+                      report.sqlCatalogStats.totalCount > 0 &&
+                      (report.sqlCatalogStats.embeddedCount || 0) > 0
+                    ? `המשך אינדוקס ברצף (נותרו ${(
+                        report.sqlCatalogStats.totalCount -
+                        (report.sqlCatalogStats.embeddedCount || 0)
+                      ).toLocaleString('he-IL')})`
+                    : 'אנדקס הכל ברצף (Embeddings)'}
             </span>
           </button>
         </div>

@@ -114,6 +114,34 @@ as $$
   from public.food_catalog_items;
 $$;
 
+create or replace function public.get_food_catalog_coverage_stats()
+returns table (
+  total_count bigint,
+  embedded_count bigint,
+  with_brand_count bigint,
+  with_barcode_count bigint,
+  with_package_units_count bigint
+)
+language sql
+stable
+security definer
+set search_path = public, extensions
+as $$
+  select
+    count(*)::bigint as total_count,
+    count(embedding)::bigint as embedded_count,
+    count(*) filter (where coalesce(btrim(brand), '') <> '')::bigint as with_brand_count,
+    count(*) filter (where coalesce(btrim(barcode), '') <> '')::bigint as with_barcode_count,
+    count(*) filter (
+      where exists (
+        select 1
+        from jsonb_array_elements(coalesce(units, '[]'::jsonb)) u
+        where coalesce((u->>'grams')::numeric, 100) <> 100
+      )
+    )::bigint as with_package_units_count
+  from public.food_catalog_items;
+$$;
+
 create or replace function public.get_cached_query_embedding(p_query_norm text)
 returns text
 language plpgsql

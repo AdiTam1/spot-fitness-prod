@@ -2349,24 +2349,44 @@ export async function findFoodByBarcodeSql(
 export async function backfillFoodCatalogBarcodesAndUnits(): Promise<{
   ok: boolean;
   scanned: number;
+  completedAll: boolean;
   updatedBarcodes: number;
   updatedUnits: number;
   updatedBrands: number;
+  withBrandCount: number;
+  withBarcodeCount: number;
+  withPackageUnitCount: number;
   error?: string;
 }> {
   if (!supabase) {
-    return { ok: false, scanned: 0, updatedBarcodes: 0, updatedUnits: 0, updatedBrands: 0, error: 'Supabase לא מוגדר' };
+    return {
+      ok: false,
+      scanned: 0,
+      completedAll: false,
+      updatedBarcodes: 0,
+      updatedUnits: 0,
+      updatedBrands: 0,
+      withBrandCount: 0,
+      withBarcodeCount: 0,
+      withPackageUnitCount: 0,
+      error: 'Supabase לא מוגדר',
+    };
   }
 
   let offset = 0;
   const pageSize = 500;
+  const maxOffsetCap = 100000;
   let scanned = 0;
+  let completedAll = false;
   let updatedBarcodes = 0;
   let updatedUnits = 0;
   let updatedBrands = 0;
+  let withBrandCount = 0;
+  let withBarcodeCount = 0;
+  let withPackageUnitCount = 0;
 
   try {
-    while (offset < 30000) {
+    while (offset < maxOffsetCap) {
       const { data, error } = await supabase
         .from('food_catalog_items')
         .select(FOOD_CATALOG_SELECT_COLS)
@@ -2377,15 +2397,22 @@ export async function backfillFoodCatalogBarcodesAndUnits(): Promise<{
         return {
           ok: false,
           scanned,
+          completedAll: false,
           updatedBarcodes,
           updatedUnits,
           updatedBrands,
+          withBrandCount,
+          withBarcodeCount,
+          withPackageUnitCount,
           error: formatSupabaseError('food_catalog_items', error),
         };
       }
 
       const rows = (data || []) as Record<string, unknown>[];
-      if (rows.length === 0) break;
+      if (rows.length === 0) {
+        completedAll = true;
+        break;
+      }
       scanned += rows.length;
 
       const toUpsert: FoodCatalogItem[] = [];
@@ -2410,8 +2437,8 @@ export async function backfillFoodCatalogBarcodesAndUnits(): Promise<{
 
         let changedUnits = false;
         let nextUnits = mapped.units || [];
-        const hasPkgUnit = nextUnits.some((u) => u.grams !== 100);
-        if (!hasPkgUnit) {
+        const hasPkgUnitBefore = nextUnits.some((u) => u.grams !== 100);
+        if (!hasPkgUnitBefore) {
           const clean = mapped.name.replace(/ל[-\s]?100\s*(?:גרם|ג|מ"ל|מל)/gi, ' ');
           const kgM = clean.match(/(\d+(?:[.,]\d+)?)\s*(?:ק"ג|ק״ג|קג|ליטר|ל'|kg)(?=$|\s|[,.)\]\-/])/i);
           const gM = clean.match(/(\d+(?:[.,]\d+)?)\s*(?:גרם|ג'|ג"|ג|מ"ל|מ״ל|מל|g|ml)(?=$|\s|[,.)\]\-/])/i);
@@ -2437,6 +2464,10 @@ export async function backfillFoodCatalogBarcodesAndUnits(): Promise<{
           }) || '';
         const changedBrand = rawStoredBrand !== nextBrand;
 
+        if (nextBrand) withBrandCount += 1;
+        if (nextBarcode) withBarcodeCount += 1;
+        if (hasPkgUnitBefore || changedUnits) withPackageUnitCount += 1;
+
         if (changedBarcode || changedUnits || changedBrand) {
           if (changedBarcode) updatedBarcodes += 1;
           if (changedUnits) updatedUnits += 1;
@@ -2454,18 +2485,35 @@ export async function backfillFoodCatalogBarcodesAndUnits(): Promise<{
         await upsertFoodCatalogItemsToSupabase(toUpsert);
       }
 
-      if (rows.length < pageSize) break;
+      if (rows.length < pageSize) {
+        completedAll = true;
+        break;
+      }
       offset += pageSize;
     }
 
-    return { ok: true, scanned, updatedBarcodes, updatedUnits, updatedBrands };
+    return {
+      ok: true,
+      scanned,
+      completedAll,
+      updatedBarcodes,
+      updatedUnits,
+      updatedBrands,
+      withBrandCount,
+      withBarcodeCount,
+      withPackageUnitCount,
+    };
   } catch (err) {
     return {
       ok: false,
       scanned,
+      completedAll: false,
       updatedBarcodes,
       updatedUnits,
       updatedBrands,
+      withBrandCount,
+      withBarcodeCount,
+      withPackageUnitCount,
       error: err instanceof Error ? err.message : 'שגיאה בעדכון DB',
     };
   }
@@ -2691,7 +2739,7 @@ export async function backfillFoodCatalogEmbeddingsBatch(maxRows = 200): Promise
 }
 
 /**
- * מחזיר סטטיסטיקת ספירת שורות מדויקת מהטבלה ב-SQL (head-only COUNT, 0 שורות עוברות ברשת).
+ * מחזיר סטטיסטיקת כיסוי מלאה (Embeddings + מותגים + ברקודים + מידות אריזה) מה-RPC החדש עם נסיגה נקייה לספירות Head-Only.
  */
 export async function getSqlFoodCatalogStats(
   sourceIds: string[] = []
@@ -2699,16 +2747,49 @@ export async function getSqlFoodCatalogStats(
   if (!supabase) return { available: false, totalCount: 0, bySource: {} };
 
   try {
-    const [totalRes, semanticStats] = await Promise.all([
+    const [
+      totalRes,
+      brandRes,
+      barcodeRes,
+      coverageRpcRes,
+      semanticStats,
+    ] = await Promise.all([
       supabase
         .from('food_catalog_items')
         .select('id', { count: 'exact', head: true }),
+      supabase
+        .from('food_catalog_items')
+        .select('id', { count: 'exact', head: true })
+        .neq('brand', ''),
+      supabase
+        .from('food_catalog_items')
+        .select('id', { count: 'exact', head: true })
+        .not('barcode', 'is', null)
+        .neq('barcode', ''),
+      supabase.rpc('get_food_catalog_coverage_stats'),
       getFoodCatalogSemanticStatsSql(),
     ]);
 
     if (totalRes.error) {
       return { available: false, totalCount: 0, bySource: {} };
     }
+
+    const covRow =
+      !coverageRpcRes.error && coverageRpcRes.data
+        ? Array.isArray(coverageRpcRes.data)
+          ? coverageRpcRes.data[0]
+          : coverageRpcRes.data
+        : null;
+    const covObj =
+      covRow && typeof covRow === 'object'
+        ? (covRow as {
+            total_count?: number;
+            embedded_count?: number;
+            with_brand_count?: number;
+            with_barcode_count?: number;
+            with_package_units_count?: number;
+          })
+        : null;
 
     const tracked = Array.from(new Set(['shufersal', 'openfoodfacts', ...sourceIds]));
     const countEntries = await Promise.all(
@@ -2726,12 +2807,39 @@ export async function getSqlFoodCatalogStats(
       if (cnt > 0) bySource[sid] = cnt;
     }
 
+    const semanticReady = Boolean(covObj || semanticStats.semanticReady);
+    const totalCount = covObj?.total_count ?? totalRes.count ?? 0;
+    const embeddedCount = covObj
+      ? Number(covObj.embedded_count) || 0
+      : semanticStats.semanticReady
+        ? semanticStats.embeddedCount
+        : 0;
+    const withBrandCount =
+      covObj?.with_brand_count !== undefined
+        ? Number(covObj.with_brand_count) || 0
+        : brandRes.error
+          ? undefined
+          : brandRes.count || 0;
+    const withBarcodeCount =
+      covObj?.with_barcode_count !== undefined
+        ? Number(covObj.with_barcode_count) || 0
+        : barcodeRes.error
+          ? undefined
+          : barcodeRes.count || 0;
+    const withPackageUnitCount =
+      covObj?.with_package_units_count !== undefined
+        ? Number(covObj.with_package_units_count) || 0
+        : undefined;
+
     return {
       available: true,
-      totalCount: totalRes.count || 0,
+      totalCount: Number(totalCount) || 0,
       bySource,
-      semanticReady: semanticStats.semanticReady,
-      embeddedCount: semanticStats.semanticReady ? semanticStats.embeddedCount : 0,
+      semanticReady,
+      embeddedCount,
+      withBrandCount,
+      withBarcodeCount,
+      withPackageUnitCount,
     };
   } catch {
     return { available: false, totalCount: 0, bySource: {} };
