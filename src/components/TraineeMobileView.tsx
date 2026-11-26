@@ -113,7 +113,8 @@ interface TraineeMobileViewProps {
     photoDataUrl?: string,
     photoNote?: string,
     photoDataUrls?: string[],
-    mealTime?: string
+    mealTime?: string,
+    aiSuggestedExtras?: LoggedFoodItem[]
   ) => void | Promise<void>;
   onUpdateMealTime?: (
     traineeId: string,
@@ -216,6 +217,7 @@ interface TraineeMobileViewProps {
     adjustmentPrompt?: string;
     contextParams?: AiContextParams;
   }) => Promise<{ jobId: string }>;
+  onAcknowledgeAiJob?: (jobId: string, traineeId?: string) => void | Promise<void>;
   onMarkCoachMealEditsRead?: (params: {
     mode: 'alert-visit' | 'banner' | 'badges';
     alertId?: string;
@@ -337,6 +339,7 @@ export function TraineeMobileView({
   onCustomFoodsUpdated,
   backgroundAiJobs = [],
   onStartBackgroundAiAnalysis,
+  onAcknowledgeAiJob,
   onMarkCoachMealEditsRead,
   onRestoreCoachDeletedItem,
   onRollbackMealHistory,
@@ -3449,7 +3452,7 @@ export function TraineeMobileView({
         }
         favoriteIds={trainee.favoriteFoodIds}
         onToggleFavorite={(foodId) => onToggleFavorite(trainee.id, foodId)}
-        onSaveMeal={(slotId, items, photoDataUrl, photoNote, photoDataUrls, mealTime) =>
+        onSaveMeal={(slotId, items, photoDataUrl, photoNote, photoDataUrls, mealTime, aiSuggestedExtras) =>
           onSaveMeal(
             trainee.id,
             selectedDate,
@@ -3458,7 +3461,8 @@ export function TraineeMobileView({
             photoDataUrl,
             photoNote,
             photoDataUrls,
-            mealTime
+            mealTime,
+            aiSuggestedExtras
           )
         }
         initialTab={drawerTab}
@@ -3535,6 +3539,7 @@ export function TraineeMobileView({
         selectedDate={selectedDate}
         backgroundAiJobs={backgroundAiJobs}
         onStartBackgroundAiAnalysis={onStartBackgroundAiAnalysis}
+        onAcknowledgeAiJob={onAcknowledgeAiJob}
       />
 
       {/* מודאל עדכון שעת הזנת ארוחה */}

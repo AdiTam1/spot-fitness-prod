@@ -59,7 +59,7 @@ import {
   type CoachMealPushDispatchItem,
 } from '@/lib/traineeMealPushNotifier';
 import { DEFAULT_TEMPLATES, getTodayIso } from '@/data/israeliFoodCatalog';
-import { recalculateParentDish } from '@/lib/compositeDishes';
+import { filterUnacceptedSuggestedExtras, recalculateParentDish } from '@/lib/compositeDishes';
 import { sanitizeMetricsScheduleConfig } from '@/lib/dateUtils';
 import { normalizePendingAiJobs } from '@/lib/aiJobs';
 import {
@@ -332,6 +332,15 @@ function mergeLogsPreservingPendingAi(
       ]
         .filter((u, i, arr) => Boolean(u) && arr.indexOf(u) === i)
         .slice(0, 16);
+      const mergedItems = isReplaceJob
+        ? [...(serverMeal.items || [])]
+        : [...(clientMeal?.items || []), ...missingFromClient];
+      const mergedExtras = isReplaceJob
+        ? []
+        : filterUnacceptedSuggestedExtras(
+            clientMeal?.aiSuggestedExtras ?? serverMeal.aiSuggestedExtras,
+            mergedItems
+          );
       merged[job.date] = {
         ...clientDay,
         meals: {
@@ -339,12 +348,8 @@ function mergeLogsPreservingPendingAi(
           [job.mealSlotId]: {
             ...(clientMeal || serverMeal),
             mealTime: clientMeal?.mealTime || serverMeal.mealTime,
-            items: isReplaceJob
-              ? [...(serverMeal.items || [])]
-              : [...(clientMeal?.items || []), ...missingFromClient],
-            aiSuggestedExtras: isReplaceJob
-              ? undefined
-              : clientMeal?.aiSuggestedExtras ?? serverMeal.aiSuggestedExtras,
+            items: mergedItems,
+            aiSuggestedExtras: mergedExtras.length > 0 ? mergedExtras : undefined,
             photoDataUrl: clientMeal?.photoDataUrl || serverMeal.photoDataUrl,
             photoDataUrls: mergedPhotoUrls.length > 0 ? mergedPhotoUrls : undefined,
             photoStore: {

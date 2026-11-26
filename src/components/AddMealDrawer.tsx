@@ -134,8 +134,10 @@ import {
 } from '@/lib/aiDraftStore';
 import {
   cloneFoodItemWithFreshIds,
+  filterUnacceptedSuggestedExtras,
   groupItemsAsCompositeDish,
   hasCompositeComponents,
+  normalizeSuggestedExtraName,
   recalculateParentDish,
   removeSelectedFromItems,
   stripNestedComponents,
@@ -188,7 +190,8 @@ interface AddMealDrawerProps {
     photoDataUrl?: string,
     photoNote?: string,
     photoDataUrls?: string[],
-    mealTime?: string
+    mealTime?: string,
+    aiSuggestedExtras?: LoggedFoodItem[]
   ) => void | Promise<void>;
   geminiApiKey?: string;
   initialTab?: string;
@@ -269,6 +272,7 @@ interface AddMealDrawerProps {
     adjustmentPrompt?: string;
     contextParams?: AiContextParams;
   }) => Promise<{ jobId: string }>;
+  onAcknowledgeAiJob?: (jobId: string, traineeId?: string) => void | Promise<void>;
 }
 
 export function AddMealDrawer({
@@ -315,6 +319,7 @@ export function AddMealDrawer({
   selectedDate,
   backgroundAiJobs = [],
   onStartBackgroundAiAnalysis,
+  onAcknowledgeAiJob,
 }: AddMealDrawerProps) {
   useSpotUnsavedEditing('add-meal-drawer', opened);
   const [activeTab, setActiveTab] = useState<string>(initialTab || 'hub');
@@ -573,6 +578,9 @@ export function AddMealDrawer({
       : undefined;
   const sawUnreadCoachBadgesSlotRef = useRef<string | null>(null);
   const prefilledFailedSectionsRef = useRef<Set<string>>(new Set());
+  const dismissedExtrasKeysRef = useRef<Set<string>>(new Set());
+  const itemsRef = useRef<LoggedFoodItem[]>(items);
+  itemsRef.current = items;
   const isSlotBgProcessing = Boolean(slotBgProcessingJob);
   const progressTicker = useAiProgressMessage(
     aiLoading || isSlotBgProcessing,
@@ -588,8 +596,12 @@ export function AddMealDrawer({
         lastOpenedKeyRef.current = openKey;
         hadInitialItemsRef.current = Boolean(existingEntry?.items?.length);
         setItems(existingEntry?.items ? [...existingEntry.items] : []);
+        dismissedExtrasKeysRef.current = new Set();
         setSuggestedExtras(
-          existingEntry?.aiSuggestedExtras ? [...existingEntry.aiSuggestedExtras] : []
+          filterUnacceptedSuggestedExtras(
+            existingEntry?.aiSuggestedExtras,
+            existingEntry?.items
+          )
         );
         setPreCorrectionItems(null);
         setCorrectionError(null);
@@ -690,11 +702,12 @@ export function AddMealDrawer({
               }
               return prev;
             });
-            const nextNames = new Set(
-              existingEntry.items.map((it) => it.name.trim().toLowerCase())
-            );
             setSuggestedExtras((prev) =>
-              prev.filter((ex) => !nextNames.has(ex.name.trim().toLowerCase()))
+              filterUnacceptedSuggestedExtras(
+                prev,
+                existingEntry.items,
+                dismissedExtrasKeysRef.current
+              )
             );
             setAiSummary({
               msg: 'הארוחה תוקנה ועודכנה ברקע בהצלחה ✨',
@@ -712,16 +725,17 @@ export function AddMealDrawer({
           }
         }
         if (existingEntry?.aiSuggestedExtras && existingEntry.aiSuggestedExtras.length > 0) {
-          setSuggestedExtras((prev) => {
-            const prevIds = new Set(prev.map((p) => p.id));
-            const itemNames = new Set(
-              (existingEntry.items || []).map((it) => it.name.trim().toLowerCase())
-            );
-            const incomingExtras = existingEntry.aiSuggestedExtras!.filter(
-              (ex) => !prevIds.has(ex.id) && !itemNames.has(ex.name.trim().toLowerCase())
-            );
-            return incomingExtras.length > 0 ? [...prev, ...incomingExtras] : prev;
-          });
+          const mergedCurrentItems = [
+            ...itemsRef.current,
+            ...(existingEntry.items || []),
+          ];
+          setSuggestedExtras((prev) =>
+            filterUnacceptedSuggestedExtras(
+              [...prev, ...existingEntry.aiSuggestedExtras!],
+              mergedCurrentItems,
+              dismissedExtrasKeysRef.current
+            )
+          );
         }
         if (entryPhotos.length > 0 && !photoDataUrl) {
           setPhotoDataUrl(entryPhotos[0]);
@@ -1774,6 +1788,123 @@ export function AddMealDrawer({
     navigateTab('ai-text');
   };
 
+  const handleDirectRetryFailedJob = async (
+    failedJob?: PendingAiMealJob,
+    draft?: AiFailedDraftSnapshot,
+    histEvent?: MealHistoryEntry
+  ) => {
+    const modeHint = failedJob?.mode || draft?.mode;
+    const idbDraft =
+      traineeId && selectedDate && mealSlot && modeHint
+        ? await loadFailedAiDraft(traineeId, selectedDate, mealSlot.id, modeHint)
+        : null;
+    const rawDraft = draft || failedJob?.retryPayload;
+    const resolvedDraft: AiFailedDraftSnapshot | undefined =
+      rawDraft && idbDraft
+        ? {
+            ...idbDraft,
+            ...rawDraft,
+            photos:
+              rawDraft.photos && rawDraft.photos.length > 0
+                ? rawDraft.photos
+                : idbDraft.photos,
+          }
+        : rawDraft || idbDraft || histEvent?.aiDetail?.retryDraftPayload;
+
+    const retryMode: 'photo' | 'text' | 'adjust' =
+      failedJob?.mode ||
+      resolvedDraft?.mode ||
+      (histEvent?.aiDetail?.mode === 'adjust'
+        ? 'adjust'
+        : histEvent?.aiDetail?.photos?.length
+        ? 'photo'
+        : 'text');
+
+    const resolvedPhotos =
+      resolvedDraft?.photos && resolvedDraft.photos.length > 0
+        ? resolvedDraft.photos.filter((p) => Boolean(p.dataUrl))
+        : (failedJob?.photoDataUrls || []).length > 0
+        ? failedJob!.photoDataUrls!.map((dataUrl, idx) => ({
+            dataUrl,
+            angle: (failedJob?.photoMetas?.[idx]?.angle || 'unset') as PhotoAngleKind,
+            labelProductName: failedJob?.photoMetas?.[idx]?.labelProductName,
+          }))
+        : (histEvent?.aiDetail?.photos || [])
+            .map((m) => {
+              const url = existingEntry?.photoStore?.[m.hash];
+              if (!url) return null;
+              return {
+                dataUrl: url,
+                angle: m.angle || ('unset' as PhotoAngleKind),
+                labelProductName: m.labelProductName,
+              };
+            })
+            .filter((x): x is NonNullable<typeof x> => Boolean(x));
+
+    const adjustPrompt =
+      resolvedDraft?.adjustmentPrompt || histEvent?.aiDetail?.adjustmentPrompt;
+    const textPrompt = resolvedDraft?.textPrompt || histEvent?.aiDetail?.prompt;
+    const canDirectResend =
+      Boolean(onStartBackgroundAiAnalysis && traineeId && selectedDate && mealSlot) &&
+      ((retryMode === 'adjust' && Boolean(adjustPrompt?.trim()) && items.length > 0) ||
+        (retryMode === 'photo' &&
+          (resolvedPhotos.length > 0 || Boolean(textPrompt?.trim()))) ||
+        (retryMode === 'text' && Boolean(textPrompt?.trim())));
+
+    if (
+      canDirectResend &&
+      onStartBackgroundAiAnalysis &&
+      traineeId &&
+      selectedDate &&
+      mealSlot
+    ) {
+      if (failedJob?.id) {
+        void onAcknowledgeAiJob?.(failedJob.id, traineeId);
+        setDismissedFailedJobId(failedJob.id);
+      }
+      setAiSummary(null);
+      await onStartBackgroundAiAnalysis({
+        traineeId,
+        date: selectedDate,
+        mealSlotId: mealSlot.id,
+        mealSlotName: mealSlot.name,
+        mode: retryMode,
+        imageDataUrl:
+          retryMode === 'photo'
+            ? resolvedPhotos[0]?.dataUrl
+            : retryMode === 'adjust'
+            ? allMealPhotos[0]
+            : undefined,
+        imageDataUrls:
+          retryMode === 'photo' && resolvedPhotos.length > 0
+            ? resolvedPhotos.map((p) => p.dataUrl)
+            : retryMode === 'adjust' && allMealPhotos.length > 0
+            ? allMealPhotos
+            : undefined,
+        imageMetas:
+          retryMode === 'photo' && resolvedPhotos.length > 0
+            ? resolvedPhotos.map((p) => ({
+                angle: p.angle,
+                labelProductName: p.labelProductName,
+              }))
+            : undefined,
+        textPrompt,
+        baseItems: retryMode === 'adjust' ? items : undefined,
+        selectedTargetIds:
+          retryMode === 'adjust' ? resolvedDraft?.selectedTargetIds : undefined,
+        adjustmentPrompt: retryMode === 'adjust' ? adjustPrompt : undefined,
+        contextParams: resolvedDraft?.contextParams,
+      });
+      return;
+    }
+
+    if (failedJob?.id) {
+      setDismissedFailedJobId(failedJob.id);
+    }
+    setAiSummary(null);
+    applyFailedDraftForRetry(resolvedDraft, histEvent);
+  };
+
   const handlePhotoUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
     preferredAngle?: PhotoAngleKind,
@@ -2006,7 +2137,13 @@ export function AddMealDrawer({
       if (Array.isArray(data.items) && data.items.length > 0) {
         appendItemsSmart(data.items);
         if (Array.isArray(data.suggestedExtras) && data.suggestedExtras.length > 0) {
-          setSuggestedExtras((prev) => [...prev, ...data.suggestedExtras]);
+          setSuggestedExtras((prev) =>
+            filterUnacceptedSuggestedExtras(
+              [...prev, ...data.suggestedExtras],
+              [...itemsRef.current, ...data.items],
+              dismissedExtrasKeysRef.current
+            )
+          );
         }
         const isFallback = Boolean(data.isAiFallback || data.isFallback);
         const detail =
@@ -2575,13 +2712,19 @@ export function AddMealDrawer({
       const effectivePhotoNote = photoNote.trim()
         ? photoNote
         : existingEntry?.photoNote || '';
+      const remainingSuggestedExtras = filterUnacceptedSuggestedExtras(
+        suggestedExtras,
+        finalItems,
+        dismissedExtrasKeysRef.current
+      );
       await onSaveMeal(
         mealSlot.id,
         finalItems,
         primaryPhoto,
         effectivePhotoNote,
         allMealPhotos.length > 0 ? allMealPhotos : undefined,
-        mealTime || undefined
+        mealTime || undefined,
+        remainingSuggestedExtras
       );
       if (saveAsPreset && finalItems.length > 0 && onSavedMealAction) {
         const autoTitle =
@@ -2621,6 +2764,34 @@ export function AddMealDrawer({
     } finally {
       saveLockRef.current = false;
       setSavingMeal(false);
+    }
+  };
+
+  const markSuggestedExtrasDismissed = (extrasList: LoggedFoodItem[]) => {
+    for (const ex of extrasList) {
+      if (ex.id) dismissedExtrasKeysRef.current.add(`id:${ex.id}`);
+      const norm = normalizeSuggestedExtraName(ex.name);
+      if (norm) dismissedExtrasKeysRef.current.add(`name:${norm}`);
+    }
+  };
+
+  const handleDismissSuggestedExtras = (targetExtra?: LoggedFoodItem) => {
+    const toDismiss = targetExtra ? [targetExtra] : suggestedExtras;
+    markSuggestedExtrasDismissed(toDismiss);
+    const nextExtras = targetExtra
+      ? suggestedExtras.filter((p) => p.id !== targetExtra.id)
+      : [];
+    setSuggestedExtras(nextExtras);
+    if (existingEntry && mealSlot && !hasMealChanges) {
+      void onSaveMeal(
+        mealSlot.id,
+        existingEntry.items || [],
+        existingEntry.photoDataUrl,
+        existingEntry.photoNote,
+        existingEntry.photoDataUrls,
+        existingEntry.mealTime,
+        nextExtras
+      );
     }
   };
 
@@ -2798,83 +2969,92 @@ export function AddMealDrawer({
   const renderFloatingAiOverlay = () => {
     if (!opened) return null;
     const isProcessing = isSlotBgProcessing || aiLoading;
-    const isAdjusting = slotBgProcessingJob?.mode === 'adjust';
 
-    if (isProcessing) {
-      if (progressFloatingCollapsed) {
-        const pct = Math.min(
-          95,
-          Math.round(100 * (1 - Math.exp(-progressTicker.elapsedSec / 25)))
-        );
-        return (
-          <button
-            type="button"
-            aria-label={`פענוח AI מתקדם ${pct}% — לחץ להרחבה`}
-            onClick={() => setProgressFloatingCollapsed(false)}
-            className="glass"
-            style={{
-              position: 'fixed',
-              bottom: 'calc(var(--sa-bottom, 0px) + 84px)',
-              insetInlineEnd: 16,
-              zIndex: 255,
-              width: 56,
-              height: 56,
-              padding: 0,
-              borderRadius: 999,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              color: 'var(--text)',
-            }}
+    if (isProcessing && progressFloatingCollapsed) {
+      const pct = Math.min(
+        95,
+        Math.round(100 * (1 - Math.exp(-progressTicker.elapsedSec / 25)))
+      );
+      return (
+        <button
+          type="button"
+          aria-label={`פענוח AI מתקדם ${pct}% — לחץ להרחבה`}
+          onClick={() => setProgressFloatingCollapsed(false)}
+          className="glass"
+          style={{
+            position: 'fixed',
+            bottom: 'calc(var(--sa-bottom, 0px) + 84px)',
+            insetInlineEnd: 16,
+            zIndex: 255,
+            width: 56,
+            height: 56,
+            padding: 0,
+            borderRadius: 999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            color: 'var(--text)',
+          }}
+        >
+          <svg
+            width="56"
+            height="56"
+            viewBox="0 0 56 56"
+            aria-hidden
+            style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}
           >
-            <svg
-              width="56"
-              height="56"
-              viewBox="0 0 56 56"
-              aria-hidden
-              style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}
-            >
-              <circle
-                cx="28"
-                cy="28"
-                r="26"
-                fill="none"
-                stroke="var(--surface-3)"
-                strokeWidth="3"
-              />
-              <circle
-                cx="28"
-                cy="28"
-                r="26"
-                fill="none"
-                stroke="var(--accent)"
-                strokeWidth="3"
-                strokeLinecap="round"
-                strokeDasharray={`${(pct / 100) * 163.4} 163.4`}
-                style={{ transition: 'stroke-dasharray .8s ease' }}
-              />
-            </svg>
-            <Sparkles size={20} color="currentColor" />
-          </button>
-        );
-      }
+            <circle
+              cx="28"
+              cy="28"
+              r="26"
+              fill="none"
+              stroke="var(--surface-3)"
+              strokeWidth="3"
+            />
+            <circle
+              cx="28"
+              cy="28"
+              r="26"
+              fill="none"
+              stroke="var(--accent)"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeDasharray={`${(pct / 100) * 163.4} 163.4`}
+              style={{ transition: 'stroke-dasharray .8s ease' }}
+            />
+          </svg>
+          <Sparkles size={20} color="currentColor" />
+        </button>
+      );
+    }
 
+    return null;
+  };
+
+  /**
+   * באנר סטטוס / שגיאת AI המשולב בזרימת הדף מתחת לכותרת כדי שלעולם לא יסתיר
+   * את כפתורי השליחה או השמירה התחתונים בעת כניסה לארוחה.
+   */
+  const renderInlineAiBanner = (isHeroLayout = false) => {
+    if (!opened) return null;
+    const isProcessing = isSlotBgProcessing || aiLoading;
+    const isAdjusting = slotBgProcessingJob?.mode === 'adjust';
+    const bannerMargin = isHeroLayout
+      ? 'calc(var(--sa-top, 0px) + 66px) 16px 4px'
+      : '8px 16px 0';
+
+    if (isProcessing && !progressFloatingCollapsed) {
       return (
         <div
           className="glass"
           role="status"
           aria-live="polite"
           style={{
-            position: 'fixed',
-            bottom: 'calc(var(--sa-bottom, 0px) + 84px)',
-            left: 14,
-            right: 14,
-            maxWidth: 520,
-            margin: '0 auto',
-            zIndex: 255,
-            borderRadius: 26,
-            padding: '13px 15px',
+            flexShrink: 0,
+            margin: bannerMargin,
+            borderRadius: 22,
+            padding: '12px 14px',
             display: 'flex',
             flexDirection: 'column',
             gap: 8,
@@ -2967,15 +3147,10 @@ export function AddMealDrawer({
           role="status"
           aria-live="polite"
           style={{
-            position: 'fixed',
-            bottom: 'calc(var(--sa-bottom, 0px) + 84px)',
-            left: 14,
-            right: 14,
-            maxWidth: 520,
-            margin: '0 auto',
-            zIndex: 255,
-            borderRadius: 26,
-            padding: '12px 14px',
+            flexShrink: 0,
+            margin: bannerMargin,
+            borderRadius: 22,
+            padding: '11px 13px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -3027,8 +3202,10 @@ export function AddMealDrawer({
             <button
               type="button"
               onClick={() => {
-                setAiSummary(null);
-                applyFailedDraftForRetry(slotBgFailedJob.retryPayload);
+                void handleDirectRetryFailedJob(
+                  slotBgFailedJob,
+                  slotBgFailedJob.retryPayload
+                );
               }}
               className="btn-volt"
               style={{
@@ -3079,15 +3256,10 @@ export function AddMealDrawer({
           className="glass"
           role="alert"
           style={{
-            position: 'fixed',
-            bottom: 'calc(var(--sa-bottom, 0px) + 84px)',
-            left: 14,
-            right: 14,
-            maxWidth: 520,
-            margin: '0 auto',
-            zIndex: 255,
-            borderRadius: 26,
-            padding: '12px 14px',
+            flexShrink: 0,
+            margin: bannerMargin,
+            borderRadius: 22,
+            padding: '11px 13px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -3112,16 +3284,21 @@ export function AddMealDrawer({
             <AlertTriangle size={16} />
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.35 }}>
               {slotBgFailedJob.errorMsg || 'פענוח ה-AI נכשל'}
             </div>
             <div style={{ fontSize: 11.5, color: 'var(--text-2)' }}>
-              הפרטים שהזנת שמורים — ניתן לחזור ולשלוח שוב בלחיצה.
+              הפרטים שהזנת שמורים — אפשר לשלוח שוב ישירות מכאן.
             </div>
           </div>
           <button
             type="button"
-            onClick={() => applyFailedDraftForRetry(slotBgFailedJob.retryPayload)}
+            onClick={() => {
+              void handleDirectRetryFailedJob(
+                slotBgFailedJob,
+                slotBgFailedJob.retryPayload
+              );
+            }}
             className="btn-volt"
             style={{
               height: 34,
@@ -3142,7 +3319,10 @@ export function AddMealDrawer({
           <button
             type="button"
             aria-label="סגור התראה"
-            onClick={() => setDismissedFailedJobId(slotBgFailedJob.id)}
+            onClick={() => {
+              setDismissedFailedJobId(slotBgFailedJob.id);
+              void onAcknowledgeAiJob?.(slotBgFailedJob.id, traineeId);
+            }}
             className="hit-44"
             style={{
               width: 30,
@@ -3900,6 +4080,8 @@ export function AddMealDrawer({
               </GlassButton>
             </div>
           )}
+
+          {renderInlineAiBanner(heroScreen)}
 
           {/* גוף הבוטום-שיט המרכזי: גלילה יחידה נקייה ללא גלילה מקוננת */}
           <div
@@ -6510,7 +6692,7 @@ export function AddMealDrawer({
                       </span>
                       <button
                         type="button"
-                        onClick={() => setSuggestedExtras([])}
+                        onClick={() => handleDismissSuggestedExtras()}
                         style={{
                           border: 'none',
                           background: 'transparent',
@@ -6541,7 +6723,7 @@ export function AddMealDrawer({
                             border: '1px solid var(--line)',
                           }}
                         >
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
                             <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>
                               {extra.name}
                             </span>
@@ -6556,11 +6738,20 @@ export function AddMealDrawer({
                               קק״ל
                               {extra.visualReason ? ` · ${extra.visualReason}` : ''}
                             </span>
+                            {hasCompositeComponents(extra) && (
+                              <span style={{ fontSize: 11, color: 'var(--text-2)', lineHeight: 1.45 }}>
+                                פירוט מרכיבים:{' '}
+                                {extra.components!
+                                  .map((c) => `${c.name} (${Math.round(c.grams)}g · ${Math.round(c.macros.calories)} קק״ל)`)
+                                  .join(' · ')}
+                              </span>
+                            )}
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                             <button
                               type="button"
                               onClick={() => {
+                                markSuggestedExtrasDismissed([extra]);
                                 appendItemsSmart([extra]);
                                 setSuggestedExtras((prev) =>
                                   prev.filter((p) => p.id !== extra.id)
@@ -6587,11 +6778,7 @@ export function AddMealDrawer({
                             <button
                               type="button"
                               aria-label={`הסר הצעה ${extra.name}`}
-                              onClick={() =>
-                                setSuggestedExtras((prev) =>
-                                  prev.filter((p) => p.id !== extra.id)
-                                )
-                              }
+                              onClick={() => handleDismissSuggestedExtras(extra)}
                               style={{
                                 border: '1px solid var(--line-2)',
                                 borderRadius: 999,
@@ -6889,9 +7076,9 @@ export function AddMealDrawer({
               <MealHistoryPanel
                 meal={existingEntry}
                 highlightedEventId={highlightedHistoryEventId}
-                onRetryFailed={(draft, histEvent) =>
-                  applyFailedDraftForRetry(draft, histEvent)
-                }
+                onRetryFailed={(draft, histEvent) => {
+                  void handleDirectRetryFailedJob(undefined, draft, histEvent);
+                }}
                 onRestoreCoachDeletedItem={
                   onRestoreCoachDeletedItem
                     ? (params) =>

@@ -618,3 +618,56 @@ export function doesMealMatchHistorySnapshot(
   }
   return true;
 }
+
+export function normalizeSuggestedExtraName(raw?: string): string {
+  return String(raw || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * מסנן הצעות AI נוספות שכבר אושרו ונוספו לרשימת הפריטים בארוחה (לפי מזהה או שם מנורמל)
+ * או שסומנו כהתעלמות בסשן הפעיל, ומונע כפילויות.
+ */
+export function filterUnacceptedSuggestedExtras(
+  extras: LoggedFoodItem[] | undefined,
+  currentItems: LoggedFoodItem[] | undefined,
+  dismissedKeys?: Set<string>
+): LoggedFoodItem[] {
+  if (!Array.isArray(extras) || extras.length === 0) return [];
+
+  const existingIds = new Set<string>();
+  const existingNames = new Set<string>();
+  for (const item of currentItems || []) {
+    if (!item) continue;
+    if (item.id) existingIds.add(item.id);
+    const normName = normalizeSuggestedExtraName(item.name);
+    if (normName) existingNames.add(normName);
+    if (Array.isArray(item.components) && item.components.length > 0) {
+      for (const comp of item.components) {
+        if (comp.id) existingIds.add(comp.id);
+        const compNorm = normalizeSuggestedExtraName(comp.name);
+        if (compNorm) existingNames.add(compNorm);
+      }
+    }
+  }
+
+  const seenIds = new Set<string>();
+  const seenNames = new Set<string>();
+  const filtered: LoggedFoodItem[] = [];
+  for (const ex of extras) {
+    if (!ex) continue;
+    if (ex.id && (existingIds.has(ex.id) || seenIds.has(ex.id) || dismissedKeys?.has(`id:${ex.id}`))) {
+      continue;
+    }
+    const exNorm = normalizeSuggestedExtraName(ex.name);
+    if (
+      exNorm &&
+      (existingNames.has(exNorm) || seenNames.has(exNorm) || dismissedKeys?.has(`name:${exNorm}`))
+    ) {
+      continue;
+    }
+    if (ex.id) seenIds.add(ex.id);
+    if (exNorm) seenNames.add(exNorm);
+    filtered.push(ex);
+  }
+  return filtered;
+}

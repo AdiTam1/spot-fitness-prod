@@ -8,6 +8,7 @@ import {
   computeMealItemChanges,
   computeShortPhotoHash,
   doesMealMatchHistorySnapshot,
+  filterUnacceptedSuggestedExtras,
   mergeMealPhotoStore,
   resolveMealPhotos,
 } from '../mealHistory';
@@ -737,5 +738,65 @@ describe('sanitizeTraineeForRosterList payload trimming', () => {
     assert.equal(noOlder.olderLogsInfo.hasOlderLogs, false);
     assert.equal(noOlder.olderLogsInfo.olderLogsCount, 0);
     assert.equal(noOlder.trainee, base);
+  });
+});
+
+describe('filterUnacceptedSuggestedExtras', () => {
+  it('filters extras already present in meal items by id, normalized name, or dismissed keys while keeping composite components', () => {
+    const saladExtra: LoggedFoodItem = {
+      ...makeFood('extra-salad', 'סלט ירקות עם תירס, אבוקדו וזיתים', 70, 67, 1.3),
+      components: [
+        makeFood('comp-lettuce', 'עלי חסה', 30, 5, 0.4),
+        makeFood('comp-corn', 'תירס גרעינים', 20, 17, 0.6),
+        makeFood('comp-avo', 'אבוקדו', 20, 45, 0.3),
+      ],
+    };
+    const techinaExtra = makeFood('extra-techina', 'טחינה גולמית', 15, 90, 2.8);
+    const breadItem = makeFood('bread-1', 'לחם אנגל חיטה מלאה', 75, 176, 7.9);
+
+    // 1. Before adding: saladExtra (with components) and techinaExtra stay intact
+    const initial = filterUnacceptedSuggestedExtras(
+      [saladExtra, techinaExtra, { ...saladExtra, id: 'extra-salad-dup' }],
+      [breadItem]
+    );
+    assert.equal(initial.length, 2);
+    assert.equal(initial[0].components?.length, 3);
+
+    // 2. After adding saladExtra (or matching normalized name with different id): salad disappears permanently
+    const afterAddById = filterUnacceptedSuggestedExtras([saladExtra, techinaExtra], [
+      breadItem,
+      saladExtra,
+    ]);
+    assert.deepEqual(
+      afterAddById.map((x) => x.id),
+      ['extra-techina']
+    );
+
+    const afterAddByNormName = filterUnacceptedSuggestedExtras(
+      [
+        {
+          ...saladExtra,
+          id: 'new-server-id',
+          name: '  סלט ירקות   עם תירס, אבוקדו וזיתים ',
+        },
+        techinaExtra,
+      ],
+      [breadItem, saladExtra]
+    );
+    assert.deepEqual(
+      afterAddByNormName.map((x) => x.id),
+      ['extra-techina']
+    );
+
+    // 3. Session dismissal keys filter out dismissed extras
+    const afterDismiss = filterUnacceptedSuggestedExtras(
+      [saladExtra, techinaExtra],
+      [breadItem],
+      new Set(['id:extra-techina'])
+    );
+    assert.deepEqual(
+      afterDismiss.map((x) => x.id),
+      ['extra-salad']
+    );
   });
 });

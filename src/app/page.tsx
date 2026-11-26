@@ -71,8 +71,10 @@ import {
 } from '@/lib/aiJobs';
 import {
   clearFailedAiDraft,
+  loadFailedAiDraft,
   saveFailedAiDraft,
 } from '@/lib/aiDraftStore';
+import { filterUnacceptedSuggestedExtras } from '@/lib/compositeDishes';
 import {
   appendMealHistoryEntry,
   computeMealItemChanges,
@@ -2457,6 +2459,104 @@ export default function HomePage() {
     return { jobId };
   };
 
+  const handleRetryFailedAiJob = async (job: PendingAiMealJob) => {
+    const targetTrainee = traineesRef.current.find((t) => t.id === job.targetTraineeId);
+    const mealEntry = targetTrainee?.logs?.[job.date]?.meals?.[job.mealSlotId];
+    const idbDraft = await loadFailedAiDraft(
+      job.targetTraineeId,
+      job.date,
+      job.mealSlotId,
+      job.mode
+    );
+    const draft =
+      job.retryPayload && idbDraft
+        ? {
+            ...idbDraft,
+            ...job.retryPayload,
+            photos:
+              job.retryPayload.photos && job.retryPayload.photos.length > 0
+                ? job.retryPayload.photos
+                : idbDraft.photos,
+          }
+        : job.retryPayload || idbDraft || undefined;
+
+    const retryPhotos =
+      draft?.photos && draft.photos.length > 0
+        ? draft.photos.filter((p) => Boolean(p.dataUrl))
+        : (job.photoDataUrls || []).map((dataUrl, idx) => ({
+            dataUrl,
+            angle: (job.photoMetas?.[idx]?.angle || 'unset') as PhotoAngleKind,
+            labelProductName: job.photoMetas?.[idx]?.labelProductName,
+          }));
+
+    const baseItems = mealEntry?.items || [];
+    const canRetryAdjust =
+      job.mode === 'adjust' &&
+      Boolean(draft?.adjustmentPrompt?.trim()) &&
+      baseItems.length > 0;
+    const canRetryPhoto =
+      job.mode === 'photo' &&
+      (retryPhotos.length > 0 || Boolean(draft?.textPrompt?.trim()));
+    const canRetryText =
+      job.mode === 'text' && Boolean(draft?.textPrompt?.trim());
+
+    if (canRetryAdjust || canRetryPhoto || canRetryText) {
+      void handleAcknowledgeAiJob(job.id, job.targetTraineeId);
+      const mealPhotos =
+        mealEntry?.photoDataUrls && mealEntry.photoDataUrls.length > 0
+          ? mealEntry.photoDataUrls
+          : mealEntry?.photoDataUrl
+          ? [mealEntry.photoDataUrl]
+          : undefined;
+      await handleStartBackgroundAiAnalysis({
+        traineeId: job.targetTraineeId,
+        date: job.date,
+        mealSlotId: job.mealSlotId,
+        mealSlotName: job.mealSlotName,
+        mode: job.mode,
+        imageDataUrl: canRetryPhoto
+          ? retryPhotos[0]?.dataUrl
+          : canRetryAdjust
+          ? mealPhotos?.[0]
+          : undefined,
+        imageDataUrls: canRetryPhoto
+          ? retryPhotos.map((p) => p.dataUrl)
+          : canRetryAdjust
+          ? mealPhotos
+          : undefined,
+        imageMetas: canRetryPhoto
+          ? retryPhotos.map((p) => ({
+              angle: p.angle,
+              labelProductName: p.labelProductName,
+            }))
+          : undefined,
+        textPrompt: draft?.textPrompt,
+        baseItems: canRetryAdjust ? baseItems : undefined,
+        selectedTargetIds: canRetryAdjust ? draft?.selectedTargetIds : undefined,
+        adjustmentPrompt: canRetryAdjust ? draft?.adjustmentPrompt : undefined,
+        contextParams: draft?.contextParams,
+      });
+      return;
+    }
+
+    if (draft) {
+      void saveFailedAiDraft(draft);
+    }
+    setExternalOpenMealRequest({
+      traineeId: job.targetTraineeId,
+      date: job.date,
+      mealSlotId: job.mealSlotId,
+      initialTab:
+        job.mode === 'photo'
+          ? 'ai-photo'
+          : job.mode === 'adjust'
+          ? 'meal-items'
+          : 'ai-text',
+      openAdjustWithDraft: job.mode === 'adjust',
+      nonce: Date.now(),
+    });
+  };
+
   const handleAcknowledgeAiJob = async (jobId: string, traineeId?: string) => {
     acknowledgedAiJobIdsRef.current.add(jobId);
     setLocalBgJobs((prev) => prev.filter((j) => j.id !== jobId));
@@ -2529,7 +2629,8 @@ export default function HomePage() {
     photoDataUrl?: string,
     photoNote?: string,
     photoDataUrls?: string[],
-    mealTime?: string
+    mealTime?: string,
+    aiSuggestedExtras?: LoggedFoodItem[]
   ) => {
     if (currentUser?.role === 'trainee' && currentUser.id !== traineeId) {
       return;
@@ -2547,6 +2648,12 @@ export default function HomePage() {
 
     const currentTarget = traineesRef.current.find((t) => t.id === traineeId);
     const prevMealBeforeSave = currentTarget?.logs?.[date]?.meals?.[mealSlotId];
+    const cleanNextExtras = filterUnacceptedSuggestedExtras(
+      aiSuggestedExtras !== undefined
+        ? aiSuggestedExtras
+        : prevMealBeforeSave?.aiSuggestedExtras,
+      items
+    );
     if (prevMealBeforeSave) {
       const nextPhotosArr =
         photoDataUrls && photoDataUrls.length > 0
@@ -2568,8 +2675,18 @@ export default function HomePage() {
         (prevMealBeforeSave.mealTime || '');
       const samePhotoNote =
         (photoNote || '') === (prevMealBeforeSave.photoNote || '');
+      const prevExtrasArr = prevMealBeforeSave.aiSuggestedExtras || [];
+      const sameSuggestedExtras =
+        prevExtrasArr.length === cleanNextExtras.length &&
+        prevExtrasArr.every((e, i) => e.id === cleanNextExtras[i]?.id);
       const itemDiffs = computeMealItemChanges(prevMealBeforeSave.items || [], items);
-      if (itemDiffs.length === 0 && samePhotos && sameMealTime && samePhotoNote) {
+      if (
+        itemDiffs.length === 0 &&
+        samePhotos &&
+        sameMealTime &&
+        samePhotoNote &&
+        sameSuggestedExtras
+      ) {
         return;
       }
     }
@@ -2590,9 +2707,32 @@ export default function HomePage() {
           : photoDataUrl
           ? [photoDataUrl]
           : undefined;
+      const resolvedSuggestedExtras = filterUnacceptedSuggestedExtras(
+        aiSuggestedExtras !== undefined
+          ? aiSuggestedExtras
+          : existingMeal?.aiSuggestedExtras,
+        items
+      );
       const isCoachActor =
         currentUser?.role === 'coach' || currentUser?.role === 'admin';
       const nextMealTime = cleanMealTime ?? existingMeal?.mealTime;
+
+      const prevPhotosForCommit = existingMeal
+        ? existingMeal.photoDataUrls && existingMeal.photoDataUrls.length > 0
+          ? existingMeal.photoDataUrls
+          : existingMeal.photoDataUrl
+          ? [existingMeal.photoDataUrl]
+          : []
+        : [];
+      const nextPhotosForCommit = nextPhotos || [];
+      const isExtrasOnlyUpdate =
+        Boolean(existingMeal) &&
+        computeMealItemChanges(existingMeal!.items || [], items).length === 0 &&
+        nextPhotosForCommit.length === prevPhotosForCommit.length &&
+        nextPhotosForCommit.every((u, i) => u === prevPhotosForCommit[i]) &&
+        (nextMealTime || '') === (existingMeal?.mealTime || '') &&
+        (photoNote || '') === (existingMeal?.photoNote || '');
+
       const prevCount = existingMeal?.items?.length || 0;
       const nextCount = items.length;
       const histKind = isCoachActor
@@ -2602,14 +2742,16 @@ export default function HomePage() {
         : prevCount > 0 && nextCount === 0
         ? 'manual_remove'
         : 'manual_edit';
-      const histRes = appendMealHistoryEntry(existingMeal, items, {
-        kind: histKind,
-        actorId: currentUser?.id || traineeId,
-        actorName: isCoachActor ? currentUser?.name || 'מאמן' : t.name,
-        actorRole: currentUser?.role || 'trainee',
-        prevMealTime: existingMeal?.mealTime,
-        nextMealTime,
-      });
+      const histRes = isExtrasOnlyUpdate
+        ? { history: existingMeal?.history }
+        : appendMealHistoryEntry(existingMeal, items, {
+            kind: histKind,
+            actorId: currentUser?.id || traineeId,
+            actorName: isCoachActor ? currentUser?.name || 'מאמן' : t.name,
+            actorRole: currentUser?.role || 'trainee',
+            prevMealTime: existingMeal?.mealTime,
+            nextMealTime,
+          });
       return {
         ...t,
         logs: {
@@ -2622,6 +2764,10 @@ export default function HomePage() {
                 ...existingMeal,
                 mealSlotId,
                 items,
+                aiSuggestedExtras:
+                  resolvedSuggestedExtras.length > 0
+                    ? resolvedSuggestedExtras
+                    : undefined,
                 mealTime: nextMealTime,
                 photoDataUrl: nextPhotos?.[0] ?? photoDataUrl,
                 photoDataUrls: nextPhotos,
@@ -2630,7 +2776,9 @@ export default function HomePage() {
                 coachFeedback: existingMeal?.coachFeedback,
                 coachFeedbackAuthor: existingMeal?.coachFeedbackAuthor,
                 coachFeedbackAt: existingMeal?.coachFeedbackAt,
-                updatedAt: nowTime,
+                updatedAt: isExtrasOnlyUpdate
+                  ? existingMeal?.updatedAt || nowTime
+                  : nowTime,
               },
             },
           },
@@ -3910,6 +4058,7 @@ export default function HomePage() {
             onCustomFoodsUpdated={handleCustomFoodsUpdated}
             backgroundAiJobs={mergeTraineeBgJobs(loggedInTraineeProfile)}
             onStartBackgroundAiAnalysis={handleStartBackgroundAiAnalysis}
+            onAcknowledgeAiJob={handleAcknowledgeAiJob}
             onMarkCoachMealEditsRead={handleMarkCoachMealEditsRead}
             onRestoreCoachDeletedItem={handleRestoreCoachDeletedItem}
             onRollbackMealHistory={handleRollbackMealHistory}
@@ -3967,6 +4116,7 @@ export default function HomePage() {
             onCustomFoodsUpdated={handleCustomFoodsUpdated}
             backgroundAiJobs={mergeTraineeBgJobs(loggedInTraineeProfile)}
             onStartBackgroundAiAnalysis={handleStartBackgroundAiAnalysis}
+            onAcknowledgeAiJob={handleAcknowledgeAiJob}
             onMarkCoachMealEditsRead={handleMarkCoachMealEditsRead}
             onRestoreCoachDeletedItem={handleRestoreCoachDeletedItem}
             onRollbackMealHistory={handleRollbackMealHistory}
@@ -4095,22 +4245,7 @@ export default function HomePage() {
             });
           }}
           onRetryFailedJob={(job) => {
-            if (job.retryPayload) {
-              void saveFailedAiDraft(job.retryPayload);
-            }
-            setExternalOpenMealRequest({
-              traineeId: job.targetTraineeId,
-              date: job.date,
-              mealSlotId: job.mealSlotId,
-              initialTab:
-                job.mode === 'photo'
-                  ? 'ai-photo'
-                  : job.mode === 'adjust'
-                  ? 'meal-items'
-                  : 'ai-text',
-              openAdjustWithDraft: job.mode === 'adjust',
-              nonce: Date.now(),
-            });
+            void handleRetryFailedAiJob(job);
           }}
         />
       )}

@@ -413,3 +413,8 @@ export function resolveConfidenceLabelHe(confidence?: FoodInputConfidence): stri
   if (confidence === 'reported') return 'מדווח';
   return null;
 }
+
+export {
+  filterUnacceptedSuggestedExtras,
+  normalizeSuggestedExtraName,
+} from './mealHistory';

@@ -26,6 +26,7 @@ import {
 import {
   buildSelectiveScopedPayload,
   clampGrams,
+  filterUnacceptedSuggestedExtras,
   mergeScopedAdjustmentResult,
   recalculateParentDish,
   stripNestedComponents,
@@ -933,12 +934,35 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
       }
 
       const startNowIso = new Date().toISOString();
-      const jobMode =
+      const jobMode: 'photo' | 'text' | 'adjust' =
         backgroundJob.mode === 'adjust'
           ? 'adjust'
           : backgroundJob.mode === 'text'
           ? 'text'
           : 'photo';
+      const compactRetryPayload = {
+        traineeId: backgroundJob.traineeId,
+        date: sanitizeText(backgroundJob.date, 20),
+        mealSlotId: sanitizeText(backgroundJob.mealSlotId, 60),
+        mode: jobMode,
+        ...(textPrompt ? { textPrompt: sanitizeText(textPrompt, 600) } : {}),
+        ...(adjustmentPrompt
+          ? { adjustmentPrompt: sanitizeText(adjustmentPrompt, 500) }
+          : {}),
+        ...(Array.isArray(selectedTargetIds) && selectedTargetIds.length > 0
+          ? {
+              selectedTargetIds: selectedTargetIds
+                .slice(0, 40)
+                .map((id) => sanitizeText(id, 80))
+                .filter(Boolean),
+            }
+          : {}),
+        ...(contextParams ? { contextParams } : {}),
+        ...(contextParams?.includePreviousMealPhotos
+          ? { includePreviousMealPhotos: true }
+          : {}),
+        failedAt: startNowIso,
+      };
       authorizedBgJob = {
         id: sanitizeText(backgroundJob.jobId, 60),
         targetTraineeId: backgroundJob.traineeId,
@@ -952,6 +976,7 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
             backgroundJob.summaryHint || adjustmentPrompt || textPrompt || '',
             80
           ) || undefined,
+        retryPayload: compactRetryPayload,
         status: 'processing',
         startedAt: startNowIso,
         lastHeartbeatAt: startNowIso,
@@ -1121,6 +1146,7 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
                 ...(v.labelProductName ? { labelProductName: v.labelProductName } : {}),
               }))
             : undefined,
+        ...(authorizedBgJob?.retryPayload ? { retryPayload: authorizedBgJob.retryPayload } : {}),
         autoSyncedToLog: succeeded,
         acknowledged: false,
       };
@@ -1289,11 +1315,15 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
         let updatedMeal: LoggedMealEntry = {
           ...existingMeal,
           items: nextItemsList,
-          aiSuggestedExtras: isReplace
-            ? undefined
-            : pendingSuggestedExtras.length > 0
-            ? pendingSuggestedExtras
-            : existingMeal.aiSuggestedExtras,
+          aiSuggestedExtras: (() => {
+            if (isReplace) return undefined;
+            const candidate =
+              pendingSuggestedExtras.length > 0
+                ? pendingSuggestedExtras
+                : existingMeal.aiSuggestedExtras;
+            const cleanedExtras = filterUnacceptedSuggestedExtras(candidate, nextItemsList);
+            return cleanedExtras.length > 0 ? cleanedExtras : undefined;
+          })(),
           photoDataUrl: sanitizedPhotos[0] || existingMeal.photoDataUrl,
           photoDataUrls: mergedPhotos.length > 0 ? mergedPhotos : undefined,
           photoMetas:
@@ -2181,15 +2211,61 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
   ],
   "suggestedExtras": [
     {
-      "name": "פריט נוסף שנראה בבירור בתמונה אך לא נכתב בטקסט",
-      "unitLabel": "הערכת כמות (למשל כוס סלט / 100 גרם)",
+      "name": "פריט או מנה נוספת שנראית בבירור בתמונה אך לא נכתבה בטקסט (למשל סלט ירקות עם תירס, אבוקדו וזיתים)",
+      "unitLabel": "קערית (100 גרם)",
       "quantity": 1,
       "grams": 100,
       "fromUserText": false,
       "inputConfidence": "visual-estimate",
       "visualReason": "זוהה חזותית בצלחת לצד המנות שצוינו",
-      "per100g": { "calories": 35, "protein": 1.2, "carbs": 6.5, "fat": 0.3 },
-      "macros": { "calories": 35, "protein": 1.2, "carbs": 6.5, "fat": 0.3 }
+      "per100g": { "calories": 76, "protein": 1.6, "carbs": 7.6, "fat": 5.0 },
+      "macros": { "calories": 76, "protein": 1.6, "carbs": 7.6, "fat": 5.0 },
+      "components": [
+        {
+          "name": "ירקות טריים חתוכים (חסה / עגבנייה / מלפפון)",
+          "unitLabel": "50 גרם",
+          "quantity": 1,
+          "grams": 50,
+          "fromUserText": false,
+          "inputConfidence": "visual-estimate",
+          "componentRole": "ingredient",
+          "per100g": { "calories": 18, "protein": 1.0, "carbs": 3.5, "fat": 0.2 },
+          "macros": { "calories": 9, "protein": 0.5, "carbs": 1.8, "fat": 0.1 }
+        },
+        {
+          "name": "תירס גרעינים",
+          "unitLabel": "20 גרם",
+          "quantity": 1,
+          "grams": 20,
+          "fromUserText": false,
+          "inputConfidence": "visual-estimate",
+          "componentRole": "ingredient",
+          "per100g": { "calories": 86, "protein": 3.2, "carbs": 19.0, "fat": 1.2 },
+          "macros": { "calories": 17, "protein": 0.6, "carbs": 3.8, "fat": 0.2 }
+        },
+        {
+          "name": "אבוקדו",
+          "unitLabel": "20 גרם",
+          "quantity": 1,
+          "grams": 20,
+          "fromUserText": false,
+          "inputConfidence": "visual-estimate",
+          "componentRole": "ingredient",
+          "per100g": { "calories": 160, "protein": 2.0, "carbs": 8.5, "fat": 14.7 },
+          "macros": { "calories": 32, "protein": 0.4, "carbs": 1.7, "fat": 2.9 }
+        },
+        {
+          "name": "זיתים",
+          "unitLabel": "10 גרם",
+          "quantity": 1,
+          "grams": 10,
+          "fromUserText": false,
+          "inputConfidence": "visual-estimate",
+          "componentRole": "ingredient",
+          "per100g": { "calories": 180, "protein": 1.0, "carbs": 3.0, "fat": 18.0 },
+          "macros": { "calories": 18, "protein": 0.1, "carbs": 0.3, "fat": 1.8 }
+        }
+      ]
     }
   ]
 }
@@ -2200,8 +2276,8 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
    - אם בתמונה מופיעה **טבלת ערכים תזונתיים**:
      * אם המשתמש כבר הזין עבור התמונה שם מוצר (תחת "שייך למוצר שהזין המתאמן") או ששם המותג/המוצר ברור מהאריזה או מהקשר הטקסט — חלץ את הערכים המדויקים ל-100 גרם/מנה, הכפל בכמות הסבירה/מדווחת וכלול ישירות ב-"items" (ואל תשאל שאלת הבהרה).
      * אם לא צוין שם מוצר על התווית ואין בתמונה/טקסט אינדיקציה ברורה *של איזה מוצר הטבלה* (או למה בצלחת היא מתייחסת) — **אל תנחש סתם ואל תכניס קלוריות שגויות ל-"items"**! הכנס ל-"items" רק את הפריטים הברורים האחרים (אם קיימים), והחזר שאלה ב-"clarificationQuestions" עם 2–4 אפשרויות סבירות + הערכים שחולצו מהטבלה ב-"per100gEstimate". (החזר clarificationQuestions ריק [] כשהכל ברור).
-1. **פיצול מנות מורכבות למרכיבים (\`components\`) — רמה 3 מקסימום:**
-   - כאשר המנה בצלחת היא **מנה מעורבת/מורכבת/מבושלת** (כגון מג׳דרה, שקשוקה, מוקפץ, פסטה ברוטב, שניצל מטוגן, סלט מתובל עם תוספות, כריך, קפה עם חלב) — החזר אותה כפריט אב אחד ב-"items" (למשל \`"מג׳דרה"\`) והכנס ל-\`"components"\` את המרכיבים השונים המרכיבים אותה (למשל אורז מבושל, עדשים ירוקות, בצל מטוגן, שמן בישול), כך שסכום המשקל והמאקרו של המרכיבים יהיה תואם לסך המנה.
+1. **פיצול מנות מורכבות למרכיבים (\`components\`) — רמה 3 מקסימום (תקף גם ל-"items" וגם ל-"suggestedExtras"!):**
+   - כאשר המנה בצלחת (בין אם ב-"items" ובין אם בהצעה ב-"suggestedExtras") היא **מנה מעורבת/מורכבת/מבושלת** (כגון מג׳דרה, שקשוקה, מוקפץ, פסטה ברוטב, שניצל מטוגן, סלט ירקות עם תוספות כמו תירס/אבוקדו/זיתים/גבינה/רוטב, כריך, קפה עם חלב) — **לעולם אל תאחד אותה לפריט שטוח בודד ללא פירוט**! החזר אותה כפריט אב אחד (למשל \`"מג׳דרה"\` או \`"סלט ירקות עם תוספות"\`) והכנס ל-\`"components"\` את המרכיבים השונים המרכיבים אותה (למשל אורז מבושל, עדשים ירוקות, בצל מטוגן, שמן בישול; או ירקות טריים, תירס, אבוקדו, זיתים, שמן/רוטב), כך שסכום המשקל והמאקרו של המרכיבים יהיה תואם לסך המנה.
    - פריט פשוט, שלם או ארוז (בננה, ביצה קשה, גביע קוטג׳, תפוח, פיתה ריקה) נשאר פריט שטוח **ללא \`components\`**. אסור לקנן \`components\` בתוך \`components\`.
 2. **איחוד תבלינים ושקיפות שמן בישול vs רטבים:**
    - תבלינים זניחים (מלח, פלפל, מעט עשבי תיבול) שסכומם המצטבר מתחת ל־**10 קק״ל** במנה — **אל תוסיף שורה עבורם**.
@@ -2213,7 +2289,7 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
    - אם המתאמן ציין פריט בשם בלבד *ללא משקל*, הערך את הגרמים שלו מהתמונה ומכלי ההגשה. אם ניתן משקל נטו כולל של המנה ("netFoodWeightGrams"), שמור גרמים מפורשים כפי שהם והתאם רק את הפריטים חסרי המשקל לסה"כ הנטו.
 4. מדיניות פריטים נוספים שלא הוזכרו בטקסט (strict vs hybrid):
    - אם "strictUserList=true": המתאמן אישר כי פירט הכל. החזר ב-"items" **אך ורק** את הפריטים שצוינו בטקסט, והחזר "suggestedExtras": [] (מערך ריק).
-   - אם המתאמן כתב תיאור ארוחה חלקי (ללא strictUserList=true): הכנס ל-"items" את כל הפריטים שציין בטקסט במדויק ("fromUserText": true). אם אתה מזהה בתמונה *בביטחון גבוה* רכיב נפרד נוסף ש*אינו* אחד המרכיבים שהמתאמן כבר הזכיר (ושלא נחשב כשמן טיגון של מנה קיימת), הוסף אותו אך ורק ל-"suggestedExtras" עם הסבר קצר ב-"visualReason".
+   - אם המתאמן כתב תיאור ארוחה חלקי (ללא strictUserList=true): הכנס ל-"items" את כל הפריטים שציין בטקסט במדויק ("fromUserText": true). אם אתה מזהה בתמונה *בביטחון גבוה* רכיב או מנה נפרדת נוספת ש*אינה* אחד המרכיבים שהמתאמן כבר הזכיר (ושלא נחשב כשמן טיגון של מנה קיימת), הוסף אותו אך ורק ל-"suggestedExtras" עם הסבר קצר ב-"visualReason". **חובה**: אם ההצעה ב-"suggestedExtras" מורכבת מכמה מרכיבים (למשל סלט עם תירס/אבוקדו/זיתים/גבינה/רוטב, טוסט או שייק), פרט אותם בתוך \`"components"\` של אותו פריט (בדיוק לפי כלל 1, עם שם, גרם, \`per100g\` ו-\`macros\` לכל תת־מרכיב) כדי שהמתאמן יוכל לפתוח ולערוך כל מרכיב בנפרד!
    - אם המתאמן לא כתב תיאור רכיבים כלל (תמונה בלבד): הכנס את כל המנות והמרכיבים ל-"items" ואת "suggestedExtras": [].
 5. דיוק נפח וזוויות צילום (כשמצורפות תמונות):
    - 2 תמונות (מלמעלה + ~45°): למעלה לשטח/קוטר ומהצד לגובה/עובי; קזז אפקט זווית וקח בחשבון Packing Fraction.
