@@ -406,14 +406,35 @@ export function compressDataUrlToThumbnail(
           return;
         }
         ctx.drawImage(img, 0, 0, w, h);
-        for (const q of [0.72, 0.58, 0.44]) {
-          const out = canvas.toDataURL('image/webp', q);
-          if (out && (out.length <= maxChars || q <= 0.44)) {
-            resolve(out);
-            return;
+        // Safari/iOS WebView falls back to uncompressed PNG when image/webp is unsupported,
+        // so detect actual encoded mime and progressively step down quality and dimensions if over maxChars.
+        const testWebp = canvas.toDataURL('image/webp', 0.72);
+        const targetMime = testWebp.startsWith('data:image/webp') ? 'image/webp' : 'image/jpeg';
+        let curW = w;
+        let curH = h;
+        let bestOut = testWebp;
+        for (const scale of [1, 0.78, 0.6, 0.45]) {
+          if (scale < 1) {
+            curW = Math.max(96, Math.round(w * scale));
+            curH = Math.max(96, Math.round(h * scale));
+            canvas.width = curW;
+            canvas.height = curH;
+            ctx.drawImage(img, 0, 0, curW, curH);
+          }
+          for (const q of [0.72, 0.58, 0.44, 0.34]) {
+            const out = scale === 1 && targetMime === 'image/webp' && q === 0.72
+              ? testWebp
+              : canvas.toDataURL(targetMime, q);
+            if (out) {
+              bestOut = out;
+              if (out.length <= maxChars) {
+                resolve(out);
+                return;
+              }
+            }
           }
         }
-        resolve(canvas.toDataURL('image/jpeg', 0.55));
+        resolve(bestOut);
       } catch {
         resolve(dataUrl);
       }

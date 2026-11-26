@@ -176,12 +176,36 @@ export function computeMealItemChanges(
         summary: formatItemBrief(nextIt),
       });
     } else if (itemContentSignature(prevIt) !== itemContentSignature(nextIt)) {
+      let summary = formatItemBrief(nextIt);
+      let prevSummary = formatItemBrief(prevIt);
+      if (summary === prevSummary) {
+        if ((prevIt.itemTime || '') !== (nextIt.itemTime || '')) {
+          summary = `${summary} · שעה ${nextIt.itemTime || 'ברירת מחדל'}`;
+          prevSummary = `${prevSummary} · שעה ${prevIt.itemTime || 'ברירת מחדל'}`;
+        } else if (
+          Math.round((Number(prevIt.macros?.protein) || 0) * 10) !==
+            Math.round((Number(nextIt.macros?.protein) || 0) * 10) ||
+          Math.round((Number(prevIt.macros?.carbs) || 0) * 10) !==
+            Math.round((Number(nextIt.macros?.carbs) || 0) * 10) ||
+          Math.round((Number(prevIt.macros?.fat) || 0) * 10) !==
+            Math.round((Number(nextIt.macros?.fat) || 0) * 10)
+        ) {
+          summary = `${summary} (ח׳ ${nextIt.macros.protein}g · פ׳ ${nextIt.macros.carbs}g · ש׳ ${nextIt.macros.fat}g)`;
+          prevSummary = `${prevSummary} (ח׳ ${prevIt.macros.protein}g · פ׳ ${prevIt.macros.carbs}g · ש׳ ${prevIt.macros.fat}g)`;
+        } else if ((prevIt.unitLabel || '') !== (nextIt.unitLabel || '')) {
+          summary = `${summary} · ${nextIt.unitLabel || '—'}`;
+          prevSummary = `${prevSummary} · ${prevIt.unitLabel || '—'}`;
+        } else if (prevIt.name.trim() !== nextIt.name.trim()) {
+          summary = `${summary} · ${nextIt.name}`;
+          prevSummary = `${prevSummary} · ${prevIt.name}`;
+        }
+      }
       changes.push({
         itemId: nextIt.id,
         name: nextIt.name,
         changeKind: 'updated',
-        summary: formatItemBrief(nextIt),
-        prevSummary: formatItemBrief(prevIt),
+        summary,
+        prevSummary,
       });
     }
   }
@@ -322,9 +346,21 @@ export function applyCoachDiffToMeal(params: {
     (nextMeal.mealTime || '') !== (prevMeal?.mealTime || '');
 
   if (itemChanges.length === 0 && !feedbackChanged && !mealTimeChanged) {
+    const preservedPhotos = resolveMealPhotos(nextMeal);
+    const fallbackPhotos =
+      preservedPhotos.length > 0 ? preservedPhotos : resolveMealPhotos(prevMeal);
     return {
       meal: {
         ...nextMeal,
+        ...(fallbackPhotos.length > 0
+          ? {
+              photoDataUrl: nextMeal.photoDataUrl || fallbackPhotos[0],
+              photoDataUrls:
+                nextMeal.photoDataUrls && nextMeal.photoDataUrls.length > 0
+                  ? nextMeal.photoDataUrls
+                  : fallbackPhotos,
+            }
+          : {}),
         history: nextMeal.history?.length ? nextMeal.history : prevMeal?.history,
         photoStore: nextMeal.photoStore || prevMeal?.photoStore,
         photoMetas: nextMeal.photoMetas || prevMeal?.photoMetas,
@@ -390,9 +426,22 @@ export function applyCoachDiffToMeal(params: {
 
   const summaryText = histRes.entry?.summary || `המאמן ${coachName} ערך את הארוחה`;
 
+  const preservedAfterEdit = resolveMealPhotos(nextMeal);
+  const fallbackAfterEdit =
+    preservedAfterEdit.length > 0 ? preservedAfterEdit : resolveMealPhotos(prevMeal);
+
   return {
     meal: {
       ...nextMeal,
+      ...(fallbackAfterEdit.length > 0
+        ? {
+            photoDataUrl: nextMeal.photoDataUrl || fallbackAfterEdit[0],
+            photoDataUrls:
+              nextMeal.photoDataUrls && nextMeal.photoDataUrls.length > 0
+                ? nextMeal.photoDataUrls
+                : fallbackAfterEdit,
+          }
+        : {}),
       items: badgedItems,
       photoStore: nextMeal.photoStore || prevMeal?.photoStore,
       photoMetas: nextMeal.photoMetas || prevMeal?.photoMetas,
@@ -492,4 +541,80 @@ export function buildCompactMealTimelineForAi(
   }
 
   return sections.join('\n\n');
+}
+
+export function resolveMealPhotos(
+  meal?:
+    | Pick<
+        LoggedMealEntry,
+        'photoDataUrl' | 'photoDataUrls' | 'photoStore' | 'photoMetas'
+      >
+    | null
+): string[] {
+  if (!meal) return [];
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  const pushValid = (raw?: string | null) => {
+    if (!raw || typeof raw !== 'string') return;
+    if (raw.endsWith(',DEMO')) return;
+    if (seen.has(raw)) return;
+    seen.add(raw);
+    urls.push(raw);
+  };
+
+  if (Array.isArray(meal.photoDataUrls)) {
+    for (const u of meal.photoDataUrls) pushValid(u);
+  }
+  pushValid(meal.photoDataUrl);
+  if (meal.photoStore) {
+    if (Array.isArray(meal.photoMetas)) {
+      for (const m of meal.photoMetas) {
+        if (m?.hash) pushValid(meal.photoStore[m.hash]);
+      }
+    }
+    for (const storedUrl of Object.values(meal.photoStore)) {
+      pushValid(storedUrl);
+    }
+  }
+  return urls;
+}
+
+function snapshotItemComparisonKey(item: LoggedFoodItem): string {
+  const comps = (item.components || [])
+    .map((c) => snapshotItemComparisonKey(c))
+    .sort()
+    .join('|');
+  return [
+    (item.name || '').trim(),
+    Math.round((Number(item.grams) || 0) * 10),
+    Math.round((Number(item.quantity) || 0) * 10),
+    item.unitLabel || '',
+    Math.round(Number(item.macros?.calories) || 0),
+    Math.round((Number(item.macros?.protein) || 0) * 10),
+    Math.round((Number(item.macros?.carbs) || 0) * 10),
+    Math.round((Number(item.macros?.fat) || 0) * 10),
+    (item.itemTime || '').trim(),
+    comps,
+  ].join('::');
+}
+
+export function doesMealMatchHistorySnapshot(
+  meal: LoggedMealEntry | undefined,
+  entry: MealHistoryEntry
+): boolean {
+  if (!Array.isArray(entry.itemsSnapshot)) return false;
+  const liveTime = (meal?.mealTime || '').trim();
+  const snapTime = (entry.mealTimeSnapshot || '').trim();
+  if (liveTime !== snapTime) return false;
+
+  const liveItems = meal?.items || [];
+  const snapItems = entry.itemsSnapshot;
+  if (liveItems.length !== snapItems.length) return false;
+
+  const liveSigs = liveItems.map(snapshotItemComparisonKey).sort();
+  const snapSigs = snapItems.map(snapshotItemComparisonKey).sort();
+  for (let i = 0; i < liveSigs.length; i++) {
+    if (liveSigs[i] !== snapSigs[i]) return false;
+  }
+  return true;
 }

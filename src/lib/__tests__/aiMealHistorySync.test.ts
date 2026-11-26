@@ -7,7 +7,9 @@ import {
   clearCoachEditBadgesOnMeal,
   computeMealItemChanges,
   computeShortPhotoHash,
+  doesMealMatchHistorySnapshot,
   mergeMealPhotoStore,
+  resolveMealPhotos,
 } from '../mealHistory';
 import {
   AI_JOB_STALE_TIMEOUT_MS,
@@ -105,6 +107,14 @@ describe('mealHistory helpers', () => {
       changes.map((c) => `${c.itemId}:${c.changeKind}`),
       ['egg-1:updated', 'cheese-1:added', 'bread-1:removed']
     );
+
+    // שינוי שעה או מאקרו ללא שינוי בגרם/קלוריות מציג תמיד את ההבדל האמיתי ולא טקסט זהה
+    const drinkOrig = makeFood('dr-1', 'משקה חלבון', 350, 221, 25.2);
+    const drinkTimeChanged: LoggedFoodItem = { ...drinkOrig, itemTime: '08:15' };
+    const subDiff = computeMealItemChanges([drinkOrig], [drinkTimeChanged]);
+    assert.equal(subDiff.length, 1);
+    assert.notEqual(subDiff[0].summary, subDiff[0].prevSummary);
+    assert.ok(subDiff[0].summary.includes('08:15'));
   });
 
   it('applies coach diff badges, deleted item restore notices, and clears badges completely on clearCoachEditBadgesOnMeal', () => {
@@ -285,5 +295,81 @@ describe('aiTracePruning FIFO + Pin caps', () => {
     assert.ok(crashedOut.some((r) => r.id === 'crashed-0'));
     assert.ok(crashedOut.some((r) => r.id === 'crashed-5'));
     assert.ok(!crashedOut.some((r) => r.id === 'crashed-1'));
+  });
+});
+
+describe('resolveMealPhotos & doesMealMatchHistorySnapshot', () => {
+  it('resolves photos from photoDataUrls/photoDataUrl and falls back to photoMetas + photoStore', () => {
+    const imgA = 'data:image/jpeg;base64,AAA111';
+    const imgB = 'data:image/webp;base64,BBB222';
+    const imgC = 'data:image/jpeg;base64,CCC333';
+    const hashB = computeShortPhotoHash(imgB);
+    const hashC = computeShortPhotoHash(imgC);
+
+    const direct = resolveMealPhotos({
+      photoDataUrl: imgA,
+      photoDataUrls: ['data:image/png;base64,DEMO', imgA, imgB],
+      photoStore: { [hashC]: imgC },
+      photoMetas: [{ hash: hashC, angle: 'top-down' }],
+    });
+    assert.deepEqual(direct, [imgA, imgB, imgC]);
+
+    const fromStoreOnly = resolveMealPhotos({
+      photoStore: { [hashC]: imgC, [hashB]: imgB },
+      photoMetas: [
+        { hash: hashB, angle: 'top-down' },
+        { hash: hashC, angle: 'label' },
+      ],
+    });
+    assert.deepEqual(fromStoreOnly, [imgB, imgC]);
+  });
+
+  it('hides rollback when meal matches snapshot even after manual revert with a new item id', () => {
+    const chicken = makeFood('chk-1', 'חזה עוף', 150, 240, 45);
+    const rice = makeFood('rice-1', 'אורז בסמטי', 120, 156, 3);
+    const initialMeal: LoggedMealEntry = {
+      mealSlotId: 'lunch',
+      items: [chicken, rice],
+      mealTime: '13:00',
+      updatedAt: '2026-11-26T13:00:00.000Z',
+    };
+
+    const recorded = appendMealHistoryEntry(
+      { ...initialMeal, items: [chicken] },
+      [chicken, rice],
+      {
+        kind: 'manual_edit',
+        actorId: 't1',
+        actorName: 'דני',
+        actorRole: 'trainee',
+        nextMealTime: '13:00',
+      }
+    );
+    assert.ok(recorded.entry);
+    const snapEntry = recorded.entry!;
+
+    // Current meal matches snapshot right after creation
+    assert.equal(doesMealMatchHistorySnapshot(initialMeal, snapEntry), true);
+
+    // Meal was edited later -> differs from snapshot, rollback should be offered
+    const editedMeal: LoggedMealEntry = {
+      ...initialMeal,
+      items: [chicken, makeFood('rice-1', 'אורז בסמטי', 200, 260, 5)],
+    };
+    assert.equal(doesMealMatchHistorySnapshot(editedMeal, snapEntry), false);
+
+    // Meal time alone differs -> differs from snapshot, rollback should be offered
+    const timeEditedMeal: LoggedMealEntry = {
+      ...initialMeal,
+      mealTime: '14:15',
+    };
+    assert.equal(doesMealMatchHistorySnapshot(timeEditedMeal, snapEntry), false);
+
+    // User manually deletes and re-adds rice with identical macros/grams -> new id, still matches!
+    const manuallyRevertedMeal: LoggedMealEntry = {
+      ...initialMeal,
+      items: [makeFood('rice-new-id', 'אורז בסמטי', 120, 156, 3), chicken],
+    };
+    assert.equal(doesMealMatchHistorySnapshot(manuallyRevertedMeal, snapEntry), true);
   });
 });

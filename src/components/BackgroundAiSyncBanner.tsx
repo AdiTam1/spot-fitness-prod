@@ -123,10 +123,10 @@ export function BackgroundAiSyncBanner({
             const isClarify = job.status === 'awaiting_clarification';
             const open = () => {
               if (onOpenJobMeal) {
-                onOpenJobMeal(job);
                 if (isOk) {
                   onAcknowledgeJob(job.id);
                 }
+                onOpenJobMeal(job);
               }
             };
             const retry = () => {

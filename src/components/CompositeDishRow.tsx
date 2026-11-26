@@ -137,6 +137,7 @@ export function CompositeDishRow({
 
     const normalized =
       field === 'calories' ? Math.round(parsed) : Math.round(parsed * 10) / 10;
+    if (normalized === target.macros[field]) return;
     const nextMacros = { ...target.macros, [field]: normalized };
     const nextTarget: LoggedFoodItem = {
       ...target,
@@ -165,9 +166,12 @@ export function CompositeDishRow({
     const parsed = parseOptionalDecimal(val);
     if (parsed === undefined || parsed <= 0) return;
 
+    const clamped = clampGrams(parsed, comp.grams);
+    if (Math.round(clamped * 10) === Math.round(comp.grams * 10)) return;
+
     const scaled = scaleSimpleFoodItemGrams(
       { ...comp, inputConfidence: 'reported' },
-      clampGrams(parsed, comp.grams)
+      clamped
     );
     const nextComps = item.components!.map((c) =>
       c.id === comp.id ? stripNestedComponents(scaled) : c
@@ -271,7 +275,7 @@ export function CompositeDishRow({
                   padding: '2px 7px',
                   borderRadius: 999,
                   background: 'rgba(56, 189, 248, 0.14)',
-                  color: '#38bdf8',
+                  color: 'var(--info-text)',
                 }}
               >
                 סיר {Math.round(item.recipeYieldGrams)}g
@@ -448,9 +452,11 @@ export function CompositeDishRow({
                 size="xs"
                 label="שם המנה"
                 value={item.name}
-                onChange={(e) =>
-                  onUpdateItem({ ...item, name: e.currentTarget.value })
-                }
+                onChange={(e) => {
+                  const nextName = e.currentTarget.value;
+                  if (nextName === item.name) return;
+                  onUpdateItem({ ...item, name: nextName });
+                }}
               />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)' }}>
@@ -463,7 +469,12 @@ export function CompositeDishRow({
                   ariaLabel={`שעה עבור ${item.name}`}
                   clearAriaLabel={`אפס שעה עבור ${item.name}`}
                   height={52}
-                  onChange={(val) => onUpdateItem({ ...item, itemTime: val || undefined })}
+                  onChange={(val) => {
+                    const clean =
+                      !item.itemTime && val === mealTimeFallback ? undefined : val || undefined;
+                    if ((clean || '') === (item.itemTime || '')) return;
+                    onUpdateItem({ ...item, itemTime: clean });
+                  }}
                 />
               </div>
             </div>
@@ -495,6 +506,9 @@ export function CompositeDishRow({
                   {sc.label}
                 </button>
               ))}
+              <CustomDishScaleInput
+                onApply={(factor) => onUpdateItem(scaleCompositeDishByFactor(item, factor))}
+              />
               {canSyncBackPreset && onSyncBackPreset && (
                 <button
                   type="button"
@@ -905,7 +919,12 @@ export function CompositeDishRow({
                   ariaLabel={`שעה עבור ${item.name}`}
                   clearAriaLabel={`אפס שעה עבור ${item.name}`}
                   height={52}
-                  onChange={(val) => onUpdateItem({ ...item, itemTime: val || undefined })}
+                  onChange={(val) => {
+                    const clean =
+                      !item.itemTime && val === mealTimeFallback ? undefined : val || undefined;
+                    if ((clean || '') === (item.itemTime || '')) return;
+                    onUpdateItem({ ...item, itemTime: clean });
+                  }}
                 />
               </div>
             </div>
@@ -924,9 +943,13 @@ export function CompositeDishRow({
                   onDraftChange?.(item.id, { ...(itemDraft || {}), grams: val });
                   const parsed = parseOptionalDecimal(val);
                   if (parsed !== undefined && parsed > 0) {
+                    const clamped = clampGrams(parsed, item.grams);
+                    if (Math.round(clamped * 10) === Math.round(item.grams * 10)) {
+                      return;
+                    }
                     const scaled = scaleSimpleFoodItemGrams(
                       { ...item, inputConfidence: 'reported' },
-                      clampGrams(parsed, item.grams)
+                      clamped
                     );
                     onUpdateItem(scaled);
                   }
@@ -999,5 +1022,86 @@ export function CompositeDishRow({
         )}
       </Collapse>
     </div>
+  );
+}
+
+function CustomDishScaleInput({
+  onApply,
+}: {
+  onApply: (factor: number) => void;
+}) {
+  const [draft, setDraft] = useState('');
+  const normalized = draft.trim().replace(',', '.');
+  const parsed = normalized ? Number(normalized) : NaN;
+  const isValid =
+    Number.isFinite(parsed) &&
+    parsed >= 0.05 &&
+    parsed <= 20 &&
+    Math.abs(parsed - 1) > 1e-6;
+
+  const commit = () => {
+    if (!isValid) return;
+    onApply(Math.round(parsed * 1000) / 1000);
+    setDraft('');
+  };
+
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+      }}
+    >
+      <input
+        type="text"
+        dir="ltr"
+        inputMode="decimal"
+        value={draft}
+        aria-label="מקדם הכפלה מותאם אישית"
+        placeholder="×0.7"
+        onChange={(e) => {
+          const val = e.target.value.replace(/[^0-9.,]/g, '');
+          setDraft(val);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+          }
+        }}
+        className="num-mono ltr-num"
+        style={{
+          width: 58,
+          height: 28,
+          borderRadius: 999,
+          border: '1px solid var(--line)',
+          background: 'var(--surface-2)',
+          color: 'var(--text)',
+          fontSize: 12,
+          fontWeight: 700,
+          textAlign: 'center',
+          padding: '0 7px',
+          outline: 'none',
+        }}
+      />
+      <button
+        type="button"
+        disabled={!isValid}
+        onClick={commit}
+        className="glass"
+        style={{
+          height: 28,
+          padding: '0 9px',
+          borderRadius: 999,
+          fontSize: 11.5,
+          fontWeight: 700,
+          cursor: isValid ? 'pointer' : 'default',
+          opacity: isValid ? 1 : 0.45,
+        }}
+      >
+        החל
+      </button>
+    </span>
   );
 }

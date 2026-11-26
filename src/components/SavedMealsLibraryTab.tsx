@@ -1079,7 +1079,7 @@ export function SavedMealsLibraryTab({
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <History size={13} color="var(--text-2)" />
-                    <span className="num-mono" style={{ fontSize: 12, fontWeight: 700, color: '#38bdf8' }}>
+                    <span className="num-mono" style={{ fontSize: 12, fontWeight: 700, color: 'var(--info-text)' }}>
                       {entry.date}
                     </span>
                     <span className="num-mono" style={{ fontSize: 12, fontWeight: 700 }}>
@@ -1626,7 +1626,7 @@ export function SavedMealsLibraryTab({
                           gap: 6,
                         }}
                       >
-                        <div style={{ fontSize: 12.5, fontWeight: 800, color: '#38bdf8' }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--info-text)' }}>
                           מתכון סיר ביתי · תפוקה מוכנה {Math.round(preset.recipeYieldGrams)} גרם
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

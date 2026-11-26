@@ -73,7 +73,10 @@ import {
   clearFailedAiDraft,
   saveFailedAiDraft,
 } from '@/lib/aiDraftStore';
-import { appendMealHistoryEntry } from '@/lib/mealHistory';
+import {
+  appendMealHistoryEntry,
+  computeMealItemChanges,
+} from '@/lib/mealHistory';
 import { AndroidForceUpdateGate } from '@/components/AndroidForceUpdateGate';
 import {
   AppUpdateInfo,
@@ -181,6 +184,7 @@ export default function HomePage() {
   const bgJobAbortControllersRef = useRef<Map<string, AbortController>>(
     new Map()
   );
+  const acknowledgedAiJobIdsRef = useRef<Set<string>>(new Set());
   const [externalOpenMealRequest, setExternalOpenMealRequest] = useState<{
     traineeId: string;
     date: string;
@@ -263,6 +267,7 @@ export default function HomePage() {
       bgJobAbortControllersRef.current.clear();
       setLiveBgJobIds([]);
       setLocalBgJobs([]);
+      acknowledgedAiJobIdsRef.current.clear();
       setExternalOpenMealRequest(null);
       setExternalSectionRequest(null);
       setPushPromptOpen(false);
@@ -939,6 +944,10 @@ export default function HomePage() {
           return;
         }
         void fetchAuthorizedData({ force: true });
+        // בסיום ניתוח AI מוצג כבר באנר השלמה מובנה בתוך האפליקציה — מונעים טוסט כפול
+        if (notif.target?.kind === 'ai-meal') {
+          return;
+        }
         notifications.show({
           title: notif.title || 'הודעה אישית מהמאמן',
           message: notif.body || 'המאמן שלך שלח לך עדכון חדש',
@@ -1260,6 +1269,7 @@ export default function HomePage() {
       setCoachDirectory([]);
       setCoachPreviewTraineeId(null);
       setLocalBgJobs([]);
+      acknowledgedAiJobIdsRef.current.clear();
     } finally {
       setLoggingOut(false);
     }
@@ -1866,7 +1876,9 @@ export default function HomePage() {
         merged.unshift(lj);
       }
     }
-    return normalizePendingAiJobs(merged).jobs;
+    return normalizePendingAiJobs(merged).jobs.filter(
+      (j) => !acknowledgedAiJobIdsRef.current.has(j.id)
+    );
   };
 
   const handleStartBackgroundAiAnalysis = async (payload: {
@@ -2119,6 +2131,7 @@ export default function HomePage() {
   };
 
   const handleAcknowledgeAiJob = async (jobId: string, traineeId?: string) => {
+    acknowledgedAiJobIdsRef.current.add(jobId);
     setLocalBgJobs((prev) => prev.filter((j) => j.id !== jobId));
     const targetId =
       traineeId ||
@@ -2152,6 +2165,7 @@ export default function HomePage() {
       bgJobAbortControllersRef.current.delete(jobId);
     }
     setLiveBgJobIds((prev) => prev.filter((id) => id !== jobId));
+    acknowledgedAiJobIdsRef.current.add(jobId);
     setLocalBgJobs((prev) => prev.filter((j) => j.id !== jobId));
 
     const targetId =
@@ -2203,6 +2217,35 @@ export default function HomePage() {
       mealTime !== undefined && /^\d{1,2}:\d{2}$/.test(mealTime.trim())
         ? mealTime.trim()
         : undefined;
+
+    const currentTarget = traineesRef.current.find((t) => t.id === traineeId);
+    const prevMealBeforeSave = currentTarget?.logs?.[date]?.meals?.[mealSlotId];
+    if (prevMealBeforeSave) {
+      const nextPhotosArr =
+        photoDataUrls && photoDataUrls.length > 0
+          ? photoDataUrls.slice(0, 16)
+          : photoDataUrl
+          ? [photoDataUrl]
+          : [];
+      const prevPhotosArr =
+        prevMealBeforeSave.photoDataUrls && prevMealBeforeSave.photoDataUrls.length > 0
+          ? prevMealBeforeSave.photoDataUrls
+          : prevMealBeforeSave.photoDataUrl
+          ? [prevMealBeforeSave.photoDataUrl]
+          : [];
+      const samePhotos =
+        nextPhotosArr.length === prevPhotosArr.length &&
+        nextPhotosArr.every((u, i) => u === prevPhotosArr[i]);
+      const sameMealTime =
+        (cleanMealTime ?? prevMealBeforeSave.mealTime ?? '') ===
+        (prevMealBeforeSave.mealTime || '');
+      const samePhotoNote =
+        (photoNote || '') === (prevMealBeforeSave.photoNote || '');
+      const itemDiffs = computeMealItemChanges(prevMealBeforeSave.items || [], items);
+      if (itemDiffs.length === 0 && samePhotos && sameMealTime && samePhotoNote) {
+        return;
+      }
+    }
 
     await commitTraineeMutation(traineeId, (t) => {
       const currentLog = t.logs[date] || {
@@ -2394,6 +2437,27 @@ export default function HomePage() {
       return;
     }
     const clean = normalizeHhMmTime(itemTime);
+    const currentTrainee = traineesRef.current.find((t) => t.id === traineeId);
+    const prevMealForTime = currentTrainee?.logs?.[date]?.meals?.[mealSlotId];
+    const targetItemForTime = prevMealForTime?.items?.find((it) => it.id === itemId);
+    if (!currentTrainee || !prevMealForTime || !targetItemForTime) return;
+    const slotDefaultTime =
+      normalizeHhMmTime(
+        prevMealForTime.mealTime ||
+          currentTrainee.workoutTemplate?.meals?.find((m) => m.id === mealSlotId)?.timeHint ||
+          currentTrainee.restTemplate?.meals?.find((m) => m.id === mealSlotId)?.timeHint ||
+          ''
+      ) || '';
+    const effectiveTime =
+      !targetItemForTime.itemTime && clean && slotDefaultTime && clean === slotDefaultTime
+        ? undefined
+        : clean;
+    if (
+      (effectiveTime || '') ===
+      (normalizeHhMmTime(targetItemForTime.itemTime || '') || '')
+    ) {
+      return;
+    }
     await commitTraineeMutation(traineeId, (t) => {
       const currentLog = t.logs[date];
       if (!currentLog) return t;
@@ -2402,7 +2466,7 @@ export default function HomePage() {
       const nextItems = existingMeal.items.map((it) => {
         if (it.id !== itemId) return it;
         const { itemTime: _old, ...rest } = it;
-        return clean ? { ...rest, itemTime: clean } : rest;
+        return effectiveTime ? { ...rest, itemTime: effectiveTime } : rest;
       });
       return {
         ...t,
@@ -3676,6 +3740,9 @@ export default function HomePage() {
             void handleCancelAiJob(jobId, loggedInTraineeProfile.id)
           }
           onOpenJobMeal={(job) => {
+            if (job.status === 'completed') {
+              acknowledgedAiJobIdsRef.current.add(job.id);
+            }
             void fetchAuthorizedData({ force: true });
             setExternalOpenMealRequest({
               traineeId: job.targetTraineeId,

@@ -149,6 +149,7 @@ import {
   handlePossibleAuthRejection,
   useSpotUnsavedEditing,
 } from '@/lib/webVersionGuard';
+import { resolveMealPhotos } from '@/lib/mealHistory';
 
 function formatDrawerDateLabel(selectedDate?: string): { dayTag: string; shortDate: string } | null {
   if (!selectedDate || !/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) return null;
@@ -577,15 +578,7 @@ export function AddMealDrawer({
   useEffect(() => {
     if (opened && mealSlot) {
       const openKey = `${mealSlot.id}::${selectedDate || ''}::${initialTab}`;
-      const entryPhotos =
-        existingEntry?.photoDataUrls && existingEntry.photoDataUrls.length > 0
-          ? existingEntry.photoDataUrls.filter(
-              (u) => Boolean(u) && !u.endsWith(',DEMO')
-            )
-          : existingEntry?.photoDataUrl &&
-            !existingEntry.photoDataUrl.endsWith(',DEMO')
-          ? [existingEntry.photoDataUrl]
-          : [];
+      const entryPhotos = resolveMealPhotos(existingEntry);
 
       if (lastOpenedKeyRef.current !== openKey) {
         lastOpenedKeyRef.current = openKey;
@@ -2222,14 +2215,7 @@ export function AddMealDrawer({
   };
 
   const initialEntryPhotos = useMemo(() => {
-    if (!existingEntry) return [];
-    if (existingEntry.photoDataUrls && existingEntry.photoDataUrls.length > 0) {
-      return existingEntry.photoDataUrls.filter((u) => Boolean(u) && !u.endsWith(',DEMO'));
-    }
-    if (existingEntry.photoDataUrl && !existingEntry.photoDataUrl.endsWith(',DEMO')) {
-      return [existingEntry.photoDataUrl];
-    }
-    return [];
+    return resolveMealPhotos(existingEntry);
   }, [existingEntry]);
 
   const allMealPhotos = useMemo(() => {
@@ -2297,15 +2283,15 @@ export function AddMealDrawer({
       if (!cur || !base) return true;
       if (
         cur.id !== base.id ||
-        cur.name !== base.name ||
+        cur.name.trim() !== base.name.trim() ||
         Math.round(cur.grams * 10) / 10 !== Math.round(base.grams * 10) / 10 ||
         (cur.unitLabel || '') !== (base.unitLabel || '') ||
         (normalizeHhMmTime(cur.itemTime || '') || '') !==
           (normalizeHhMmTime(base.itemTime || '') || '') ||
-        cur.macros.calories !== base.macros.calories ||
-        cur.macros.protein !== base.macros.protein ||
-        cur.macros.carbs !== base.macros.carbs ||
-        cur.macros.fat !== base.macros.fat ||
+        Math.round(cur.macros.calories) !== Math.round(base.macros.calories) ||
+        Math.round(cur.macros.protein * 10) !== Math.round(base.macros.protein * 10) ||
+        Math.round(cur.macros.carbs * 10) !== Math.round(base.macros.carbs * 10) ||
+        Math.round(cur.macros.fat * 10) !== Math.round(base.macros.fat * 10) ||
         JSON.stringify(cur.components || []) !== JSON.stringify(base.components || [])
       ) {
         return true;
@@ -3022,6 +3008,128 @@ export function AddMealDrawer({
   const fullScreen = activeTab !== 'hub' && activeTab !== 'catalog';
   const heroScreen = activeTab === 'meal-items' && allMealPhotos.length > 0;
 
+  const renderMealItemsToolbar = (title: string) => (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: 8,
+        flexWrap: 'wrap',
+      }}
+    >
+      <span style={{ fontSize: 17, fontWeight: 700 }}>{title}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          className="glass"
+          onClick={() => {
+            setHighlightedHistoryEventId(null);
+            navigateTab('meal-history');
+          }}
+          style={{
+            padding: '8px 12px',
+            borderRadius: 999,
+            fontSize: 13,
+            fontWeight: 700,
+            fontFamily: 'inherit',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 5,
+            whiteSpace: 'nowrap',
+            color: 'var(--text)',
+          }}
+        >
+          <History size={14} />
+          <span>
+            היסטוריה
+            {(existingEntry?.history?.length || 0) > 0
+              ? ` (${existingEntry!.history!.length})`
+              : ''}
+          </span>
+        </button>
+        {items.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              if (selectionMode) {
+                setSelectionMode(false);
+                setSelectedIds(new Set());
+              } else {
+                setSelectionMode(true);
+              }
+            }}
+            className="glass"
+            style={{
+              padding: '8px 12px',
+              borderRadius: 999,
+              fontSize: 13,
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              cursor: 'pointer',
+              borderColor: selectionMode ? 'var(--accent)' : undefined,
+              color: selectionMode ? 'var(--accent)' : 'var(--text)',
+            }}
+          >
+            <CheckSquare size={14} />
+            <span>{selectionMode ? 'סיים בחירה' : 'בחר'}</span>
+          </button>
+        )}
+        {selectionMode && items.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedIds.size > 0) {
+                setSelectedIds(new Set());
+              } else {
+                const all = new Set<string>();
+                for (const it of items) {
+                  all.add(it.id);
+                  for (const c of it.components || []) all.add(c.id);
+                }
+                setSelectedIds(all);
+              }
+            }}
+            className="glass"
+            style={{
+              padding: '8px 10px',
+              borderRadius: 999,
+              fontSize: 12.5,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            {selectedIds.size > 0 ? 'נקה' : 'בחר הכל'}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            setTargetDishIdForAdd(null);
+            navigateTab('hub');
+          }}
+          style={{
+            padding: '8px 14px',
+            borderRadius: 999,
+            border: 'none',
+            background: 'var(--contrast-btn-bg)',
+            color: 'var(--contrast-btn-text)',
+            fontSize: 13,
+            fontWeight: 700,
+            fontFamily: 'inherit',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          + הוסף עוד פריטים
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <>
       <Drawer
@@ -3111,6 +3219,11 @@ export function AddMealDrawer({
                 {activeTab === 'ai-recommend' && (
                   <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
                     {mealSlot.name} · המלצות המאמן וה-AI
+                  </div>
+                )}
+                {activeTab === 'meal-history' && (
+                  <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
+                    היסטוריית עריכות, שליחות AI ושחזור
                   </div>
                 )}
                 {activeTab !== 'ai-recommend' && activeTab !== 'saved-meals' && (
@@ -5432,7 +5545,7 @@ export function AddMealDrawer({
                                               : 'var(--surface-2)',
                                           color:
                                             im.labelProductName === prod
-                                              ? '#0b0f17'
+                                              ? 'var(--on-accent)'
                                               : 'var(--text)',
                                           fontSize: 12,
                                           fontWeight: 600,
@@ -5603,7 +5716,7 @@ export function AddMealDrawer({
                           background: includePreviousMealPhotos
                             ? 'var(--accent)'
                             : 'transparent',
-                          color: '#0b0f17',
+                          color: 'var(--on-accent)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -5959,68 +6072,8 @@ export function AddMealDrawer({
             {/* פאנל נפרד לניהול ועריכת המרכיבים שכבר בארוחה (נפתח מלחיצה על הכרטיסייה התחתונה) */}
             {activeTab === 'meal-items' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div
-                  style={{
-                    display: heroScreen ? 'none' : 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: 8,
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <span style={{ fontSize: 17, fontWeight: 700 }}>
-                    מרכיבי הארוחה הנוכחית ({items.length})
-                  </span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <button
-                      type="button"
-                      className="glass"
-                      onClick={() => {
-                        setHighlightedHistoryEventId(null);
-                        navigateTab('meal-history');
-                      }}
-                      style={{
-                        padding: '8px 12px',
-                        borderRadius: 999,
-                        fontSize: 13,
-                        fontWeight: 700,
-                        fontFamily: 'inherit',
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 5,
-                        whiteSpace: 'nowrap',
-                        color: 'var(--text)',
-                      }}
-                    >
-                      <History size={14} />
-                      <span>
-                        היסטוריה
-                        {(existingEntry?.history?.length || 0) > 0
-                          ? ` (${existingEntry!.history!.length})`
-                          : ''}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => navigateTab('hub')}
-                      style={{
-                        padding: '8px 14px',
-                        borderRadius: 999,
-                        border: 'none',
-                        background: 'var(--contrast-btn-bg)',
-                        color: 'var(--contrast-btn-text)',
-                        fontSize: 13,
-                        fontWeight: 700,
-                        fontFamily: 'inherit',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      + הוסף עוד פריטים
-                    </button>
-                  </div>
-                </div>
+                {!heroScreen &&
+                  renderMealItemsToolbar(`מרכיבי הארוחה הנוכחית (${items.length})`)}
 
                 {/* Result header (design: PhotoResult) — photo hero + totals vs meal target */}
                 {allMealPhotos.length > 0 && (
@@ -6158,129 +6211,8 @@ export function AddMealDrawer({
                   </div>
                 </div>
 
-                {heroScreen && (
-                <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      gap: 8,
-                      flexWrap: 'wrap',
-                    }}
-                  >
-                    <span style={{ fontSize: 17, fontWeight: 700 }}>
-                      פריטי הארוחה ({items.length})
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        className="glass"
-                        onClick={() => {
-                          setHighlightedHistoryEventId(null);
-                          navigateTab('meal-history');
-                        }}
-                        style={{
-                          padding: '8px 12px',
-                          borderRadius: 999,
-                          fontSize: 13,
-                          fontWeight: 700,
-                          fontFamily: 'inherit',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 5,
-                          whiteSpace: 'nowrap',
-                          color: 'var(--text)',
-                        }}
-                      >
-                        <History size={14} />
-                        <span>
-                          היסטוריה
-                          {(existingEntry?.history?.length || 0) > 0
-                            ? ` (${existingEntry!.history!.length})`
-                            : ''}
-                        </span>
-                      </button>
-                      {items.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (selectionMode) {
-                              setSelectionMode(false);
-                              setSelectedIds(new Set());
-                            } else {
-                              setSelectionMode(true);
-                            }
-                          }}
-                          className="glass"
-                          style={{
-                            padding: '8px 12px',
-                            borderRadius: 999,
-                            fontSize: 13,
-                            fontWeight: 700,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 5,
-                            cursor: 'pointer',
-                            borderColor: selectionMode ? 'var(--accent)' : undefined,
-                            color: selectionMode ? 'var(--accent)' : 'var(--text)',
-                          }}
-                        >
-                          <CheckSquare size={14} />
-                          <span>{selectionMode ? 'סיים בחירה' : 'בחר'}</span>
-                        </button>
-                      )}
-                      {selectionMode && items.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (selectedIds.size > 0) {
-                              setSelectedIds(new Set());
-                            } else {
-                              const all = new Set<string>();
-                              for (const it of items) {
-                                all.add(it.id);
-                                for (const c of it.components || []) all.add(c.id);
-                              }
-                              setSelectedIds(all);
-                            }
-                          }}
-                          className="glass"
-                          style={{
-                            padding: '8px 10px',
-                            borderRadius: 999,
-                            fontSize: 12.5,
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {selectedIds.size > 0 ? 'נקה' : 'בחר הכל'}
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTargetDishIdForAdd(null);
-                          navigateTab('hub');
-                        }}
-                        style={{
-                          padding: '8px 14px',
-                          borderRadius: 999,
-                          border: 'none',
-                          background: 'var(--contrast-btn-bg)',
-                          color: 'var(--contrast-btn-text)',
-                          fontSize: 13,
-                          fontWeight: 700,
-                          fontFamily: 'inherit',
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        + הוסף עוד פריטים
-                      </button>
-                    </div>
-                  </div>
-                  )}
+                {heroScreen &&
+                  renderMealItemsToolbar(`פריטי הארוחה (${items.length})`)}
 
                 {learnedRuleHint && (
                   <div

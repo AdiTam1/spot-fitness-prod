@@ -20,6 +20,7 @@ import type {
   MealHistoryEntry,
   PhotoAngleKind,
 } from '@/types/nutrition';
+import { doesMealMatchHistorySnapshot } from '@/lib/mealHistory';
 
 interface MealHistoryPanelProps {
   meal?: LoggedMealEntry;
@@ -55,6 +56,13 @@ const ANGLE_BADGE: Record<PhotoAngleKind, string> = {
   'side-45': '~45° מהצד',
   other: 'זווית נוספת',
 };
+
+function cleanDisplayText(raw: string): string {
+  return String(raw || '')
+    .replace(/&#x27;|&#39;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/&amp;/gi, '&');
+}
 
 export function MealHistoryPanel({
   meal,
@@ -96,7 +104,19 @@ export function MealHistoryPanel({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 4, paddingBottom: 12 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingInline: 2,
+        }}
+      >
+        <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-2)' }}>
+          ציר זמן עריכות ושליחות ({history.length})
+        </span>
+      </div>
       {history.map((ev) => {
         const isCoach =
           ev.kind === 'coach_edit' ||
@@ -124,26 +144,26 @@ export function MealHistoryPanel({
         return (
           <div
             key={ev.id}
+            className="pro-card"
             style={{
-              borderRadius: 18,
-              padding: 12,
+              borderRadius: 22,
+              padding: '14px 15px',
               background: isHighlighted
-                ? 'rgba(245, 158, 11, 0.12)'
+                ? 'var(--accent-soft)'
                 : isFailed
                 ? 'rgba(239, 68, 68, 0.08)'
-                : isCoach
-                ? 'var(--sel-bg)'
-                : 'var(--surface-2)',
+                : 'var(--card)',
               border: isHighlighted
                 ? '1.5px solid var(--accent)'
                 : isFailed
-                ? '1px solid rgba(239, 68, 68, 0.35)'
+                ? '1px solid rgba(239, 68, 68, 0.38)'
                 : isCoach
-                ? '1px solid var(--sel-border)'
+                ? '1.5px solid rgba(214, 125, 9, 0.45)'
                 : '1px solid var(--line)',
               display: 'flex',
               flexDirection: 'column',
-              gap: 8,
+              gap: 10,
+              color: 'var(--text)',
             }}
           >
             {/* כותרת האירוע + דלתא קלורית */}
@@ -156,25 +176,59 @@ export function MealHistoryPanel({
                 flexWrap: 'wrap',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                {isFailed ? (
-                  <AlertTriangle size={14} color="var(--danger-text)" />
-                ) : ev.aiDetail ? (
-                  <Sparkles size={14} color="var(--accent)" />
-                ) : (
-                  <User size={14} color="var(--text-2)" />
-                )}
-                <span style={{ fontSize: 13.5, fontWeight: 800 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                <span
+                  aria-hidden
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: '50%',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: isFailed
+                      ? 'rgba(239, 68, 68, 0.14)'
+                      : isCoach || ev.aiDetail
+                      ? 'var(--accent-soft)'
+                      : 'var(--fill-1)',
+                    color: isFailed
+                      ? 'var(--danger-text)'
+                      : isCoach || ev.aiDetail
+                      ? 'var(--accent-orange-bright)'
+                      : 'var(--text-2)',
+                    flexShrink: 0,
+                  }}
+                >
+                  {isFailed ? (
+                    <AlertTriangle size={14} />
+                  ) : ev.aiDetail ? (
+                    <Sparkles size={14} />
+                  ) : (
+                    <User size={14} />
+                  )}
+                </span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>
                   {isCoach ? `המאמן ${ev.actorName}` : ev.actorName}
                 </span>
                 <span
                   style={{
                     fontSize: 11,
                     fontWeight: 700,
-                    padding: '2px 8px',
+                    padding: '2px 9px',
                     borderRadius: 999,
-                    background: 'var(--card)',
-                    border: '1px solid var(--line)',
+                    background: isCoach
+                      ? 'var(--accent-soft)'
+                      : isFailed
+                      ? 'rgba(239, 68, 68, 0.12)'
+                      : 'var(--fill-1)',
+                    border: isCoach
+                      ? '1px solid rgba(214, 125, 9, 0.32)'
+                      : '1px solid var(--line)',
+                    color: isCoach
+                      ? 'var(--accent-orange-bright)'
+                      : isFailed
+                      ? 'var(--danger-text)'
+                      : 'var(--text-2)',
                   }}
                 >
                   {KIND_LABELS[ev.kind] || ev.kind}
@@ -185,6 +239,12 @@ export function MealHistoryPanel({
                     style={{
                       fontSize: 11.5,
                       fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: 999,
+                      background:
+                        ev.deltaCalories > 0
+                          ? 'rgba(34, 197, 94, 0.12)'
+                          : 'rgba(245, 158, 11, 0.14)',
                       color:
                         ev.deltaCalories > 0 ? 'var(--ok-text)' : 'var(--warn-text)',
                     }}
@@ -199,7 +259,8 @@ export function MealHistoryPanel({
                 className="num-mono"
                 style={{
                   fontSize: 11.5,
-                  color: 'var(--text-2)',
+                  fontWeight: 600,
+                  color: 'var(--text-3)',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 4,
@@ -210,8 +271,8 @@ export function MealHistoryPanel({
               </span>
             </div>
 
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-              {ev.summary}
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)', lineHeight: 1.4 }}>
+              {cleanDisplayText(ev.summary)}
             </div>
 
             {/* פירוט מה שנשלח ל-AI */}
@@ -220,12 +281,13 @@ export function MealHistoryPanel({
                 style={{
                   fontSize: 12.5,
                   color: 'var(--text-2)',
-                  background: 'var(--card)',
-                  padding: '6px 10px',
-                  borderRadius: 10,
+                  background: 'var(--fill-1)',
+                  border: '1px solid var(--line)',
+                  padding: '8px 11px',
+                  borderRadius: 12,
                 }}
               >
-                <strong>נשלח:</strong> &quot;{ev.aiDetail.prompt}&quot;
+                <strong style={{ color: 'var(--text)' }}>נשלח:</strong> &quot;{ev.aiDetail.prompt}&quot;
               </div>
             )}
             {ev.aiDetail?.adjustmentPrompt && (
@@ -233,12 +295,13 @@ export function MealHistoryPanel({
                 style={{
                   fontSize: 12.5,
                   color: 'var(--text-2)',
-                  background: 'var(--card)',
-                  padding: '6px 10px',
-                  borderRadius: 10,
+                  background: 'var(--fill-1)',
+                  border: '1px solid var(--line)',
+                  padding: '8px 11px',
+                  borderRadius: 12,
                 }}
               >
-                <strong>בקשת תיקון:</strong> &quot;{ev.aiDetail.adjustmentPrompt}&quot;
+                <strong style={{ color: 'var(--text)' }}>בקשת תיקון:</strong> &quot;{ev.aiDetail.adjustmentPrompt}&quot;
               </div>
             )}
             {ev.aiDetail?.chips && ev.aiDetail.chips.length > 0 && (
@@ -248,9 +311,10 @@ export function MealHistoryPanel({
                     key={c}
                     style={{
                       fontSize: 11,
-                      padding: '2px 8px',
+                      fontWeight: 600,
+                      padding: '2px 9px',
                       borderRadius: 999,
-                      background: 'var(--card)',
+                      background: 'var(--fill-1)',
                       border: '1px solid var(--line)',
                       color: 'var(--text-2)',
                     }}
@@ -264,7 +328,7 @@ export function MealHistoryPanel({
             {/* שאלות הבהרה ובחירת המשתמש */}
             {ev.aiDetail?.clarificationAnswers &&
               ev.aiDetail.clarificationAnswers.length > 0 && (
-                <div style={{ fontSize: 12, color: 'var(--ok-text)' }}>
+                <div style={{ fontSize: 12, color: 'var(--ok-text)', fontWeight: 600 }}>
                   <Check size={12} style={{ display: 'inline', marginLeft: 4 }} />
                   <strong>בחירתך בשאלת תווית:</strong>{' '}
                   {ev.aiDetail.clarificationAnswers
@@ -293,14 +357,14 @@ export function MealHistoryPanel({
                     }
                     style={{
                       border: '1px solid var(--line)',
-                      borderRadius: 12,
-                      padding: 4,
-                      background: 'var(--card)',
+                      borderRadius: 14,
+                      padding: 5,
+                      background: 'var(--fill-1)',
                       cursor: 'pointer',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      gap: 3,
+                      gap: 4,
                     }}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -311,7 +375,7 @@ export function MealHistoryPanel({
                         width: 64,
                         height: 64,
                         objectFit: 'cover',
-                        borderRadius: 8,
+                        borderRadius: 10,
                       }}
                     />
                     <span
@@ -333,126 +397,145 @@ export function MealHistoryPanel({
 
             {/* פירוט שינויים + כפתור שחזור לפריטים שנמחקו ע"י מאמן */}
             {ev.itemChanges && ev.itemChanges.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                {ev.itemChanges.map((ch, idx) => (
-                  <div
-                    key={`${ch.itemId}-${idx}`}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      gap: 8,
-                      fontSize: 12,
-                      padding: '4px 8px',
-                      borderRadius: 10,
-                      background: 'var(--card)',
-                    }}
-                  >
-                    <span>
-                      <strong>
-                        {ch.changeKind === 'added'
-                          ? '+'
-                          : ch.changeKind === 'removed'
-                          ? '−'
-                          : '~'}{' '}
-                        {ch.name}
-                      </strong>{' '}
-                      · <span style={{ color: 'var(--text-2)' }}>{ch.summary}</span>
-                      {ch.prevSummary && ch.changeKind === 'updated' && (
-                        <span style={{ color: 'var(--text-3)' }}>
-                          {' '}
-                          (קודם: {ch.prevSummary})
-                        </span>
-                      )}
-                    </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {ev.itemChanges.map((ch, idx) => {
+                  const badgeCol =
+                    ch.changeKind === 'added'
+                      ? 'var(--ok-text)'
+                      : ch.changeKind === 'removed'
+                      ? 'var(--danger-text)'
+                      : 'var(--info-text)';
+                  const badgeSym =
+                    ch.changeKind === 'added'
+                      ? '+'
+                      : ch.changeKind === 'removed'
+                      ? '−'
+                      : '~';
+                  return (
+                    <div
+                      key={`${ch.itemId}-${idx}`}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: 8,
+                        fontSize: 12.5,
+                        padding: '8px 11px',
+                        borderRadius: 14,
+                        background: 'var(--fill-1)',
+                        border: '1px solid var(--line)',
+                        color: 'var(--text)',
+                      }}
+                    >
+                      <span style={{ lineHeight: 1.45 }}>
+                        <strong style={{ color: badgeCol, marginInlineEnd: 4 }}>
+                          {badgeSym}
+                        </strong>
+                        <strong>{cleanDisplayText(ch.name)}</strong>{' '}
+                        <span style={{ color: 'var(--text-2)' }}>· {ch.summary}</span>
+                        {ch.prevSummary && ch.changeKind === 'updated' && (
+                          <span style={{ color: 'var(--text-3)' }}>
+                            {' '}
+                            (קודם: {ch.prevSummary})
+                          </span>
+                        )}
+                      </span>
 
-                    {ch.changeKind === 'removed' &&
-                      ch.removedItem &&
-                      onRestoreCoachDeletedItem && (
-                        <button
-                          type="button"
-                          disabled={busyId === `${ev.id}-${ch.itemId}`}
-                          onClick={async () => {
-                            setBusyId(`${ev.id}-${ch.itemId}`);
-                            try {
-                              await onRestoreCoachDeletedItem({
-                                historyEventId: ev.id,
-                                itemId: ch.itemId,
-                              });
-                            } finally {
-                              setBusyId(null);
-                            }
-                          }}
-                          className="btn-volt"
-                          style={{
-                            height: 28,
-                            padding: '0 10px',
-                            fontSize: 11.5,
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            flexShrink: 0,
-                          }}
-                        >
-                          שחזר
-                        </button>
-                      )}
-                  </div>
-                ))}
+                      {ch.changeKind === 'removed' &&
+                        ch.removedItem &&
+                        onRestoreCoachDeletedItem && (
+                          <button
+                            type="button"
+                            disabled={busyId === `${ev.id}-${ch.itemId}`}
+                            onClick={async () => {
+                              setBusyId(`${ev.id}-${ch.itemId}`);
+                              try {
+                                await onRestoreCoachDeletedItem({
+                                  historyEventId: ev.id,
+                                  itemId: ch.itemId,
+                                });
+                              } finally {
+                                setBusyId(null);
+                              }
+                            }}
+                            className="btn-volt"
+                            style={{
+                              minHeight: 30,
+                              height: 30,
+                              padding: '0 12px',
+                              fontSize: 12,
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                            }}
+                          >
+                            שחזר
+                          </button>
+                        )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 
             {/* פעולות תחתונות: שלח שוב בשגיאה / Rollback לנקודה בזמן */}
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {isFailed && onRetryFailed && (
-                <button
-                  type="button"
-                  onClick={() => onRetryFailed(ev.aiDetail?.retryDraftPayload, ev)}
-                  className="btn-volt"
-                  style={{
-                    height: 34,
-                    padding: '0 12px',
-                    fontSize: 12.5,
-                    fontWeight: 700,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <RotateCcw size={13} />
-                  <span>שלח שוב</span>
-                </button>
-              )}
+            {((isFailed && onRetryFailed) || (Array.isArray(ev.itemsSnapshot) && !isFailed && onRollbackToEntry)) && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 2 }}>
+                {isFailed && onRetryFailed && (
+                  <button
+                    type="button"
+                    onClick={() => onRetryFailed(ev.aiDetail?.retryDraftPayload, ev)}
+                    className="btn-volt"
+                    style={{
+                      minHeight: 36,
+                      height: 36,
+                      padding: '0 14px',
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <RotateCcw size={13} />
+                    <span>שלח שוב</span>
+                  </button>
+                )}
 
-              {Array.isArray(ev.itemsSnapshot) && !isFailed && onRollbackToEntry && (
-                <button
-                  type="button"
-                  disabled={busyId === ev.id}
-                  onClick={async () => {
-                    setBusyId(ev.id);
-                    try {
-                      await onRollbackToEntry(ev.id);
-                    } finally {
-                      setBusyId(null);
-                    }
-                  }}
-                  className="btn-surface"
-                  style={{
-                    height: 32,
-                    padding: '0 11px',
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <RotateCcw size={12} />
-                  <span>{busyId === ev.id ? 'משחזר...' : 'החזר למצב זה'}</span>
-                </button>
-              )}
-            </div>
+                {Array.isArray(ev.itemsSnapshot) &&
+                  !isFailed &&
+                  onRollbackToEntry &&
+                  !doesMealMatchHistorySnapshot(meal, ev) && (
+                  <button
+                    type="button"
+                    disabled={busyId === ev.id}
+                    onClick={async () => {
+                      setBusyId(ev.id);
+                      try {
+                        await onRollbackToEntry(ev.id);
+                      } finally {
+                        setBusyId(null);
+                      }
+                    }}
+                    className="btn-surface"
+                    style={{
+                      height: 34,
+                      padding: '0 13px',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <RotateCcw size={12} />
+                    <span>{busyId === ev.id ? 'משחזר...' : 'החזר למצב זה'}</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         );
       })}

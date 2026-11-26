@@ -485,7 +485,7 @@ export function AdminAiTracesInspector({
                         alignItems: 'center',
                         gap: 4,
                         cursor: 'pointer',
-                        color: trace.isSaved ? 'var(--accent)' : 'var(--text-2)',
+                        color: trace.isSaved ? 'var(--accent-orange-bright)' : 'var(--text-2)',
                       }}
                     >
                       <Bookmark size={13} />

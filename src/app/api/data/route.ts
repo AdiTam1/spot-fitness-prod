@@ -62,6 +62,7 @@ import {
   appendMealHistoryEntry,
   applyCoachDiffToMeal,
   clearCoachEditBadgesOnMeal,
+  resolveMealPhotos,
   stripTransientCoachBadges,
 } from '@/lib/mealHistory';
 import { diagnoseSupabaseError } from '@/lib/supabase';
@@ -148,9 +149,23 @@ function recordTraineeMealDiffsToHistory(
         !prevMeal?.history?.some((p) => p.id === nextMeal.history![0].id);
 
       const finalNextItems = nextMeal?.items || [];
+      const nextMealPhotos = resolveMealPhotos(nextMeal);
+      const prevMealPhotos = resolveMealPhotos(prevMeal);
+      const mergedMealPhotos = [...nextMealPhotos, ...prevMealPhotos]
+        .filter((u, idx, arr) => Boolean(u) && arr.indexOf(u) === idx)
+        .slice(0, 16);
+      const mergedPrimaryPhoto =
+        nextMeal?.photoDataUrl ||
+        prevMeal?.photoDataUrl ||
+        mergedMealPhotos[0];
+
       const baseMeal: LoggedMealEntry = nextMeal
         ? {
             ...nextMeal,
+            ...(mergedPrimaryPhoto ? { photoDataUrl: mergedPrimaryPhoto } : {}),
+            ...(mergedMealPhotos.length > 0
+              ? { photoDataUrls: mergedMealPhotos }
+              : {}),
             photoStore: {
               ...(prevMeal?.photoStore || {}),
               ...(nextMeal.photoStore || {}),
@@ -172,6 +187,10 @@ function recordTraineeMealDiffsToHistory(
         : {
             mealSlotId: slotId,
             items: [],
+            ...(mergedPrimaryPhoto ? { photoDataUrl: mergedPrimaryPhoto } : {}),
+            ...(mergedMealPhotos.length > 0
+              ? { photoDataUrls: mergedMealPhotos }
+              : {}),
             photoStore: prevMeal?.photoStore,
             photoMetas: prevMeal?.photoMetas,
             coachEditState: prevMeal?.coachEditState,

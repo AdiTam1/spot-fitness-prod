@@ -33,22 +33,37 @@ self.addEventListener('push', (event) => {
   const spotData = payload.spotData || notif.data || {};
   const tag = notif.tag || spotData.spotPushId || `spot-push-${Date.now()}`;
 
-  const showPromise = self.registration.showNotification(title, {
-    body,
-    icon: notif.icon || '/icon-192x192.png',
-    badge: '/icon-192x192.png',
-    tag,
-    dir: 'rtl',
-    lang: 'he-IL',
-    data: {
-      navigate: targetUrl,
-      spotScreen: spotData.spotScreen,
-      spotMealSlotId: spotData.spotMealSlotId,
-      spotTraineeId: spotData.spotTraineeId,
-      spotDate: spotData.spotDate,
-      spotPushId: spotData.spotPushId,
-      spotKind: spotData.spotKind,
-    },
+  const hasVisibleWindowPromise =
+    spotData.spotKind === 'ai-meal' && self.clients && self.clients.matchAll
+      ? self.clients
+          .matchAll({ type: 'window', includeUncontrolled: true })
+          .then((list) =>
+            list.some(
+              (c) => c.visibilityState === 'visible' || Boolean(c.focused)
+            )
+          )
+          .catch(() => false)
+      : Promise.resolve(false);
+
+  const showPromise = hasVisibleWindowPromise.then((hasVisible) => {
+    if (hasVisible) return;
+    return self.registration.showNotification(title, {
+      body,
+      icon: notif.icon || '/icon-192x192.png',
+      badge: '/icon-192x192.png',
+      tag,
+      dir: 'rtl',
+      lang: 'he-IL',
+      data: {
+        navigate: targetUrl,
+        spotScreen: spotData.spotScreen,
+        spotMealSlotId: spotData.spotMealSlotId,
+        spotTraineeId: spotData.spotTraineeId,
+        spotDate: spotData.spotDate,
+        spotPushId: spotData.spotPushId,
+        spotKind: spotData.spotKind,
+      },
+    });
   });
 
   const badgeCount =

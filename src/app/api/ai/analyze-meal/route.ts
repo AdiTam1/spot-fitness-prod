@@ -1050,7 +1050,7 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
       });
 
       const validPhotosForStore = validatedImages
-        .filter((v) => v.rawDataUrl.length < 400_000)
+        .filter((v) => v.rawDataUrl.length < 750_000)
         .slice(0, 8);
       const sanitizedPhotos = validPhotosForStore.map((v) => v.rawDataUrl);
 

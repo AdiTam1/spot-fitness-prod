@@ -61,6 +61,7 @@ import {
 import type { CustomFoodsMutationResult } from '@/components/CustomFoodModal';
 import { getTodayIso, sumMacros } from '@/data/israeliFoodCatalog';
 import { hasCompositeComponents } from '@/lib/compositeDishes';
+import { resolveMealPhotos } from '@/lib/mealHistory';
 import {
   ALL_MEAL_SHORTCUT_OPTIONS,
   DEFAULT_MEAL_CARD_SHORTCUTS,
@@ -2096,7 +2097,7 @@ export function TraineeMobileView({
                     const loggedItems = entry?.items || [];
                     const mealMacros = sumMacros(loggedItems.map((i) => i.macros));
                     const hasItems = loggedItems.length > 0;
-                    const photoThumb = entry?.photoDataUrl || entry?.photoDataUrls?.[0];
+                    const photoThumb = resolveMealPhotos(entry)[0];
                     const isExpanded = Boolean(expandedMealIds[slot.id]);
                     const itemSummaryText = hasItems
                       ? `${loggedItems.length} ${loggedItems.length === 1 ? 'פריט' : 'פריטים'} · ${loggedItems.map((it) => it.name).join(', ')}`
