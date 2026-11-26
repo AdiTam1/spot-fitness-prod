@@ -6,6 +6,12 @@ import {
   verifyCsrfOrigin,
 } from '@/lib/serverAuth';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import {
+  buildRateLimitAnalytics,
+  RateLimitRawApiRow,
+  RateLimitRawAuditRow,
+  RateLimitRawCounterRow,
+} from '@/lib/rateLimitAnalytics';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -404,8 +410,52 @@ export async function GET(request: NextRequest) {
       );
     }
     if (aiReasonCode) {
-      aiLogsQuery = aiLogsQuery.eq('ai_usage->>reasonCode', aiReasonCode);
+      aiLogsQuery = aiLogsQuery.or(
+        `ai_usage->>reasonCode.eq.${aiReasonCode},error_code.eq.${aiReasonCode}`
+      );
     }
+
+    let rlApiQuery = supabase
+      .from('api_request_logs')
+      .select(
+        'id, created_at, request_id, method, route_pattern, action_name, status_code, actor_id, actor_role, platform, app_version_code, error_code, error_message, ai_usage'
+      )
+      .gte('created_at', sinceIso)
+      .or('status_code.eq.429,error_code.eq.RATE_LIMITED')
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    if (actorId) {
+      rlApiQuery = rlApiQuery.eq('actor_id', actorId);
+    }
+    if (requestId) {
+      rlApiQuery = rlApiQuery.eq('request_id', requestId);
+    }
+
+    let rlDegradedQuery = supabase
+      .from('audit_activity_events')
+      .select(
+        'id, created_at, request_id, actor_id, actor_role, platform, app_version_code, metadata'
+      )
+      .gte('created_at', sinceIso)
+      .eq('category', 'ai')
+      .eq('action', 'rate_limit_degraded')
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (actorId) {
+      rlDegradedQuery = rlDegradedQuery.eq('actor_id', actorId);
+    }
+    if (requestId) {
+      rlDegradedQuery = rlDegradedQuery.eq('request_id', requestId);
+    }
+
+    const rlCountersQuery = supabase
+      .from('api_rate_limit_counters')
+      .select('bucket_key, window_start, window_seconds, hit_count, expires_at')
+      .gt('hit_count', 0)
+      .gte('expires_at', new Date().toISOString())
+      .limit(400);
 
     let clientQuery = supabase
       .from('client_telemetry_events')
@@ -427,24 +477,35 @@ export async function GET(request: NextRequest) {
       aiStatsRes.error && isMissingSchemaError(aiStatsRes.error.message)
     );
 
-    const [auditRes, apiRes, aiLogsRes, clientRes, aiFallbackRowsRes] =
-      await Promise.all([
-        auditQuery,
-        apiQuery,
-        aiLogsQuery,
-        clientQuery,
-        aiStatsNeedsFallback
-          ? supabase
-              .from('api_request_logs')
-              .select(
-                'id, created_at, request_id, method, route_pattern, action_name, status_code, duration_ms, actor_id, actor_role, platform, app_version_code, error_code, error_message, ai_usage'
-              )
-              .gte('created_at', sinceIso)
-              .like('route_pattern', '/api/ai/%')
-              .order('created_at', { ascending: false })
-              .limit(1000)
-          : Promise.resolve({ data: null, error: null }),
-      ]);
+    const [
+      auditRes,
+      apiRes,
+      aiLogsRes,
+      clientRes,
+      aiFallbackRowsRes,
+      rlApiRes,
+      rlDegradedRes,
+      rlCountersRes,
+    ] = await Promise.all([
+      auditQuery,
+      apiQuery,
+      aiLogsQuery,
+      clientQuery,
+      aiStatsNeedsFallback
+        ? supabase
+            .from('api_request_logs')
+            .select(
+              'id, created_at, request_id, method, route_pattern, action_name, status_code, duration_ms, actor_id, actor_role, platform, app_version_code, error_code, error_message, ai_usage'
+            )
+            .gte('created_at', sinceIso)
+            .like('route_pattern', '/api/ai/%')
+            .order('created_at', { ascending: false })
+            .limit(1000)
+        : Promise.resolve({ data: null, error: null }),
+      rlApiQuery,
+      rlDegradedQuery,
+      rlCountersQuery,
+    ]);
 
     const firstSchemaErr = [auditRes.error, apiRes.error, clientRes.error].find(
       (e) => e && isMissingSchemaError(e.message)
@@ -465,15 +526,30 @@ export async function GET(request: NextRequest) {
           hours
         );
 
+    const rateLimitCountersPending = Boolean(
+      rlCountersRes.error && isMissingSchemaError(rlCountersRes.error.message)
+    );
+
+    const rateLimitStats = buildRateLimitAnalytics({
+      apiRows: (rlApiRes.data || []) as RateLimitRawApiRow[],
+      degradedAuditRows: (rlDegradedRes.data || []) as RateLimitRawAuditRow[],
+      counterRows: rateLimitCountersPending
+        ? []
+        : ((rlCountersRes.data || []) as RateLimitRawCounterRow[]),
+      actorFilter: actorId || undefined,
+    });
+
     return NextResponse.json(
       {
         ok: true,
         setupRequired: false,
         aiStatsRpcPending: aiStatsNeedsFallback,
+        rateLimitCountersPending,
         page,
         pageSize: PAGE_SIZE,
         summary: summaryRes.data || null,
         aiStats,
+        rateLimitStats,
         aiLogs: aiLogsRes.data || [],
         auditEvents: auditRes.data || [],
         apiLogs: apiRes.data || [],

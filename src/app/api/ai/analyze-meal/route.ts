@@ -20,8 +20,9 @@ import {
   verifyCsrfOrigin,
 } from '@/lib/serverAuth';
 import {
-  buildRateLimitHeaders,
+  buildRateLimitBlockedPayload,
   consumeRoleRateLimit,
+  recordRateLimitTelemetry,
 } from '@/lib/roleRateLimit';
 import { authenticateActiveSession } from '@/lib/liveAuth';
 import { normalizeHhMmTime } from '@/lib/numericInput';
@@ -494,23 +495,13 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
     // 2. הגנת Rate-Limit לפי תפקיד (דקה / שעה / יום)
     const rl = await consumeRoleRateLimit(sessionUser, 'ai_analyze');
     if (!rl.allowed) {
-      ctx.setErrorCode('RATE_LIMITED', rl.messageHe || 'מכסת AI מוצתה');
-      return NextResponse.json(
-        {
-          error:
-            rl.messageHe ||
-            'הגעת למכסת פענוחי ה-AI. ניתן להזין מוצרים מהמאגר.',
-          rateLimit: {
-            window: rl.blockedWindow,
-            retryAfterSec: rl.retryAfterSec,
-            role: rl.role,
-          },
-        },
-        {
-          status: 429,
-          headers: buildRateLimitHeaders(rl),
-        }
-      );
+      const fallback = 'הגעת למכסת פענוחי ה-AI. ניתן להזין מוצרים מהמאגר.';
+      recordRateLimitTelemetry(ctx, rl, { fallbackMessageHe: fallback });
+      const errRes = buildRateLimitBlockedPayload(rl, fallback);
+      return NextResponse.json(errRes.body, {
+        status: 429,
+        headers: errRes.headers,
+      });
     }
 
     const body = await request.json();

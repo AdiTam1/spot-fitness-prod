@@ -44,6 +44,9 @@ export interface ApiAiUsageMeta {
   reasonCode?: string;
   failureReason?: string;
   itemCount?: number;
+  rateLimitScope?: string;
+  rateLimitWindow?: 'minute' | 'hour' | 'day' | 'role';
+  rateLimitRole?: string;
 }
 
 export interface ApiLogInput {

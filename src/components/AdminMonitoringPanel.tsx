@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Search,
   ServerCrash,
+  ShieldAlert,
   Smartphone,
   Sparkles,
   Trash2,
@@ -20,6 +21,8 @@ import {
   XCircle,
 } from 'lucide-react';
 import { SegmentedPill } from './ui/SegmentedPill';
+import { AdminRateLimitsSection } from './AdminRateLimitsSection';
+import type { RateLimitAnalyticsPayload } from '@/lib/rateLimitAnalytics';
 import type { CoachProfile, TraineeProfile } from '@/types/nutrition';
 
 interface AdminMonitoringPanelProps {
@@ -221,7 +224,7 @@ export function AdminMonitoringPanel({
   onNotify,
 }: AdminMonitoringPanelProps) {
   const [hours, setHours] = useState<string>('168');
-  const [viewTab, setViewTab] = useState<'ai' | 'audit' | 'api' | 'client'>('ai');
+  const [viewTab, setViewTab] = useState<'ai' | 'rateLimits' | 'audit' | 'api' | 'client'>('ai');
   const [actorFilter, setActorFilter] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [aiOutcomeFilter, setAiOutcomeFilter] = useState<string>('');
@@ -237,6 +240,8 @@ export function AdminMonitoringPanel({
   const [summary, setSummary] = useState<MonitoringSummary | null>(null);
   const [aiStats, setAiStats] = useState<AiStatsPayload | null>(null);
   const [aiStatsRpcPending, setAiStatsRpcPending] = useState<boolean>(false);
+  const [rateLimitStats, setRateLimitStats] = useState<RateLimitAnalyticsPayload | null>(null);
+  const [rateLimitCountersPending, setRateLimitCountersPending] = useState<boolean>(false);
   const [aiLogs, setAiLogs] = useState<ApiLogRow[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditRow[]>([]);
   const [apiLogs, setApiLogs] = useState<ApiLogRow[]>([]);
@@ -300,6 +305,8 @@ export function AdminMonitoringPanel({
       setSummary(data.summary || null);
       setAiStats(data.aiStats || null);
       setAiStatsRpcPending(Boolean(data.aiStatsRpcPending));
+      setRateLimitStats(data.rateLimitStats || null);
+      setRateLimitCountersPending(Boolean(data.rateLimitCountersPending));
       setAiLogs(Array.isArray(data.aiLogs) ? data.aiLogs : []);
       setAuditEvents(Array.isArray(data.auditEvents) ? data.auditEvents : []);
       setApiLogs(Array.isArray(data.apiLogs) ? data.apiLogs : []);
@@ -357,9 +364,16 @@ export function AdminMonitoringPanel({
   const windowLabel =
     hours === '24' ? '24 שעות' : hours === '168' ? '7 ימים' : '30 יום';
 
+  const rateLimitedBlockedCount =
+    rateLimitStats?.totalBlocked429 ?? summary?.api?.rateLimited ?? 0;
+  const rateLimitedTotalBadges =
+    rateLimitedBlockedCount + (rateLimitStats?.totalDegraded ?? 0);
+
   const currentListLen =
     viewTab === 'ai'
       ? aiLogs.length
+      : viewTab === 'rateLimits'
+      ? rateLimitStats?.recentEvents.length ?? 0
       : viewTab === 'audit'
       ? auditEvents.length
       : viewTab === 'api'
@@ -556,6 +570,51 @@ export function AdminMonitoringPanel({
               תמונות AI: {aiTotals.totalImages ?? 0} ({Math.round((aiTotals.totalImageKB ?? 0) / 1024)} MB)
             </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setPage(0);
+              setViewTab('rateLimits');
+            }}
+            className="pro-card"
+            style={{
+              padding: 14,
+              borderRadius: 20,
+              textAlign: 'start',
+              cursor: 'pointer',
+              color: 'var(--text)',
+              fontFamily: 'inherit',
+              border:
+                viewTab === 'rateLimits'
+                  ? '1px solid var(--accent)'
+                  : undefined,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--text-2)', marginBottom: 6 }}>
+              <ShieldAlert size={14} color="#f59e0b" />
+              <span>חסימות Rate Limit ({windowLabel})</span>
+            </div>
+            <div
+              className="num-mono"
+              style={{
+                fontSize: 24,
+                fontWeight: 800,
+                color: rateLimitedBlockedCount > 0 ? 'var(--warn-text)' : 'var(--text)',
+              }}
+            >
+              {rateLimitedBlockedCount}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-2)' }}>
+              {rateLimitStats
+                ? `${rateLimitStats.uniqueBlockedActors} משתמשים נחסמו${
+                    rateLimitStats.totalDegraded > 0
+                      ? ` · ${rateLimitStats.totalDegraded} נסיגות`
+                      : ''
+                  }`
+                : 'לחץ לפירוט מכסות וחסימות'}
+            </div>
+          </button>
         </div>
       )}
 
@@ -699,15 +758,31 @@ export function AdminMonitoringPanel({
         value={viewTab}
         onChange={(v) => {
           setPage(0);
-          setViewTab(v as 'ai' | 'audit' | 'api' | 'client');
+          setViewTab(v as 'ai' | 'rateLimits' | 'audit' | 'api' | 'client');
         }}
         options={[
           { value: 'ai', label: `מרכז AI (${totalAiCalls})` },
+          { value: 'rateLimits', label: `חסימות ומכסות (${rateLimitedTotalBadges})` },
           { value: 'audit', label: `יומן פעילות (${auditEvents.length})` },
           { value: 'api', label: `לוגי API (${apiLogs.length})` },
           { value: 'client', label: `צד לקוח (${clientEvents.length})` },
         ]}
       />
+
+      {viewTab === 'rateLimits' && !setupRequired && (
+        <AdminRateLimitsSection
+          data={rateLimitStats}
+          countersPending={rateLimitCountersPending}
+          windowLabel={windowLabel}
+          actorFilter={actorFilter}
+          onSelectActor={(id) => {
+            setPage(0);
+            setActorFilter(id);
+          }}
+          resolveActorName={resolveActorName}
+          formatTimeHe={formatTimeHe}
+        />
+      )}
 
       {viewTab === 'ai' && !setupRequired && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1441,7 +1516,7 @@ export function AdminMonitoringPanel({
         </div>
       )}
 
-      {!setupRequired && (
+      {!setupRequired && viewTab !== 'rateLimits' && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <button
             type="button"

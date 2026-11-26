@@ -20,8 +20,9 @@ import {
 } from '@/lib/supabase';
 import { AuthSessionUser, FoodCatalogItem, ScraperSourceId } from '@/types/nutrition';
 import {
-  buildRateLimitHeaders,
+  buildRateLimitBlockedPayload,
   consumeRoleRateLimit,
+  recordRateLimitTelemetry,
 } from '@/lib/roleRateLimit';
 import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
 
@@ -240,24 +241,13 @@ export const POST = withTelemetryHandler('/api/admin/scrapers', async (request, 
             'admin_backfill_embeddings'
           );
           if (!rl.allowed) {
-            ctx.setErrorCode(
-              'RATE_LIMITED',
-              rl.messageHe || 'מכסת אינדוקס Embeddings מוצתה'
-            );
-            return NextResponse.json(
-              {
-                error: rl.messageHe || 'חריגה ממכסת אינדוקס Embeddings',
-                rateLimit: {
-                  window: rl.blockedWindow,
-                  retryAfterSec: rl.retryAfterSec,
-                  role: rl.role,
-                },
-              },
-              {
-                status: 429,
-                headers: buildRateLimitHeaders(rl),
-              }
-            );
+            const fallback = 'חריגה ממכסת אינדוקס Embeddings';
+            recordRateLimitTelemetry(ctx, rl, { fallbackMessageHe: fallback });
+            const errRes = buildRateLimitBlockedPayload(rl, fallback);
+            return NextResponse.json(errRes.body, {
+              status: 429,
+              headers: errRes.headers,
+            });
           }
         }
         const batchSize = Math.min(250, Math.max(10, Number(body.pages) || 50));

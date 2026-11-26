@@ -246,6 +246,75 @@ export async function consumeRoleRateLimit(
   };
 }
 
+export interface RateLimitTelemetrySink {
+  setErrorCode: (errorCode?: string, errorMessage?: string) => void;
+  setAiUsage: (usage: {
+    outcome?: 'succeeded' | 'fallback' | 'failed' | 'cancelled';
+    reasonCode?: string;
+    failureReason?: string;
+    rateLimitScope?: string;
+    rateLimitWindow?: RateLimitWindow;
+    rateLimitRole?: string;
+  }) => void;
+  recordAudit: (event: {
+    category: 'ai';
+    action: string;
+    status?: 'denied' | 'failed' | 'success';
+    metadata?: Record<string, unknown>;
+  }) => void;
+}
+
+export function buildRateLimitBlockedPayload(
+  res: RoleRateLimitResult,
+  fallbackMessageHe: string
+) {
+  return {
+    body: {
+      error: res.messageHe || fallbackMessageHe,
+      rateLimit: {
+        scope: res.scope,
+        window: res.blockedWindow,
+        retryAfterSec: res.retryAfterSec,
+        role: res.role,
+      },
+    },
+    headers: buildRateLimitHeaders(res),
+  };
+}
+
+export function recordRateLimitTelemetry(
+  ctx: RateLimitTelemetrySink,
+  res: RoleRateLimitResult,
+  options?: { degraded?: boolean; fallbackMessageHe?: string }
+): void {
+  if (options?.degraded) {
+    ctx.recordAudit({
+      category: 'ai',
+      action: 'rate_limit_degraded',
+      status: 'denied',
+      metadata: {
+        scope: res.scope,
+        window: res.blockedWindow || 'unknown',
+        role: res.role,
+        quota: res.quota,
+        messageHe: res.messageHe || options?.fallbackMessageHe || '',
+      },
+    });
+    return;
+  }
+
+  const msg = res.messageHe || options?.fallbackMessageHe || 'חריגה ממכסת השימוש';
+  ctx.setErrorCode('RATE_LIMITED', msg);
+  ctx.setAiUsage({
+    outcome: 'failed',
+    reasonCode: 'RATE_LIMITED',
+    failureReason: msg,
+    rateLimitScope: res.scope,
+    rateLimitWindow: res.blockedWindow,
+    rateLimitRole: res.role,
+  });
+}
+
 export function buildRateLimitHeaders(res: RoleRateLimitResult): Record<string, string> {
   const headers: Record<string, string> = {};
   if (typeof res.retryAfterSec === 'number' && !res.allowed && res.retryAfterSec > 0) {

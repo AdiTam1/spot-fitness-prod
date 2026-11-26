@@ -5,8 +5,9 @@ import { FoodCatalogItem, ScraperSourceId } from '@/types/nutrition';
 import { authenticateActiveSession } from '@/lib/liveAuth';
 import { sanitizeText } from '@/lib/serverAuth';
 import {
-  buildRateLimitHeaders,
+  buildRateLimitBlockedPayload,
   consumeRoleRateLimit,
+  recordRateLimitTelemetry,
 } from '@/lib/roleRateLimit';
 import { mergeUniqueUnits, normalizeFoodKey, normalizeFoodSearchQuery } from '@/lib/scrapers/helpers';
 import {
@@ -225,25 +226,16 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
     requestedMode === 'live' ? 'food_search_live' : 'food_search_db'
   );
   if (!rl.allowed) {
-    ctx.setErrorCode('RATE_LIMITED', rl.messageHe || 'חריגה ממכסת בקשות חיפוש');
-    return NextResponse.json(
-      {
-        error:
-          rl.messageHe ||
-          (requestedMode === 'live'
-            ? 'בוצעו יותר מדי חיפושים חיים ברשת. המתן כדקה ונסה שוב.'
-            : 'קצב החיפוש מהיר מדי. המתן רגע ונסה שוב.'),
-        rateLimit: {
-          window: rl.blockedWindow,
-          retryAfterSec: rl.retryAfterSec,
-          role: rl.role,
-        },
-      },
-      {
-        status: 429,
-        headers: buildRateLimitHeaders(rl),
-      }
-    );
+    const fallback =
+      requestedMode === 'live'
+        ? 'בוצעו יותר מדי חיפושים חיים ברשת. המתן כדקה ונסה שוב.'
+        : 'קצב החיפוש מהיר מדי. המתן רגע ונסה שוב.';
+    recordRateLimitTelemetry(ctx, rl, { fallbackMessageHe: fallback });
+    const errRes = buildRateLimitBlockedPayload(rl, fallback);
+    return NextResponse.json(errRes.body, {
+      status: 429,
+      headers: errRes.headers,
+    });
   }
 
   const limit = Math.min(60, Math.max(8, Number(searchParams.get('limit')) || 36));
@@ -362,6 +354,9 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
     let queryVecText = cachedQueryVecText;
     if (!queryVecText) {
       const embedRl = await consumeRoleRateLimit(session, 'food_search_embed');
+      if (!embedRl.allowed) {
+        recordRateLimitTelemetry(ctx, embedRl, { degraded: true });
+      }
       queryVecText = (
         await getOrCreateQueryEmbeddingText(rawQuery.trim(), {
           allowGeminiCall: embedRl.allowed,
