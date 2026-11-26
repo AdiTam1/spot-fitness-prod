@@ -745,9 +745,15 @@ function buildSanitizedSavedPreset(
 }
 
 export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
+  const reqStartMs = Date.now();
   const auth = await authenticateActiveSession(request, { touchLastSeen: true });
+  const authMs = Date.now() - reqStartMs;
   if (!auth.ok) {
-    ctx.setErrorCode(auth.code, auth.message);
+    if (auth.diagUid) {
+      ctx.setActor({ id: auth.diagUid, role: auth.diagRole || 'trainee' });
+    }
+    ctx.setErrorCode(auth.diagCode, auth.message);
+    ctx.setAiUsage({ diag: { authMs, ...(auth.diagDetails || {}) } });
     return auth.response;
   }
   const session = auth.session;
@@ -755,10 +761,21 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
 
   // 1. מתאמן מחובר: מקבל אך ורק את הפרופיל של עצמו + צ'יפים קבוצתיים/כלליים לקונטקסט AI
   if (session.role === 'trainee') {
+    const profileStartMs = Date.now();
     const myProfile = await getSingleTraineeFromServer(session.id);
-    if (!myProfile || myProfile.status !== 'active') {
+    const profileMs = Date.now() - profileStartMs;
+    if (!myProfile) {
+      ctx.setErrorCode('PROFILE_LOAD_FAILED', 'טעינת הפרופיל מהשרת נכשלה זמנית');
+      ctx.setAiUsage({ diag: { authMs, profileMs } });
+      return NextResponse.json(
+        { error: 'תקלה זמנית בטעינת הפרופיל — נסה שוב בעוד רגע', transient: true },
+        { status: 503, headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      );
+    }
+    if (myProfile.status !== 'active') {
+      ctx.setErrorCode('ACCOUNT_BLOCKED', 'החשבון אינו פעיל');
       const res = NextResponse.json(
-        { error: 'החשבון אינו פעיל' },
+        { error: 'החשבון אינו פעיל', code: 'ACCOUNT_BLOCKED' },
         { status: 403, headers: { 'Cache-Control': 'no-store, max-age=0' } }
       );
       return clearSessionCookie(res);
@@ -785,11 +802,13 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
       ...(Array.isArray(myProfile.sharedCoachIds) ? myProfile.sharedCoachIds : []),
     ].filter(Boolean);
 
+    const extrasStartMs = Date.now();
     const [chipsCtx, customFoodsCtx, semanticSearchEnabled] = await Promise.all([
       getQuickChipsContextForTrainee(myProfile.groupId),
       getCustomFoodsContextForUser({ coachIds: coachIdsForTrainee }),
       getSemanticSearchEnabledFast(),
     ]);
+    const extrasMs = Date.now() - extrasStartMs;
 
     const sharedCoachCustomFoods: Record<string, typeof customFoodsCtx.globalCustomFoods> = {};
     for (const cId of coachIdsForTrainee) {
@@ -799,22 +818,57 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
       }
     }
 
-    return NextResponse.json(
-      {
-        trainees: [sanitizeTraineeForClient(myProfile)],
-        templates: [],
-        groups: [],
-        coaches: [],
-        coachDirectory: [],
-        globalQuickChips: chipsCtx.globalQuickChips,
-        groupQuickChips: chipsCtx.groupQuickChips,
-        globalCustomFoods: customFoodsCtx.globalCustomFoods,
-        sharedCoachCustomFoods,
-        semanticSearchEnabled,
-        role: 'trainee',
+    const logEntries = Object.values(myProfile.logs || {});
+    let approxPhotosCount = 0;
+    for (const dayLog of logEntries) {
+      for (const meal of Object.values(dayLog?.meals || {})) {
+        const directCount = Array.isArray(meal?.photoDataUrls)
+          ? meal.photoDataUrls.length
+          : meal?.photoDataUrl
+          ? 1
+          : 0;
+        const storeCount = meal?.photoStore
+          ? Object.keys(meal.photoStore).length
+          : 0;
+        approxPhotosCount += Math.max(directCount, storeCount);
+      }
+    }
+
+    const responseBody = JSON.stringify({
+      trainees: [sanitizeTraineeForClient(myProfile)],
+      templates: [],
+      groups: [],
+      coaches: [],
+      coachDirectory: [],
+      globalQuickChips: chipsCtx.globalQuickChips,
+      groupQuickChips: chipsCtx.groupQuickChips,
+      globalCustomFoods: customFoodsCtx.globalCustomFoods,
+      sharedCoachCustomFoods,
+      semanticSearchEnabled,
+      role: 'trainee',
+    });
+    const payloadKB = Math.round(Buffer.byteLength(responseBody, 'utf8') / 1024);
+
+    ctx.setActionName('trainee_sync');
+    ctx.setAiUsage({
+      diag: {
+        authMs,
+        profileMs,
+        extrasMs,
+        payloadKB,
+        logsDaysCount: logEntries.length,
+        approxPhotosCount,
       },
-      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
-    );
+    });
+
+    return new NextResponse(responseBody, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store, max-age=0',
+        'x-spot-payload-kb': String(payloadKB),
+      },
+    });
   }
 
   const state = await getServerDbState();
@@ -915,7 +969,10 @@ async function handleDataPost(
 
   const auth = await authenticateActiveSession(request, { touchLastSeen: true });
   if (!auth.ok) {
-    ctx.setErrorCode(auth.code, auth.message);
+    if (auth.diagUid) {
+      ctx.setActor({ id: auth.diagUid, role: auth.diagRole || 'trainee' });
+    }
+    ctx.setErrorCode(auth.diagCode, auth.message);
     return auth.response;
   }
   const session = auth.session;

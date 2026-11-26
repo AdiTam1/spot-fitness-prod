@@ -101,8 +101,12 @@ import {
   subscribeSpotEditingBusy,
 } from '@/lib/webVersionGuard';
 import {
+  clearKnownAuthSessionHint,
   detectClientPlatform,
+  getClientRuntimeContext,
+  getKnownAuthSessionHint,
   initClientTelemetry,
+  recordKnownAuthSessionHint,
   trackClientEvent,
 } from '@/lib/telemetry/clientTracker';
 import { normalizeHhMmTime } from '@/lib/numericInput';
@@ -222,6 +226,13 @@ export default function HomePage() {
   const mutationEpochRef = useRef<number>(0);
   const lastFetchAtRef = useRef<number>(0);
   const lastHeartbeatAtRef = useRef<number>(0);
+  const lastSlowDataDiagAtRef = useRef<number>(0);
+  const lastDataFetchDiagRef = useRef<{
+    ok: boolean;
+    status: number;
+    durationMs: number;
+    payloadKB: number;
+  }>({ ok: false, status: 0, durationMs: 0, payloadKB: 0 });
   useEffect(() => {
     currentUserRef.current = currentUser;
   }, [currentUser]);
@@ -240,8 +251,24 @@ export default function HomePage() {
   }, []);
 
   const clearAllClientSessionState = useCallback(
-    (notice?: { code: AuthRejectionCode; message: string }) => {
-      const hadUser = Boolean(currentUserRef.current);
+    (notice?: { code: AuthRejectionCode; message: string }, source = 'unknown') => {
+      const prevUser = currentUserRef.current;
+      const hadUser = Boolean(prevUser);
+      if (hadUser || notice) {
+        trackClientEvent('client_error', 'session_kicked_mid_use', {
+          screen: prevUser?.role === 'trainee' ? 'trainee_app' : 'auth_gate',
+          flushNow: true,
+          details: {
+            source,
+            hadUser,
+            code: notice?.code || 'UNAUTHENTICATED',
+            message: notice?.message,
+            userId: prevUser?.id,
+            role: prevUser?.role,
+            ...getClientRuntimeContext(),
+          },
+        });
+      }
       abortAllPendingPostActions();
       currentUserRef.current = null;
       setSyncError(null);
@@ -301,7 +328,7 @@ export default function HomePage() {
     cleanRefreshQueryParamOnMount();
     const stopClientTelemetry = initClientTelemetry();
     const unsubKick = subscribeAuthKicked((detail) => {
-      clearAllClientSessionState(detail);
+      clearAllClientSessionState(detail, 'auth_kicked_event');
     });
 
     const handleChunkFailure = (rawReason: unknown) => {
@@ -373,17 +400,21 @@ export default function HomePage() {
     };
   }, []);
 
-  const fetchAuthorizedData = useCallback(async (opts?: { force?: boolean }) => {
+  const fetchAuthorizedData = useCallback(async (opts?: { force?: boolean }): Promise<void> => {
     if (!opts?.force && syncingCountRef.current > 0) {
+      lastDataFetchDiagRef.current = { ok: true, status: 200, durationMs: 0, payloadKB: 0 };
       return;
     }
     const startEpoch = mutationEpochRef.current;
-    lastFetchAtRef.current = Date.now();
+    const reqStartedAt = Date.now();
+    lastFetchAtRef.current = reqStartedAt;
     try {
       const dataRes = await fetch(`/api/data?t=${Date.now()}`, {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
       });
+      const durationMs = Math.max(0, Date.now() - reqStartedAt);
+      const payloadKBHeader = Number(dataRes.headers.get('x-spot-payload-kb') || 0);
       if (dataRes.status === 401 || dataRes.status === 403) {
         const errBody = (await dataRes.json().catch(() => null)) as {
           code?: AuthRejectionCode;
@@ -392,17 +423,42 @@ export default function HomePage() {
         clearAllClientSessionState(
           errBody?.code && errBody.code !== 'UNAUTHENTICATED' && errBody.error
             ? { code: errBody.code, message: errBody.error }
-            : undefined
+            : undefined,
+          `api_data_${dataRes.status}`
         );
+        lastDataFetchDiagRef.current = { ok: false, status: dataRes.status, durationMs, payloadKB: 0 };
         return;
       }
       if (dataRes.ok) {
         const remoteData = await dataRes.json();
+        const resolvedPayloadKB =
+          Number.isFinite(payloadKBHeader) && payloadKBHeader > 0
+            ? payloadKBHeader
+            : Math.round(JSON.stringify(remoteData).length / 1024);
+
+        if (
+          (durationMs >= 1500 || resolvedPayloadKB >= 300) &&
+          Date.now() - lastSlowDataDiagAtRef.current >= 90_000
+        ) {
+          lastSlowDataDiagAtRef.current = Date.now();
+          trackClientEvent('performance', 'api_data_profile', {
+            screen: currentUserRef.current?.role === 'trainee' ? 'trainee_app' : 'coach_dashboard',
+            flushNow: true,
+            details: {
+              durationMs,
+              payloadKB: resolvedPayloadKB,
+              forced: Boolean(opts?.force),
+              ...getClientRuntimeContext(),
+            },
+          });
+        }
+
         // אם בוצעה בינתיים שמירה מקומית חדשה בזמן שהמשיכה הייתה באוויר — אל תדרוס state טרי
         if (
           !opts?.force &&
           (syncingCountRef.current > 0 || mutationEpochRef.current !== startEpoch)
         ) {
+          lastDataFetchDiagRef.current = { ok: true, status: dataRes.status, durationMs, payloadKB: resolvedPayloadKB };
           return;
         }
         if (Array.isArray(remoteData.trainees)) {
@@ -459,9 +515,17 @@ export default function HomePage() {
         if (remoteData.dbError) {
           setSyncError(remoteData.dbError);
         }
+        lastDataFetchDiagRef.current = { ok: true, status: dataRes.status, durationMs, payloadKB: resolvedPayloadKB };
+        return;
       }
+      lastDataFetchDiagRef.current = { ok: false, status: dataRes.status, durationMs, payloadKB: 0 };
     } catch {
-      // ignore network error
+      lastDataFetchDiagRef.current = {
+        ok: false,
+        status: 0,
+        durationMs: Math.max(0, Date.now() - reqStartedAt),
+        payloadKB: 0,
+      };
     }
   }, [clearAllClientSessionState]);
 
@@ -522,25 +586,31 @@ export default function HomePage() {
       }
 
       if (
-        (res.status === 401 || res.status === 403 || data?.authenticated === false) &&
+        (res.status === 401 || res.status === 403) &&
         currentUserRef.current &&
         data?.code &&
         data.code !== 'UNAUTHENTICATED'
       ) {
-        clearAllClientSessionState({
-          code: data.code,
-          message:
-            data.error ||
-            'החיבור למערכת הופסק מרחוק. אנא התחבר מחדש.',
-        });
+        clearAllClientSessionState(
+          {
+            code: data.code,
+            message:
+              data.error ||
+              'החיבור למערכת הופסק מרחוק. אנא התחבר מחדש.',
+          },
+          `heartbeat_${res.status}`
+        );
         return;
       }
 
       if (res.status === 401 && currentUserRef.current) {
-        clearAllClientSessionState({
-          code: 'SESSION_REVOKED',
-          message: 'פג תוקף החיבור או שנותקת מהמערכת. אנא התחבר מחדש.',
-        });
+        clearAllClientSessionState(
+          {
+            code: 'SESSION_REVOKED',
+            message: 'פג תוקף החיבור או שנותקת מהמערכת. אנא התחבר מחדש.',
+          },
+          'heartbeat_401'
+        );
         return;
       }
 
@@ -592,33 +662,130 @@ export default function HomePage() {
 
   useEffect(() => {
     async function initSecureSession() {
+      const bootStartAt = Date.now();
+      const priorHint = getKnownAuthSessionHint();
+      let sessionMs = 0;
+      let hbMs = 0;
       try {
-        const [sessionRes] = await Promise.all([
-          fetch(`/api/auth/session?t=${Date.now()}`, { cache: 'no-store' }),
-          runHeartbeatAndVersionCheck(),
-        ]);
+        const sessionStartAt = Date.now();
+        const sessionPromise = fetch(`/api/auth/session?t=${Date.now()}`, {
+          cache: 'no-store',
+        }).then((r) => {
+          sessionMs = Math.max(0, Date.now() - sessionStartAt);
+          return r;
+        });
+        const hbStartAt = Date.now();
+        const hbPromise = runHeartbeatAndVersionCheck().finally(() => {
+          hbMs = Math.max(0, Date.now() - hbStartAt);
+        });
+        const [sessionRes] = await Promise.all([sessionPromise, hbPromise]);
+
         if (sessionRes.ok) {
           const sessionData = (await sessionRes.json()) as {
             user?: AuthSessionUser | null;
             code?: AuthRejectionCode;
+            diagCode?: string;
             error?: string;
           };
           if (sessionData.user) {
+            recordKnownAuthSessionHint(sessionData.user);
             setCurrentUser(sessionData.user);
             await fetchAuthorizedData();
-          } else if (
-            sessionData.code &&
-            sessionData.code !== 'UNAUTHENTICATED' &&
-            sessionData.error
-          ) {
-            setSessionNotice({
-              code: sessionData.code,
-              message: sessionData.error,
-            });
+            const dataDiag = lastDataFetchDiagRef.current;
+            const totalReadyMs = Math.max(0, Date.now() - bootStartAt);
+            if (
+              totalReadyMs >= 2000 ||
+              sessionMs >= 800 ||
+              dataDiag.payloadKB >= 250 ||
+              !dataDiag.ok
+            ) {
+              trackClientEvent(
+                dataDiag.ok ? 'performance' : 'client_error',
+                'app_startup_profile',
+                {
+                  screen:
+                    sessionData.user.role === 'trainee'
+                      ? 'trainee_app'
+                      : 'coach_dashboard',
+                  flushNow: true,
+                  details: {
+                    sessionMs,
+                    hbMs,
+                    dataMs: dataDiag.durationMs,
+                    dataStatus: dataDiag.status,
+                    dataPayloadKB: dataDiag.payloadKB,
+                    totalReadyMs,
+                    hadPriorSession: Boolean(priorHint),
+                    userId: sessionData.user.id,
+                    ...getClientRuntimeContext(),
+                  },
+                }
+              );
+            }
+          } else {
+            if (priorHint) {
+              trackClientEvent('client_error', 'session_lost_on_startup', {
+                screen: 'auth_gate',
+                flushNow: true,
+                details: {
+                  priorUserId: priorHint.userId,
+                  priorRole: priorHint.role,
+                  priorPlatform: priorHint.platform,
+                  priorAgeMin: priorHint.setAt
+                    ? Math.max(0, Math.round((Date.now() - priorHint.setAt) / 60_000))
+                    : null,
+                  sessionStatus: sessionRes.status,
+                  diagCode: sessionData.diagCode || 'UNAUTHENTICATED_NO_COOKIE',
+                  code: sessionData.code,
+                  sessionMs,
+                  hbMs,
+                  totalReadyMs: Math.max(0, Date.now() - bootStartAt),
+                  ...getClientRuntimeContext(),
+                },
+              });
+            }
+            if (
+              sessionData.code &&
+              sessionData.code !== 'UNAUTHENTICATED' &&
+              sessionData.error
+            ) {
+              setSessionNotice({
+                code: sessionData.code,
+                message: sessionData.error,
+              });
+            }
           }
+        } else if (priorHint && sessionRes.status !== 503) {
+          trackClientEvent('client_error', 'session_lost_on_startup', {
+            screen: 'auth_gate',
+            flushNow: true,
+            details: {
+              priorUserId: priorHint.userId,
+              priorRole: priorHint.role,
+              priorPlatform: priorHint.platform,
+              sessionStatus: sessionRes.status,
+              diagCode: `HTTP_${sessionRes.status}`,
+              sessionMs,
+              hbMs,
+              ...getClientRuntimeContext(),
+            },
+          });
         }
-      } catch {
-        // ignore
+      } catch (err) {
+        if (priorHint) {
+          trackClientEvent('client_error', 'session_startup_network_error', {
+            screen: 'auth_gate',
+            flushNow: true,
+            details: {
+              priorUserId: priorHint.userId,
+              priorRole: priorHint.role,
+              message: err instanceof Error ? err.message : 'network error',
+              sessionMs,
+              hbMs,
+              ...getClientRuntimeContext(),
+            },
+          });
+        }
       } finally {
         setHydrated(true);
       }
@@ -1142,12 +1309,15 @@ export default function HomePage() {
           cloned?.code === 'SESSION_REVOKED' ||
           cloned?.code === 'ACCOUNT_BLOCKED'
         ) {
-          clearAllClientSessionState({
-            code: cloned?.code || 'SESSION_REVOKED',
-            message:
-              cloned?.error ||
-              'נותקת מהמערכת או שחשבונך הושהה. אנא התחבר מחדש.',
-          });
+          clearAllClientSessionState(
+            {
+              code: cloned?.code || 'SESSION_REVOKED',
+              message:
+                cloned?.error ||
+                'נותקת מהמערכת או שחשבונך הושהה. אנא התחבר מחדש.',
+            },
+            `post_action_${res.status}`
+          );
         }
       }
       return res;
@@ -1219,6 +1389,7 @@ export default function HomePage() {
 
   const handleLoginSuccess = async (user: AuthSessionUser) => {
     abortAllPendingPostActions();
+    recordKnownAuthSessionHint(user);
     setSessionNotice(null);
     setCurrentUser(user);
     setCoachPreviewTraineeId(null);
@@ -1231,6 +1402,7 @@ export default function HomePage() {
   const handleLogout = async () => {
     if (loggingOut) return;
     setLoggingOut(true);
+    clearKnownAuthSessionHint();
     abortAllPendingPostActions();
     try {
       await Promise.all([

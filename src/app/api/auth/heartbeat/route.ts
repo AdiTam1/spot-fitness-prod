@@ -6,11 +6,12 @@ import {
 import { authenticateActiveSession } from '@/lib/liveAuth';
 import { clearSessionCookie } from '@/lib/serverAuth';
 import { recordUserClientVersionOnServer } from '@/lib/serverStore';
+import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
-export async function GET(request: NextRequest) {
+export const GET = withTelemetryHandler('/api/auth/heartbeat', async (request: NextRequest, ctx) => {
   const webBuildId = getServerWebBuildId();
   const androidHeader =
     request.headers.get('x-spot-android-version-code') ||
@@ -36,10 +37,12 @@ export async function GET(request: NextRequest) {
   ]);
 
   if (!authRes.ok) {
-    const hasCookie = Boolean(
-      request.cookies.get('spot_session_token')?.value
-    );
-    if (authRes.code === 'UNAUTHENTICATED' && !hasCookie) {
+    if (authRes.diagUid) {
+      ctx.setActor({ id: authRes.diagUid, role: authRes.diagRole || 'trainee' });
+    }
+    ctx.setErrorCode(authRes.diagCode, authRes.message);
+    if (authRes.diagCode === 'UNAUTHENTICATED_NO_COOKIE') {
+      ctx.setActionName('heartbeat_anon');
       return NextResponse.json(
         {
           authenticated: false,
@@ -50,11 +53,27 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    ctx.setActionName('heartbeat_rejected');
+    ctx.recordAudit({
+      category: 'auth',
+      action: 'heartbeat_rejected',
+      status: authRes.status === 503 ? 'failed' : 'denied',
+      actorId: authRes.diagUid || 'anonymous',
+      actorRole: authRes.diagRole || 'anonymous',
+      metadata: {
+        diagCode: authRes.diagCode,
+        httpStatus: authRes.status,
+        ...(authRes.diagDetails || {}),
+      },
+    });
+
     const res = NextResponse.json(
       {
         authenticated: false,
         code: authRes.code,
+        diagCode: authRes.diagCode,
         error: authRes.message,
+        transient: authRes.status === 503,
         webBuildId,
         ...(androidPolicy ? { androidPolicy } : {}),
       },
@@ -63,8 +82,11 @@ export async function GET(request: NextRequest) {
         headers: { 'Cache-Control': 'no-store, max-age=0' },
       }
     );
-    return clearSessionCookie(res);
+    return authRes.status === 503 ? res : clearSessionCookie(res);
   }
+
+  ctx.setActionName('heartbeat_ok');
+  ctx.setActor(authRes.session);
 
   try {
     await recordUserClientVersionOnServer(
@@ -93,4 +115,4 @@ export async function GET(request: NextRequest) {
     },
     { headers: { 'Cache-Control': 'no-store, max-age=0' } }
   );
-}
+});

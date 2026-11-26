@@ -150,6 +150,10 @@ import {
   useSpotUnsavedEditing,
 } from '@/lib/webVersionGuard';
 import { resolveMealPhotos } from '@/lib/mealHistory';
+import {
+  getClientRuntimeContext,
+  trackClientEvent,
+} from '@/lib/telemetry/clientTracker';
 
 function formatDrawerDateLabel(selectedDate?: string): { dayTag: string; shortDate: string } | null {
   if (!selectedDate || !/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) return null;
@@ -1087,6 +1091,10 @@ export function AddMealDrawer({
 
     const controller = new AbortController();
     let skeletonTimer: ReturnType<typeof setTimeout> | null = null;
+    let dbTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+    let liveTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+    let dbTimedOut = false;
+    let liveTimedOut = false;
     const debounceMs = isBarcodeDigits || qTrim.length === 0 ? 40 : 250;
 
     const timer = setTimeout(async () => {
@@ -1096,6 +1104,15 @@ export function AddMealDrawer({
           if (!controller.signal.aborted) setShowSkeletons(true);
         }, 150);
       }
+
+      const dbStartedAt = Date.now();
+      const dbController = new AbortController();
+      const onParentAbortDb = () => dbController.abort();
+      controller.signal.addEventListener('abort', onParentAbortDb, { once: true });
+      dbTimeoutTimer = setTimeout(() => {
+        dbTimedOut = true;
+        dbController.abort();
+      }, 12_000);
 
       try {
         const qs = new URLSearchParams({
@@ -1110,16 +1127,50 @@ export function AddMealDrawer({
           qs.set('brand', selectedBrand);
         }
         const res = await fetch(`/api/food/search?${qs.toString()}`, {
-          signal: controller.signal,
+          signal: dbController.signal,
         });
+        const dbClientMs = Math.max(0, Date.now() - dbStartedAt);
+        if (res.status === 401 || res.status === 403) {
+          void handlePossibleAuthRejection(res);
+        }
         if (!res.ok) {
           const errJson = await res.json().catch(() => null);
-          throw new Error(errJson?.error || `שגיאת שרת (${res.status})`);
+          const errMsg = errJson?.error || `שגיאת שרת (${res.status})`;
+          trackClientEvent('client_error', 'food_search_trace', {
+            screen: 'catalog',
+            flushNow: true,
+            details: {
+              mode: 'db',
+              status: res.status,
+              clientMs: dbClientMs,
+              queryLen: qTrim.length,
+              errorMsg: errMsg,
+              ...getClientRuntimeContext(),
+            },
+          });
+          throw new Error(errMsg);
         }
         const data = await res.json();
         if (controller.signal.aborted) return;
 
         const dbItems = (Array.isArray(data.items) ? data.items : []) as FoodCatalogItem[];
+        if (dbClientMs >= 1200) {
+          trackClientEvent('performance', 'food_search_trace', {
+            screen: 'catalog',
+            flushNow: true,
+            details: {
+              mode: 'db',
+              status: 200,
+              clientMs: dbClientMs,
+              serverMs: data.dbLatencyMs,
+              resultCount: dbItems.length,
+              usedHybridRpc: Boolean(data.usedHybridRpc),
+              usedSemanticRrf: Boolean(data.usedSemanticRrf),
+              queryLen: qTrim.length,
+              ...getClientRuntimeContext(),
+            },
+          });
+        }
         const dbBrands = (Array.isArray(data.availableBrands) ? data.availableBrands : []) as string[];
         const needsLive = Boolean(data.needsLiveFallback) && cleanLen >= 3;
         const mCount = data.mohCount || 0;
@@ -1162,6 +1213,14 @@ export function AddMealDrawer({
         // שלב 2 אוטומטי לא-חוסם: מרחיב ברקע מול מאגרי מוצרים חיים רק כשחסרות תוצאות ב-DB
         if (needsLive) {
           setLiveExpanding(true);
+          const liveStartedAt = Date.now();
+          const liveController = new AbortController();
+          const onParentAbortLive = () => liveController.abort();
+          controller.signal.addEventListener('abort', onParentAbortLive, { once: true });
+          liveTimeoutTimer = setTimeout(() => {
+            liveTimedOut = true;
+            liveController.abort();
+          }, 10_000);
           try {
             const liveQs = new URLSearchParams({
               q: qTrim,
@@ -1175,11 +1234,30 @@ export function AddMealDrawer({
               liveQs.set('brand', selectedBrand);
             }
             const liveRes = await fetch(`/api/food/search?${liveQs.toString()}`, {
-              signal: controller.signal,
+              signal: liveController.signal,
             });
+            const liveClientMs = Math.max(0, Date.now() - liveStartedAt);
+            if (liveRes.status === 401 || liveRes.status === 403) {
+              void handlePossibleAuthRejection(liveRes);
+            }
             if (liveRes.ok && !controller.signal.aborted) {
               const liveData = await liveRes.json();
               const liveItems = (Array.isArray(liveData.items) ? liveData.items : []) as FoodCatalogItem[];
+              if (liveClientMs >= 2500) {
+                trackClientEvent('performance', 'food_search_trace', {
+                  screen: 'catalog',
+                  flushNow: true,
+                  details: {
+                    mode: 'live',
+                    status: 200,
+                    clientMs: liveClientMs,
+                    serverMs: liveData.dbLatencyMs,
+                    resultCount: liveItems.length,
+                    queryLen: qTrim.length,
+                    ...getClientRuntimeContext(),
+                  },
+                });
+              }
               const liveBrands = (Array.isArray(liveData.availableBrands)
                 ? liveData.availableBrands
                 : dbBrands) as string[];
@@ -1206,20 +1284,65 @@ export function AddMealDrawer({
               setCanManualExpandLive(true);
             }
           } catch {
+            if (liveTimedOut) {
+              trackClientEvent('client_error', 'food_search_trace', {
+                screen: 'catalog',
+                flushNow: true,
+                details: {
+                  mode: 'live',
+                  timedOut: true,
+                  clientMs: Math.max(0, Date.now() - liveStartedAt),
+                  queryLen: qTrim.length,
+                  ...getClientRuntimeContext(),
+                },
+              });
+            }
             if (!controller.signal.aborted) setCanManualExpandLive(true);
           } finally {
+            if (liveTimeoutTimer) clearTimeout(liveTimeoutTimer);
+            controller.signal.removeEventListener('abort', onParentAbortLive);
             if (!controller.signal.aborted) setLiveExpanding(false);
           }
         } else {
           setCanManualExpandLive(cleanLen >= 3 && effectiveSourceParam !== 'moh_gov');
         }
       } catch (err) {
+        if (dbTimedOut && !controller.signal.aborted) {
+          trackClientEvent('client_error', 'food_search_trace', {
+            screen: 'catalog',
+            flushNow: true,
+            details: {
+              mode: 'db',
+              timedOut: true,
+              clientMs: Math.max(0, Date.now() - dbStartedAt),
+              queryLen: qTrim.length,
+              ...getClientRuntimeContext(),
+            },
+          });
+          setSearchError('החיפוש ארך זמן רב מדי — מוצגות תוצאות מקומיות, אפשר לנסות שוב');
+          return;
+        }
         if ((err as { name?: string })?.name === 'AbortError') return;
         if (!controller.signal.aborted) {
-          setSearchError(err instanceof Error ? err.message : 'שגיאת חיבור בחיפוש');
+          const msg = err instanceof Error ? err.message : 'שגיאת חיבור בחיפוש';
+          trackClientEvent('client_error', 'food_search_trace', {
+            screen: 'catalog',
+            flushNow: true,
+            details: {
+              mode: 'db',
+              status: 0,
+              clientMs: Math.max(0, Date.now() - dbStartedAt),
+              queryLen: qTrim.length,
+              errorMsg: msg,
+              ...getClientRuntimeContext(),
+            },
+          });
+          setSearchError(msg);
         }
       } finally {
+        if (dbTimeoutTimer) clearTimeout(dbTimeoutTimer);
         if (skeletonTimer) clearTimeout(skeletonTimer);
+        controller.signal.removeEventListener('abort', onParentAbortDb);
         if (!controller.signal.aborted) {
           setSearchLoading(false);
           setShowSkeletons(false);
@@ -1230,6 +1353,8 @@ export function AddMealDrawer({
     return () => {
       clearTimeout(timer);
       if (skeletonTimer) clearTimeout(skeletonTimer);
+      if (dbTimeoutTimer) clearTimeout(dbTimeoutTimer);
+      if (liveTimeoutTimer) clearTimeout(liveTimeoutTimer);
       controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1240,6 +1365,13 @@ export function AddMealDrawer({
     if (!qTrim || liveExpanding) return;
     setLiveExpanding(true);
     setCanManualExpandLive(false);
+    const liveStartedAt = Date.now();
+    const liveController = new AbortController();
+    let liveTimedOut = false;
+    const timeoutId = setTimeout(() => {
+      liveTimedOut = true;
+      liveController.abort();
+    }, 12_000);
     try {
       const qs = new URLSearchParams({
         q: qTrim,
@@ -1252,10 +1384,43 @@ export function AddMealDrawer({
       if (selectedBrand && selectedBrand !== 'all') {
         qs.set('brand', selectedBrand);
       }
-      const res = await fetch(`/api/food/search?${qs.toString()}`);
-      if (res.ok) {
+      const res = await fetch(`/api/food/search?${qs.toString()}`, {
+        signal: liveController.signal,
+      });
+      const liveClientMs = Math.max(0, Date.now() - liveStartedAt);
+      if (res.status === 401 || res.status === 403) {
+        void handlePossibleAuthRejection(res);
+      }
+      if (!res.ok) {
+        trackClientEvent('client_error', 'food_search_trace', {
+          screen: 'catalog',
+          flushNow: true,
+          details: {
+            mode: 'live_manual',
+            status: res.status,
+            clientMs: liveClientMs,
+            queryLen: qTrim.length,
+            ...getClientRuntimeContext(),
+          },
+        });
+      } else {
         const data = await res.json();
         const items = (Array.isArray(data.items) ? data.items : []) as FoodCatalogItem[];
+        if (liveClientMs >= 2500) {
+          trackClientEvent('performance', 'food_search_trace', {
+            screen: 'catalog',
+            flushNow: true,
+            details: {
+              mode: 'live_manual',
+              status: 200,
+              clientMs: liveClientMs,
+              serverMs: data.dbLatencyMs,
+              resultCount: items.length,
+              queryLen: qTrim.length,
+              ...getClientRuntimeContext(),
+            },
+          });
+        }
         const brands = (Array.isArray(data.availableBrands) ? data.availableBrands : []) as string[];
         const semOn = typeof data.semanticSearchEnabled === 'boolean'
           ? data.semanticSearchEnabled
@@ -1286,8 +1451,19 @@ export function AddMealDrawer({
         });
       }
     } catch {
-      // ignore manual live failure
+      trackClientEvent('client_error', 'food_search_trace', {
+        screen: 'catalog',
+        flushNow: true,
+        details: {
+          mode: 'live_manual',
+          timedOut: liveTimedOut,
+          clientMs: Math.max(0, Date.now() - liveStartedAt),
+          queryLen: qTrim.length,
+          ...getClientRuntimeContext(),
+        },
+      });
     } finally {
+      clearTimeout(timeoutId);
       setLiveExpanding(false);
     }
   };

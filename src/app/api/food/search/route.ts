@@ -206,7 +206,13 @@ function filterLocalCatalog(sourceFilter: string): FoodCatalogItem[] {
 export const GET = withTelemetryHandler('/api/food/search', async (request: NextRequest, ctx) => {
   const startedAt = Date.now();
   const auth = await authenticateActiveSession(request);
+  const authMs = Date.now() - startedAt;
   if (!auth.ok) {
+    if (auth.diagUid) {
+      ctx.setActor({ id: auth.diagUid, role: auth.diagRole || 'trainee' });
+    }
+    ctx.setErrorCode(auth.diagCode, auth.message);
+    ctx.setAiUsage({ diag: { authMs, ...(auth.diagDetails || {}) } });
     return auth.response;
   }
   const session = auth.session;
@@ -263,6 +269,7 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
 
   // מצב דפדוף ריק: מחזיר מקומי + שורה קלה מה-SQL בלי לטעון BLOB או סקרייפרים
   if (!qNorm && !isBarcodeQuery) {
+    const sqlBrowseStart = Date.now();
     const sqlBrowse =
       sourceFilter === 'local'
         ? { items: [] as FoodCatalogItem[], sqlCount: 0, usedHybridRpc: false }
@@ -273,6 +280,7 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
             brand: brandFilter !== 'all' ? brandFilter : undefined,
             limit,
           });
+    const sqlMs = Date.now() - sqlBrowseStart;
 
     const combinedRaw = [...localPool, ...sqlBrowse.items];
     const availableBrands = collectTopBrandsFromItems(combinedRaw);
@@ -286,6 +294,17 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
       rawQuery,
       semanticSearchEnabled
     ).map((x) => x.item);
+
+    ctx.setAiUsage({
+      diag: {
+        authMs,
+        sqlMs,
+        mode: 'browse',
+        sourceFilter,
+        resultCount: combined.length,
+        usedHybridRpc: Boolean(sqlBrowse.usedHybridRpc),
+      },
+    });
 
     return NextResponse.json({
       items: combined,
@@ -311,6 +330,7 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
     qNorm.replace(/\s+/g, '').length >= 3;
 
   // מריץ חיפוש לקסיקלי מהיר ובמקביל בודק קאש וקטורי ב-DB (אם מצב סמנטי מופעל)
+  const sqlStartMs = Date.now();
   const [sqlResInitial, cachedQueryVecText] = await Promise.all([
     searchSqlAndCachedCatalog({
       query: rawQuery.trim(),
@@ -323,6 +343,7 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
       ? getCachedQueryEmbeddingTextSql(rawQuery.trim())
       : Promise.resolve(null),
   ]);
+  const sqlMs = Date.now() - sqlStartMs;
 
   let sqlRes = sqlResInitial;
   let fastPool = [...localPool, ...sqlRes.items];
@@ -339,6 +360,7 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
 
   const initialStrongHits = fastRanked.filter((x) => x.score >= 60).length;
   let usedSemanticRrf = false;
+  let embedMs = 0;
 
   // אסקלציה סמנטית מבוקרת: מופעלת רק כשמצב סמנטי דלוק וגם יש קאש וקטורי מוכן או מחסור בהתאמות חזקות
   if (
@@ -351,6 +373,7 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
         isBarcode: isBarcodeQuery,
       }))
   ) {
+    const embedStartMs = Date.now();
     let queryVecText = cachedQueryVecText;
     if (!queryVecText) {
       const embedRl = await consumeRoleRateLimit(session, 'food_search_embed');
@@ -396,6 +419,7 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
         );
       }
     }
+    embedMs = Date.now() - embedStartMs;
   }
 
   const availableBrands = collectTopBrandsFromItems(
@@ -431,6 +455,20 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
   // Phase 1 (DB Fast-Path תמידי): לעולם לא חוסם את ה-UI בהמתנה לאתרים חיצוניים
   if (requestedMode === 'db') {
     const items = fastRanked.map((e) => e.item);
+    ctx.setAiUsage({
+      diag: {
+        authMs,
+        sqlMs,
+        embedMs,
+        mode: 'db',
+        queryLen: qNorm.length,
+        sourceFilter,
+        resultCount: items.length,
+        usedHybridRpc: Boolean(sqlRes.usedHybridRpc),
+        usedSemanticRrf,
+        needsLiveFallback,
+      },
+    });
     return NextResponse.json({
       items,
       availableBrands,
@@ -451,13 +489,16 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
 
   // Phase 2 (mode=live): חיפוש משלים באתרים חיים עם Query Cache + Circuit Breaker (+ שכתוב סמנטי כשמופעל)
   let liveMatches: FoodCatalogItem[] = [];
+  let liveMs = 0;
   if (supportsLiveSite || (requestedMode === 'live' && qNorm.length >= 2 && !isBarcodeQuery)) {
+    const liveStartMs = Date.now();
     liveMatches = await searchLiveScrapers(
       rawQuery.trim(),
       specificSiteFilter ? (specificSiteFilter as ScraperSourceId) : undefined,
       undefined,
       { semanticMode: semanticSearchEnabled }
     );
+    liveMs = Date.now() - liveStartMs;
   }
 
   if (liveMatches.length > 0) {
@@ -493,6 +534,22 @@ export const GET = withTelemetryHandler('/api/food/search', async (request: Next
   const finalBrands = collectTopBrandsFromItems(
     brandFilter !== 'all' ? deduped : livePool
   );
+
+  ctx.setAiUsage({
+    diag: {
+      authMs,
+      sqlMs,
+      embedMs,
+      liveMs,
+      mode: 'live',
+      queryLen: qNorm.length,
+      sourceFilter,
+      resultCount: deduped.length,
+      liveMatches: liveMatches.length,
+      usedHybridRpc: Boolean(sqlRes.usedHybridRpc),
+      usedSemanticRrf,
+    },
+  });
 
   return NextResponse.json({
     items: deduped,

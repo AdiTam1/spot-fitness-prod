@@ -107,6 +107,82 @@ export function getSessionFromRequest(request: NextRequest): AuthSessionUser | n
   return verifySessionToken(token);
 }
 
+export type SessionTokenDiagnosticStatus =
+  | 'no_cookie'
+  | 'malformed'
+  | 'bad_sig'
+  | 'expired'
+  | 'valid';
+
+export function inspectRequestSessionCookie(request: NextRequest): {
+  status: SessionTokenDiagnosticStatus;
+  uid?: string;
+  role?: AuthSessionUser['role'];
+  expiredAgoSec?: number;
+  sv?: number;
+  cookieLen: number;
+} {
+  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  if (!token) {
+    return { status: 'no_cookie', cookieLen: 0 };
+  }
+  const dotIdx = token.indexOf('.');
+  if (dotIdx <= 0 || dotIdx === token.length - 1) {
+    return { status: 'malformed', cookieLen: token.length };
+  }
+  try {
+    const [payloadBase64, providedSig] = token.split('.');
+    if (!payloadBase64 || !providedSig) {
+      return { status: 'malformed', cookieLen: token.length };
+    }
+    const expectedSig = crypto
+      .createHmac('sha256', getServerSecret())
+      .update(payloadBase64)
+      .digest('base64url');
+    const sigBufferA = Buffer.from(providedSig);
+    const sigBufferB = Buffer.from(expectedSig);
+    const sigOk =
+      sigBufferA.length === sigBufferB.length &&
+      crypto.timingSafeEqual(sigBufferA, sigBufferB);
+
+    let decoded: Partial<SignedPayload> | null = null;
+    try {
+      decoded = JSON.parse(
+        Buffer.from(payloadBase64, 'base64url').toString('utf-8')
+      ) as Partial<SignedPayload>;
+    } catch {
+      return {
+        status: sigOk ? 'malformed' : 'bad_sig',
+        cookieLen: token.length,
+      };
+    }
+
+    const uid = decoded?.user?.id;
+    const role = decoded?.user?.role;
+    const sv = decoded?.user?.sv;
+    if (!sigOk) {
+      return { status: 'bad_sig', uid, role, sv, cookieLen: token.length };
+    }
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (!decoded?.exp || decoded.exp < nowSec) {
+      return {
+        status: 'expired',
+        uid,
+        role,
+        sv,
+        expiredAgoSec: decoded?.exp ? Math.max(0, nowSec - decoded.exp) : undefined,
+        cookieLen: token.length,
+      };
+    }
+    if (!decoded.user) {
+      return { status: 'malformed', cookieLen: token.length };
+    }
+    return { status: 'valid', uid, role, sv, cookieLen: token.length };
+  } catch {
+    return { status: 'malformed', cookieLen: token.length };
+  }
+}
+
 interface ScopedStepsPayload {
   scope: 'steps-sync';
   traineeId: string;

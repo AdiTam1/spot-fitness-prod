@@ -91,6 +91,13 @@ export const POST = withTelemetryHandler('/api/steps/sync', async (request, ctx)
         const liveTrainee = await getTraineeAuthStateFromServer(
           parsedToken.traineeId
         );
+        if (liveTrainee?.dbUnavailable) {
+          ctx.setErrorCode('AUTH_DB_UNAVAILABLE', liveTrainee.dbError || 'DB error');
+          return NextResponse.json(
+            { error: 'תקלה זמנית במסד הנתונים', code: 'DB_UNAVAILABLE' },
+            { status: 503 }
+          );
+        }
         if (!liveTrainee || liveTrainee.status !== 'active') {
           ctx.setErrorCode('ACCOUNT_BLOCKED', 'החשבון אינו פעיל');
           return NextResponse.json(

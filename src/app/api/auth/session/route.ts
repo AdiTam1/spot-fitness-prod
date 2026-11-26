@@ -26,12 +26,36 @@ import {
 import { DEFAULT_TEMPLATES, getTodayIso } from '@/data/israeliFoodCatalog';
 import { withTelemetryHandler } from '@/lib/telemetry/withApiTelemetry';
 
-export async function GET(request: NextRequest) {
+export const GET = withTelemetryHandler('/api/auth/session', async (request: NextRequest, ctx) => {
   const auth = await authenticateActiveSession(request, { touchLastSeen: true });
   if (!auth.ok) {
+    const isAnonNoCookie = auth.diagCode === 'UNAUTHENTICATED_NO_COOKIE';
+    ctx.setActionName(isAnonNoCookie ? 'session_anon' : 'session_rejected');
+    if (auth.diagUid) {
+      ctx.setActor({ id: auth.diagUid, role: auth.diagRole || 'trainee' });
+    }
+    ctx.setErrorCode(auth.diagCode, auth.message);
+    if (!isAnonNoCookie) {
+      ctx.recordAudit({
+        category: 'auth',
+        action: 'session_rejected',
+        status: auth.status === 503 ? 'failed' : 'denied',
+        actorId: auth.diagUid || 'anonymous',
+        actorRole: auth.diagRole || 'anonymous',
+        metadata: {
+          diagCode: auth.diagCode,
+          httpStatus: auth.status,
+          ...(auth.diagDetails || {}),
+        },
+      });
+    }
+    if (auth.status === 503) {
+      return auth.response;
+    }
     const res = NextResponse.json(
       {
         user: null,
+        diagCode: auth.diagCode,
         ...(auth.code !== 'UNAUTHENTICATED'
           ? {
               code: auth.code,
@@ -43,14 +67,18 @@ export async function GET(request: NextRequest) {
       },
       { headers: { 'Cache-Control': 'no-store, max-age=0' } }
     );
-    return auth.code === 'UNAUTHENTICATED' ? res : clearSessionCookie(res);
+    return auth.code === 'UNAUTHENTICATED' && isAnonNoCookie
+      ? res
+      : clearSessionCookie(res);
   }
 
+  ctx.setActionName('session_restore');
+  ctx.setActor(auth.session);
   return NextResponse.json(
     { user: { ...auth.session, name: auth.liveName } },
     { headers: { 'Cache-Control': 'no-store, max-age=0' } }
   );
-}
+});
 
 export const POST = withTelemetryHandler('/api/auth/session', async (request, ctx) => {
   try {

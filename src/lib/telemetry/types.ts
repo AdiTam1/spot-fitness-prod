@@ -47,6 +47,7 @@ export interface ApiAiUsageMeta {
   rateLimitScope?: string;
   rateLimitWindow?: 'minute' | 'hour' | 'day' | 'role';
   rateLimitRole?: string;
+  diag?: Record<string, unknown>;
 }
 
 export interface ApiLogInput {

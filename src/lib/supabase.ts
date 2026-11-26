@@ -671,79 +671,140 @@ export interface LiveAuthRecord {
   status: AccountStatus;
   sessionVersion: number;
   lastSeenAt?: string;
+  dbUnavailable?: boolean;
+  dbError?: string;
+}
+
+function isMissingColumnOrSchemaError(err?: { code?: string; message?: string } | null): boolean {
+  if (!err) return false;
+  return (
+    err.code === '42703' ||
+    err.code === 'PGRST204' ||
+    /column .* does not exist|schema cache/i.test(err.message || '')
+  );
 }
 
 export async function loadTraineeLiveAuthState(
   traineeId: string
 ): Promise<LiveAuthRecord | null> {
   if (!supabase) return null;
-  const fastRes = await supabase
-    .from('trainees')
-    .select('id, status, name, session_version, last_seen_at')
-    .eq('id', traineeId)
-    .maybeSingle();
+  try {
+    const fastRes = await supabase
+      .from('trainees')
+      .select('id, status, name, session_version, last_seen_at')
+      .eq('id', traineeId)
+      .maybeSingle();
 
-  if (!fastRes.error && fastRes.data) {
+    if (!fastRes.error) {
+      if (!fastRes.data) return null;
+      return {
+        id: String(fastRes.data.id),
+        role: 'trainee',
+        name: String(fastRes.data.name || 'מתאמן'),
+        status: (fastRes.data.status as AccountStatus) || 'active',
+        sessionVersion: Math.max(1, Number(fastRes.data.session_version) || 1),
+        lastSeenAt:
+          typeof fastRes.data.last_seen_at === 'string'
+            ? fastRes.data.last_seen_at
+            : undefined,
+      };
+    }
+
+    if (!isMissingColumnOrSchemaError(fastRes.error)) {
+      return {
+        id: traineeId,
+        role: 'trainee',
+        name: '',
+        status: 'active',
+        sessionVersion: 1,
+        dbUnavailable: true,
+        dbError: fastRes.error.message || fastRes.error.code || 'DB error',
+      };
+    }
+
+    // Fallback אם עמודת session_version טרם הורצה ב-SQL Editor
+    const full = await loadSingleTraineeFromSupabase(traineeId);
+    if (!full) return null;
     return {
-      id: String(fastRes.data.id),
+      id: full.id,
       role: 'trainee',
-      name: String(fastRes.data.name || 'מתאמן'),
-      status: (fastRes.data.status as AccountStatus) || 'active',
-      sessionVersion: Math.max(1, Number(fastRes.data.session_version) || 1),
-      lastSeenAt:
-        typeof fastRes.data.last_seen_at === 'string'
-          ? fastRes.data.last_seen_at
-          : undefined,
+      name: full.name,
+      status: full.status || 'active',
+      sessionVersion: Math.max(1, Number(full.sessionVersion) || 1),
+      lastSeenAt: full.lastSeenAt,
+    };
+  } catch (err) {
+    return {
+      id: traineeId,
+      role: 'trainee',
+      name: '',
+      status: 'active',
+      sessionVersion: 1,
+      dbUnavailable: true,
+      dbError: err instanceof Error ? err.message : 'DB exception',
     };
   }
-
-  // Fallback אם עמודת session_version טרם הורצה ב-SQL Editor
-  const full = await loadSingleTraineeFromSupabase(traineeId);
-  if (!full) return null;
-  return {
-    id: full.id,
-    role: 'trainee',
-    name: full.name,
-    status: full.status || 'active',
-    sessionVersion: Math.max(1, Number(full.sessionVersion) || 1),
-    lastSeenAt: full.lastSeenAt,
-  };
 }
 
 export async function loadCoachLiveAuthState(
   coachId: string
 ): Promise<LiveAuthRecord | null> {
   if (!supabase) return null;
-  const fastRes = await supabase
-    .from('coaches')
-    .select('id, status, name, session_version, last_seen_at')
-    .eq('id', coachId)
-    .maybeSingle();
+  try {
+    const fastRes = await supabase
+      .from('coaches')
+      .select('id, status, name, session_version, last_seen_at')
+      .eq('id', coachId)
+      .maybeSingle();
 
-  if (!fastRes.error && fastRes.data) {
+    if (!fastRes.error) {
+      if (!fastRes.data) return null;
+      return {
+        id: String(fastRes.data.id),
+        role: 'coach',
+        name: String(fastRes.data.name || 'מאמן'),
+        status: fastRes.data.status === 'paused' ? 'paused' : 'active',
+        sessionVersion: Math.max(1, Number(fastRes.data.session_version) || 1),
+        lastSeenAt:
+          typeof fastRes.data.last_seen_at === 'string'
+            ? fastRes.data.last_seen_at
+            : undefined,
+      };
+    }
+
+    if (!isMissingColumnOrSchemaError(fastRes.error)) {
+      return {
+        id: coachId,
+        role: 'coach',
+        name: '',
+        status: 'active',
+        sessionVersion: 1,
+        dbUnavailable: true,
+        dbError: fastRes.error.message || fastRes.error.code || 'DB error',
+      };
+    }
+
+    const full = await loadSingleCoachFromSupabase(coachId);
+    if (!full) return null;
     return {
-      id: String(fastRes.data.id),
+      id: full.id,
       role: 'coach',
-      name: String(fastRes.data.name || 'מאמן'),
-      status: fastRes.data.status === 'paused' ? 'paused' : 'active',
-      sessionVersion: Math.max(1, Number(fastRes.data.session_version) || 1),
-      lastSeenAt:
-        typeof fastRes.data.last_seen_at === 'string'
-          ? fastRes.data.last_seen_at
-          : undefined,
+      name: full.name,
+      status: full.status || 'active',
+      sessionVersion: Math.max(1, Number(full.sessionVersion) || 1),
+      lastSeenAt: full.lastSeenAt,
+    };
+  } catch (err) {
+    return {
+      id: coachId,
+      role: 'coach',
+      name: '',
+      status: 'active',
+      sessionVersion: 1,
+      dbUnavailable: true,
+      dbError: err instanceof Error ? err.message : 'DB exception',
     };
   }
-
-  const full = await loadSingleCoachFromSupabase(coachId);
-  if (!full) return null;
-  return {
-    id: full.id,
-    role: 'coach',
-    name: full.name,
-    status: full.status || 'active',
-    sessionVersion: Math.max(1, Number(full.sessionVersion) || 1),
-    lastSeenAt: full.lastSeenAt,
-  };
 }
 
 export async function touchUserLastSeenInSupabase(

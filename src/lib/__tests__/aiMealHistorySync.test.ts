@@ -21,6 +21,11 @@ import {
   AI_TRACE_HISTORY_CAP,
   pruneQueueInMemory,
 } from '../aiTracePruning';
+import {
+  buildUserDiagnosticsSummary,
+  measureTraineeHealthSnapshot,
+} from '../telemetry/diagnosticsSummary';
+import { shouldPersistApiLogToDb } from '../telemetry/filterRules';
 import type {
   AiConversationTraceRecord,
   LoggedFoodItem,
@@ -371,5 +376,160 @@ describe('resolveMealPhotos & doesMealMatchHistorySnapshot', () => {
       items: [makeFood('rice-new-id', 'אורז בסמטי', 120, 156, 3), chicken],
     };
     assert.equal(doesMealMatchHistorySnapshot(manuallyRevertedMeal, snapEntry), true);
+  });
+});
+
+describe('telemetry diagnostics summary & persistence rules', () => {
+  it('persists non-empty cookie auth rejections and heavy /api/data payloads while dropping anonymous noise', () => {
+    assert.equal(
+      shouldPersistApiLogToDb({
+        requestId: 'r1',
+        method: 'GET',
+        routePattern: '/api/auth/heartbeat',
+        statusCode: 401,
+        durationMs: 120,
+        errorCode: 'UNAUTHENTICATED_NO_COOKIE',
+      }),
+      false
+    );
+
+    assert.equal(
+      shouldPersistApiLogToDb({
+        requestId: 'r2',
+        method: 'GET',
+        routePattern: '/api/auth/heartbeat',
+        statusCode: 401,
+        durationMs: 140,
+        errorCode: 'COOKIE_EXPIRED',
+      }),
+      true
+    );
+
+    assert.equal(
+      shouldPersistApiLogToDb({
+        requestId: 'r3',
+        method: 'GET',
+        routePattern: '/api/auth/session',
+        actionName: 'session_rejected',
+        statusCode: 200,
+        durationMs: 95,
+        errorCode: 'SESSION_REVOKED',
+      }),
+      true
+    );
+
+    assert.equal(
+      shouldPersistApiLogToDb({
+        requestId: 'r4',
+        method: 'GET',
+        routePattern: '/api/data',
+        statusCode: 200,
+        durationMs: 420,
+        aiUsage: { diag: { payloadKB: 480 } },
+      }),
+      true
+    );
+  });
+
+  it('aggregates startup cookie losses, heavy trainee payload, and slow food searches into findings & timeline', () => {
+    const sampleTrainee = {
+      id: 'trainee-diag-1',
+      email: 'u@example.com',
+      name: 'תמר',
+      avatar: 'ת',
+      phone: '050-0000000',
+      primaryCoachId: 'coach-admin',
+      sharedCoachIds: [],
+      status: 'active' as const,
+      sessionVersion: 1,
+      goal: 'חיטוב',
+      currentWeight: 60,
+      targetWeight: 56,
+      tolerancePercent: 10,
+      workoutTemplate: { id: 'tpl1', name: 'A', description: '', dayType: 'workout' as const, tolerancePercent: 10, meals: [] },
+      restTemplate: { id: 'tpl2', name: 'B', description: '', dayType: 'rest' as const, tolerancePercent: 10, meals: [] },
+      favoriteFoodIds: [],
+      weightHistory: [],
+      logs: {
+        '2026-11-25': {
+          date: '2026-11-25',
+          dayType: 'workout' as const,
+          waterCups: 6,
+          waterGoal: 10,
+          meals: {
+            breakfast: {
+              mealSlotId: 'breakfast',
+              items: [makeFood('i1', 'טוסט', 90, 250, 12)],
+              photoDataUrl: 'data:image/jpeg;base64,' + 'A'.repeat(420_000),
+              updatedAt: '2026-11-25T08:00:00.000Z',
+            },
+          },
+        },
+      },
+    };
+
+    const health = measureTraineeHealthSnapshot(sampleTrainee, {
+      platform: 'android-apk',
+      appVersionCode: 18,
+      appVersionName: '1.0.18',
+      webBuildId: 'build-1',
+      updatedAt: '2026-11-26T20:00:00.000Z',
+    });
+    assert.ok(health.profileSizeKB >= 400);
+    assert.equal(health.approxPhotosCount, 1);
+
+    const summary = buildUserDiagnosticsSummary({
+      actorFilter: sampleTrainee.id,
+      traineeHealth: health,
+      clientRows: [
+        {
+          id: 1,
+          created_at: '2026-11-26T20:05:00.000Z',
+          session_id: 's1',
+          user_id: null,
+          platform: 'android-apk',
+          app_version_code: 18,
+          event_type: 'client_error',
+          event_name: 'session_lost_on_startup',
+          details: {
+            lastKnownUserId: sampleTrainee.id,
+            diagCode: 'UNAUTHENTICATED_NO_COOKIE',
+            priorAgeMin: 45,
+          },
+        },
+        {
+          id: 2,
+          created_at: '2026-11-26T20:06:00.000Z',
+          session_id: 's2',
+          user_id: sampleTrainee.id,
+          platform: 'android-apk',
+          app_version_code: 18,
+          event_type: 'client_error',
+          event_name: 'food_search_trace',
+          details: { mode: 'db', timedOut: true, clientMs: 12005, queryLen: 5 },
+        },
+      ],
+      apiRows: [
+        {
+          id: 10,
+          created_at: '2026-11-26T20:05:30.000Z',
+          request_id: 'req-10',
+          method: 'GET',
+          route_pattern: '/api/data',
+          status_code: 200,
+          duration_ms: 2100,
+          actor_id: sampleTrainee.id,
+          platform: 'android-apk',
+          ai_usage: { diag: { payloadKB: 415, authMs: 80, profileMs: 1900 } },
+        },
+      ],
+      auditRows: [],
+    });
+
+    assert.equal(summary.disconnects.startupCookieLost, 1);
+    assert.equal(summary.search.errorOrTimeoutCount, 1);
+    assert.equal(summary.startup.maxDataKB, 415);
+    assert.ok(summary.autoFindings.length >= 3);
+    assert.equal(summary.timeline.length, 3);
   });
 });

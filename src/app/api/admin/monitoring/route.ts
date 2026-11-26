@@ -5,7 +5,14 @@ import {
   sanitizeText,
   verifyCsrfOrigin,
 } from '@/lib/serverAuth';
-import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { isSupabaseConfigured, loadSingleTraineeFromSupabase, supabase } from '@/lib/supabase';
+import {
+  buildUserDiagnosticsSummary,
+  measureTraineeHealthSnapshot,
+  type DiagApiLogRow,
+  type DiagAuditRow,
+  type DiagClientEventRow,
+} from '@/lib/telemetry/diagnosticsSummary';
 import {
   buildRateLimitAnalytics,
   RateLimitRawApiRow,
@@ -504,11 +511,89 @@ export async function GET(request: NextRequest) {
       .range(0, PAGE_SIZE - 1);
 
     if (actorId) {
-      clientQuery = clientQuery.eq('user_id', actorId);
+      clientQuery = clientQuery.or(
+        `user_id.eq.${actorId},details->>lastKnownUserId.eq.${actorId},details->>priorUserId.eq.${actorId}`
+      );
     }
     if (errorsOnly) {
       clientQuery = clientQuery.eq('event_type', 'client_error');
     }
+
+    let diagApiQuery = supabase
+      .from('api_request_logs')
+      .select(
+        'id, created_at, request_id, method, route_pattern, action_name, status_code, duration_ms, actor_id, actor_role, platform, app_version_code, error_code, error_message, ai_usage'
+      )
+      .gte('created_at', sinceIso)
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (actorId) {
+      diagApiQuery = diagApiQuery.eq('actor_id', actorId);
+    } else {
+      diagApiQuery = diagApiQuery.or(
+        'status_code.gte.400,duration_ms.gte.900,route_pattern.eq./api/auth/session,route_pattern.eq./api/auth/heartbeat,route_pattern.eq./api/food/search'
+      );
+    }
+
+    let diagClientQuery = supabase
+      .from('client_telemetry_events')
+      .select(
+        'id, created_at, session_id, user_id, role, platform, app_version_code, web_build_id, event_type, event_name, screen, details'
+      )
+      .gte('created_at', sinceIso)
+      .order('created_at', { ascending: false })
+      .limit(120);
+
+    if (actorId) {
+      diagClientQuery = diagClientQuery.or(
+        `user_id.eq.${actorId},details->>lastKnownUserId.eq.${actorId},details->>priorUserId.eq.${actorId}`
+      );
+    } else {
+      diagClientQuery = diagClientQuery.or(
+        'event_type.eq.client_error,event_name.in.(session_lost_on_startup,session_kicked_mid_use,app_startup_profile,api_data_profile,food_search_trace)'
+      );
+    }
+
+    let diagAuditQuery = supabase
+      .from('audit_activity_events')
+      .select(
+        'id, created_at, request_id, actor_id, actor_role, target_trainee_id, category, action, status, platform, app_version_code, metadata'
+      )
+      .gte('created_at', sinceIso)
+      .order('created_at', { ascending: false })
+      .limit(80);
+
+    if (actorId) {
+      diagAuditQuery = diagAuditQuery.or(
+        `actor_id.eq.${actorId},target_trainee_id.eq.${actorId}`
+      );
+    } else {
+      diagAuditQuery = diagAuditQuery.eq('category', 'auth');
+    }
+
+    const diagTraineePromise =
+      actorId && actorId !== 'coach-admin' && !actorId.startsWith('coach-')
+        ? Promise.all([
+            loadSingleTraineeFromSupabase(actorId).catch(() => null),
+            supabase
+              .from('nutrition_templates')
+              .select('meals')
+              .eq('id', '__spot_system_meta__')
+              .maybeSingle(),
+          ]).then(([profile, metaRow]) => {
+            if (!profile) return null;
+            const versions = (
+              metaRow?.data?.meals as {
+                userClientVersions?: Record<string, import('@/types/nutrition').UserClientVersionInfo>;
+              } | undefined
+            )?.userClientVersions;
+            return measureTraineeHealthSnapshot(
+              profile,
+              versions?.[`trainee:${actorId}`] || null
+            );
+          })
+        : Promise.resolve(null);
 
     const aiStatsNeedsFallback = Boolean(
       aiStatsRes.error && isMissingSchemaError(aiStatsRes.error.message)
@@ -525,6 +610,10 @@ export async function GET(request: NextRequest) {
       rlCountersRes,
       aiTraceHistory,
       aiTraceCrashed,
+      diagApiRes,
+      diagClientRes,
+      diagAuditRes,
+      diagTraineeHealth,
     ] = await Promise.all([
       auditQuery,
       apiQuery,
@@ -556,6 +645,10 @@ export async function GET(request: NextRequest) {
         search: traceSearch || undefined,
         limit: 80,
       }).catch(() => ({ setupRequired: true, traces: [], totalCount: 0, savedCount: 0, cap: 100 })),
+      diagApiQuery,
+      diagClientQuery,
+      diagAuditQuery,
+      diagTraineePromise,
     ]);
 
     const firstSchemaErr = [auditRes.error, apiRes.error, clientRes.error].find(
@@ -590,6 +683,14 @@ export async function GET(request: NextRequest) {
       actorFilter: actorId || undefined,
     });
 
+    const userDiagnostics = buildUserDiagnosticsSummary({
+      actorFilter: actorId,
+      traineeHealth: diagTraineeHealth,
+      apiRows: (diagApiRes.data || []) as DiagApiLogRow[],
+      clientRows: (diagClientRes.data || []) as DiagClientEventRow[],
+      auditRows: (diagAuditRes.data || []) as DiagAuditRow[],
+    });
+
     return NextResponse.json(
       {
         ok: true,
@@ -601,6 +702,7 @@ export async function GET(request: NextRequest) {
         summary: summaryRes.data || null,
         aiStats,
         rateLimitStats,
+        userDiagnostics,
         aiLogs: aiLogsRes.data || [],
         aiTraceHistory,
         aiTraceCrashed,

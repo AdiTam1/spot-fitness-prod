@@ -22,11 +22,13 @@ import {
 } from 'lucide-react';
 import { SegmentedPill } from './ui/SegmentedPill';
 import { AdminRateLimitsSection } from './AdminRateLimitsSection';
+import { AdminDiagnosticsSection } from './AdminDiagnosticsSection';
 import {
   AdminAiTracesInspector,
   type AiTraceQueueBucket,
 } from './AdminAiTracesInspector';
 import type { RateLimitAnalyticsPayload } from '@/lib/rateLimitAnalytics';
+import type { UserDiagnosticsPayload } from '@/lib/telemetry/diagnosticsSummary';
 import type { CoachProfile, TraineeProfile } from '@/types/nutrition';
 
 interface AdminMonitoringPanelProps {
@@ -228,7 +230,9 @@ export function AdminMonitoringPanel({
   onNotify,
 }: AdminMonitoringPanelProps) {
   const [hours, setHours] = useState<string>('168');
-  const [viewTab, setViewTab] = useState<'ai' | 'rateLimits' | 'audit' | 'api' | 'client'>('ai');
+  const [viewTab, setViewTab] = useState<'diagnostics' | 'ai' | 'rateLimits' | 'audit' | 'api' | 'client'>('ai');
+  const [liveRefresh, setLiveRefresh] = useState<boolean>(false);
+  const [userDiagnostics, setUserDiagnostics] = useState<UserDiagnosticsPayload | null>(null);
   const [actorFilter, setActorFilter] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [aiOutcomeFilter, setAiOutcomeFilter] = useState<string>('');
@@ -322,6 +326,7 @@ export function AdminMonitoringPanel({
       setAiStats(data.aiStats || null);
       setAiStatsRpcPending(Boolean(data.aiStatsRpcPending));
       setRateLimitStats(data.rateLimitStats || null);
+      setUserDiagnostics(data.userDiagnostics || null);
       setRateLimitCountersPending(Boolean(data.rateLimitCountersPending));
       setAiLogs(Array.isArray(data.aiLogs) ? data.aiLogs : []);
       if (data.aiTraceHistory) setAiTraceHistory(data.aiTraceHistory);
@@ -349,6 +354,16 @@ export function AdminMonitoringPanel({
   useEffect(() => {
     void loadSnapshot();
   }, [loadSnapshot]);
+
+  useEffect(() => {
+    if (!liveRefresh) return;
+    const t = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void loadSnapshot();
+      }
+    }, 5000);
+    return () => clearInterval(t);
+  }, [liveRefresh, loadSnapshot]);
 
   const handleManualRollupAndPrune = async () => {
     setPruning(true);
@@ -429,7 +444,16 @@ export function AdminMonitoringPanel({
           </h1>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ paddingInlineEnd: 4 }}>
+            <Switch
+              color="teal"
+              size="sm"
+              checked={liveRefresh}
+              onChange={(e) => setLiveRefresh(e.currentTarget.checked)}
+              label="מעקב חי (5s)"
+            />
+          </div>
           <button
             type="button"
             disabled={pruning || setupRequired}
@@ -776,9 +800,13 @@ export function AdminMonitoringPanel({
         value={viewTab}
         onChange={(v) => {
           setPage(0);
-          setViewTab(v as 'ai' | 'rateLimits' | 'audit' | 'api' | 'client');
+          setViewTab(v as 'diagnostics' | 'ai' | 'rateLimits' | 'audit' | 'api' | 'client');
         }}
         options={[
+          {
+            value: 'diagnostics',
+            label: `אבחון וניתוקים${userDiagnostics?.disconnects?.total ? ` (${userDiagnostics.disconnects.total})` : ''}`,
+          },
           { value: 'ai', label: `מרכז AI (${totalAiCalls})` },
           { value: 'rateLimits', label: `חסימות ומכסות (${rateLimitedTotalBadges})` },
           { value: 'audit', label: `יומן פעילות (${auditEvents.length})` },
@@ -786,6 +814,18 @@ export function AdminMonitoringPanel({
           { value: 'client', label: `צד לקוח (${clientEvents.length})` },
         ]}
       />
+
+      {viewTab === 'diagnostics' && !setupRequired && (
+        <AdminDiagnosticsSection
+          data={userDiagnostics}
+          resolveActorName={resolveActorName}
+          formatTimeHe={formatTimeHe}
+          onSelectActor={(id) => {
+            setPage(0);
+            setActorFilter(id);
+          }}
+        />
+      )}
 
       {viewTab === 'rateLimits' && !setupRequired && (
         <AdminRateLimitsSection
@@ -1552,7 +1592,7 @@ export function AdminMonitoringPanel({
         </div>
       )}
 
-      {!setupRequired && viewTab !== 'rateLimits' && (
+      {!setupRequired && viewTab !== 'rateLimits' && viewTab !== 'diagnostics' && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <button
             type="button"

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   clearSessionCookie,
   getSessionFromRequest,
+  inspectRequestSessionCookie,
+  type SessionTokenDiagnosticStatus,
 } from '@/lib/serverAuth';
 import {
   getCoachAuthStateFromServer,
@@ -20,14 +22,19 @@ export type LiveSessionCheckResult =
   | {
       ok: false;
       code: AuthRejectionCode;
-      status: 401 | 403;
+      status: 401 | 403 | 503;
       message: string;
+      diagCode: string;
+      cookieStatus?: SessionTokenDiagnosticStatus;
+      diagUid?: string;
+      diagRole?: AuthSessionUser['role'];
+      diagDetails?: Record<string, unknown>;
       response: NextResponse;
     };
 
 function buildRejectionResponse(
   code: AuthRejectionCode,
-  status: 401 | 403,
+  status: 401 | 403 | 503,
   message: string,
   clearCookie = true
 ): NextResponse {
@@ -37,6 +44,7 @@ function buildRejectionResponse(
       code,
       suspended: code === 'ACCOUNT_BLOCKED',
       revoked: code === 'SESSION_REVOKED',
+      transient: status === 503,
     },
     {
       status,
@@ -58,16 +66,37 @@ export async function authenticateActiveSession(
 ): Promise<LiveSessionCheckResult> {
   const session = getSessionFromRequest(request);
   if (!session) {
+    const cookieDiag = inspectRequestSessionCookie(request);
+    const diagCode =
+      cookieDiag.status === 'no_cookie'
+        ? 'UNAUTHENTICATED_NO_COOKIE'
+        : cookieDiag.status === 'expired'
+        ? 'COOKIE_EXPIRED'
+        : cookieDiag.status === 'bad_sig'
+        ? 'COOKIE_BAD_SIG'
+        : 'COOKIE_MALFORMED';
     return {
       ok: false,
       code: 'UNAUTHENTICATED',
       status: 401,
       message: 'נדרשת התחברות למערכת',
+      diagCode,
+      cookieStatus: cookieDiag.status,
+      diagUid: cookieDiag.uid,
+      diagRole: cookieDiag.role,
+      diagDetails: {
+        cookieStatus: cookieDiag.status,
+        cookieLen: cookieDiag.cookieLen,
+        ...(typeof cookieDiag.expiredAgoSec === 'number'
+          ? { expiredAgoSec: cookieDiag.expiredAgoSec }
+          : {}),
+        ...(typeof cookieDiag.sv === 'number' ? { cookieSv: cookieDiag.sv } : {}),
+      },
       response: buildRejectionResponse(
         'UNAUTHENTICATED',
         401,
         'נדרשת התחברות למערכת',
-        false
+        cookieDiag.status !== 'no_cookie'
       ),
     };
   }
@@ -86,6 +115,26 @@ export async function authenticateActiveSession(
       ? await getTraineeAuthStateFromServer(session.id)
       : await getCoachAuthStateFromServer(session.id);
 
+  if (live?.dbUnavailable) {
+    return {
+      ok: false,
+      code: 'UNAUTHENTICATED',
+      status: 503,
+      message: 'תקלה זמנית בחיבור למסד הנתונים — נסה שוב בעוד רגע',
+      diagCode: 'AUTH_DB_UNAVAILABLE',
+      diagUid: session.id,
+      diagRole: session.role,
+      diagDetails: { dbError: live.dbError || 'transient' },
+      // חשוב: לא מוחקים עוגייה על תקלת חיבור זמנית!
+      response: buildRejectionResponse(
+        'UNAUTHENTICATED',
+        503,
+        'תקלה זמנית בחיבור למסד הנתונים — נסה שוב בעוד רגע',
+        false
+      ),
+    };
+  }
+
   if (!live || live.status !== 'active') {
     const msg =
       session.role === 'coach'
@@ -96,6 +145,10 @@ export async function authenticateActiveSession(
       code: 'ACCOUNT_BLOCKED',
       status: 403,
       message: msg,
+      diagCode: !live ? 'USER_NOT_FOUND_IN_DB' : 'ACCOUNT_BLOCKED',
+      diagUid: session.id,
+      diagRole: session.role,
+      diagDetails: { liveStatus: live?.status || 'missing' },
       response: buildRejectionResponse('ACCOUNT_BLOCKED', 403, msg, true),
     };
   }
@@ -112,6 +165,10 @@ export async function authenticateActiveSession(
       code: 'SESSION_REVOKED',
       status: 401,
       message: msg,
+      diagCode: 'SESSION_REVOKED',
+      diagUid: session.id,
+      diagRole: session.role,
+      diagDetails: { cookieSv: tokenSv, liveSv },
       response: buildRejectionResponse('SESSION_REVOKED', 401, msg, true),
     };
   }

@@ -12,6 +12,99 @@ const QUEUE_FLUSH_INTERVAL_MS = 120_000; // 2 minutes max periodic flush to prot
 const BATCH_THRESHOLD = 15;
 const MAX_QUEUE_LEN = 25;
 const ERROR_STORAGE_KEY = 'spot_pending_client_errors_v1';
+const LAST_AUTH_HINT_KEY = 'spot_last_auth_hint_v1';
+
+export interface KnownAuthSessionHint {
+  userId: string;
+  role: string;
+  name?: string;
+  setAt: number;
+  platform: TelemetryPlatform;
+}
+
+export function recordKnownAuthSessionHint(user: {
+  id: string;
+  role: string;
+  name?: string;
+}): void {
+  if (typeof window === 'undefined' || !user?.id) return;
+  try {
+    const payload: KnownAuthSessionHint = {
+      userId: String(user.id).slice(0, 80),
+      role: String(user.role || 'trainee').slice(0, 20),
+      name: user.name ? String(user.name).slice(0, 60) : undefined,
+      setAt: Date.now(),
+      platform: detectClientPlatform(),
+    };
+    window.localStorage.setItem(LAST_AUTH_HINT_KEY, JSON.stringify(payload));
+  } catch {
+    // ignore private storage issues
+  }
+}
+
+export function getKnownAuthSessionHint(): KnownAuthSessionHint | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(LAST_AUTH_HINT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<KnownAuthSessionHint>;
+    if (!parsed?.userId || typeof parsed.userId !== 'string') return null;
+    return {
+      userId: parsed.userId,
+      role: String(parsed.role || 'trainee'),
+      name: parsed.name,
+      setAt: Number(parsed.setAt) || 0,
+      platform: (parsed.platform as TelemetryPlatform) || 'unknown',
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function clearKnownAuthSessionHint(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(LAST_AUTH_HINT_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+export function getClientRuntimeContext(): Record<string, unknown> {
+  if (typeof window === 'undefined') return {};
+  const nav = window.navigator as Navigator & {
+    connection?: {
+      effectiveType?: string;
+      rtt?: number;
+      downlink?: number;
+      saveData?: boolean;
+    };
+  };
+  const ua = String(nav.userAgent || '');
+  const androidMatch = ua.match(/Android\s+([0-9.]+)/i);
+  const chromeMatch = ua.match(/Chrome\/([0-9.]+)/i);
+  const isWebView = /;\s*wv\b/i.test(ua);
+  const hint = getKnownAuthSessionHint();
+  return {
+    platform: detectClientPlatform(),
+    online: nav.onLine,
+    ...(cachedAppCode ? { appVersionCode: cachedAppCode } : {}),
+    webBuildId: CLIENT_WEB_BUILD_ID || undefined,
+    ...(nav.connection?.effectiveType
+      ? { netType: nav.connection.effectiveType }
+      : {}),
+    ...(typeof nav.connection?.rtt === 'number'
+      ? { netRttMs: nav.connection.rtt }
+      : {}),
+    ...(typeof nav.connection?.downlink === 'number'
+      ? { netDownlinkMbps: nav.connection.downlink }
+      : {}),
+    ...(androidMatch ? { androidVer: androidMatch[1] } : {}),
+    ...(chromeMatch ? { chromeVer: chromeMatch[1].split('.')[0] } : {}),
+    ...(isWebView ? { isWebView: true } : {}),
+    ...(hint?.userId ? { lastKnownUserId: hint.userId, lastKnownRole: hint.role } : {}),
+  };
+}
 
 let sessionIdCache = '';
 let cachedAppCode: number | undefined;
@@ -140,29 +233,37 @@ export function flushClientTelemetry(useBeacon = false): void {
 export function trackClientEvent(
   eventType: ClientTelemetryEventType,
   eventName: string,
-  opts?: { screen?: string; details?: Record<string, unknown> }
+  opts?: { screen?: string; details?: Record<string, unknown>; flushNow?: boolean }
 ): void {
   if (typeof window === 'undefined') return;
 
-  if (eventType === 'client_error') {
+  if (eventType === 'client_error' || opts?.flushNow) {
     const now = Date.now();
     if (now - errorWindowStart > 60_000) {
       errorWindowStart = now;
       errorCountMinute = 0;
     }
-    if (errorCountMinute >= 5) return;
-    const dedupeKey = `${eventName}:${String(opts?.details?.message || '').slice(0, 80)}`;
-    if (dedupeKey === lastErrorKey && now - lastErrorAt < 8000) return;
+    if (errorCountMinute >= 8) return;
+    const dedupeKey = `${eventType}:${eventName}:${String(
+      opts?.details?.message || opts?.details?.diagCode || opts?.details?.code || ''
+    ).slice(0, 80)}`;
+    if (dedupeKey === lastErrorKey && now - lastErrorAt < 4000) return;
     lastErrorKey = dedupeKey;
     lastErrorAt = now;
     errorCountMinute += 1;
   }
 
+  const hint = getKnownAuthSessionHint();
+  const mergedDetails = {
+    ...(hint?.userId ? { lastKnownUserId: hint.userId, lastKnownRole: hint.role } : {}),
+    ...(opts?.details || {}),
+  };
+
   queue.push({
     eventType,
     eventName: eventName.slice(0, 80),
     screen: opts?.screen?.slice(0, 80),
-    details: opts?.details,
+    details: mergedDetails,
     clientTs: Date.now(),
   });
 
@@ -170,11 +271,20 @@ export function trackClientEvent(
     queue = queue.slice(-MAX_QUEUE_LEN);
   }
 
+  if (opts?.flushNow) {
+    if (errorDebounceTimer) {
+      clearTimeout(errorDebounceTimer);
+      errorDebounceTimer = null;
+    }
+    flushClientTelemetry(false);
+    return;
+  }
+
   if (eventType === 'client_error') {
     if (errorDebounceTimer) clearTimeout(errorDebounceTimer);
     errorDebounceTimer = setTimeout(() => {
       flushClientTelemetry(false);
-    }, 1800);
+    }, 1500);
     return;
   }
 

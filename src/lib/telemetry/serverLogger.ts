@@ -5,78 +5,17 @@ import {
   sanitizeTelemetryMetadata,
 } from './redact';
 import type { ApiLogInput, AuditEventInput } from './types';
+import { shouldPersistApiLogToDb } from './filterRules';
+
+export { shouldPersistApiLogToDb };
 
 const WRITE_TIMEOUT_MS = 1600;
-
-const HIGH_SIGNAL_PREFIXES = [
-  '/api/auth/session',
-  '/api/ai/',
-  '/api/steps/',
-  '/api/push/send',
-  '/api/admin/',
-  '/api/profile',
-  '/api/cron/',
-];
-
-const NOISY_ROUTES = new Set([
-  '/api/auth/heartbeat',
-  '/api/app-version',
-  '/api/telemetry/events',
-]);
 
 function hasServiceRoleAccess(): boolean {
   return Boolean(
     isSupabaseConfigured &&
       supabase &&
       process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
-  );
-}
-
-/**
- * כלל סינון חכם להישארות בתוך 500MB ב-Supabase Free:
- * שומרים 100% שגיאות/איטיות/AI/מוטציות, וזורקים heartbeat/GET שגרתי מהיר.
- */
-export function shouldPersistApiLogToDb(entry: ApiLogInput): boolean {
-  if (entry.statusCode >= 400) {
-    // 401 on anonymous heartbeat when unauthenticated is normal, skip unless login/action
-    if (
-      entry.statusCode === 401 &&
-      entry.routePattern === '/api/auth/heartbeat'
-    ) {
-      return false;
-    }
-    return true;
-  }
-
-  const isAiRoute = entry.routePattern.startsWith('/api/ai/');
-  const slowThreshold = isAiRoute ? 10_000 : 1_500;
-  if (entry.durationMs >= slowThreshold) return true;
-
-  if (NOISY_ROUTES.has(entry.routePattern)) {
-    return false;
-  }
-
-  if (
-    entry.routePattern === '/api/push/register' &&
-    entry.actionName === 'heartbeat'
-  ) {
-    return false;
-  }
-
-  if (
-    entry.routePattern === '/api/data' &&
-    entry.method.toUpperCase() === 'GET'
-  ) {
-    // 2% baseline sampling for routine /api/data reads (prevents poll flood)
-    return Math.random() < 0.02;
-  }
-
-  if (entry.method.toUpperCase() !== 'GET') {
-    return true;
-  }
-
-  return HIGH_SIGNAL_PREFIXES.some((prefix) =>
-    entry.routePattern.startsWith(prefix)
   );
 }
 
