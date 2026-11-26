@@ -22,6 +22,10 @@ import {
 } from 'lucide-react';
 import { SegmentedPill } from './ui/SegmentedPill';
 import { AdminRateLimitsSection } from './AdminRateLimitsSection';
+import {
+  AdminAiTracesInspector,
+  type AiTraceQueueBucket,
+} from './AdminAiTracesInspector';
 import type { RateLimitAnalyticsPayload } from '@/lib/rateLimitAnalytics';
 import type { CoachProfile, TraineeProfile } from '@/types/nutrition';
 
@@ -243,6 +247,18 @@ export function AdminMonitoringPanel({
   const [rateLimitStats, setRateLimitStats] = useState<RateLimitAnalyticsPayload | null>(null);
   const [rateLimitCountersPending, setRateLimitCountersPending] = useState<boolean>(false);
   const [aiLogs, setAiLogs] = useState<ApiLogRow[]>([]);
+  const [aiTraceHistory, setAiTraceHistory] = useState<AiTraceQueueBucket>({
+    traces: [],
+    totalCount: 0,
+    savedCount: 0,
+    cap: 250,
+  });
+  const [aiTraceCrashed, setAiTraceCrashed] = useState<AiTraceQueueBucket>({
+    traces: [],
+    totalCount: 0,
+    savedCount: 0,
+    cap: 100,
+  });
   const [auditEvents, setAuditEvents] = useState<AuditRow[]>([]);
   const [apiLogs, setApiLogs] = useState<ApiLogRow[]>([]);
   const [clientEvents, setClientEvents] = useState<ClientEventRow[]>([]);
@@ -308,6 +324,8 @@ export function AdminMonitoringPanel({
       setRateLimitStats(data.rateLimitStats || null);
       setRateLimitCountersPending(Boolean(data.rateLimitCountersPending));
       setAiLogs(Array.isArray(data.aiLogs) ? data.aiLogs : []);
+      if (data.aiTraceHistory) setAiTraceHistory(data.aiTraceHistory);
+      if (data.aiTraceCrashed) setAiTraceCrashed(data.aiTraceCrashed);
       setAuditEvents(Array.isArray(data.auditEvents) ? data.auditEvents : []);
       setApiLogs(Array.isArray(data.apiLogs) ? data.apiLogs : []);
       setClientEvents(Array.isArray(data.clientEvents) ? data.clientEvents : []);
@@ -1230,7 +1248,25 @@ export function AdminMonitoringPanel({
               })
             )}
           </section>
+
+          <AdminAiTracesInspector
+            historyBucket={aiTraceHistory}
+            crashedBucket={aiTraceCrashed}
+            onRefresh={() => void loadSnapshot()}
+            onNotify={onNotify}
+            formatTimeHe={formatTimeHe}
+          />
         </div>
+      )}
+
+      {viewTab === 'ai' && setupRequired && (
+        <AdminAiTracesInspector
+          historyBucket={aiTraceHistory}
+          crashedBucket={aiTraceCrashed}
+          onRefresh={() => void loadSnapshot()}
+          onNotify={onNotify}
+          formatTimeHe={formatTimeHe}
+        />
       )}
 
       {viewTab === 'audit' && (

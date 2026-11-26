@@ -211,6 +211,146 @@ export interface LoggedFoodItem {
   inputConfidence?: FoodInputConfidence;
   sourcePresetId?: string;
   recipeYieldGrams?: number;
+  /** חיווי זמני לעריכת מאמן שטרם נצפתה ע"י המתאמן עצמו */
+  coachBadge?: 'new' | 'edited';
+  coachPrevSummary?: string;
+  coachEditedAt?: string;
+  coachEditedBy?: string;
+}
+
+export type PhotoAngleKind =
+  | 'unset'
+  | 'label'
+  | 'top-down'
+  | 'side-45'
+  | 'other';
+
+export interface SubmittedMealPhotoMeta {
+  hash: string;
+  angle: PhotoAngleKind;
+  labelProductName?: string;
+}
+
+export interface AiClarificationQuestion {
+  id: string;
+  photoIndex: number;
+  photoHash?: string;
+  extractedTableSummary: string;
+  questionText: string;
+  suggestedOptions: string[];
+  allowCustomOther?: boolean;
+  defaultGramsHint?: number;
+  per100gEstimate?: MacroTargets;
+  perServingEstimate?: MacroTargets;
+  servingGramsHint?: number;
+}
+
+export interface AiClarificationAnswer {
+  questionId: string;
+  selectedOption: string;
+  isCustomOther?: boolean;
+  customProductName?: string;
+  gramsOrPortionText?: string;
+  answeredAt: string;
+}
+
+export interface AiFailedDraftSnapshot {
+  traineeId: string;
+  date: string;
+  mealSlotId: string;
+  mode: 'photo' | 'text' | 'adjust';
+  photos?: {
+    dataUrl: string;
+    angle: PhotoAngleKind;
+    labelProductName?: string;
+  }[];
+  textPrompt?: string;
+  adjustmentPrompt?: string;
+  selectedTargetIds?: string[];
+  activeChipLabels?: string[];
+  chipQuantities?: Record<string, AiChipQuantityEntry>;
+  contextParams?: AiContextParams;
+  includePreviousMealPhotos?: boolean;
+  errorMsg?: string;
+  failedAt: string;
+}
+
+export type MealHistoryEventKind =
+  | 'ai_analyze'
+  | 'ai_adjust'
+  | 'ai_clarify'
+  | 'ai_failed'
+  | 'manual_add'
+  | 'manual_edit'
+  | 'manual_remove'
+  | 'coach_edit'
+  | 'coach_ai'
+  | 'coach_feedback'
+  | 'restore_deleted'
+  | 'rollback_snapshot';
+
+export interface MealHistoryItemChange {
+  itemId: string;
+  name: string;
+  changeKind: 'added' | 'updated' | 'removed';
+  summary: string;
+  prevSummary?: string;
+  removedItem?: LoggedFoodItem;
+}
+
+export interface MealHistoryAiDetail {
+  jobId?: string;
+  mode: 'photo' | 'text' | 'adjust' | 'clarify';
+  prompt?: string;
+  chips?: string[];
+  chipQuantities?: Record<string, AiChipQuantityEntry>;
+  photos?: SubmittedMealPhotoMeta[];
+  clarificationQuestions?: AiClarificationQuestion[];
+  clarificationAnswers?: AiClarificationAnswer[];
+  adjustmentPrompt?: string;
+  selectedTargetIds?: string[];
+  engine?: string;
+  isFallback?: boolean;
+  errorMsg?: string;
+  errorStage?: 'client' | 'validation' | 'vision_api' | 'parser' | 'db_save';
+  retryDraftPayload?: AiFailedDraftSnapshot;
+}
+
+export interface MealHistoryEntry {
+  id: string;
+  timestamp: string;
+  timeLabel: string;
+  kind: MealHistoryEventKind;
+  actorId: string;
+  actorName: string;
+  actorRole: UserRole;
+  summary: string;
+  deltaCalories?: number;
+  deltaProtein?: number;
+  deltaCarbs?: number;
+  deltaFat?: number;
+  totalCaloriesAfter?: number;
+  itemChanges?: MealHistoryItemChange[];
+  aiDetail?: MealHistoryAiDetail;
+  itemsSnapshot?: LoggedFoodItem[];
+  mealTimeSnapshot?: string;
+}
+
+export interface CoachDeletedItemNotice {
+  id: string;
+  item: LoggedFoodItem;
+  coachName: string;
+  deletedAt: string;
+  historyEventId: string;
+}
+
+export interface CoachMealEditState {
+  unreadBanner: boolean;
+  unreadBadges: boolean;
+  lastCoachName: string;
+  lastCoachId?: string;
+  lastEditedAt: string;
+  summaryText: string;
 }
 
 export interface LoggedMealEntry {
@@ -220,10 +360,16 @@ export interface LoggedMealEntry {
   mealTime?: string; // שעה מותאמת אישית לבחירת המשתמש (HH:MM)
   photoDataUrl?: string;
   photoDataUrls?: string[];
+  photoMetas?: SubmittedMealPhotoMeta[];
+  /** מילון תמונות ממופה לפי Hash למניעת שכפול Base64 בהיסטוריית הארוחה */
+  photoStore?: Record<string, string>;
   photoNote?: string;
   coachFeedback?: string;
   coachFeedbackAuthor?: string;
   coachFeedbackAt?: string;
+  coachEditState?: CoachMealEditState;
+  pendingCoachDeletedItems?: CoachDeletedItemNotice[];
+  history?: MealHistoryEntry[];
   updatedAt: string;
 }
 
@@ -498,6 +644,8 @@ export interface AiContextParams {
   activeChipLabels?: string[];
   chipQuantities?: Record<string, AiChipQuantityEntry>;
   imageAngles?: ('top-down' | 'side-45' | 'label' | 'other')[];
+  imageLabelProducts?: (string | undefined)[];
+  includePreviousMealPhotos?: boolean;
   customUnits?: TraineeCustomUnit[];
   strictUserList?: boolean;
 }
@@ -580,7 +728,8 @@ export interface PendingAiMealJob {
   replaceMealItems?: boolean;
   summaryHint?: string;
   photoDataUrls?: string[];
-  status: 'processing' | 'completed' | 'failed';
+  photoMetas?: SubmittedMealPhotoMeta[];
+  status: 'processing' | 'awaiting_clarification' | 'completed' | 'failed';
   startedAt: string;
   lastHeartbeatAt?: string;
   stageText?: string;
@@ -590,8 +739,69 @@ export interface PendingAiMealJob {
   fallbackReason?: string;
   itemsCount?: number;
   errorMsg?: string;
+  errorStage?: 'client' | 'validation' | 'vision_api' | 'parser' | 'db_save';
+  clarificationQuestions?: AiClarificationQuestion[];
+  clarificationToken?: string;
+  retryPayload?: AiFailedDraftSnapshot;
   autoSyncedToLog?: boolean;
   acknowledged?: boolean;
+}
+
+export interface TraineeCoachMealAlert {
+  id: string;
+  coachId?: string;
+  coachName: string;
+  date: string;
+  mealSlotId: string;
+  mealSlotName: string;
+  summaryText: string;
+  editedAt: string;
+  shownOnJournalVisit?: boolean;
+  dismissed?: boolean;
+}
+
+export interface AiTraceStepItem {
+  stage: string;
+  status: 'ok' | 'info' | 'warn' | 'error';
+  timestamp: string;
+  summary: string;
+  details?: unknown;
+}
+
+export interface AiConversationTraceRecord {
+  id: string;
+  createdAt: string;
+  userId: string;
+  userName: string;
+  userRole: UserRole;
+  mealSlotId?: string;
+  mealSlotName?: string;
+  mealDate?: string;
+  mode: string;
+  queueType: 'history' | 'crashed';
+  isSaved: boolean;
+  reviewStatus?: 'new' | 'resolved';
+  crashStage?: 'client' | 'validation' | 'vision_api' | 'parser' | 'db_save' | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  durationMs?: number;
+  model?: string;
+  imageCount?: number;
+  totalImageKB?: number;
+  isSandboxReplay?: boolean;
+  promptText?: string;
+  activeChips?: string[];
+  clarificationQuestions?: AiClarificationQuestion[];
+  clarificationAnswers?: AiClarificationAnswer[];
+  parsedItems?: LoggedFoodItem[];
+  stepsTimeline: AiTraceStepItem[];
+  rawResponseSummary?: string;
+  thumbnails?: {
+    hash: string;
+    angle: PhotoAngleKind;
+    labelProductName?: string;
+    dataUrl: string;
+  }[];
 }
 
 export interface TraineeGroup {
@@ -695,6 +905,8 @@ export interface TraineeProfile {
   customFoodUnits?: TraineeCustomUnit[]; // יחידות מידה מוגדרות אישית בגרמים
   customFoods?: CustomFoodItem[]; // מוצרי מזון אישיים שהמתאמן או המאמן הגדירו במיוחד
   recentContextChips?: QuickContextChip[]; // צ'יפים מהירים פר-משתמש מסודרים לפי MRU
+  recentLabelProducts?: string[]; // היסטוריית שמות מוצרים שהוזנו לתוויות ערכים להשלמה אוטומטית
+  coachMealAlerts?: TraineeCoachMealAlert[]; // התראות בתוך האפליקציה על עריכת מאמן שטרם נצפתה
   pendingAiJobs?: PendingAiMealJob[]; // משימות פענוח AI שמתבצעות ברקע ומסתנכרנות אוטומטית ליומן
   fcmTokens?: TraineeFcmTokenEntry[]; // טוקנים רשומים של אפליקציית האנדרואיד (FCM)
   webPushSubscriptions?: TraineeWebPushSubscriptionEntry[]; // מנויי Web Push (אייפון במסך הבית + דפדפנים)

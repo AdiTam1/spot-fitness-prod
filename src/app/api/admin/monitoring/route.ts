@@ -12,6 +12,11 @@ import {
   RateLimitRawAuditRow,
   RateLimitRawCounterRow,
 } from '@/lib/rateLimitAnalytics';
+import {
+  getAdminAiTraceDetail,
+  listAdminAiTraces,
+  updateAdminAiTraceFlags,
+} from '@/lib/aiTracing';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -301,18 +306,22 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const hasServiceRole = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim());
-  if (!isSupabaseConfigured || !supabase || !hasServiceRole) {
-    return NextResponse.json({
-      ok: true,
-      setupRequired: true,
-      missingReason: !isSupabaseConfigured
-        ? 'חיבור Supabase אינו מוגדר בשרת.'
-        : 'חסר SUPABASE_SERVICE_ROLE_KEY בהגדרות הסביבה (Vercel) לקריאת טבלאות הניטור המוגנות ב-RLS.',
-    });
+  const sp = request.nextUrl.searchParams;
+  const isTraceDetailReq = sp.get('traceDetail') === '1';
+  const traceIdParam = sanitizeIdentifier(sp.get('traceId'), 80);
+
+  if (isTraceDetailReq && traceIdParam) {
+    try {
+      const detail = await getAdminAiTraceDetail(traceIdParam);
+      return NextResponse.json(
+        { ok: true, ...detail },
+        { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      );
+    } catch {
+      return NextResponse.json({ error: 'שגיאה בטעינת פרטי השיחה' }, { status: 500 });
+    }
   }
 
-  const sp = request.nextUrl.searchParams;
   const hours = Math.round(sanitizeNumber(sp.get('hours'), 1, 720, 168));
   const page = Math.round(sanitizeNumber(sp.get('page'), 0, 40, 0));
   const actorId = sanitizeIdentifier(sp.get('actorId'), 80);
@@ -321,6 +330,34 @@ export async function GET(request: NextRequest) {
   const aiOutcome = sanitizeIdentifier(sp.get('aiOutcome'), 20);
   const aiReasonCode = sanitizeIdentifier(sp.get('aiReasonCode'), 50);
   const errorsOnly = sp.get('errorsOnly') === '1';
+  const traceSearch = sanitizeText(sp.get('traceSearch'), 80);
+
+  const hasServiceRole = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim());
+  if (!isSupabaseConfigured || !supabase || !hasServiceRole) {
+    const [localHistory, localCrashed] = await Promise.all([
+      listAdminAiTraces({
+        queueType: 'history',
+        userId: actorId || undefined,
+        search: traceSearch || undefined,
+        limit: 80,
+      }).catch(() => ({ traces: [], totalCount: 0, savedCount: 0, cap: 250 })),
+      listAdminAiTraces({
+        queueType: 'crashed',
+        userId: actorId || undefined,
+        search: traceSearch || undefined,
+        limit: 80,
+      }).catch(() => ({ traces: [], totalCount: 0, savedCount: 0, cap: 100 })),
+    ]);
+    return NextResponse.json({
+      ok: true,
+      setupRequired: true,
+      missingReason: !isSupabaseConfigured
+        ? 'חיבור Supabase אינו מוגדר בשרת (מציג שיחות AI ממאגר הפיתוח המקומי).'
+        : 'חסר SUPABASE_SERVICE_ROLE_KEY בהגדרות הסביבה (Vercel) לקריאת טבלאות הניטור המוגנות ב-RLS.',
+      aiTraceHistory: localHistory,
+      aiTraceCrashed: localCrashed,
+    });
+  }
 
   const sinceIso = new Date(Date.now() - hours * 3600_000).toISOString();
   const fromIdx = page * PAGE_SIZE;
@@ -486,6 +523,8 @@ export async function GET(request: NextRequest) {
       rlApiRes,
       rlDegradedRes,
       rlCountersRes,
+      aiTraceHistory,
+      aiTraceCrashed,
     ] = await Promise.all([
       auditQuery,
       apiQuery,
@@ -505,6 +544,18 @@ export async function GET(request: NextRequest) {
       rlApiQuery,
       rlDegradedQuery,
       rlCountersQuery,
+      listAdminAiTraces({
+        queueType: 'history',
+        userId: actorId || undefined,
+        search: traceSearch || undefined,
+        limit: 80,
+      }).catch(() => ({ setupRequired: true, traces: [], totalCount: 0, savedCount: 0, cap: 250 })),
+      listAdminAiTraces({
+        queueType: 'crashed',
+        userId: actorId || undefined,
+        search: traceSearch || undefined,
+        limit: 80,
+      }).catch(() => ({ setupRequired: true, traces: [], totalCount: 0, savedCount: 0, cap: 100 })),
     ]);
 
     const firstSchemaErr = [auditRes.error, apiRes.error, clientRes.error].find(
@@ -551,6 +602,8 @@ export async function GET(request: NextRequest) {
         aiStats,
         rateLimitStats,
         aiLogs: aiLogsRes.data || [],
+        aiTraceHistory,
+        aiTraceCrashed,
         auditEvents: auditRes.data || [],
         apiLogs: apiRes.data || [],
         clientEvents: clientRes.data || [],
@@ -582,6 +635,29 @@ export async function POST(request: NextRequest) {
       { error: 'גישה מותרת למנהל מערכת ראשי בלבד' },
       { status: 403 }
     );
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
+    action?: string;
+    traceId?: string;
+    isSaved?: boolean;
+    reviewStatus?: 'new' | 'resolved';
+  };
+
+  if (body?.action === 'toggle-trace-saved' && body.traceId) {
+    const res = await updateAdminAiTraceFlags({
+      traceId: sanitizeIdentifier(body.traceId, 80),
+      isSaved: Boolean(body.isSaved),
+    });
+    return NextResponse.json({ ok: res.ok });
+  }
+
+  if (body?.action === 'update-trace-review' && body.traceId) {
+    const res = await updateAdminAiTraceFlags({
+      traceId: sanitizeIdentifier(body.traceId, 80),
+      reviewStatus: body.reviewStatus === 'resolved' ? 'resolved' : 'new',
+    });
+    return NextResponse.json({ ok: res.ok });
   }
 
   if (

@@ -38,6 +38,7 @@ import {
   loadSemanticSearchEnabledFromSupabase,
   loadSingleCoachFromSupabase,
   loadSingleTraineeFromSupabase,
+  loadSingleTraineeWithVersionFromSupabase,
   loadStateFromSupabase,
   loadTraineeLiveAuthState,
   saveAppReleasePolicyToSupabase,
@@ -49,6 +50,7 @@ import {
   saveGroupsToSupabase,
   saveSemanticSearchEnabledToSupabase,
   saveShowScraperSourcesToSupabase,
+  saveSingleTraineeCasToSupabase,
   saveTemplatesToSupabase,
   saveTraineesToSupabase,
   touchUserLastSeenInSupabase,
@@ -86,6 +88,33 @@ declare global {
   var __spotLastClientVersionCache: Map<string, UserClientVersionInfo> | undefined;
   // eslint-disable-next-line no-var
   var __spotSemanticFlagCache: { value: boolean; expiresAt: number } | undefined;
+  // eslint-disable-next-line no-var
+  var __spotTraineeWriteLocks: Map<string, Promise<unknown>> | undefined;
+}
+
+async function runWithTraineeLock<T>(
+  traineeId: string,
+  task: () => Promise<T>
+): Promise<T> {
+  if (!global.__spotTraineeWriteLocks) {
+    global.__spotTraineeWriteLocks = new Map();
+  }
+  const prev = global.__spotTraineeWriteLocks.get(traineeId) || Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((res) => {
+    release = res;
+  });
+  const chained = prev.catch(() => {}).then(() => gate);
+  global.__spotTraineeWriteLocks.set(traineeId, chained);
+  await prev.catch(() => {});
+  try {
+    return await task();
+  } finally {
+    release();
+    if (global.__spotTraineeWriteLocks.get(traineeId) === chained) {
+      global.__spotTraineeWriteLocks.delete(traineeId);
+    }
+  }
 }
 
 const DEFAULT_GROUPS: TraineeGroup[] = [
@@ -581,6 +610,60 @@ export async function updateServerDbState(
   }
 
   return next;
+}
+
+/**
+ * עדכון אטומי מוגן-מקביליות עבור מתאמן בודד (Per-Trainee Lock + Optimistic CAS Retry).
+ * מונע דריסות בין בקשות AI ברקע, שמירת ארוחה מהטלפון, עריכת מאמן וסנכרון צעדים.
+ */
+export async function updateTraineeAtomic(
+  traineeId: string,
+  updater: (prev: TraineeProfile) => TraineeProfile | null,
+  maxCasAttempts = 5
+): Promise<{ prev: TraineeProfile | null; next: TraineeProfile | null }> {
+  return runWithTraineeLock(traineeId, async () => {
+    if (isSupabaseConfigured) {
+      for (let attempt = 0; attempt < maxCasAttempts; attempt++) {
+        const loaded = await loadSingleTraineeWithVersionFromSupabase(traineeId);
+        if (!loaded) return { prev: null, next: null };
+        const updated = updater(loaded.trainee);
+        if (!updated || updated === loaded.trainee) {
+          return { prev: loaded.trainee, next: loaded.trainee };
+        }
+        const { conflicted } = await saveSingleTraineeCasToSupabase(
+          updated,
+          loaded.updatedAt
+        );
+        if (!conflicted) {
+          return { prev: loaded.trainee, next: updated };
+        }
+        await new Promise((r) => setTimeout(r, 30 + Math.floor(Math.random() * 60)));
+      }
+      // ניסיון אחרון מובטח אחרי התנגשויות מרובות
+      const fresh = await loadSingleTraineeFromSupabase(traineeId);
+      if (!fresh) return { prev: null, next: null };
+      const finalUpdated = updater(fresh);
+      if (!finalUpdated || finalUpdated === fresh) {
+        return { prev: fresh, next: fresh };
+      }
+      await saveTraineesToSupabase([finalUpdated]);
+      return { prev: fresh, next: finalUpdated };
+    }
+
+    const current = await getServerDbState();
+    const existing = current.trainees.find((t) => t.id === traineeId);
+    if (!existing) return { prev: null, next: null };
+    const updated = updater(existing);
+    if (!updated || updated === existing) {
+      return { prev: existing, next: existing };
+    }
+    const nextState: ServerDatabaseState = {
+      ...current,
+      trainees: current.trainees.map((t) => (t.id === traineeId ? updated : t)),
+    };
+    saveLocalServerFile(nextState);
+    return { prev: existing, next: updated };
+  });
 }
 
 /**

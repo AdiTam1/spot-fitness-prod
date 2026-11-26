@@ -18,6 +18,7 @@ import {
   ScraperSuiteReport,
   SqlFoodCatalogStats,
   TraineeActivityTargets,
+  TraineeCoachMealAlert,
   TraineeCustomUnit,
   TraineeGroup,
   TraineeOnboardingData,
@@ -164,6 +165,8 @@ interface EmbeddedTraineeMeta {
   customFoodUnits?: TraineeCustomUnit[];
   customFoods?: CustomFoodItem[];
   recentContextChips?: QuickContextChip[];
+  recentLabelProducts?: string[];
+  coachMealAlerts?: TraineeCoachMealAlert[];
   pendingAiJobs?: PendingAiMealJob[];
   fcmTokens?: TraineeProfile['fcmTokens'];
   webPushSubscriptions?: TraineeProfile['webPushSubscriptions'];
@@ -334,6 +337,12 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
       ? embeddedMeta.recentContextChips
       : Array.isArray(row.recent_context_chips)
       ? (row.recent_context_chips as QuickContextChip[])
+      : [],
+    recentLabelProducts: Array.isArray(embeddedMeta.recentLabelProducts)
+      ? embeddedMeta.recentLabelProducts
+      : [],
+    coachMealAlerts: Array.isArray(embeddedMeta.coachMealAlerts)
+      ? embeddedMeta.coachMealAlerts
       : [],
     pendingAiJobs: Array.isArray(embeddedMeta.pendingAiJobs)
       ? embeddedMeta.pendingAiJobs
@@ -791,6 +800,22 @@ export async function loadSingleTraineeFromSupabase(
     .single();
   if (error || !data) return null;
   return mapRowToTrainee(data);
+}
+
+export async function loadSingleTraineeWithVersionFromSupabase(
+  traineeId: string
+): Promise<{ trainee: TraineeProfile; updatedAt: string | null } | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('trainees')
+    .select('*')
+    .eq('id', traineeId)
+    .single();
+  if (error || !data) return null;
+  return {
+    trainee: mapRowToTrainee(data),
+    updatedAt: typeof data.updated_at === 'string' ? data.updated_at : null,
+  };
 }
 
 export async function loadSingleCoachFromSupabase(
@@ -1399,10 +1424,8 @@ export async function deleteTemplateFromSupabase(templateId: string) {
   }
 }
 
-export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
-  if (!supabase || trainees.length === 0) return;
-
-  const packLogsWithMeta = (t: TraineeProfile) => ({
+function packTraineeLogsWithMeta(t: TraineeProfile) {
+  return {
     ...t.logs,
     __profile_meta: {
       onboarding: t.onboarding,
@@ -1426,6 +1449,8 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
       customFoodUnits: t.customFoodUnits || [],
       customFoods: t.customFoods || [],
       recentContextChips: t.recentContextChips || [],
+      recentLabelProducts: t.recentLabelProducts || [],
+      coachMealAlerts: t.coachMealAlerts || [],
       pendingAiJobs: t.pendingAiJobs || [],
       fcmTokens: t.fcmTokens || [],
       webPushSubscriptions: t.webPushSubscriptions || [],
@@ -1441,9 +1466,11 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
       sessionVersion: Math.max(1, Number(t.sessionVersion) || 1),
       lastSeenAt: t.lastSeenAt,
     },
-  });
+  };
+}
 
-  const sessionAwareRows = trainees.map((t) => ({
+function buildTraineeSessionAwareRow(t: TraineeProfile, updatedAtIso: string) {
+  return {
     id: t.id,
     email: t.email,
     password: t.password,
@@ -1476,11 +1503,47 @@ export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
     custom_food_units: t.customFoodUnits || [],
     recent_context_chips: t.recentContextChips || [],
     pending_ai_jobs: t.pendingAiJobs || [],
-    logs: packLogsWithMeta(t),
+    logs: packTraineeLogsWithMeta(t),
     session_version: Math.max(1, Number(t.sessionVersion) || 1),
     last_seen_at: t.lastSeenAt || null,
-    updated_at: new Date().toISOString(),
-  }));
+    updated_at: updatedAtIso,
+  };
+}
+
+/**
+ * כתיבה אטומית מוגנת Optimistic CAS של מתאמן בודד למניעת דריסת עדכונים מקבילים
+ */
+export async function saveSingleTraineeCasToSupabase(
+  trainee: TraineeProfile,
+  expectedUpdatedAt: string | null
+): Promise<{ conflicted: boolean }> {
+  if (!supabase) return { conflicted: false };
+  const nextUpdatedAt = new Date().toISOString();
+  if (expectedUpdatedAt) {
+    const row = buildTraineeSessionAwareRow(trainee, nextUpdatedAt);
+    const { data, error } = await supabase
+      .from('trainees')
+      .update(row)
+      .eq('id', trainee.id)
+      .eq('updated_at', expectedUpdatedAt)
+      .select('id');
+    if (!error) {
+      return { conflicted: !data || data.length === 0 };
+    }
+    // אם חסרה עמודה ישנה בסכמה, נפילה חזרה ל-upsert הגמיש הרגיל
+  }
+  await saveTraineesToSupabase([trainee]);
+  return { conflicted: false };
+}
+
+export async function saveTraineesToSupabase(trainees: TraineeProfile[]) {
+  if (!supabase || trainees.length === 0) return;
+
+  const packLogsWithMeta = packTraineeLogsWithMeta;
+  const nowIso = new Date().toISOString();
+  const sessionAwareRows = trainees.map((t) =>
+    buildTraineeSessionAwareRow(t, nowIso)
+  );
 
   const withSv = await supabase
     .from('trainees')

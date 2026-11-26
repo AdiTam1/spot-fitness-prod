@@ -277,6 +277,30 @@ export function CompositeDishRow({
                 סיר {Math.round(item.recipeYieldGrams)}g
               </span>
             )}
+            {item.coachBadge && (
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  padding: '2px 7px',
+                  borderRadius: 999,
+                  background:
+                    item.coachBadge === 'new'
+                      ? 'rgba(34, 197, 94, 0.16)'
+                      : 'var(--sel-bg)',
+                  color:
+                    item.coachBadge === 'new'
+                      ? 'var(--ok-text)'
+                      : 'var(--sel-text)',
+                  border:
+                    item.coachBadge === 'new'
+                      ? '1px solid rgba(34, 197, 94, 0.38)'
+                      : '1px solid var(--sel-border)',
+                }}
+              >
+                {item.coachBadge === 'new' ? 'חדש מהמאמן' : 'נערך ע״י המאמן'}
+              </span>
+            )}
             {!isComposite && confidenceBadge === 'הערכת AI' && (
               <span
                 style={{
@@ -314,6 +338,9 @@ export function CompositeDishRow({
             <span>· ח׳ {item.macros.protein}g · פ׳ {item.macros.carbs}g · ש׳ {item.macros.fat}g</span>
             {item.isAiFallback ? ' · לא AI' : item.aiEngine && !isComposite ? ' · AI' : ''}
             {item.itemTime ? ` · ${item.itemTime}` : ''}
+            {item.coachBadge === 'edited' && item.coachPrevSummary
+              ? ` · קודם: ${item.coachPrevSummary}`
+              : ''}
           </div>
         </div>
 
@@ -425,15 +452,20 @@ export function CompositeDishRow({
                   onUpdateItem({ ...item, name: e.currentTarget.value })
                 }
               />
-              <ItemTimePill
-                value={item.itemTime}
-                fallbackTime={mealTimeFallback}
-                placeholderLabel="שעה למנה"
-                ariaLabel={`שעה עבור ${item.name}`}
-                clearAriaLabel={`אפס שעה עבור ${item.name}`}
-                height={30}
-                onChange={(val) => onUpdateItem({ ...item, itemTime: val || undefined })}
-              />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)' }}>
+                  שעה למנה
+                </span>
+                <ItemTimePill
+                  value={item.itemTime}
+                  fallbackTime={mealTimeFallback}
+                  placeholderLabel="שעה למנה"
+                  ariaLabel={`שעה עבור ${item.name}`}
+                  clearAriaLabel={`אפס שעה עבור ${item.name}`}
+                  height={52}
+                  onChange={(val) => onUpdateItem({ ...item, itemTime: val || undefined })}
+                />
+              </div>
             </div>
 
             {/* סקיילינג לכל המנה בלחיצה + עדכון Preset אם שונתה */}
@@ -872,7 +904,7 @@ export function CompositeDishRow({
                   placeholderLabel="לפי הארוחה"
                   ariaLabel={`שעה עבור ${item.name}`}
                   clearAriaLabel={`אפס שעה עבור ${item.name}`}
-                  height={30}
+                  height={52}
                   onChange={(val) => onUpdateItem({ ...item, itemTime: val || undefined })}
                 />
               </div>

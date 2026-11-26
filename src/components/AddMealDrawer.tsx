@@ -45,9 +45,13 @@ import {
   RefreshCw,
   Layers,
   CheckSquare,
+  Minimize2,
+  RotateCcw,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   AiContextParams,
+  AiFailedDraftSnapshot,
   AiMealSuggestionOption,
   CustomFoodItem,
   DailyLog,
@@ -55,8 +59,10 @@ import {
   LoggedFoodItem,
   LoggedMealEntry,
   MacroTargets,
+  MealHistoryEntry,
   MealTemplateSlot,
   PendingAiMealJob,
+  PhotoAngleKind,
   QuickContextChip,
   SavedMealPreset,
   TraineeCustomUnit,
@@ -117,8 +123,15 @@ import { ItemTimePill } from './ui/ItemTimePill';
 import { SegmentedPill } from './ui/SegmentedPill';
 import { SavedMealsLibraryTab } from './SavedMealsLibraryTab';
 import { AiQuickContextPanel } from './AiQuickContextPanel';
+import { AiClarificationCard } from './AiClarificationCard';
+import { MealHistoryPanel } from './MealHistoryPanel';
 import { CompositeDishRow, type ItemFieldDraft } from './CompositeDishRow';
 import { useAiProgressMessage } from './BackgroundAiSyncBanner';
+import {
+  clearFailedAiDraft,
+  loadFailedAiDraft,
+  saveFailedAiDraft,
+} from '@/lib/aiDraftStore';
 import {
   cloneFoodItemWithFreshIds,
   groupItemsAsCompositeDish,
@@ -212,6 +225,22 @@ interface AddMealDrawerProps {
     chipId?: string;
   }) => Promise<{ error?: string }>;
   actorRole?: UserRole;
+  isCoachPreview?: boolean;
+  recentLabelProducts?: string[];
+  externalOpenAdjustNonce?: number;
+  externalClarificationJobId?: string;
+  onMarkCoachBadgesRead?: (mealSlotId: string) => void;
+  onRestoreCoachDeletedItem?: (payload: {
+    mealSlotId: string;
+    noticeId?: string;
+    historyEventId?: string;
+    itemId?: string;
+  }) => Promise<void>;
+  onRollbackMealHistory?: (payload: {
+    mealSlotId: string;
+    historyEntryId: string;
+  }) => Promise<void>;
+  onRefreshDataFromServer?: () => void;
   showScraperSources?: boolean;
   semanticSearchEnabled?: boolean;
   customFoods?: CustomFoodItem[];
@@ -226,6 +255,7 @@ interface AddMealDrawerProps {
     mode: 'photo' | 'text' | 'adjust';
     imageDataUrl?: string;
     imageDataUrls?: string[];
+    imageMetas?: { angle: PhotoAngleKind; labelProductName?: string }[];
     textPrompt?: string;
     baseItems?: LoggedFoodItem[];
     selectedTargetIds?: string[];
@@ -263,6 +293,14 @@ export function AddMealDrawer({
   onManageToolsAndUnits,
   onManageQuickChips,
   actorRole = 'trainee',
+  isCoachPreview = false,
+  recentLabelProducts = [],
+  externalOpenAdjustNonce = 0,
+  externalClarificationJobId,
+  onMarkCoachBadgesRead,
+  onRestoreCoachDeletedItem,
+  onRollbackMealHistory,
+  onRefreshDataFromServer,
   showScraperSources = false,
   semanticSearchEnabled = false,
   customFoods = [],
@@ -285,13 +323,17 @@ export function AddMealDrawer({
       dataUrl: string;
       sizeKB: number;
       formatLabel: 'WebP' | 'JPEG';
-      angle: 'unset' | 'top-down' | 'side-45' | 'label' | 'other';
+      angle: PhotoAngleKind;
+      labelProductName?: string;
+      labelInputOpen?: boolean;
     }[]
   >([]);
   const [photoSizeKB, setPhotoSizeKB] = useState<number | null>(null);
   const [photoFormatLabel, setPhotoFormatLabel] = useState<'WebP' | 'JPEG'>('WebP');
   const [photoNote, setPhotoNote] = useState('');
-  const [photoMode, setPhotoMode] = useState<'plate' | 'nutrition-label'>('plate');
+  const [includePreviousMealPhotos, setIncludePreviousMealPhotos] = useState(false);
+  const [progressFloatingCollapsed, setProgressFloatingCollapsed] = useState(false);
+  const [highlightedHistoryEventId, setHighlightedHistoryEventId] = useState<string | null>(null);
   const [freeTextPrompt, setFreeTextPrompt] = useState('');
   const [contextParams, setContextParams] = useState<AiContextParams>({});
   const [toolsModalOpen, setToolsModalOpen] = useState(false);
@@ -321,6 +363,7 @@ export function AddMealDrawer({
   const [savePresetAsSingleDish, setSavePresetAsSingleDish] = useState(false);
   const [presetTitleInput, setPresetTitleInput] = useState('');
   const [voiceState, setVoiceState] = useState<VoiceCaptureState>('idle');
+  const [dismissedFailedJobId, setDismissedFailedJobId] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSummary, setAiSummary] = useState<{
     msg: string;
@@ -329,6 +372,14 @@ export function AddMealDrawer({
     isFallback?: boolean;
     fallbackReason?: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (!aiSummary || aiSummary.isError) return;
+    const t = setTimeout(() => {
+      setAiSummary(null);
+    }, 5500);
+    return () => clearTimeout(t);
+  }, [aiSummary]);
 
   const [aiRecommendations, setAiRecommendations] = useState<AiMealSuggestionOption[]>([]);
   const [aiRecDebug, setAiRecDebug] = useState<{
@@ -492,6 +543,17 @@ export function AddMealDrawer({
             (!selectedDate || j.date === selectedDate)
         )
       : undefined;
+  const slotBgClarifyJob =
+    opened && mealSlot
+      ? backgroundAiJobs.find(
+          (j) =>
+            j.status === 'awaiting_clarification' &&
+            !j.acknowledged &&
+            (externalClarificationJobId ? j.id === externalClarificationJobId : true) &&
+            j.mealSlotId === mealSlot.id &&
+            (!selectedDate || j.date === selectedDate)
+        )
+      : undefined;
   const slotBgFailedJob =
     opened && mealSlot
       ? backgroundAiJobs.find(
@@ -502,6 +564,8 @@ export function AddMealDrawer({
             (!selectedDate || j.date === selectedDate)
         )
       : undefined;
+  const sawUnreadCoachBadgesSlotRef = useRef<string | null>(null);
+  const prefilledFailedSectionsRef = useRef<Set<string>>(new Set());
   const isSlotBgProcessing = Boolean(slotBgProcessingJob);
   const progressTicker = useAiProgressMessage(
     aiLoading || isSlotBgProcessing,
@@ -539,18 +603,15 @@ export function AddMealDrawer({
         setTargetDishIdForAdd(null);
         stopCorrectionVoice(false);
         setPhotoDataUrl(entryPhotos[0] || existingEntry?.photoDataUrl);
-        setPhotoItems(
-          entryPhotos.map((url) => ({
-            dataUrl: url,
-            sizeKB: Math.round((url.length * 3) / 4 / 1024),
-            formatLabel: 'WebP' as const,
-            angle: 'unset' as const,
-          }))
-        );
+        setPhotoItems([]);
         setPhotoSizeKB(null);
         setPhotoFormatLabel('WebP');
-        setPhotoNote(existingEntry?.photoNote || '');
+        setPhotoNote('');
+        setIncludePreviousMealPhotos(false);
         setFreeTextPrompt('');
+        setHighlightedHistoryEventId(null);
+        setProgressFloatingCollapsed(false);
+        prefilledFailedSectionsRef.current = new Set();
         setContextParams({ customUnits: customFoodUnits });
         setSaveAsPreset(false);
         setSavePresetAsSingleDish(false);
@@ -580,6 +641,7 @@ export function AddMealDrawer({
         setEditingItemId(null);
         setItemFieldDrafts({});
         itemScaleBaseRef.current = {};
+        setDismissedFailedJobId(null);
         setAiSummary(null);
         setSavedMealsInitialFilter('all');
         pendingAdjustReplaceRef.current = false;
@@ -662,26 +724,16 @@ export function AddMealDrawer({
             return incomingExtras.length > 0 ? [...prev, ...incomingExtras] : prev;
           });
         }
-        if (entryPhotos.length > 0) {
-          setPhotoItems((prev) => {
-            const prevUrls = new Set(prev.map((p) => p.dataUrl));
-            const incomingPhotos = entryPhotos.filter((u) => !prevUrls.has(u));
-            if (incomingPhotos.length === 0) return prev;
-            const merged = [
-              ...incomingPhotos.map((url) => ({
-                dataUrl: url,
-                sizeKB: Math.round((url.length * 3) / 4 / 1024),
-                formatLabel: 'WebP' as const,
-                angle: 'unset' as const,
-              })),
-              ...prev,
-            ].slice(0, 3);
-            setPhotoDataUrl(merged[0]?.dataUrl);
-            return merged;
-          });
+        if (entryPhotos.length > 0 && !photoDataUrl) {
+          setPhotoDataUrl(entryPhotos[0]);
         }
       }
     } else if (!opened) {
+      if (sawUnreadCoachBadgesSlotRef.current && actorRole === 'trainee' && !isCoachPreview) {
+        const readSlot = sawUnreadCoachBadgesSlotRef.current;
+        sawUnreadCoachBadgesSlotRef.current = null;
+        onMarkCoachBadgesRead?.(readSlot);
+      }
       lastOpenedKeyRef.current = '';
       barcodeStandaloneRef.current = false;
       stopVoiceRecording(false);
@@ -692,6 +744,113 @@ export function AddMealDrawer({
       stopCorrectionVoice(false);
     };
   }, [opened, mealSlot, existingEntry, initialTab, customFoodUnits, selectedDate]);
+
+  // סימון צפייה על באדג'ים של מאמן אך ורק למתאמן עצמו בעת יציאה מפירוט הארוחה
+  useEffect(() => {
+    if (
+      opened &&
+      mealSlot &&
+      activeTab === 'meal-items' &&
+      existingEntry?.coachEditState?.unreadBadges &&
+      actorRole === 'trainee' &&
+      !isCoachPreview
+    ) {
+      sawUnreadCoachBadgesSlotRef.current = mealSlot.id;
+    } else if (
+      opened &&
+      activeTab !== 'meal-items' &&
+      sawUnreadCoachBadgesSlotRef.current &&
+      actorRole === 'trainee' &&
+      !isCoachPreview
+    ) {
+      const readSlot = sawUnreadCoachBadgesSlotRef.current;
+      sawUnreadCoachBadgesSlotRef.current = null;
+      onMarkCoachBadgesRead?.(readSlot);
+    }
+  }, [opened, mealSlot, activeTab, existingEntry?.coachEditState?.unreadBadges, actorRole, isCoachPreview, onMarkCoachBadgesRead]);
+
+  // מילוי אוטומטי מ"טיוטת קריסה" בעת כניסה חוזרת אוטומטית או לחיצה על "שלח שוב"
+  useEffect(() => {
+    if (!opened || !mealSlot || !traineeId || !selectedDate) return;
+    const targetMode: 'photo' | 'text' | 'adjust' | null =
+      activeTab === 'ai-photo'
+        ? 'photo'
+        : activeTab === 'ai-text'
+        ? 'text'
+        : correctionOpen || externalOpenAdjustNonce > 0
+        ? 'adjust'
+        : null;
+    if (!targetMode) return;
+    const sectionKey = `${traineeId}::${selectedDate}::${mealSlot.id}::${targetMode}::${externalOpenAdjustNonce}`;
+    if (prefilledFailedSectionsRef.current.has(sectionKey)) return;
+    prefilledFailedSectionsRef.current.add(sectionKey);
+
+    let cancelled = false;
+    void loadFailedAiDraft(traineeId, selectedDate, mealSlot.id, targetMode).then((idbDraft) => {
+      if (cancelled) return;
+      const serverFallbackDraft =
+        slotBgFailedJob?.mode === targetMode ? slotBgFailedJob.retryPayload : undefined;
+      const draft = idbDraft || serverFallbackDraft;
+      if (!draft) {
+        // במקרה שאין קריסה שמורה: השדות נשארים ריקים בעת כניסה רגילה
+        return;
+      }
+      if (targetMode === 'photo') {
+        if (draft.photos && draft.photos.length > 0) {
+          const restored = draft.photos
+            .filter((p) => Boolean(p.dataUrl))
+            .slice(0, 8)
+            .map((p) => ({
+              dataUrl: p.dataUrl,
+              sizeKB: Math.max(1, Math.round((p.dataUrl.length * 3) / 4 / 1024)),
+              formatLabel: 'WebP' as const,
+              angle: p.angle || ('unset' as PhotoAngleKind),
+              labelProductName: p.labelProductName,
+              labelInputOpen: p.angle === 'label',
+            }));
+          if (restored.length > 0) {
+            setPhotoItems(restored);
+            setPhotoDataUrl(restored[0].dataUrl);
+            setPhotoSizeKB(restored[0].sizeKB);
+          }
+        }
+        if (draft.textPrompt) setPhotoNote(draft.textPrompt);
+        if (draft.contextParams) {
+          setContextParams({ ...draft.contextParams, customUnits: customFoodUnits });
+        }
+        if (typeof draft.includePreviousMealPhotos === 'boolean') {
+          setIncludePreviousMealPhotos(draft.includePreviousMealPhotos);
+        }
+      } else if (targetMode === 'text') {
+        if (draft.textPrompt) setFreeTextPrompt(draft.textPrompt);
+        if (draft.contextParams) {
+          setContextParams({ ...draft.contextParams, customUnits: customFoodUnits });
+        }
+      } else if (targetMode === 'adjust') {
+        if (draft.adjustmentPrompt) setCorrectionText(draft.adjustmentPrompt);
+        if (draft.selectedTargetIds && draft.selectedTargetIds.length > 0) {
+          setSelectionMode(true);
+          setSelectedIds(new Set(draft.selectedTargetIds));
+        }
+        if (externalOpenAdjustNonce > 0) {
+          setCorrectionOpen(true);
+        }
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    opened,
+    mealSlot,
+    traineeId,
+    selectedDate,
+    activeTab,
+    correctionOpen,
+    externalOpenAdjustNonce,
+    slotBgFailedJob,
+    customFoodUnits,
+  ]);
 
   // טעינה מיידית (0ms) מ-localStorage של ההיסטוריה האישית וסנכרון שקט מול השרת
   useEffect(() => {
@@ -1378,14 +1537,80 @@ export function AddMealDrawer({
 
   const [photoUploading, setPhotoUploading] = useState(false);
 
+  const applyFailedDraftForRetry = (
+    draft?: AiFailedDraftSnapshot,
+    histEvent?: MealHistoryEntry
+  ) => {
+    const d = draft || histEvent?.aiDetail?.retryDraftPayload;
+    const mode = d?.mode || (histEvent?.aiDetail?.mode === 'adjust' ? 'adjust' : histEvent?.aiDetail?.photos?.length ? 'photo' : 'text');
+    const resolvedPhotos =
+      d?.photos && d.photos.length > 0
+        ? d.photos
+            .filter((p) => Boolean(p.dataUrl))
+            .map((p) => ({
+              dataUrl: p.dataUrl,
+              sizeKB: Math.max(1, Math.round((p.dataUrl.length * 3) / 4 / 1024)),
+              formatLabel: 'WebP' as const,
+              angle: p.angle || ('unset' as PhotoAngleKind),
+              labelProductName: p.labelProductName,
+              labelInputOpen: p.angle === 'label',
+            }))
+        : (histEvent?.aiDetail?.photos || [])
+            .map((m) => {
+              const url = existingEntry?.photoStore?.[m.hash];
+              if (!url) return null;
+              return {
+                dataUrl: url,
+                sizeKB: Math.max(1, Math.round((url.length * 3) / 4 / 1024)),
+                formatLabel: 'WebP' as const,
+                angle: m.angle || ('unset' as PhotoAngleKind),
+                labelProductName: m.labelProductName,
+                labelInputOpen: m.angle === 'label',
+              };
+            })
+            .filter((x): x is NonNullable<typeof x> => Boolean(x));
+
+    if (mode === 'adjust') {
+      setCorrectionText(d?.adjustmentPrompt || histEvent?.aiDetail?.adjustmentPrompt || '');
+      if (d?.selectedTargetIds?.length) {
+        setSelectionMode(true);
+        setSelectedIds(new Set(d.selectedTargetIds));
+      }
+      navigateTab('meal-items');
+      setCorrectionOpen(true);
+      return;
+    }
+
+    if (mode === 'photo' || resolvedPhotos.length > 0) {
+      if (resolvedPhotos.length > 0) {
+        setPhotoItems(resolvedPhotos.slice(0, 8));
+        setPhotoDataUrl(resolvedPhotos[0].dataUrl);
+        setPhotoSizeKB(resolvedPhotos[0].sizeKB);
+      }
+      setPhotoNote(d?.textPrompt || histEvent?.aiDetail?.prompt || '');
+      if (d?.contextParams) {
+        setContextParams({ ...d.contextParams, customUnits: customFoodUnits });
+      }
+      setIncludePreviousMealPhotos(Boolean(d?.includePreviousMealPhotos));
+      navigateTab('ai-photo');
+      return;
+    }
+
+    setFreeTextPrompt(d?.textPrompt || histEvent?.aiDetail?.prompt || '');
+    if (d?.contextParams) {
+      setContextParams({ ...d.contextParams, customUnits: customFoodUnits });
+    }
+    navigateTab('ai-text');
+  };
+
   const handlePhotoUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    preferredAngle?: 'unset' | 'top-down' | 'side-45' | 'label' | 'other',
+    preferredAngle?: PhotoAngleKind,
     options?: { stayOnTab?: boolean }
   ) => {
     const files = Array.from(e.target.files || []).slice(
       0,
-      Math.max(0, 3 - photoItems.length)
+      Math.max(0, 8 - photoItems.length)
     );
     if (files.length === 0) {
       e.target.value = '';
@@ -1406,30 +1631,48 @@ export function AddMealDrawer({
     setPhotoUploading(true);
     setAiSummary(null);
     try {
+      const projectedTotal = Math.min(8, photoItems.length + files.length);
+      // תקציב משקל דינמי <= ~2.5MB מול מגבלת Vercel: ב-5 עד 8 תמונות מכווצים קצת יותר חסכוני (~105KB)
+      const perImageTargetBytes = projectedTotal > 4 ? 105_000 : 155_000;
+      const maxDim = projectedTotal > 4 ? 600 : 640;
+
       const newEntries: {
         dataUrl: string;
         sizeKB: number;
         formatLabel: 'WebP' | 'JPEG';
-        angle: 'unset' | 'top-down' | 'side-45' | 'label' | 'other';
+        angle: PhotoAngleKind;
+        labelProductName?: string;
+        labelInputOpen?: boolean;
       }[] = [];
+      let cumulativeBytes = photoItems.reduce((acc, p) => acc + p.dataUrl.length, 0);
+
       for (let i = 0; i < files.length; i++) {
         const compressed = await compressMealImage(files[i], 800, 0.72);
         const thumbUrl = await compressDataUrlToThumbnail(
           compressed.dataUrl,
-          640,
-          155000
+          maxDim,
+          perImageTargetBytes
         );
+        if (cumulativeBytes + thumbUrl.length > 2_500_000) {
+          setAiSummary({
+            msg: 'הגעת לתקרת המשקל לשליחה (עד ~2.5MB) — לחץ שלח או הסר תמונה ישנה.',
+            isError: true,
+          });
+          break;
+        }
+        cumulativeBytes += thumbUrl.length;
         const approxKB = Math.max(1, Math.round((thumbUrl.length * 3) / 4 / 1024));
-        const angle = preferredAngle || 'unset';
+        const angle: PhotoAngleKind = preferredAngle || 'unset';
         newEntries.push({
           dataUrl: thumbUrl,
           sizeKB: approxKB,
           formatLabel: compressed.formatLabel,
           angle,
+          labelInputOpen: angle === 'label',
         });
       }
       setPhotoItems((prev) => {
-        const merged = [...prev, ...newEntries].slice(0, 3);
+        const merged = [...prev, ...newEntries].slice(0, 8);
         setPhotoDataUrl(merged[0]?.dataUrl);
         setPhotoSizeKB(merged[0]?.sizeKB ?? null);
         setPhotoFormatLabel(merged[0]?.formatLabel ?? 'WebP');
@@ -1454,27 +1697,25 @@ export function AddMealDrawer({
   ) => {
     if (aiLockRef.current) return;
     const rawPrompt = customTextOverride ?? (mode === 'photo' ? photoNote : freeTextPrompt);
-    const activeImages = photoItems.length > 0
-      ? photoItems
-      : photoDataUrl && !photoDataUrl.endsWith(',DEMO')
-      ? [{ dataUrl: photoDataUrl, angle: 'unset' as const }]
-      : [];
+    const activeImages = photoItems.length > 0 ? photoItems : [];
 
     if (mode === 'photo' && activeImages.length === 0 && !rawPrompt.trim()) {
       setAiSummary({ msg: 'נא להעלות תמונה או להזין תיאור של הארוחה', isError: true });
       return;
     }
-    const promptToUse =
-      mode === 'photo' && photoMode === 'nutrition-label'
-        ? `קרא את טבלת הערכים התזונתיים מהתמונה וחלץ את המוצר והערכים שלו למנה/100 גרם: ${rawPrompt}`
-        : rawPrompt;
+    const promptToUse = rawPrompt;
 
-    const selectedAngles = activeImages
-      .map((im) => im.angle)
-      .filter((a): a is 'top-down' | 'side-45' | 'label' | 'other' => a !== 'unset');
+    const selectedAngles = activeImages.map((im) => im.angle || 'unset');
+    const labelProducts = activeImages.map((im) =>
+      im.angle === 'label' && im.labelProductName?.trim()
+        ? im.labelProductName.trim()
+        : undefined
+    );
     const fullContextParams: AiContextParams = {
       ...contextParams,
-      imageAngles: selectedAngles.length > 0 ? selectedAngles : undefined,
+      imageAngles: selectedAngles.length > 0 ? selectedAngles.map((a) => (a === 'unset' ? 'other' : a)) : undefined,
+      imageLabelProducts: labelProducts.some(Boolean) ? labelProducts : undefined,
+      includePreviousMealPhotos: mode === 'photo' ? includePreviousMealPhotos : false,
       customUnits: customFoodUnits,
     };
 
@@ -1523,6 +1764,13 @@ export function AddMealDrawer({
           mode === 'photo' && activeImages.length > 0
             ? activeImages.map((im) => im.dataUrl)
             : undefined,
+        imageMetas:
+          mode === 'photo' && activeImages.length > 0
+            ? activeImages.map((im) => ({
+                angle: im.angle,
+                labelProductName: im.labelProductName,
+              }))
+            : undefined,
         textPrompt: promptToUse,
         contextParams: fullContextParams,
       });
@@ -1533,6 +1781,24 @@ export function AddMealDrawer({
     setAiLoading(true);
     if (optionIndex !== undefined) setAddingOptionIdx(optionIndex);
     setAiSummary(null);
+    const fgDraft =
+      traineeId && selectedDate && mealSlot && optionIndex === undefined
+        ? {
+            traineeId,
+            date: selectedDate,
+            mealSlotId: mealSlot.id,
+            mode,
+            photos: activeImages.map((im) => ({
+              dataUrl: im.dataUrl,
+              angle: im.angle,
+              labelProductName: im.labelProductName,
+            })),
+            textPrompt: promptToUse,
+            contextParams: fullContextParams,
+            includePreviousMealPhotos,
+            failedAt: new Date().toISOString(),
+          }
+        : null;
     try {
       const res = await fetch('/api/ai/analyze-meal', {
         method: 'POST',
@@ -1546,17 +1812,25 @@ export function AddMealDrawer({
           textPrompt: promptToUse,
           contextParams: fullContextParams,
           traineeId,
+          date: selectedDate,
+          mealSlotId: mealSlot?.id,
           customApiKey: geminiApiKey,
         }),
       });
       if (await handlePossibleAuthRejection(res)) return;
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (fgDraft) {
+          void saveFailedAiDraft({ ...fgDraft, errorMsg: data.error });
+        }
         setAiSummary({
           msg: data.error || 'שגיאה בפענוח ה-AI – נסה שוב',
           isError: true,
         });
         return;
+      }
+      if (fgDraft && traineeId && selectedDate && mealSlot) {
+        void clearFailedAiDraft(traineeId, selectedDate, mealSlot.id, mode);
       }
       if (Array.isArray(data.items) && data.items.length > 0) {
         appendItemsSmart(data.items);
@@ -1581,6 +1855,7 @@ export function AddMealDrawer({
         });
       }
     } catch {
+      if (fgDraft) void saveFailedAiDraft({ ...fgDraft, errorMsg: 'שגיאה בפענוח ה-AI' });
       setAiSummary({ msg: 'שגיאה בפענוח ה-AI', isError: true });
     } finally {
       aiLockRef.current = false;
@@ -1955,15 +2230,14 @@ export function AddMealDrawer({
     return [];
   }, [existingEntry]);
 
-  const allMealPhotos = useMemo(
-    () =>
-      photoItems.length > 0
-        ? photoItems.map((im) => im.dataUrl)
-        : photoDataUrl && !photoDataUrl.endsWith(',DEMO')
-        ? [photoDataUrl]
-        : [],
-    [photoItems, photoDataUrl]
-  );
+  const allMealPhotos = useMemo(() => {
+    const merged = [
+      ...photoItems.map((im) => im.dataUrl),
+      ...(photoDataUrl && !photoDataUrl.endsWith(',DEMO') ? [photoDataUrl] : []),
+      ...initialEntryPhotos,
+    ];
+    return merged.filter((u, idx, arr) => Boolean(u) && arr.indexOf(u) === idx);
+  }, [photoItems, photoDataUrl, initialEntryPhotos]);
 
   const hasPendingItemFieldEdits = useMemo(
     () =>
@@ -2041,7 +2315,7 @@ export function AddMealDrawer({
       if (allMealPhotos[idx] !== initialEntryPhotos[idx]) return true;
     }
 
-    if ((photoNote || '') !== (existingEntry?.photoNote || '')) return true;
+    if (photoNote.trim() && photoNote !== (existingEntry?.photoNote || '')) return true;
 
     const baselineTime =
       normalizeHhMmTime(existingEntry?.mealTime || mealSlot?.timeHint || '') || '';
@@ -2134,11 +2408,14 @@ export function AddMealDrawer({
     setSavingMeal(true);
     try {
       const primaryPhoto = allMealPhotos[0] || photoDataUrl;
+      const effectivePhotoNote = photoNote.trim()
+        ? photoNote
+        : existingEntry?.photoNote || '';
       await onSaveMeal(
         mealSlot.id,
         finalItems,
         primaryPhoto,
-        photoNote,
+        effectivePhotoNote,
         allMealPhotos.length > 0 ? allMealPhotos : undefined,
         mealTime || undefined
       );
@@ -2246,12 +2523,27 @@ export function AddMealDrawer({
         selectedTargetIds: scopedIds,
         correctionHistory: nextHistory,
         adjustmentPrompt: cleanPrompt,
-        contextParams,
+        contextParams: { ...contextParams, customUnits: customFoodUnits },
         imageDataUrl: allMealPhotos[0],
         imageDataUrls: allMealPhotos.length > 0 ? allMealPhotos : undefined,
       });
       return;
     }
+
+    const adjustDraft =
+      traineeId && selectedDate && mealSlot
+        ? {
+            traineeId,
+            date: selectedDate,
+            mealSlotId: mealSlot.id,
+            mode: 'adjust' as const,
+            adjustmentPrompt: cleanPrompt,
+            selectedTargetIds: scopedIds,
+            baseItems: [...items],
+            contextParams: { ...contextParams, customUnits: customFoodUnits },
+            failedAt: new Date().toISOString(),
+          }
+        : null;
 
     setCorrectionLoading(true);
     try {
@@ -2264,18 +2556,27 @@ export function AddMealDrawer({
           selectedTargetIds: scopedIds,
           correctionHistory: nextHistory,
           adjustmentPrompt: cleanPrompt,
-          contextParams,
+          contextParams: { ...contextParams, customUnits: customFoodUnits },
           traineeId,
+          date: selectedDate,
+          mealSlotId: mealSlot?.id,
           imageDataUrl: allMealPhotos[0],
           imageDataUrls: allMealPhotos.length > 0 ? allMealPhotos : undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !Array.isArray(data.items) || (data.items.length === 0 && !scopedIds)) {
-        setCorrectionError(
-          data?.error || 'לא הצלחנו לעדכן את הארוחה כרגע — נסה שוב בעוד רגע.'
-        );
+        const errMsg =
+          data?.error || 'לא הצלחנו לעדכן את הארוחה כרגע — נסה שוב בעוד רגע.';
+        if (adjustDraft) {
+          void saveFailedAiDraft({ ...adjustDraft, errorMsg: errMsg });
+        }
+        setCorrectionError(errMsg);
         return;
+      }
+
+      if (adjustDraft && traineeId && selectedDate && mealSlot) {
+        void clearFailedAiDraft(traineeId, selectedDate, mealSlot.id, 'adjust');
       }
 
       setPreCorrectionItems([...items]);
@@ -2318,79 +2619,388 @@ export function AddMealDrawer({
       setCorrectionOpen(false);
       setCorrectionText('');
     } catch {
+      if (adjustDraft) {
+        void saveFailedAiDraft({
+          ...adjustDraft,
+          errorMsg: 'שגיאת תקשורת בעת שליחת התיקון',
+        });
+      }
       setCorrectionError('שגיאת תקשורת בעת שליחת התיקון — בדוק חיבור ונסה שוב.');
     } finally {
       setCorrectionLoading(false);
     }
   };
 
-  const renderAiProgressCard = () => {
-    if (!isSlotBgProcessing && !aiLoading) return null;
+  const renderFloatingAiOverlay = () => {
+    if (!opened) return null;
+    const isProcessing = isSlotBgProcessing || aiLoading;
     const isAdjusting = slotBgProcessingJob?.mode === 'adjust';
-    return (
-      <div
-        style={{
-          padding: '12px 14px',
-          borderRadius: 16,
-          background: 'var(--fill-1)',
-          border: '1px solid var(--line-2)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Loader2 size={16} color="var(--accent-volt)" className="spot-spinner" />
-            <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent-volt)' }}>
-              {isAdjusting
-                ? 'מתקן ומחשב מחדש את הארוחה...'
-                : progressTicker.currentStepText}
-            </span>
-          </div>
-          <span
-            className="num-mono"
+
+    if (isProcessing) {
+      if (progressFloatingCollapsed) {
+        const pct = Math.min(
+          95,
+          Math.round(100 * (1 - Math.exp(-progressTicker.elapsedSec / 25)))
+        );
+        return (
+          <button
+            type="button"
+            aria-label={`פענוח AI מתקדם ${pct}% — לחץ להרחבה`}
+            onClick={() => setProgressFloatingCollapsed(false)}
+            className="glass"
             style={{
-              fontSize: 12,
-              fontWeight: 800,
-              padding: '2px 8px',
+              position: 'fixed',
+              bottom: 'calc(var(--sa-bottom, 0px) + 84px)',
+              insetInlineEnd: 16,
+              zIndex: 255,
+              width: 56,
+              height: 56,
+              padding: 0,
               borderRadius: 999,
-              background: 'var(--surface-2)',
-              color: 'var(--accent-volt)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              color: 'var(--text)',
             }}
           >
-            {progressTicker.formattedElapsed}
-          </span>
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.45 }}>
-          {isAdjusting ? (
-            <>
-              מעדכן את רכיבי הארוחה לפי בקשתך. <b>אפשר לצאת מהחלונית או אפילו לסגור את האפליקצייה</b> — התיקון ממשיך בשרת ויחליף את הרכיבים אוטומטית.
-            </>
-          ) : (
-            <>
-              ניתוח AI מתקדם עשוי לקחת 1–3 דקות. <b>אפשר לצאת מהחלונית או אפילו לסגור בינתיים</b> — הפענוח ממשיך ברקע והפריטים יסתנכרנו אוטומטית ליומן הארוחות שלך.
-            </>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="btn-surface"
+            <svg
+              width="56"
+              height="56"
+              viewBox="0 0 56 56"
+              aria-hidden
+              style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}
+            >
+              <circle
+                cx="28"
+                cy="28"
+                r="26"
+                fill="none"
+                stroke="var(--surface-3)"
+                strokeWidth="3"
+              />
+              <circle
+                cx="28"
+                cy="28"
+                r="26"
+                fill="none"
+                stroke="var(--accent)"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeDasharray={`${(pct / 100) * 163.4} 163.4`}
+                style={{ transition: 'stroke-dasharray .8s ease' }}
+              />
+            </svg>
+            <Sparkles size={20} color="currentColor" />
+          </button>
+        );
+      }
+
+      return (
+        <div
+          className="glass"
+          role="status"
+          aria-live="polite"
           style={{
-            alignSelf: 'flex-start',
-            padding: '6px 12px',
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: 'pointer',
-            borderColor: 'var(--line-2)',
-            color: 'var(--accent-volt)',
+            position: 'fixed',
+            bottom: 'calc(var(--sa-bottom, 0px) + 84px)',
+            left: 14,
+            right: 14,
+            maxWidth: 520,
+            margin: '0 auto',
+            zIndex: 255,
+            borderRadius: 26,
+            padding: '13px 15px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
           }}
         >
-          אפשר לצאת בינתיים — סגור חלונית והמשך רגיל ←
-        </button>
-      </div>
-    );
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <Loader2 size={16} color="var(--accent)" className="spot-spinner" />
+              <span style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text)' }}>
+                {isAdjusting
+                  ? 'מתקן ומחשב מחדש את הארוחה...'
+                  : progressTicker.currentStepText}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+              <span
+                className="num-mono"
+                style={{
+                  fontSize: 12,
+                  fontWeight: 800,
+                  padding: '2px 8px',
+                  borderRadius: 999,
+                  background: 'var(--surface-2)',
+                  color: 'var(--accent)',
+                }}
+              >
+                {progressTicker.formattedElapsed}
+              </span>
+              <button
+                type="button"
+                aria-label="מזער"
+                onClick={() => setProgressFloatingCollapsed(true)}
+                className="hit-44"
+                style={{
+                  width: 30,
+                  height: 30,
+                  border: 0,
+                  borderRadius: 999,
+                  background: 'transparent',
+                  color: 'var(--text-2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                }}
+              >
+                <Minimize2 size={15} />
+              </button>
+            </div>
+          </div>
+          <div style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.4 }}>
+            {isAdjusting
+              ? 'מעדכן את רכיבי הארוחה לפי בקשתך — התיקון ממשיך בשרת.'
+              : 'ניתוח AI מתקדם עשוי לקחת 1–3 דקות — אפשר לסגור חלונית ולהמשיך רגיל.'}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn-surface"
+            style={{
+              alignSelf: 'flex-start',
+              padding: '6px 12px',
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+              color: 'var(--accent)',
+            }}
+          >
+            אפשר לצאת בינתיים — סגור חלונית ←
+          </button>
+        </div>
+      );
+    }
+
+    if (aiSummary) {
+      const iconBg = aiSummary.isError
+        ? 'rgba(239, 68, 68, 0.16)'
+        : aiSummary.isFallback
+        ? 'rgba(245, 158, 11, 0.16)'
+        : 'rgba(16, 185, 129, 0.16)';
+      const accentCol = aiSummary.isError
+        ? 'var(--danger-text)'
+        : aiSummary.isFallback
+        ? 'var(--warn-text)'
+        : 'var(--accent-volt, var(--accent))';
+
+      return (
+        <div
+          className="glass"
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            bottom: 'calc(var(--sa-bottom, 0px) + 84px)',
+            left: 14,
+            right: 14,
+            maxWidth: 520,
+            margin: '0 auto',
+            zIndex: 255,
+            borderRadius: 26,
+            padding: '12px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            borderColor: aiSummary.isError
+              ? 'rgba(239, 68, 68, 0.38)'
+              : aiSummary.isFallback
+              ? 'rgba(245, 158, 11, 0.35)'
+              : 'var(--line-2)',
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: '50%',
+              background: iconBg,
+              color: accentCol,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            {aiSummary.isError ? (
+              <AlertTriangle size={16} />
+            ) : aiSummary.isFallback ? (
+              <Sparkles size={16} />
+            ) : (
+              <Check size={16} strokeWidth={2.6} />
+            )}
+          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.35 }}>
+              {aiSummary.msg}
+            </div>
+            {aiSummary.engine && (
+              <div style={{ fontSize: 11.5, color: 'var(--text-2)', marginTop: 2 }}>
+                {aiSummary.isFallback
+                  ? `תג תחקור: גיבוי (${aiSummary.engine})${
+                      aiSummary.fallbackReason ? ` · ${aiSummary.fallbackReason}` : ''
+                    }`
+                  : `✨ מנוע AI: ${aiSummary.engine}`}
+              </div>
+            )}
+          </div>
+          {aiSummary.isError && slotBgFailedJob && (
+            <button
+              type="button"
+              onClick={() => {
+                setAiSummary(null);
+                applyFailedDraftForRetry(slotBgFailedJob.retryPayload);
+              }}
+              className="btn-volt"
+              style={{
+                height: 32,
+                padding: '0 12px',
+                borderRadius: 999,
+                fontSize: 12,
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                flexShrink: 0,
+                cursor: 'pointer',
+              }}
+            >
+              <RotateCcw size={12} />
+              <span>שלח שוב</span>
+            </button>
+          )}
+          <button
+            type="button"
+            aria-label="סגור הודעה"
+            onClick={() => setAiSummary(null)}
+            className="hit-44"
+            style={{
+              width: 30,
+              height: 30,
+              border: 0,
+              borderRadius: 999,
+              background: 'var(--surface-2)',
+              color: 'var(--text-2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              cursor: 'pointer',
+            }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      );
+    }
+
+    if (slotBgFailedJob && slotBgFailedJob.id !== dismissedFailedJobId) {
+      return (
+        <div
+          className="glass"
+          role="alert"
+          style={{
+            position: 'fixed',
+            bottom: 'calc(var(--sa-bottom, 0px) + 84px)',
+            left: 14,
+            right: 14,
+            maxWidth: 520,
+            margin: '0 auto',
+            zIndex: 255,
+            borderRadius: 26,
+            padding: '12px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            borderColor: 'rgba(239, 68, 68, 0.4)',
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: '50%',
+              background: 'rgba(239, 68, 68, 0.16)',
+              color: 'var(--danger-text)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <AlertTriangle size={16} />
+          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+              {slotBgFailedJob.errorMsg || 'פענוח ה-AI נכשל'}
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-2)' }}>
+              הפרטים שהזנת שמורים — ניתן לחזור ולשלוח שוב בלחיצה.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => applyFailedDraftForRetry(slotBgFailedJob.retryPayload)}
+            className="btn-volt"
+            style={{
+              height: 34,
+              padding: '0 13px',
+              borderRadius: 999,
+              fontSize: 12.5,
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              flexShrink: 0,
+              cursor: 'pointer',
+            }}
+          >
+            <RotateCcw size={13} />
+            <span>שלח שוב</span>
+          </button>
+          <button
+            type="button"
+            aria-label="סגור התראה"
+            onClick={() => setDismissedFailedJobId(slotBgFailedJob.id)}
+            className="hit-44"
+            style={{
+              width: 30,
+              height: 30,
+              border: 0,
+              borderRadius: 999,
+              background: 'var(--surface-2)',
+              color: 'var(--text-2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              cursor: 'pointer',
+            }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      );
+    }
+
+    return null;
   };
 
   const trimmedQuery = searchQuery.trim();
@@ -3056,66 +3666,7 @@ export function AddMealDrawer({
             );
           })()}
 
-          {aiSummary && !heroScreen && (
-            <div
-              style={{
-                padding: '10px 14px',
-                borderRadius: 12,
-                background: aiSummary.isError
-                  ? 'rgba(239, 68, 68, 0.14)'
-                  : aiSummary.isFallback
-                  ? 'rgba(245, 158, 11, 0.14)'
-                  : 'var(--fill-1)',
-                border: aiSummary.isError
-                  ? '1px solid rgba(239, 68, 68, 0.35)'
-                  : aiSummary.isFallback
-                  ? '1px solid rgba(245, 158, 11, 0.35)'
-                  : '1px solid var(--line-2)',
-                color: aiSummary.isError
-                  ? 'var(--danger-text)'
-                  : aiSummary.isFallback
-                  ? 'var(--warn-text)'
-                  : 'var(--accent-volt)',
-                fontSize: 12,
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'flex-start',
-                justifyContent: 'space-between',
-                gap: 8,
-              }}
-            >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div>{aiSummary.msg}</div>
-                {aiSummary.engine && (
-                  <div style={{ marginTop: 4, fontSize: 12, opacity: 0.95 }}>
-                    {aiSummary.isFallback
-                      ? `תג תחקור: לא AI פיענח (${aiSummary.engine})${
-                          aiSummary.fallbackReason
-                            ? ` · סיבה: ${aiSummary.fallbackReason}`
-                            : ''
-                        }`
-                      : `✨ מנוע AI פעיל: ${aiSummary.engine}`}
-                  </div>
-                )}
-              </div>
-              <button
-                type="button"
-                aria-label="סגור הודעה"
-                onClick={() => setAiSummary(null)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'inherit',
-                  opacity: 0.75,
-                  cursor: 'pointer',
-                  padding: 2,
-                  flexShrink: 0,
-                }}
-              >
-                <X size={14} />
-              </button>
-            </div>
-          )}
+          {/* Notification pill rendered in floating overlay */}
 
           {/* Hub: big photo tile, 2×2 shortcuts and saved meals / history */}
           {activeTab === 'hub' && trimmedQuery.length === 0 && (() => {
@@ -4597,17 +5148,7 @@ export function AddMealDrawer({
                   </button>
                 )}
 
-                <SegmentedPill
-                  ariaLabel="סוג צילום"
-                  value={photoMode}
-                  onChange={(v) => setPhotoMode(v as 'plate' | 'nutrition-label')}
-                  options={[
-                    { value: 'plate', label: 'צלחת / ארוחה', icon: <Camera size={15} /> },
-                    { value: 'nutrition-label', label: 'טבלת ערכים', icon: <FileText size={15} /> },
-                  ]}
-                />
-
-                {/* Capture area */}
+                {/* Capture area — unified plate/label upload up to 8 photos */}
                 <div
                   style={{
                     background: 'var(--surface-2)',
@@ -4622,102 +5163,282 @@ export function AddMealDrawer({
                   {photoItems.length > 0 ? (
                     <>
                       <div data-h-scroll style={{ display: 'flex', gap: 10, paddingBottom: 2 }}>
-                        {photoItems.map((im, idx) => (
-                          <div
-                            key={idx}
-                            style={{
-                              position: 'relative',
-                              flex: 'none',
-                              width: photoItems.length === 1 ? '100%' : 132,
-                              height: photoItems.length === 1 ? 190 : 132,
-                              borderRadius: 22,
-                              overflow: 'hidden',
-                              background: 'var(--surface-3)',
-                            }}
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={im.dataUrl}
-                              alt={`צילום ארוחה ${idx + 1}`}
-                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                            />
-                            <button
-                              type="button"
-                              className="glass"
-                              aria-label={`הסר תמונה ${idx + 1}`}
-                              onClick={() => {
-                                setPhotoItems((prev) => {
-                                  const next = prev.filter((_, i) => i !== idx);
-                                  setPhotoDataUrl(next[0]?.dataUrl);
-                                  setPhotoSizeKB(next[0]?.sizeKB ?? null);
-                                  return next;
-                                });
-                              }}
+                        {photoItems.map((im, idx) => {
+                          const isLabel = im.angle === 'label';
+                          return (
+                            <div
+                              key={idx}
                               style={{
-                                position: 'absolute',
-                                insetBlockStart: 8,
-                                insetInlineStart: 8,
-                                width: 36,
-                                height: 36,
-                                borderRadius: 999,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'pointer',
+                                position: 'relative',
+                                flex: 'none',
+                                width: photoItems.length === 1 ? '100%' : 138,
+                                height: photoItems.length === 1 ? 190 : 138,
+                                borderRadius: 22,
+                                overflow: 'hidden',
+                                background: 'var(--surface-3)',
                               }}
                             >
-                              <X size={16} strokeWidth={2.4} />
-                            </button>
-                            <button
-                              type="button"
-                              className="glass"
-                              aria-label="החלף סוג זווית"
-                              onClick={() => {
-                                setPhotoItems((prev) =>
-                                  prev.map((x, i) =>
-                                    i === idx
-                                      ? {
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={im.dataUrl}
+                                alt={`צילום ארוחה ${idx + 1}`}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              />
+                              <button
+                                type="button"
+                                className="glass"
+                                aria-label={`הסר תמונה ${idx + 1}`}
+                                onClick={() => {
+                                  setPhotoItems((prev) => {
+                                    const next = prev.filter((_, i) => i !== idx);
+                                    setPhotoDataUrl(next[0]?.dataUrl);
+                                    setPhotoSizeKB(next[0]?.sizeKB ?? null);
+                                    return next;
+                                  });
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  insetBlockStart: 8,
+                                  insetInlineStart: 8,
+                                  width: 36,
+                                  height: 36,
+                                  borderRadius: 999,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <X size={16} strokeWidth={2.4} />
+                              </button>
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  insetBlockEnd: 8,
+                                  insetInlineEnd: 8,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  className="glass"
+                                  aria-label="החלף תג זווית או טבלת ערכים"
+                                  onClick={() => {
+                                    setPhotoItems((prev) =>
+                                      prev.map((x, i) => {
+                                        if (i !== idx) return x;
+                                        const nextAngle: PhotoAngleKind =
+                                          x.angle === 'unset' || !x.angle
+                                            ? 'label'
+                                            : x.angle === 'label'
+                                            ? 'top-down'
+                                            : x.angle === 'top-down'
+                                            ? 'side-45'
+                                            : 'unset';
+                                        return {
                                           ...x,
-                                          angle:
-                                            x.angle === 'unset' || !x.angle
-                                              ? 'top-down'
-                                              : x.angle === 'top-down'
-                                              ? 'side-45'
-                                              : x.angle === 'side-45'
-                                              ? 'label'
-                                              : 'unset',
+                                          angle: nextAngle,
+                                          labelInputOpen:
+                                            nextAngle === 'label' ? true : x.labelInputOpen,
+                                        };
+                                      })
+                                    );
+                                  }}
+                                  style={{
+                                    height: 32,
+                                    padding: '0 11px',
+                                    borderRadius: 999,
+                                    fontFamily: 'inherit',
+                                    fontSize: 12.5,
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 5,
+                                    borderColor: isLabel ? 'var(--accent)' : undefined,
+                                    color: isLabel ? 'var(--accent)' : 'var(--text)',
+                                  }}
+                                >
+                                  <span>
+                                    {im.angle === 'label'
+                                      ? 'טבלת ערכים'
+                                      : im.angle === 'top-down'
+                                      ? 'מלמעלה 90°'
+                                      : im.angle === 'side-45'
+                                      ? 'מהצד ~45°'
+                                      : 'בחר זווית'}
+                                  </span>
+                                  {isLabel && (
+                                    <span
+                                      role="button"
+                                      tabIndex={0}
+                                      aria-label="פתח או סגור שדה שם מוצר לתווית"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setPhotoItems((prev) =>
+                                          prev.map((x, i) =>
+                                            i === idx
+                                              ? {
+                                                  ...x,
+                                                  labelInputOpen: x.labelInputOpen === false,
+                                                }
+                                              : x
+                                          )
+                                        );
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          setPhotoItems((prev) =>
+                                            prev.map((x, i) =>
+                                              i === idx
+                                                ? {
+                                                    ...x,
+                                                    labelInputOpen: x.labelInputOpen === false,
+                                                  }
+                                                : x
+                                            )
+                                          );
                                         }
-                                      : x
-                                  )
-                                );
-                              }}
-                              style={{
-                                position: 'absolute',
-                                insetBlockEnd: 8,
-                                insetInlineEnd: 8,
-                                height: 32,
-                                padding: '0 12px',
-                                borderRadius: 999,
-                                fontFamily: 'inherit',
-                                fontSize: 13,
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                              }}
-                            >
-                              {im.angle === 'top-down'
-                                ? 'מלמעלה 90°'
-                                : im.angle === 'side-45'
-                                ? 'מהצד ~45°'
-                                : im.angle === 'label'
-                                ? 'תווית / אחר'
-                                : 'בחר זווית'}
-                            </button>
-                          </div>
-                        ))}
+                                      }}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        padding: 2,
+                                        borderRadius: 999,
+                                      }}
+                                    >
+                                      <ChevronDown
+                                        size={14}
+                                        style={{
+                                          transform:
+                                            im.labelInputOpen !== false
+                                              ? 'rotate(180deg)'
+                                              : 'none',
+                                          transition: 'transform 0.15s ease',
+                                        }}
+                                      />
+                                    </span>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
+
+                      {photoItems.some((p) => p.angle === 'label' && p.labelInputOpen !== false) && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {photoItems.map((im, idx) =>
+                            im.angle === 'label' && im.labelInputOpen !== false ? (
+                              <div
+                                key={`lbl-input-${idx}`}
+                                style={{
+                                  background: 'var(--card)',
+                                  border: '1px solid var(--line-2)',
+                                  borderRadius: 18,
+                                  padding: '10px 12px',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: 7,
+                                }}
+                              >
+                                <label
+                                  htmlFor={`label-prod-${idx}`}
+                                  style={{
+                                    fontSize: 12.5,
+                                    fontWeight: 700,
+                                    color: 'var(--text-2)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                  }}
+                                >
+                                  <FileText size={13} color="var(--accent)" />
+                                  <span>
+                                    {photoItems.filter((x) => x.angle === 'label').length > 1
+                                      ? `שם של איזה מוצר הטבלה (תמונה ${idx + 1})`
+                                      : 'שם של איזה מוצר התווית (אופציונלי)'}
+                                  </span>
+                                </label>
+                                <input
+                                  id={`label-prod-${idx}`}
+                                  type="text"
+                                  placeholder="למשל: מילקי שוקולד, חטיף חלבון, יוגורט GO..."
+                                  value={im.labelProductName || ''}
+                                  onChange={(e) => {
+                                    const val = e.currentTarget.value;
+                                    setPhotoItems((prev) =>
+                                      prev.map((x, i) =>
+                                        i === idx ? { ...x, labelProductName: val } : x
+                                      )
+                                    );
+                                  }}
+                                  style={{
+                                    font: 'inherit',
+                                    fontSize: 14,
+                                    color: 'var(--text)',
+                                    background: 'var(--surface-2)',
+                                    border: '1px solid var(--line)',
+                                    borderRadius: 12,
+                                    padding: '8px 11px',
+                                    outline: 'none',
+                                  }}
+                                />
+                                {recentLabelProducts.length > 0 && (
+                                  <div
+                                    data-h-scroll
+                                    style={{ display: 'flex', gap: 6, paddingBottom: 2 }}
+                                  >
+                                    {recentLabelProducts.slice(0, 8).map((prod) => (
+                                      <button
+                                        key={`${idx}-${prod}`}
+                                        type="button"
+                                        onClick={() =>
+                                          setPhotoItems((prev) =>
+                                            prev.map((x, i) =>
+                                              i === idx
+                                                ? { ...x, labelProductName: prod }
+                                                : x
+                                            )
+                                          )
+                                        }
+                                        style={{
+                                          flex: 'none',
+                                          padding: '4px 10px',
+                                          borderRadius: 999,
+                                          border: '1px solid var(--line-2)',
+                                          background:
+                                            im.labelProductName === prod
+                                              ? 'var(--accent)'
+                                              : 'var(--surface-2)',
+                                          color:
+                                            im.labelProductName === prod
+                                              ? '#0b0f17'
+                                              : 'var(--text)',
+                                          fontSize: 12,
+                                          fontWeight: 600,
+                                          cursor: 'pointer',
+                                        }}
+                                      >
+                                        {prod}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ) : null
+                          )}
+                        </div>
+                      )}
+
                       {photoSizeKB && (
                         <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
-                          <bdi className="ltr-num">{photoItems.length}/3</bdi> תמונות נבחרו · {photoFormatLabel}
+                          <bdi className="ltr-num">{photoItems.length}/8</bdi> תמונות נבחרו · {photoFormatLabel}
                         </span>
                       )}
                     </>
@@ -4735,20 +5456,18 @@ export function AddMealDrawer({
                           justifyContent: 'center',
                         }}
                       >
-                        {photoMode === 'nutrition-label' ? <FileText size={28} /> : <Camera size={28} />}
+                        <Camera size={28} />
                       </span>
                       <span style={{ fontSize: 17, fontWeight: 700 }}>
-                        {photoMode === 'nutrition-label' ? 'צלם את טבלת הערכים מהאריזה' : 'צלם את הצלחת'}
+                        צלם ארוחה או טבלת ערכים
                       </span>
-                      <span style={{ fontSize: 13, color: 'var(--text-2)', maxWidth: 320, lineHeight: 1.45 }}>
-                        {photoMode === 'nutrition-label'
-                          ? 'ה-AI יקרא את הטבלה (ל-100 גרם או למנה) ויוסיף לארוחה'
-                          : 'עד 3 תמונות. לדיוק מרבי: אחת מלמעלה (90°) ואחת מהצד (~45°)'}
+                      <span style={{ fontSize: 13, color: 'var(--text-2)', maxWidth: 330, lineHeight: 1.45 }}>
+                        עד 8 תמונות ביחד — צלחות, זוויות צילום וטבלאות ערכים. ה-AI מזהה ומחבר הכל אוטומטית.
                       </span>
                     </div>
                   )}
 
-                  {photoItems.length < 3 && (
+                  {photoItems.length < 8 && (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <label
                         className="btn-volt"
@@ -4812,18 +5531,12 @@ export function AddMealDrawer({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <label htmlFor="photo-note" style={{ fontSize: 13, color: 'var(--text-2)', fontWeight: 600 }}>
-                      {photoMode === 'nutrition-label'
-                        ? 'שם המוצר וכמות שאכלת'
-                        : 'הקשר נוסף לצילום (אופציונלי)'}
+                      הקשר נוסף לצילום / שם מוצר וכמות (אופציונלי)
                     </label>
                     <textarea
                       id="photo-note"
                       rows={2}
-                      placeholder={
-                        photoMode === 'nutrition-label'
-                          ? 'למשל: חטיף חלבון - יחידה אחת 60 גרם'
-                          : 'למשל: פיתה כוסמין, גבינה צהובה 9%, עגבנייה וקוטג׳'
-                      }
+                      placeholder="למשל: פיתה כוסמין, גבינה צהובה 9%, או חטיף חלבון אחד מהתווית"
                       value={photoNote}
                       onChange={(e) => setPhotoNote(e.currentTarget.value)}
                       style={{
@@ -4840,33 +5553,27 @@ export function AddMealDrawer({
                     />
                   </div>
 
-                  {photoMode !== 'nutrition-label' && (
+                  {initialEntryPhotos.length > 0 && (
                     <button
                       type="button"
                       role="checkbox"
-                      aria-checked={Boolean(contextParams.strictUserList)}
-                      onClick={() =>
-                        setContextParams((prev) => ({
-                          ...prev,
-                          strictUserList: !prev.strictUserList,
-                        }))
-                      }
+                      aria-checked={includePreviousMealPhotos}
+                      onClick={() => setIncludePreviousMealPhotos((v) => !v)}
                       style={{
                         display: 'flex',
-                        alignItems: 'flex-start',
+                        alignItems: 'center',
                         gap: 10,
                         textAlign: 'right',
                         padding: '10px 14px',
                         borderRadius: 16,
-                        border: contextParams.strictUserList
-                          ? '1.5px solid var(--accent-solid, #10b981)'
+                        border: includePreviousMealPhotos
+                          ? '1.5px solid var(--accent)'
                           : '1px solid var(--line-2)',
-                        background: contextParams.strictUserList
+                        background: includePreviousMealPhotos
                           ? 'rgba(16, 185, 129, 0.08)'
                           : 'var(--card)',
                         cursor: 'pointer',
                         fontFamily: 'inherit',
-                        transition: 'border-color 0.15s ease, background 0.15s ease',
                       }}
                     >
                       <span
@@ -4875,34 +5582,93 @@ export function AddMealDrawer({
                           width: 20,
                           height: 20,
                           minWidth: 20,
-                          marginTop: 2,
                           borderRadius: 6,
-                          border: contextParams.strictUserList
+                          border: includePreviousMealPhotos
                             ? 'none'
                             : '1.5px solid var(--text-3)',
-                          background: contextParams.strictUserList
-                            ? 'var(--accent-solid, #10b981)'
+                          background: includePreviousMealPhotos
+                            ? 'var(--accent)'
                             : 'transparent',
-                          color: '#fff',
+                          color: '#0b0f17',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                         }}
                       >
-                        {contextParams.strictUserList ? <Check size={13} strokeWidth={3} /> : null}
+                        {includePreviousMealPhotos ? <Check size={13} strokeWidth={3} /> : null}
                       </span>
-                      <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                         <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>
-                          נתתי פירוט מדויק של כל מה שאכלתי (אל תוסיף רכיבים נוספים)
+                          צרף להשוואה גם תמונות קודמות מארוחה זו ({initialEntryPhotos.length})
                         </span>
-                        <span style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.35 }}>
-                          {contextParams.strictUserList
-                            ? 'נעול: ה-AI ייצמד אך ורק לשמות ולמשקלים שכתבת בלי לנחש פריטים אחרים.'
-                            : 'השמות והמשקלים שכתבת נשמרים תמיד; רכיבים נוספים בצילום יוצעו לך לאישור בנפרד.'}
+                        <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                          מועיל כשמעדכנים/משווים אוכל שכבר נצפה בארוחה הזו.
                         </span>
                       </span>
                     </button>
                   )}
+
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={Boolean(contextParams.strictUserList)}
+                    onClick={() =>
+                      setContextParams((prev) => ({
+                        ...prev,
+                        strictUserList: !prev.strictUserList,
+                      }))
+                    }
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 10,
+                      textAlign: 'right',
+                      padding: '10px 14px',
+                      borderRadius: 16,
+                      border: contextParams.strictUserList
+                        ? '1.5px solid var(--accent-solid, #10b981)'
+                        : '1px solid var(--line-2)',
+                      background: contextParams.strictUserList
+                        ? 'rgba(16, 185, 129, 0.08)'
+                        : 'var(--card)',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      transition: 'border-color 0.15s ease, background 0.15s ease',
+                    }}
+                  >
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 20,
+                        height: 20,
+                        minWidth: 20,
+                        marginTop: 2,
+                        borderRadius: 6,
+                        border: contextParams.strictUserList
+                          ? 'none'
+                          : '1.5px solid var(--text-3)',
+                        background: contextParams.strictUserList
+                          ? 'var(--accent-solid, #10b981)'
+                          : 'transparent',
+                        color: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      {contextParams.strictUserList ? <Check size={13} strokeWidth={3} /> : null}
+                    </span>
+                    <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>
+                        נתתי פירוט מדויק של כל מה שאכלתי (אל תוסיף רכיבים נוספים)
+                      </span>
+                      <span style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.35 }}>
+                        {contextParams.strictUserList
+                          ? 'נעול: ה-AI ייצמד אך ורק לשמות ולמשקלים שכתבת בלי לנחש פריטים אחרים.'
+                          : 'השמות והמשקלים שכתבת נשמרים תמיד; רכיבים נוספים בצילום יוצעו לך לאישור בנפרד.'}
+                      </span>
+                    </span>
+                  </button>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <label htmlFor="photo-net-grams" style={{ fontSize: 13, color: 'var(--text-2)', fontWeight: 600 }}>
@@ -5015,11 +5781,9 @@ export function AddMealDrawer({
                     <span>
                       {isSlotBgProcessing || aiLoading
                         ? progressTicker.currentStepText
-                        : photoMode === 'nutrition-label'
-                        ? 'חלץ ערכים מהאריזה'
                         : photoItems.length > 1
                         ? `נתח ${photoItems.length} תמונות`
-                        : 'נתח את הצלחת'}
+                        : 'נתח ארוחה / תווית'}
                     </span>
                   </button>
                 </div>
@@ -5178,24 +5942,6 @@ export function AddMealDrawer({
               </div>
             )}
 
-            {!heroScreen && renderAiProgressCard()}
-
-            {slotBgFailedJob && !aiSummary && !isSlotBgProcessing && (
-              <div
-                style={{
-                  padding: '10px 14px',
-                  borderRadius: 12,
-                  background: 'rgba(239, 68, 68, 0.14)',
-                  border: '1px solid rgba(239, 68, 68, 0.35)',
-                  color: 'var(--danger-text)',
-                  fontSize: 12,
-                  fontWeight: 700,
-                }}
-              >
-                {slotBgFailedJob.errorMsg || 'פענוח ה-AI נכשל — נסה שוב או הוסף מהמאגר'}
-              </div>
-            )}
-
             {/* פאנל נפרד לניהול ועריכת המרכיבים שכבר בארוחה (נפתח מלחיצה על הכרטיסייה התחתונה) */}
             {activeTab === 'meal-items' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -5205,29 +5951,61 @@ export function AddMealDrawer({
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     gap: 8,
+                    flexWrap: 'wrap',
                   }}
                 >
                   <span style={{ fontSize: 17, fontWeight: 700 }}>
                     מרכיבי הארוחה הנוכחית ({items.length})
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => navigateTab('hub')}
-                    style={{
-                      padding: '8px 14px',
-                      borderRadius: 999,
-                      border: 'none',
-                      background: 'var(--contrast-btn-bg)',
-                      color: 'var(--contrast-btn-text)',
-                      fontSize: 13,
-                      fontWeight: 700,
-                      fontFamily: 'inherit',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    + הוסף עוד פריטים
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <button
+                      type="button"
+                      className="glass"
+                      onClick={() => {
+                        setHighlightedHistoryEventId(null);
+                        navigateTab('meal-history');
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: 999,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        fontFamily: 'inherit',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        whiteSpace: 'nowrap',
+                        color: 'var(--text)',
+                      }}
+                    >
+                      <History size={14} />
+                      <span>
+                        היסטוריה
+                        {(existingEntry?.history?.length || 0) > 0
+                          ? ` (${existingEntry!.history!.length})`
+                          : ''}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigateTab('hub')}
+                      style={{
+                        padding: '8px 14px',
+                        borderRadius: 999,
+                        border: 'none',
+                        background: 'var(--contrast-btn-bg)',
+                        color: 'var(--contrast-btn-text)',
+                        fontSize: 13,
+                        fontWeight: 700,
+                        fontFamily: 'inherit',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      + הוסף עוד פריטים
+                    </button>
+                  </div>
                 </div>
 
                 {/* Result header (design: PhotoResult) — photo hero + totals vs meal target */}
@@ -5366,8 +6144,6 @@ export function AddMealDrawer({
                   </div>
                 </div>
 
-                {heroScreen && renderAiProgressCard()}
-
                 {heroScreen && (
                 <div
                     style={{
@@ -5381,7 +6157,36 @@ export function AddMealDrawer({
                     <span style={{ fontSize: 17, fontWeight: 700 }}>
                       פריטי הארוחה ({items.length})
                     </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="glass"
+                        onClick={() => {
+                          setHighlightedHistoryEventId(null);
+                          navigateTab('meal-history');
+                        }}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: 999,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          fontFamily: 'inherit',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          whiteSpace: 'nowrap',
+                          color: 'var(--text)',
+                        }}
+                      >
+                        <History size={14} />
+                        <span>
+                          היסטוריה
+                          {(existingEntry?.history?.length || 0) > 0
+                            ? ` (${existingEntry!.history!.length})`
+                            : ''}
+                        </span>
+                      </button>
                       {items.length > 0 && (
                         <button
                           type="button"
@@ -5687,6 +6492,59 @@ export function AddMealDrawer({
                   </div>
                 )}
 
+                {slotBgClarifyJob && (
+                  <AiClarificationCard
+                    job={slotBgClarifyJob}
+                    mealPhotoStore={existingEntry?.photoStore}
+                    onResolved={(summary) => {
+                      setAiSummary({
+                        msg: summary || 'תווית הערכים זוהתה והארוחה עודכנה ✨',
+                      });
+                      onRefreshDataFromServer?.();
+                    }}
+                  />
+                )}
+
+                {existingEntry?.pendingCoachDeletedItems &&
+                  existingEntry.pendingCoachDeletedItems.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {existingEntry.pendingCoachDeletedItems.map((notice) => (
+                        <button
+                          key={notice.id}
+                          type="button"
+                          onClick={() => {
+                            setHighlightedHistoryEventId(notice.historyEventId);
+                            navigateTab('meal-history');
+                          }}
+                          style={{
+                            textAlign: 'right',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 10,
+                            padding: '10px 13px',
+                            borderRadius: 16,
+                            border: '1px dashed rgba(245, 158, 11, 0.5)',
+                            background: 'rgba(245, 158, 11, 0.08)',
+                            color: 'var(--text)',
+                            fontFamily: 'inherit',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                            <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--warn-text)' }}>
+                              הוסר ע״י {notice.coachName}: {notice.item.name}
+                            </span>
+                            <span style={{ fontSize: 11.5, color: 'var(--text-2)' }}>
+                              לחץ לצפייה ושחזור הפריט מתוך היסטוריית הארוחה ←
+                            </span>
+                          </div>
+                          <RotateCcw size={15} color="var(--warn-text)" style={{ flexShrink: 0 }} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                 {items.length === 0 ? (
                   <div
                     style={{
@@ -5903,6 +6761,34 @@ export function AddMealDrawer({
                 )}
 
               </div>
+            )}
+
+            {activeTab === 'meal-history' && (
+              <MealHistoryPanel
+                meal={existingEntry}
+                highlightedEventId={highlightedHistoryEventId}
+                onRetryFailed={(draft, histEvent) =>
+                  applyFailedDraftForRetry(draft, histEvent)
+                }
+                onRestoreCoachDeletedItem={
+                  onRestoreCoachDeletedItem
+                    ? (params) =>
+                        onRestoreCoachDeletedItem({
+                          mealSlotId: mealSlot.id,
+                          ...params,
+                        })
+                    : undefined
+                }
+                onRollbackToEntry={
+                  onRollbackMealHistory
+                    ? (historyEntryId) =>
+                        onRollbackMealHistory({
+                          mealSlotId: mealSlot.id,
+                          historyEntryId,
+                        })
+                    : undefined
+                }
+              />
             )}
           </div>
         </div>
@@ -6128,6 +7014,7 @@ export function AddMealDrawer({
             </button>
           </div>
         )}
+        {renderFloatingAiOverlay()}
       </Drawer>
 
       {/* פופ-אפ ממוקד לבחירת כמות/אריזה/מידה אישית עם החשכה מלאה מאחור וכפתור סגירה עצמאי */}

@@ -6,14 +6,21 @@ import {
   searchSqlAndCachedCatalog,
 } from '@/lib/scrapers/scraperStore';
 import {
+  AiClarificationAnswer,
+  AiClarificationQuestion,
   AiContextParams,
+  AiTraceStepItem,
   FoodCatalogItem,
   FoodComponentRole,
   FoodInputConfidence,
   LoggedFoodItem,
+  LoggedMealEntry,
+  MealHistoryAiDetail,
   PendingAiMealJob,
+  PhotoAngleKind,
   ReferenceObjectKind,
   ServingToolKind,
+  SubmittedMealPhotoMeta,
   TraineeCustomUnit,
 } from '@/types/nutrition';
 import {
@@ -38,7 +45,7 @@ import { normalizeHhMmTime } from '@/lib/numericInput';
 import {
   canCoachAccessTrainee,
   getSingleTraineeFromServer,
-  updateServerDbState,
+  updateTraineeAtomic,
 } from '@/lib/serverStore';
 import {
   CallGeminiOptions,
@@ -48,6 +55,14 @@ import {
   cleanGeminiKey,
 } from '@/lib/geminiClient';
 import { normalizePendingAiJobs } from '@/lib/aiJobs';
+import {
+  appendMealHistoryEntry,
+  applyCoachDiffToMeal,
+  buildCompactMealTimelineForAi,
+  computeShortPhotoHash,
+  mergeMealPhotoStore,
+} from '@/lib/mealHistory';
+import { recordAiConversationTrace } from '@/lib/aiTracing';
 import {
   sendUnifiedPushToTrainee,
   shouldNotifyTraineeCoachMealChange,
@@ -238,26 +253,39 @@ function smartHebrewMealParser(
 
 type GeminiPart = GeminiContentPart;
 
+interface ValidatedAiImage {
+  mimeType: string;
+  data: string;
+  rawDataUrl: string;
+  hash: string;
+  angle: PhotoAngleKind;
+  angleLabel: string;
+  labelProductName?: string;
+}
+
 function extractValidatedImages(
   imageDataUrl?: string,
   imageDataUrls?: string[],
-  imageAngles?: ('top-down' | 'side-45' | 'label' | 'other')[]
-): { mimeType: string; data: string; angleLabel: string }[] {
-  const rawList = Array.isArray(imageDataUrls) && imageDataUrls.length > 0
-    ? imageDataUrls
-    : imageDataUrl
-    ? [imageDataUrl]
-    : [];
+  imageAngles?: ('top-down' | 'side-45' | 'label' | 'other' | 'unset')[],
+  imageLabelProducts?: (string | undefined)[]
+): ValidatedAiImage[] {
+  const rawList =
+    Array.isArray(imageDataUrls) && imageDataUrls.length > 0
+      ? imageDataUrls
+      : imageDataUrl
+      ? [imageDataUrl]
+      : [];
 
   const angleMap: Record<string, string> = {
     'top-down': 'צילום 90° ישירות מלמעלה (קובע קוטר שוליים ושטח)',
     'side-45': 'צילום פרופיל/צד 35°-45° (קובע גובה, עומק ונפח תלת-ממדי)',
     label: 'צילום תווית / טבלת ערכים תזונתיים',
     other: 'זווית צילום נוספת',
+    unset: 'זווית כללית (סווג אוטומטית האם צלחת, מוצר או טבלת ערכים)',
   };
 
-  const out: { mimeType: string; data: string; angleLabel: string }[] = [];
-  for (let i = 0; i < Math.min(rawList.length, 3); i++) {
+  const out: ValidatedAiImage[] = [];
+  for (let i = 0; i < Math.min(rawList.length, 8); i++) {
     const url = rawList[i];
     if (
       typeof url !== 'string' ||
@@ -270,11 +298,30 @@ function extractValidatedImages(
     }
     const match = url.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
     if (!match) continue;
-    const angleKey = imageAngles?.[i] || (i === 0 ? 'top-down' : i === 1 ? 'side-45' : 'other');
+    const rawAngle = imageAngles?.[i];
+    const angle: PhotoAngleKind =
+      rawAngle === 'label' ||
+      rawAngle === 'top-down' ||
+      rawAngle === 'side-45' ||
+      rawAngle === 'other' ||
+      rawAngle === 'unset'
+        ? rawAngle
+        : 'unset';
+    const rawProduct = sanitizeText(imageLabelProducts?.[i], 80);
+    const labelProductName =
+      angle === 'label' && rawProduct ? rawProduct : undefined;
+    const baseLabel = angleMap[angle] || `תמונה ${i + 1}`;
+    const fullLabel = labelProductName
+      ? `${baseLabel} — שייך למוצר שהזין המתאמן: "${labelProductName}"`
+      : baseLabel;
     out.push({
       mimeType: match[1],
       data: match[2],
-      angleLabel: angleMap[angleKey] || `תמונה ${i + 1}`,
+      rawDataUrl: url,
+      hash: computeShortPhotoHash(url),
+      angle,
+      angleLabel: fullLabel,
+      labelProductName,
     });
   }
   return out;
@@ -392,6 +439,14 @@ function formatContextParamsPrompt(ctx?: AiContextParams): string {
         .map((u) => `${u.unitName}${u.foodNameKeyword ? ` (${u.foodNameKeyword})` : ''} = ${u.grams}g`)
         .join(' | ')}`
     );
+  }
+  if (Array.isArray(ctx.imageLabelProducts) && ctx.imageLabelProducts.some(Boolean)) {
+    const lblEntries = ctx.imageLabelProducts
+      .map((name, idx) => (name ? `תמונה ${idx + 1}: "${name}"` : ''))
+      .filter(Boolean);
+    if (lblEntries.length > 0) {
+      lines.push(`- שמות מוצרים שהוזנו לתוויות ערכים: ${lblEntries.join(' | ')}`);
+    }
   }
   return lines.join('\n');
 }
@@ -625,9 +680,20 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
       correctionHistory,
       adjustmentPrompt,
       traineeId: bodyTraineeId,
+      date: bodyDate,
+      mealSlotId: bodyMealSlotId,
+      clarificationJobId,
+      clarificationQuestions: incomingClarificationQuestions,
+      clarificationAnswers: incomingClarificationAnswers,
+      dryRun: bodyDryRun,
       backgroundJob,
     } = body as {
-      mode?: 'analyze' | 'adjust-meal' | 'measure-tool' | 'transcribe-audio';
+      mode?:
+        | 'analyze'
+        | 'adjust-meal'
+        | 'clarify-meal'
+        | 'measure-tool'
+        | 'transcribe-audio';
       imageDataUrl?: string;
       imageDataUrls?: string[];
       audioDataUrl?: string;
@@ -642,6 +708,12 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
       correctionHistory?: { beforeNames?: string[]; prompt: string; at?: string }[];
       adjustmentPrompt?: string;
       traineeId?: string;
+      date?: string;
+      mealSlotId?: string;
+      clarificationJobId?: string;
+      clarificationQuestions?: AiClarificationQuestion[];
+      clarificationAnswers?: AiClarificationAnswer[];
+      dryRun?: boolean;
       backgroundJob?: {
         jobId: string;
         traineeId: string;
@@ -652,10 +724,36 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
         summaryHint?: string;
       };
     };
+    const isDryRun = Boolean(bodyDryRun && sessionUser.role === 'admin');
+    const resolvedDate = sanitizeText(backgroundJob?.date || bodyDate || '', 20);
+    const resolvedSlotId = sanitizeText(
+      backgroundJob?.mealSlotId || bodyMealSlotId || '',
+      60
+    );
     telemetryMode = mode;
-    if (backgroundJob?.traineeId) {
-      telemetryTargetTraineeId = backgroundJob.traineeId;
+    if (backgroundJob?.traineeId || bodyTraineeId) {
+      telemetryTargetTraineeId = backgroundJob?.traineeId || bodyTraineeId;
     }
+
+    const aiTraceId = `aitrace-${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 6)}`;
+    const aiTraceSteps: AiTraceStepItem[] = [];
+    const pushTraceStep = (
+      stage: string,
+      summary: string,
+      status: AiTraceStepItem['status'] = 'info',
+      details?: unknown
+    ) => {
+      aiTraceSteps.push({
+        stage,
+        status,
+        timestamp: new Date().toISOString(),
+        summary,
+        ...(details !== undefined ? { details } : {}),
+      });
+    };
+    pushTraceStep('request', `התקבלה בקשת ${mode}${isDryRun ? ' (Sandbox Replay)' : ''}`, 'ok');
 
     if (textPrompt && textPrompt.length > 600) {
       return NextResponse.json(
@@ -731,21 +829,95 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
     const validatedImages = extractValidatedImages(
       imageDataUrl,
       imageDataUrls,
-      contextParams?.imageAngles
+      contextParams?.imageAngles,
+      contextParams?.imageLabelProducts
     );
     const hasRealImage = validatedImages.length > 0;
     const sourceType: 'ai-photo' | 'ai-text' = hasRealImage ? 'ai-photo' : 'ai-text';
     telemetryMode = mode;
-    telemetryTargetTraineeId = backgroundJob?.traineeId || sessionUser.id;
+    telemetryTargetTraineeId = backgroundJob?.traineeId || bodyTraineeId || sessionUser.id;
     telemetryImageCount = validatedImages.length;
     telemetryImageKB = Math.round(
       validatedImages.reduce((acc, im) => acc + ((im.data?.length || 0) * 0.75) / 1024, 0)
     );
+    if (hasRealImage) {
+      pushTraceStep(
+        'media',
+        `אומתו ${validatedImages.length} תמונות (${telemetryImageKB}KB)`,
+        'ok',
+        validatedImages.map((v, idx) => ({
+          idx: idx + 1,
+          angle: v.angle,
+          labelProductName: v.labelProductName,
+        }))
+      );
+    }
 
-    // 3ב. אם הבקשה כוללת סנכרון ברקע (backgroundJob): רשום סטטוס "processing" ב-DB מראש
+    const persistAiTrace = (params: {
+      queueType: 'history' | 'crashed';
+      crashStage?: 'client' | 'validation' | 'vision_api' | 'parser' | 'db_save' | null;
+      errorCode?: string | null;
+      errorMessage?: string | null;
+      model?: string;
+      clarificationQuestions?: AiClarificationQuestion[];
+      clarificationAnswers?: AiClarificationAnswer[];
+      parsedItems?: LoggedFoodItem[];
+      rawResponseSummary?: string;
+      targetName?: string;
+      slotName?: string;
+    }) => {
+      const thumbnails = validatedImages
+        .filter((v) => v.rawDataUrl.length <= 260_000)
+        .map((v) => ({
+          hash: v.hash,
+          angle: v.angle,
+          labelProductName: v.labelProductName,
+          dataUrl: v.rawDataUrl,
+        }));
+      const tracePromise = recordAiConversationTrace({
+        id: aiTraceId,
+        userId: telemetryTargetTraineeId || sessionUser.id,
+        userName: params.targetName || sessionUser.name,
+        userRole: sessionUser.role,
+        mealSlotId: resolvedSlotId || undefined,
+        mealSlotName: params.slotName || backgroundJob?.mealSlotName || undefined,
+        mealDate: resolvedDate || undefined,
+        mode,
+        queueType: params.queueType,
+        crashStage: params.crashStage || null,
+        errorCode: params.errorCode || null,
+        errorMessage: params.errorMessage || null,
+        durationMs: Date.now() - aiStartedAt,
+        model: params.model,
+        imageCount: telemetryImageCount,
+        totalImageKB: telemetryImageKB,
+        isSandboxReplay: isDryRun,
+        promptText: (adjustmentPrompt || textPrompt || '').slice(0, 500) || undefined,
+        activeChips: contextParams?.activeChipLabels,
+        clarificationQuestions: params.clarificationQuestions,
+        clarificationAnswers: params.clarificationAnswers,
+        parsedItems: params.parsedItems,
+        stepsTimeline: aiTraceSteps,
+        rawResponseSummary: params.rawResponseSummary,
+        thumbnails,
+      }).catch(() => {});
+      try {
+        waitUntil(tracePromise);
+      } catch {
+        // ignore outside Vercel
+      }
+    };
+
+    // 3ב. אם הבקשה כוללת סנכרון ברקע (backgroundJob) ואינה Replay: רשום סטטוס "processing" ב-DB מראש
     let authorizedBgJob: PendingAiMealJob | null = null;
     let pendingSuggestedExtras: LoggedFoodItem[] = [];
-    if (backgroundJob?.jobId && backgroundJob?.traineeId && backgroundJob?.date && backgroundJob?.mealSlotId) {
+    if (
+      !isDryRun &&
+      backgroundJob?.jobId &&
+      backgroundJob?.traineeId &&
+      backgroundJob?.date &&
+      backgroundJob?.mealSlotId
+    ) {
       const targetTrainee = await getSingleTraineeFromServer(backgroundJob.traineeId);
       const isAllowedTarget =
         targetTrainee &&
@@ -775,7 +947,11 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
         mealSlotName: sanitizeText(backgroundJob.mealSlotName, 60) || 'ארוחה',
         mode: jobMode,
         replaceMealItems: jobMode === 'adjust',
-        summaryHint: sanitizeText(backgroundJob.summaryHint || adjustmentPrompt || textPrompt || '', 80) || undefined,
+        summaryHint:
+          sanitizeText(
+            backgroundJob.summaryHint || adjustmentPrompt || textPrompt || '',
+            80
+          ) || undefined,
         status: 'processing',
         startedAt: startNowIso,
         lastHeartbeatAt: startNowIso,
@@ -789,25 +965,21 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
       };
 
       let wasPreCancelled = false;
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) => {
-          if (t.id !== authorizedBgJob!.targetTraineeId) return t;
-          const cleaned = normalizePendingAiJobs(t.pendingAiJobs).jobs;
-          const existingSelf = cleaned.find((j) => j.id === authorizedBgJob!.id);
-          if (existingSelf?.acknowledged) {
-            wasPreCancelled = true;
-            return { ...t, pendingAiJobs: cleaned };
-          }
-          const prevJobs = cleaned.filter(
-            (j) => j.id !== authorizedBgJob!.id && !j.acknowledged
-          );
-          return {
-            ...t,
-            pendingAiJobs: [authorizedBgJob!, ...prevJobs].slice(0, 12),
-          };
-        }),
-      }));
+      await updateTraineeAtomic(authorizedBgJob.targetTraineeId, (t) => {
+        const cleaned = normalizePendingAiJobs(t.pendingAiJobs).jobs;
+        const existingSelf = cleaned.find((j) => j.id === authorizedBgJob!.id);
+        if (existingSelf?.acknowledged) {
+          wasPreCancelled = true;
+          return { ...t, pendingAiJobs: cleaned };
+        }
+        const prevJobs = cleaned.filter(
+          (j) => j.id !== authorizedBgJob!.id && !j.acknowledged
+        );
+        return {
+          ...t,
+          pendingAiJobs: [authorizedBgJob!, ...prevJobs].slice(0, 12),
+        };
+      });
 
       if (wasPreCancelled) {
         return NextResponse.json({ cancelled: true, items: [] });
@@ -815,10 +987,14 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
     }
 
     const checkBgJobCancelled = async (): Promise<boolean> => {
-      if (!authorizedBgJob) return false;
+      if (!authorizedBgJob || isDryRun) return false;
       try {
-        const latest = await getSingleTraineeFromServer(authorizedBgJob.targetTraineeId);
-        const match = latest?.pendingAiJobs?.find((j) => j.id === authorizedBgJob!.id);
+        const latest = await getSingleTraineeFromServer(
+          authorizedBgJob.targetTraineeId
+        );
+        const match = latest?.pendingAiJobs?.find(
+          (j) => j.id === authorizedBgJob!.id
+        );
         return Boolean(match && match.acknowledged);
       } catch {
         return false;
@@ -826,276 +1002,472 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
     };
 
     const updateBgJobStage = async (stageText: string): Promise<void> => {
-      if (!authorizedBgJob) return;
+      if (!authorizedBgJob || isDryRun) return;
       const hbIso = new Date().toISOString();
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) => {
-          if (t.id !== authorizedBgJob!.targetTraineeId) return t;
-          const target = (t.pendingAiJobs || []).find((j) => j.id === authorizedBgJob!.id);
-          if (!target || target.status !== 'processing' || target.acknowledged) {
-            return t;
-          }
-          return {
-            ...t,
-            pendingAiJobs: (t.pendingAiJobs || []).map((j) =>
-              j.id === authorizedBgJob!.id
-                ? { ...j, lastHeartbeatAt: hbIso, stageText }
-                : j
-            ),
-          };
-        }),
-      })).catch(() => {});
+      await updateTraineeAtomic(authorizedBgJob.targetTraineeId, (t) => {
+        const target = (t.pendingAiJobs || []).find(
+          (j) => j.id === authorizedBgJob!.id
+        );
+        if (!target || target.status !== 'processing' || target.acknowledged) {
+          return null;
+        }
+        return {
+          ...t,
+          pendingAiJobs: (t.pendingAiJobs || []).map((j) =>
+            j.id === authorizedBgJob!.id
+              ? { ...j, lastHeartbeatAt: hbIso, stageText }
+              : j
+          ),
+        };
+      }).catch(() => {});
     };
 
     const syncAnalyzeResultToServer = async (params: {
       items?: LoggedFoodItem[];
+      clarificationQuestions?: AiClarificationQuestion[];
+      clarificationAnswers?: AiClarificationAnswer[];
+      isClarifyResponse?: boolean;
+      overrideJobId?: string;
       engine?: string;
       isAiFallback?: boolean;
       fallbackReason?: string;
       errorMsg?: string;
+      errorStage?: 'client' | 'validation' | 'vision_api' | 'parser' | 'db_save';
       replaceItems?: boolean;
     }): Promise<PendingAiMealJob | undefined> => {
-      if (!authorizedBgJob) return undefined;
+      const targetJobId = params.overrideJobId || authorizedBgJob?.id;
+      const targetTid = authorizedBgJob?.targetTraineeId || telemetryTargetTraineeId;
+      const targetDate = authorizedBgJob?.date || resolvedDate;
+      const targetSlotId = authorizedBgJob?.mealSlotId || resolvedSlotId;
+      const targetSlotName = authorizedBgJob?.mealSlotName || 'ארוחה';
+
+      if (isDryRun || !targetTid || !targetDate || !targetSlotId) return undefined;
+
       const nowIso = new Date().toISOString();
       const nowTime = new Date().toLocaleTimeString('he-IL', {
         hour: '2-digit',
         minute: '2-digit',
       });
-      const sanitizedPhotos: string[] = hasRealImage
-        ? [
-            ...(Array.isArray(imageDataUrls) ? imageDataUrls : []),
-            ...(imageDataUrl ? [imageDataUrl] : []),
-          ]
-            .filter(
-              (u): u is string =>
-                typeof u === 'string' &&
-                u.startsWith('data:image/') &&
-                u.length < 400000
-            )
-            .filter((u, idx, arr) => arr.indexOf(u) === idx)
-            .slice(0, 3)
-        : [];
 
-      const succeeded = Array.isArray(params.items) && params.items.length > 0;
-      const isReplace = Boolean(params.replaceItems || authorizedBgJob.mode === 'adjust');
+      const validPhotosForStore = validatedImages
+        .filter((v) => v.rawDataUrl.length < 400_000)
+        .slice(0, 8);
+      const sanitizedPhotos = validPhotosForStore.map((v) => v.rawDataUrl);
+
+      const hasClarifications =
+        Array.isArray(params.clarificationQuestions) &&
+        params.clarificationQuestions.length > 0;
+      const hasItems = Array.isArray(params.items) && params.items.length > 0;
+      const isExplicitScopedEmpty = Boolean(
+        params.replaceItems && !params.errorMsg && Array.isArray(params.items)
+      );
+      const succeeded = hasItems || isExplicitScopedEmpty;
+      const isReplace = Boolean(
+        params.replaceItems || authorizedBgJob?.mode === 'adjust'
+      );
+      const isCoachActor =
+        sessionUser.role === 'coach' || sessionUser.role === 'admin';
+
+      const jobStatus: PendingAiMealJob['status'] = hasClarifications
+        ? 'awaiting_clarification'
+        : succeeded
+        ? 'completed'
+        : 'failed';
+
       const finishedJob: PendingAiMealJob = {
-        ...authorizedBgJob,
-        status: succeeded ? 'completed' : 'failed',
+        id:
+          targetJobId ||
+          `aijob-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`,
+        targetTraineeId: targetTid,
+        date: targetDate,
+        mealSlotId: targetSlotId,
+        mealSlotName: targetSlotName,
+        mode:
+          authorizedBgJob?.mode ||
+          (mode === 'adjust-meal' ? 'adjust' : hasRealImage ? 'photo' : 'text'),
         replaceMealItems: isReplace,
+        startedAt: authorizedBgJob?.startedAt || nowIso,
+        summaryHint:
+          authorizedBgJob?.summaryHint ||
+          sanitizeText(adjustmentPrompt || textPrompt || '', 80) ||
+          undefined,
+        status: jobStatus,
         lastHeartbeatAt: nowIso,
-        stageText: succeeded
+        stageText: hasClarifications
+          ? 'ממתין להבהרה קצרה על תווית הערכים'
+          : succeeded
           ? isReplace
             ? 'התיקון הושלם וסונכרן ליומן'
             : 'הושלם וסונכרן ליומן'
           : isReplace
           ? 'תיקון הארוחה נכשל'
           : 'הפענוח נכשל',
-        completedAt: nowIso,
+        completedAt: hasClarifications ? undefined : nowIso,
         engine: params.engine,
         isAiFallback: params.isAiFallback,
         fallbackReason: params.fallbackReason,
-        itemsCount: succeeded ? params.items!.length : 0,
+        itemsCount: hasItems ? params.items!.length : 0,
         errorMsg: params.errorMsg,
+        errorStage: params.errorStage,
+        clarificationQuestions: hasClarifications
+          ? params.clarificationQuestions
+          : undefined,
         photoDataUrls: sanitizedPhotos.length > 0 ? sanitizedPhotos : undefined,
+        photoMetas:
+          validPhotosForStore.length > 0
+            ? validPhotosForStore.map((v) => ({
+                hash: v.hash,
+                angle: v.angle,
+                ...(v.labelProductName ? { labelProductName: v.labelProductName } : {}),
+              }))
+            : undefined,
         autoSyncedToLog: succeeded,
         acknowledged: false,
       };
 
+      const labelNamesLearned = (contextParams?.imageLabelProducts || [])
+        .map((s) => sanitizeText(s, 70))
+        .filter(Boolean);
+
       let cancelledBeforeSave = false;
-      const updatedState = await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) => {
-          if (t.id !== authorizedBgJob!.targetTraineeId) return t;
-          const cleaned = normalizePendingAiJobs(t.pendingAiJobs).jobs;
-          const existingSelf = cleaned.find((j) => j.id === finishedJob.id);
-          if (existingSelf?.acknowledged) {
-            cancelledBeforeSave = true;
-            return { ...t, pendingAiJobs: cleaned };
-          }
-          const nextJobs = existingSelf
+      const { next: latestTrainee } = await updateTraineeAtomic(targetTid, (t) => {
+        const cleaned = normalizePendingAiJobs(t.pendingAiJobs).jobs;
+        const existingSelf = targetJobId
+          ? cleaned.find((j) => j.id === targetJobId)
+          : undefined;
+        if (existingSelf?.acknowledged && !params.isClarifyResponse) {
+          cancelledBeforeSave = true;
+          return { ...t, pendingAiJobs: cleaned };
+        }
+
+        const nextJobs = authorizedBgJob || params.isClarifyResponse || jobStatus === 'failed'
+          ? existingSelf
             ? cleaned.map((j) => (j.id === finishedJob.id ? finishedJob : j))
-            : [finishedJob, ...cleaned].slice(0, 12);
+            : [finishedJob, ...cleaned].slice(0, 12)
+          : cleaned;
 
-          if (!succeeded) {
-            return { ...t, pendingAiJobs: nextJobs };
+        const mergedRecentLabels =
+          labelNamesLearned.length > 0
+            ? Array.from(
+                new Set([...labelNamesLearned, ...(t.recentLabelProducts || [])])
+              ).slice(0, 40)
+            : t.recentLabelProducts;
+
+        const existingLog = t.logs[targetDate] || {
+          date: targetDate,
+          dayType: 'workout' as const,
+          waterCups: 0,
+          waterGoal: 12,
+          weightKg: t.currentWeight,
+          meals: {},
+        };
+        const existingMeal = existingLog.meals[targetSlotId] || {
+          mealSlotId: targetSlotId,
+          items: [],
+          updatedAt: nowTime,
+        };
+
+        const photoStoreRes = mergeMealPhotoStore(
+          existingMeal.photoStore,
+          validPhotosForStore.map((v) => ({
+            dataUrl: v.rawDataUrl,
+            angle: v.angle,
+            labelProductName: v.labelProductName,
+          }))
+        );
+
+        const aiDetail: MealHistoryAiDetail = {
+          jobId: finishedJob.id,
+          mode: params.isClarifyResponse
+            ? 'clarify'
+            : isReplace
+            ? 'adjust'
+            : hasRealImage
+            ? 'photo'
+            : 'text',
+          prompt: textPrompt ? sanitizeText(textPrompt, 500) : undefined,
+          chips: contextParams?.activeChipLabels,
+          chipQuantities: contextParams?.chipQuantities,
+          photos:
+            photoStoreRes.metas.length > 0
+              ? photoStoreRes.metas
+              : undefined,
+          clarificationQuestions: params.clarificationQuestions,
+          clarificationAnswers: params.clarificationAnswers,
+          adjustmentPrompt: adjustmentPrompt
+            ? sanitizeText(adjustmentPrompt, 400)
+            : undefined,
+          selectedTargetIds: Array.isArray(selectedTargetIds)
+            ? selectedTargetIds
+            : undefined,
+          engine: params.engine,
+          isFallback: params.isAiFallback,
+          errorMsg: params.errorMsg,
+          errorStage: params.errorStage,
+          retryDraftPayload:
+            jobStatus === 'failed'
+              ? {
+                  traineeId: targetTid,
+                  date: targetDate,
+                  mealSlotId: targetSlotId,
+                  mode: isReplace ? 'adjust' : hasRealImage ? 'photo' : 'text',
+                  photos: validPhotosForStore.map((v) => ({
+                    dataUrl: v.rawDataUrl,
+                    angle: v.angle,
+                    ...(v.labelProductName
+                      ? { labelProductName: v.labelProductName }
+                      : {}),
+                  })),
+                  textPrompt: textPrompt ? sanitizeText(textPrompt, 500) : undefined,
+                  adjustmentPrompt: adjustmentPrompt
+                    ? sanitizeText(adjustmentPrompt, 400)
+                    : undefined,
+                  selectedTargetIds: Array.isArray(selectedTargetIds)
+                    ? selectedTargetIds
+                    : undefined,
+                  activeChipLabels: contextParams?.activeChipLabels,
+                  chipQuantities: contextParams?.chipQuantities,
+                  contextParams,
+                  includePreviousMealPhotos: Boolean(
+                    contextParams?.includePreviousMealPhotos
+                  ),
+                  errorMsg: params.errorMsg,
+                  failedAt: nowIso,
+                }
+              : undefined,
+        };
+
+        const existingPhotos =
+          Array.isArray(existingMeal.photoDataUrls) &&
+          existingMeal.photoDataUrls.length > 0
+            ? existingMeal.photoDataUrls
+            : existingMeal.photoDataUrl
+            ? [existingMeal.photoDataUrl]
+            : [];
+        const mergedPhotos = [...sanitizedPhotos, ...existingPhotos]
+          .filter((u, i, arr) => arr.indexOf(u) === i)
+          .slice(0, 16);
+
+        const nextItemsList = succeeded
+          ? isReplace
+            ? params.items!
+            : [...existingMeal.items, ...params.items!]
+          : existingMeal.items;
+
+        const histKind =
+          jobStatus === 'failed'
+            ? 'ai_failed'
+            : isCoachActor
+            ? 'coach_ai'
+            : params.isClarifyResponse
+            ? 'ai_clarify'
+            : isReplace
+            ? 'ai_adjust'
+            : 'ai_analyze';
+
+        const histRes = appendMealHistoryEntry(existingMeal, nextItemsList, {
+          timestamp: nowIso,
+          kind: histKind,
+          actorId: sessionUser.id,
+          actorName: sessionUser.name,
+          actorRole: sessionUser.role,
+          summary:
+            jobStatus === 'failed'
+              ? `שליחת AI נכשלה: ${params.errorMsg || 'שגיאה זמנית'}`
+              : hasClarifications && !hasItems
+              ? 'זוהתה תווית ערכים — ממתין להבהרת מוצר'
+              : params.isClarifyResponse
+              ? 'הושלם זיהוי תווית ערכים לפי בחירתך'
+              : isReplace
+              ? `הארוחה עודכנה ב-AI`
+              : hasClarifications
+              ? `פוענחו ${params.items!.length} פריטים (תווית אחת ממתינה להבהרה)`
+              : undefined,
+          aiDetail,
+        });
+
+        let updatedMeal: LoggedMealEntry = {
+          ...existingMeal,
+          items: nextItemsList,
+          aiSuggestedExtras: isReplace
+            ? undefined
+            : pendingSuggestedExtras.length > 0
+            ? pendingSuggestedExtras
+            : existingMeal.aiSuggestedExtras,
+          photoDataUrl: sanitizedPhotos[0] || existingMeal.photoDataUrl,
+          photoDataUrls: mergedPhotos.length > 0 ? mergedPhotos : undefined,
+          photoMetas:
+            photoStoreRes.metas.length > 0
+              ? photoStoreRes.metas
+              : existingMeal.photoMetas,
+          photoStore:
+            Object.keys(photoStoreRes.photoStore).length > 0
+              ? photoStoreRes.photoStore
+              : existingMeal.photoStore,
+          photoNote:
+            (textPrompt ? sanitizeText(textPrompt, 500) : undefined) ||
+            existingMeal.photoNote,
+          history: histRes.history,
+          updatedAt: nowTime,
+        };
+
+        let nextCoachAlerts = t.coachMealAlerts || [];
+        if (isCoachActor && succeeded) {
+          const coachDiff = applyCoachDiffToMeal({
+            prevMeal: existingMeal,
+            nextMeal: updatedMeal,
+            coachId: sessionUser.id,
+            coachName: sessionUser.name,
+            nowIso,
+            slotName: targetSlotName,
+          });
+          updatedMeal = coachDiff.meal;
+          if (coachDiff.changed) {
+            nextCoachAlerts = [
+              {
+                id: `calert-${finishedJob.id}`,
+                coachId: sessionUser.id,
+                coachName: sessionUser.name,
+                date: targetDate,
+                mealSlotId: targetSlotId,
+                mealSlotName: targetSlotName,
+                summaryText:
+                  updatedMeal.coachEditState?.summaryText ||
+                  `המאמן ${sessionUser.name} עדכן את ${targetSlotName}`,
+                editedAt: nowIso,
+                shownOnJournalVisit: false,
+                dismissed: false,
+              },
+              ...nextCoachAlerts.filter(
+                (a) => !(a.date === targetDate && a.mealSlotId === targetSlotId)
+              ),
+            ].slice(0, 15);
           }
+        }
 
-          const dateKey = finishedJob.date;
-          const existingLog = t.logs[dateKey] || {
-            date: dateKey,
-            dayType: 'workout' as const,
-            waterCups: 0,
-            waterGoal: 12,
-            weightKg: t.currentWeight,
-            meals: {},
-          };
-          const existingMeal = existingLog.meals[finishedJob.mealSlotId] || {
-            mealSlotId: finishedJob.mealSlotId,
-            items: [],
-            updatedAt: nowTime,
-          };
-
-          const existingPhotos =
-            Array.isArray(existingMeal.photoDataUrls) && existingMeal.photoDataUrls.length > 0
-              ? existingMeal.photoDataUrls
-              : existingMeal.photoDataUrl
-              ? [existingMeal.photoDataUrl]
-              : [];
-          const mergedPhotos = [...sanitizedPhotos, ...existingPhotos]
-            .filter((u, i, arr) => arr.indexOf(u) === i)
-            .slice(0, 3);
-
-          return {
-            ...t,
-            pendingAiJobs: nextJobs,
-            logs: {
-              ...t.logs,
-              [dateKey]: {
-                ...existingLog,
-                meals: {
-                  ...existingLog.meals,
-                  [finishedJob.mealSlotId]: {
-                    ...existingMeal,
-                    items: isReplace
-                      ? params.items!
-                      : [...existingMeal.items, ...params.items!],
-                    aiSuggestedExtras: isReplace
-                      ? undefined
-                      : pendingSuggestedExtras.length > 0
-                      ? pendingSuggestedExtras
-                      : existingMeal.aiSuggestedExtras,
-                    photoDataUrl: sanitizedPhotos[0] || existingMeal.photoDataUrl,
-                    photoDataUrls: mergedPhotos.length > 0 ? mergedPhotos : undefined,
-                    photoNote:
-                      existingMeal.photoNote ||
-                      (textPrompt ? sanitizeText(textPrompt, 500) : undefined),
-                    updatedAt: nowTime,
-                  },
-                },
+        return {
+          ...t,
+          recentLabelProducts: mergedRecentLabels,
+          pendingAiJobs: nextJobs,
+          coachMealAlerts: nextCoachAlerts,
+          logs: {
+            ...t.logs,
+            [targetDate]: {
+              ...existingLog,
+              meals: {
+                ...existingLog.meals,
+                [targetSlotId]: updatedMeal,
               },
             },
-          };
-        }),
-      }));
+          },
+        };
+      });
 
-      // פוש אוטומטי למתאמן (רק ביציאה) + התראה למאמנים עוקבים (ברגע השמירה)
-      if (succeeded && !cancelledBeforeSave) {
-        const latestTrainee = updatedState.trainees.find(
-          (t) => t.id === authorizedBgJob!.targetTraineeId
-        );
-        if (latestTrainee) {
-          const itemsList = params.items!;
-          const tasks: Promise<unknown>[] = [];
+      // פושים רק כשאין תוצאה ממתינה בלבד או בעדכון אמיתי
+      if (!cancelledBeforeSave && latestTrainee) {
+        const tasks: Promise<unknown>[] = [];
 
-          // 1. התראת מאמן בזמן אמת (למאמנים העוקבים אחרי מתאמן זה / קבוצתו על ארוחות)
-          if (sessionUser.role === 'trainee') {
-            const mealEvent = buildMealAlertEvent({
-              slotName: finishedJob.mealSlotName || finishedJob.mealSlotId,
-              items: itemsList,
+        if (succeeded && hasItems && sessionUser.role === 'trainee') {
+          const mealEvent = buildMealAlertEvent({
+            slotName: finishedJob.mealSlotName || finishedJob.mealSlotId,
+            items: params.items!,
+            date: finishedJob.date,
+          });
+          tasks.push(
+            notifySubscribedCoachesForEvents({
+              trainee: latestTrainee,
+              events: [mealEvent],
+              origin: request.nextUrl.origin,
+            }).catch((err) => console.error('AI meal coach alert error:', err))
+          );
+        }
+
+        const canSendTraineeAiPush = isCoachActor
+          ? succeeded && shouldNotifyTraineeCoachMealChange(latestTrainee)
+          : (succeeded || hasClarifications) &&
+            shouldNotifyUnifiedAiCompletion(latestTrainee);
+
+        if (canSendTraineeAiPush) {
+          const itemsList = params.items || [];
+          const dishNames = itemsList.map((i) => i.name).filter(Boolean);
+          const dishLabel =
+            dishNames.length === 0
+              ? finishedJob.mealSlotName
+              : dishNames.length === 1
+              ? dishNames[0]
+              : dishNames.length === 2
+              ? `${dishNames[0]} ו${dishNames[1]}`
+              : `${dishNames[0]}, ${dishNames[1]} ועוד ${dishNames.length - 2}`;
+          const totalCalories = Math.round(
+            itemsList.reduce((sum, i) => sum + (Number(i.macros?.calories) || 0), 0)
+          );
+
+          const pushTitle = hasClarifications
+            ? `שאלה קצרה על ${finishedJob.mealSlotName}`
+            : isCoachActor
+            ? `המאמן ${sessionUser.name} עדכן את ${finishedJob.mealSlotName} ✨`
+            : finishedJob.mode === 'adjust'
+            ? `תיקון ${finishedJob.mealSlotName} הושלם ✨`
+            : `זיהוי ${finishedJob.mealSlotName} הושלם ✨`;
+
+          const pushBody = hasClarifications
+            ? params.clarificationQuestions![0]?.questionText ||
+              'זוהתה תווית ערכים תזונתיים — לחץ לבחירת המוצר'
+            : isCoachActor
+            ? `${dishLabel} (${totalCalories} קלוריות)`
+            : finishedJob.mode === 'adjust'
+            ? `הארוחה עודכנה: "${dishLabel} (${totalCalories} קלוריות)"`
+            : `זיהוי הארוחה הושלם: "${dishLabel} (${totalCalories} קלוריות)"`;
+
+          tasks.push(
+            sendUnifiedPushToTrainee(latestTrainee, {
+              pushId: finishedJob.id,
+              title: pushTitle,
+              body: pushBody,
+              kind: isCoachActor ? 'coach' : 'ai-meal',
+              screen: 'meal',
+              mealSlotId: finishedJob.mealSlotId,
               date: finishedJob.date,
-            });
-            tasks.push(
-              notifySubscribedCoachesForEvents({
-                trainee: latestTrainee,
-                events: [mealEvent],
-                origin: request.nextUrl.origin,
-              }).catch((err) =>
-                console.error('AI meal coach alert error:', err)
-              )
-            );
-          }
-
-          // 2. פוש למתאמן עצמו: אם מתאמן יצא בזמן טעינת AI, או אם המאמן עדכן לו ארוחה דרך AI
-          const isCoachActor =
-            sessionUser.role === 'coach' || sessionUser.role === 'admin';
-          const canSendTraineeAiPush = isCoachActor
-            ? shouldNotifyTraineeCoachMealChange(latestTrainee)
-            : shouldNotifyUnifiedAiCompletion(latestTrainee);
-
-          if (canSendTraineeAiPush) {
-            const dishNames = itemsList.map((i) => i.name).filter(Boolean);
-            const dishLabel =
-              dishNames.length === 0
-                ? finishedJob.mealSlotName
-                : dishNames.length === 1
-                ? dishNames[0]
-                : dishNames.length === 2
-                ? `${dishNames[0]} ו${dishNames[1]}`
-                : `${dishNames[0]}, ${dishNames[1]} ועוד ${dishNames.length - 2}`;
-            const totalCalories = Math.round(
-              itemsList.reduce(
-                (sum, i) => sum + (Number(i.macros?.calories) || 0),
-                0
-              )
-            );
-
-            const pushTitle = isCoachActor
-              ? `המאמן ${sessionUser.name} עדכן את ${finishedJob.mealSlotName} ✨`
-              : finishedJob.mode === 'adjust'
-              ? `תיקון ${finishedJob.mealSlotName} הושלם ✨`
-              : `זיהוי ${finishedJob.mealSlotName} הושלם ✨`;
-
-            const pushBody = isCoachActor
-              ? `${dishLabel} (${totalCalories} קלוריות)`
-              : finishedJob.mode === 'adjust'
-              ? `הארוחה עודכנה: "${dishLabel} (${totalCalories} קלוריות)"`
-              : `זיהוי הארוחה הושלם: "${dishLabel} (${totalCalories} קלוריות)"`;
-
-            tasks.push(
-              sendUnifiedPushToTrainee(latestTrainee, {
-                pushId: finishedJob.id,
-                title: pushTitle,
-                body: pushBody,
-                kind: isCoachActor ? 'coach' : 'ai-meal',
-                screen: 'meal',
-                mealSlotId: finishedJob.mealSlotId,
-                date: finishedJob.date,
-                origin: request.nextUrl.origin,
+              origin: request.nextUrl.origin,
+            })
+              .then(async (sendRes) => {
+                const hasDead =
+                  sendRes.invalidFcmTokens.length > 0 ||
+                  sendRes.expiredWebEndpoints.length > 0;
+                const recordCoachHist = isCoachActor && sendRes.sentCount > 0;
+                if (hasDead || recordCoachHist) {
+                  await updateTraineeAtomic(latestTrainee.id, (t) => {
+                    const cleaned = stripDeadPushTargetsFromTrainee(
+                      t,
+                      sendRes.invalidFcmTokens,
+                      sendRes.expiredWebEndpoints
+                    );
+                    return recordCoachHist
+                      ? {
+                          ...cleaned,
+                          pushHistory: [
+                            {
+                              id: finishedJob.id,
+                              title: pushTitle,
+                              body: pushBody,
+                              sentAt: new Date().toISOString(),
+                              sentByCoachName: sessionUser.name,
+                              targetScreen: 'meal' as const,
+                              targetMealSlotId: finishedJob.mealSlotId,
+                            },
+                            ...(cleaned.pushHistory || []),
+                          ].slice(0, 20),
+                        }
+                      : cleaned;
+                  }).catch(() => {});
+                }
               })
-                .then(async (sendRes) => {
-                  const hasDead =
-                    sendRes.invalidFcmTokens.length > 0 ||
-                    sendRes.expiredWebEndpoints.length > 0;
-                  const recordCoachHist = isCoachActor && sendRes.sentCount > 0;
-                  if (hasDead || recordCoachHist) {
-                    await updateServerDbState((prev) => ({
-                      ...prev,
-                      trainees: prev.trainees.map((t) => {
-                        if (t.id !== latestTrainee.id) return t;
-                        const cleaned = stripDeadPushTargetsFromTrainee(
-                          t,
-                          sendRes.invalidFcmTokens,
-                          sendRes.expiredWebEndpoints
-                        );
-                        return recordCoachHist
-                          ? {
-                              ...cleaned,
-                              pushHistory: [
-                                {
-                                  id: finishedJob.id,
-                                  title: pushTitle,
-                                  body: pushBody,
-                                  sentAt: new Date().toISOString(),
-                                  sentByCoachName: sessionUser.name,
-                                  targetScreen: 'meal' as const,
-                                  targetMealSlotId: finishedJob.mealSlotId,
-                                },
-                                ...(cleaned.pushHistory || []),
-                              ].slice(0, 20),
-                            }
-                          : cleaned;
-                      }),
-                    })).catch(() => {});
-                  }
-                })
-                .catch(() => {})
-            );
-          }
+              .catch(() => {})
+          );
+        }
 
-          if (tasks.length > 0) {
-            await Promise.all(tasks);
-          }
+        if (tasks.length > 0) {
+          await Promise.all(tasks);
         }
       }
 
@@ -1196,6 +1568,175 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
     }
 
     // =========================================================================
+    // מצב B0: תשובת הבהרה של משתמש על תווית ערכים (1-Round Completion)
+    // =========================================================================
+    if (mode === 'clarify-meal') {
+      const questions = Array.isArray(incomingClarificationQuestions)
+        ? incomingClarificationQuestions.slice(0, 4)
+        : [];
+      const answers = Array.isArray(incomingClarificationAnswers)
+        ? incomingClarificationAnswers.slice(0, 4)
+        : [];
+      if (answers.length === 0) {
+        return NextResponse.json(
+          { error: 'נא לבחור או להזין תשובה לשאלת ההבהרה' },
+          { status: 400 }
+        );
+      }
+      const effTid =
+        sessionUser.role === 'trainee'
+          ? sessionUser.id
+          : backgroundJob?.traineeId || bodyTraineeId;
+      const [priorityCustomCatalog, targetTraineeClar] = await Promise.all([
+        resolveVisibleCustomCatalogForActor(sessionUser, effTid),
+        effTid
+          ? getSingleTraineeFromServer(effTid).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+      pushTraceStep(
+        'clarify',
+        `התקבלה תשובת הבהרה מהמשתמש (${answers.length} תשובות)`,
+        'ok',
+        answers
+      );
+
+      const resolvedItems: LoggedFoodItem[] = [];
+      const nonSkippedPairs: {
+        q?: AiClarificationQuestion;
+        a: AiClarificationAnswer;
+      }[] = [];
+
+      for (const ans of answers) {
+        const matchedQ = questions.find((q) => q.id === ans.questionId);
+        const chosenName = (ans.customProductName || ans.selectedOption || '').trim();
+        if (!chosenName || chosenName === '__skip__' || chosenName === 'דלג') {
+          if (matchedQ?.perServingEstimate || matchedQ?.per100gEstimate) {
+            const per100 = matchedQ.per100gEstimate || matchedQ.perServingEstimate!;
+            const grams = matchedQ.servingGramsHint || matchedQ.defaultGramsHint || 100;
+            const macros = matchedQ.perServingEstimate && !matchedQ.per100gEstimate
+              ? matchedQ.perServingEstimate
+              : calculateMacrosForGrams(per100, grams);
+            resolvedItems.push({
+              id: `clar-skip-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+              name: matchedQ.extractedTableSummary.slice(0, 50) || 'מוצר מתווית ערכים',
+              unitLabel: `${grams} גרם (לפי תווית)`,
+              quantity: 1,
+              grams,
+              per100g: per100,
+              macros,
+              source: 'ai-photo',
+              inputConfidence: 'visual-estimate',
+            });
+          }
+          continue;
+        }
+        nonSkippedPairs.push({ q: matchedQ, a: ans });
+      }
+
+      let clarModelName: string | undefined;
+      if (nonSkippedPairs.length > 0 && apiKey) {
+        const existingMealClar =
+          targetTraineeClar && resolvedDate && resolvedSlotId
+            ? targetTraineeClar.logs?.[resolvedDate]?.meals?.[resolvedSlotId]
+            : undefined;
+        const mealTimelineClar = buildCompactMealTimelineForAi(existingMealClar);
+        const clarPrompt = `אתה תזונאי קליני וספורט בישראל.
+קודם לכן זוהתה טבלת ערכים תזונתיים של מוצר אחד או יותר, והמשתמש הבהיר כעת מהו המוצר (וכמה אכל ממנו אם צוין).
+${mealTimelineClar ? `\n${mealTimelineClar}\n` : ''}
+פרטי הטבלה ותשובות המשתמש:
+${nonSkippedPairs
+  .map(
+    ({ q, a }, i) =>
+      `${i + 1}. סיכום הטבלה שחולץ: "${q?.extractedTableSummary || 'תווית ערכים'}"` +
+      (q?.per100gEstimate
+        ? ` | ל-100g: ${q.per100gEstimate.calories} קק"ל, ח:${q.per100gEstimate.protein}, פ:${q.per100gEstimate.carbs}, ש:${q.per100gEstimate.fat}`
+        : '') +
+      `\n   זיהוי שבחר המשתמש: "${a.customProductName || a.selectedOption}"${
+        a.gramsOrPortionText ? ` | כמות שדווחה: "${a.gramsOrPortionText}"` : ''
+      }`
+  )
+  .join('\n')}
+
+החזר JSON בלבד במבנה {"summary": "...", "items": [{ "name": "שם המוצר המלא בעברית", "unitLabel": "תיאור יחידה ומשקל", "quantity": 1, "grams": 100, "fromUserText": true, "inputConfidence": "reported", "per100g": {...}, "macros": {...} }]} לפי נתוני הטבלה והכמות.`;
+
+        const clarRes = await callGeminiStructured(apiKey, [{ text: clarPrompt }], {
+          perAttemptTimeoutMs: 20_000,
+          totalBudgetMs: 45_000,
+        });
+        clarModelName = clarRes.modelName;
+        if (clarRes.parsed && Array.isArray(clarRes.parsed.items)) {
+          const { groundAndNormalizeAiItems } = await import('@/lib/aiFoodGrounding');
+          const mapped = mapRawGeminiItems(
+            clarRes.parsed.items as Record<string, unknown>[],
+            'ai-photo',
+            clarModelName || GEMINI_VISION_MODELS[0]
+          );
+          const grounded = await groundAndNormalizeAiItems(mapped, priorityCustomCatalog);
+          resolvedItems.push(...grounded);
+        }
+      }
+
+      // גיבוי דטרמיניסטי לתוויות ערכים אם Gemini לא החזיר תוצאה בתשובת הבהרה
+      if (resolvedItems.length === 0 && nonSkippedPairs.length > 0) {
+        for (const { q, a } of nonSkippedPairs) {
+          const name = (a.customProductName || a.selectedOption).trim();
+          const parsedGramsMatch = a.gramsOrPortionText?.match(/(\d+(?:\.\d+)?)/);
+          const grams = parsedGramsMatch
+            ? Math.max(1, Math.min(2000, Number(parsedGramsMatch[1])))
+            : q?.servingGramsHint || q?.defaultGramsHint || 100;
+          const per100 = q?.per100gEstimate ||
+            q?.perServingEstimate || { calories: 200, protein: 8, carbs: 20, fat: 8 };
+          resolvedItems.push({
+            id: `clar-det-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+            name,
+            unitLabel: a.gramsOrPortionText || `${grams} גרם`,
+            quantity: 1,
+            grams,
+            per100g: per100,
+            macros: calculateMacrosForGrams(per100, grams),
+            source: 'ai-photo',
+            fromUserText: true,
+            inputConfidence: 'reported',
+          });
+        }
+      }
+
+      pushTraceStep(
+        'clarify_done',
+        `הבהרה הושלמה — נוספו ${resolvedItems.length} פריטים`,
+        'ok'
+      );
+      const syncedJob = await syncAnalyzeResultToServer({
+        items: resolvedItems,
+        clarificationQuestions: questions,
+        clarificationAnswers: answers,
+        isClarifyResponse: true,
+        overrideJobId: sanitizeText(clarificationJobId, 60) || undefined,
+        engine: clarModelName || 'label-resolver',
+        isAiFallback: !clarModelName,
+      });
+
+      persistAiTrace({
+        queueType: 'history',
+        model: clarModelName || 'label-resolver',
+        clarificationQuestions: questions,
+        clarificationAnswers: answers,
+        parsedItems: resolvedItems,
+        rawResponseSummary: `השלמת הבהרה (${resolvedItems.length} פריטים)`,
+        targetName: targetTraineeClar?.name,
+        slotName: backgroundJob?.mealSlotName,
+      });
+
+      return NextResponse.json({
+        items: resolvedItems,
+        summary: 'תווית הערכים זוהתה ונוספה לארוחה לפי בחירתך',
+        engine: clarModelName || 'label-resolver',
+        isAiFallback: !clarModelName,
+        syncedJob,
+      });
+    }
+
+    // =========================================================================
     // מצב B: התאמת / תיקון ארוחה עם AI ("תקן" / "תחליף סלק לכבד אפוי 150 גרם")
     // =========================================================================
     if (mode === 'adjust-meal') {
@@ -1230,6 +1771,11 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
           canCoachAccessTrainee(sessionUser, targetTrainee))
           ? buildCompactAnalyzeContext(targetTrainee)
           : '';
+      const existingMealForAdj =
+        targetTrainee && resolvedDate && resolvedSlotId
+          ? targetTrainee.logs?.[resolvedDate]?.meals?.[resolvedSlotId]
+          : undefined;
+      const mealTimelineForAdj = buildCompactMealTimelineForAi(existingMealForAdj);
       const customFoodsHint =
         priorityCustomCatalog.length > 0
           ? `\nמוצרים אישיים מוגדרים של המשתמש (עדיפות עליונה לשם ולערכים ל-100 גרם אם מוזכרים!): ${priorityCustomCatalog
@@ -1312,7 +1858,7 @@ ${historyBlock}`;
         const adjustInstruction = `אתה תזונאי קליני וספורט מומחה בישראל.
 המתאמן מבקש לתקן, להחליף, להסיר או לעדכן ארוחה שכבר פוענחה.
 ${scopedPromptBlock}
-
+${mealTimelineForAdj ? `\nהיסטוריית השליחות והעריכות הכללית של הארוחה:\n${mealTimelineForAdj}\n` : ''}
 ${cleanAdjustment ? `הוראת התיקון של המתאמן (עובדה מחייבת — עדיפות עליונה!): "${cleanAdjustment}"` : ''}
 ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : ''}${traineeProfileContext ? `\n\n${traineeProfileContext}` : ''}${customFoodsHint}
 
@@ -1441,11 +1987,22 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
               isAiFallback: false,
               replaceItems: true,
             });
+            const adjSummary =
+              sanitizeText(res.parsed.summary, 240) ||
+              'הארוחה עודכנה בהצלחה לפי בקשתך';
+            pushTraceStep('adjust_done', `תיקון הושלם בהצלחה (${items.length} פריטים)`, 'ok');
+            persistAiTrace({
+              queueType: 'history',
+              model: res.modelName,
+              parsedItems: items,
+              rawResponseSummary: adjSummary,
+              targetName: targetTrainee?.name,
+            });
             return NextResponse.json({
+              dryRun: isDryRun || undefined,
+              stepsTimeline: isDryRun ? aiTraceSteps : undefined,
               items,
-              summary:
-                sanitizeText(res.parsed.summary, 240) ||
-                'הארוחה עודכנה בהצלחה לפי בקשתך',
+              summary: adjSummary,
               ...(learnedRuleHint ? { learnedRuleHint } : {}),
               engine: res.modelName,
               isAiFallback: false,
@@ -1486,7 +2043,17 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
           fallbackReason,
           replaceItems: true,
         });
+        pushTraceStep('adjust_fallback', `תיקון דטרמיניסטי (${fallbackReason})`, 'warn');
+        persistAiTrace({
+          queueType: 'history',
+          model: 'smart-hebrew-builtin',
+          parsedItems: adjusted,
+          rawResponseSummary: `Fallback: ${fallbackReason}`,
+          targetName: targetTrainee?.name,
+        });
         return NextResponse.json({
+          dryRun: isDryRun || undefined,
+          stepsTimeline: isDryRun ? aiTraceSteps : undefined,
           items: adjusted,
           summary: `הארוחה הותאמה דטרמיניסטית (${adjusted.length} מרכיבים).`,
           engine: 'smart-hebrew-builtin',
@@ -1497,10 +2064,19 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
       }
 
       const errMsg = `לא הצלחנו לעדכן את הארוחה (${fallbackReason}).`;
+      pushTraceStep('adjust_failed', errMsg, 'error');
       const syncedJob = await syncAnalyzeResultToServer({
         items: [],
         errorMsg: errMsg,
+        errorStage: apiKey ? 'vision_api' : 'validation',
         replaceItems: true,
+      });
+      persistAiTrace({
+        queueType: 'crashed',
+        crashStage: apiKey ? 'vision_api' : 'validation',
+        errorCode: 'ADJUST_FAILED',
+        errorMessage: errMsg,
+        targetName: targetTrainee?.name,
       });
       return NextResponse.json({ error: errMsg, syncedJob }, { status: 422 });
     }
@@ -1524,13 +2100,36 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
         canCoachAccessTrainee(sessionUser, targetTraineeC))
         ? buildCompactAnalyzeContext(targetTraineeC)
         : '';
+    const existingMealC =
+      targetTraineeC && resolvedDate && resolvedSlotId
+        ? targetTraineeC.logs?.[resolvedDate]?.meals?.[resolvedSlotId]
+        : undefined;
+    const mealTimelineC = buildCompactMealTimelineForAi(existingMealC);
+    const prevPhotosForComparison =
+      contextParams?.includePreviousMealPhotos && existingMealC
+        ? (
+            existingMealC.photoDataUrls?.length
+              ? existingMealC.photoDataUrls
+              : existingMealC.photoDataUrl
+              ? [existingMealC.photoDataUrl]
+              : []
+          )
+            .filter(
+              (u) =>
+                typeof u === 'string' &&
+                u.startsWith('data:image/') &&
+                !validatedImages.some((v) => v.rawDataUrl === u)
+            )
+            .slice(0, Math.max(0, 8 - validatedImages.length))
+        : [];
+
     const contextBlock = formatContextParamsPrompt(contextParams);
     const hasUserText = Boolean(textPrompt && textPrompt.trim().length >= 2);
     const strictUserList = Boolean(contextParams?.strictUserList);
     let geminiErrorMsg = '';
     if (apiKey) {
       const systemInstruction = `אתה תזונאי קליני וספורט מומחה בישראל עם התמחות בניתוח נפח, זיהוי מנות ישראליות ושמירה קפדנית על דברי המתאמן.
-תפקידך לנתח ארוחה מ-1 עד 3 תמונות ו/או מתיאור טקסטואלי בעברית ולהחזיר JSON בלבד במבנה הבא:
+תפקידך לנתח ארוחה מ-1 עד 8 תמונות (משולבות: צלחות, כלי הגשה, מוצרים וטבלאות ערכים תזונתיים) ו/או מתיאור טקסטואלי בעברית ולהחזיר JSON בלבד במבנה הבא:
 {
   "summary": "תיאור קצר בעברית של מה שזוהה והערכת כמות",
   "items": [
@@ -1570,6 +2169,16 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
       ]
     }
   ],
+  "clarificationQuestions": [
+    {
+      "photoIndex": 1,
+      "extractedTableSummary": "סיכום הטבלה (למשל: 420 קק\"ל ל-100g, 18g חלבון)",
+      "questionText": "זיהיתי טבלת ערכים בתמונה 2 — לאיזה מוצר היא שייכת?",
+      "suggestedOptions": ["חטיף חלבון שבצד", "הרוטב של הסלט", "גבינה / ממרח בצלחת"],
+      "defaultGramsHint": 100,
+      "per100gEstimate": { "calories": 420, "protein": 18, "carbs": 45, "fat": 18 }
+    }
+  ],
   "suggestedExtras": [
     {
       "name": "פריט נוסף שנראה בבירור בתמונה אך לא נכתב בטקסט",
@@ -1585,7 +2194,12 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
   ]
 }
 
-היררכיית אמת, פיצול מנות ודיוק מחייבת (חובה לקיים בסדר הבא!):
+היררכיית אמת, זיהוי טבלאות ערכים ודיוק מחייבת (חובה לקיים בסדר הבא!):
+0. **סיווג אוטומטי של צלחת מול טבלת ערכים + הבהרה אך ורק בעת הצורך:**
+   - זהה עבור כל תמונה אוטומטית אם זו **צלחת/מאכל** או **טבלת ערכים תזונתיים**.
+   - אם בתמונה מופיעה **טבלת ערכים תזונתיים**:
+     * אם המשתמש כבר הזין עבור התמונה שם מוצר (תחת "שייך למוצר שהזין המתאמן") או ששם המותג/המוצר ברור מהאריזה או מהקשר הטקסט — חלץ את הערכים המדויקים ל-100 גרם/מנה, הכפל בכמות הסבירה/מדווחת וכלול ישירות ב-"items" (ואל תשאל שאלת הבהרה).
+     * אם לא צוין שם מוצר על התווית ואין בתמונה/טקסט אינדיקציה ברורה *של איזה מוצר הטבלה* (או למה בצלחת היא מתייחסת) — **אל תנחש סתם ואל תכניס קלוריות שגויות ל-"items"**! הכנס ל-"items" רק את הפריטים הברורים האחרים (אם קיימים), והחזר שאלה ב-"clarificationQuestions" עם 2–4 אפשרויות סבירות + הערכים שחולצו מהטבלה ב-"per100gEstimate". (החזר clarificationQuestions ריק [] כשהכל ברור).
 1. **פיצול מנות מורכבות למרכיבים (\`components\`) — רמה 3 מקסימום:**
    - כאשר המנה בצלחת היא **מנה מעורבת/מורכבת/מבושלת** (כגון מג׳דרה, שקשוקה, מוקפץ, פסטה ברוטב, שניצל מטוגן, סלט מתובל עם תוספות, כריך, קפה עם חלב) — החזר אותה כפריט אב אחד ב-"items" (למשל \`"מג׳דרה"\`) והכנס ל-\`"components"\` את המרכיבים השונים המרכיבים אותה (למשל אורז מבושל, עדשים ירוקות, בצל מטוגן, שמן בישול), כך שסכום המשקל והמאקרו של המרכיבים יהיה תואם לסך המנה.
    - פריט פשוט, שלם או ארוז (בננה, ביצה קשה, גביע קוטג׳, תפוח, פיתה ריקה) נשאר פריט שטוח **ללא \`components\`**. אסור לקנן \`components\` בתוך \`components\`.
@@ -1620,6 +2234,11 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
       if (traineeProfileContextC) {
         parts.push({ text: traineeProfileContextC });
       }
+      if (mealTimelineC) {
+        parts.push({
+          text: `הקשר רציף והיסטוריית הארוחה עד כה (אל תכפיל פריטים שכבר רשומים ביומן אלא אם המתאמן ביקש לשנות/לתקן!):\n${mealTimelineC}`,
+        });
+      }
       if (priorityCustomCatalog.length > 0) {
         parts.push({
           text: `מוצרים אישיים מוגדרים של המשתמש (עדיפות עליונה לשמות ולערכי המאקרו אם מוזכרים או תואמים!): ${priorityCustomCatalog
@@ -1635,6 +2254,15 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
         parts.push({ text: `תמונה ${idx + 1}: ${img.angleLabel}` });
         parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
       });
+      prevPhotosForComparison.forEach((pUrl, idx) => {
+        const m = pUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+        if (m) {
+          parts.push({
+            text: `תמונה קודמת מהארוחה #${idx + 1} להשוואה בלבד (כבר נספרה ביומן — אין להוסיף שוב אלא רק אם נדרש לתקן):`,
+          });
+          parts.push({ inlineData: { mimeType: m[1], data: m[2] } });
+        }
+      });
 
       const res = await callGeminiStructured(apiKey, parts, {
         perAttemptTimeoutMs: 28_000,
@@ -1645,21 +2273,76 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
           updateBgJobStage(
             meta?.isRetry
               ? `עומס זמני במודל ${m} — מנסה שוב אוטומטית...`
-              : `מפענח מרכיבים וכמויות מול מודל ${m}...`
+              : `מפענח מרכיבים, תוויות וכמויות מול מודל ${m}...`
           ),
       });
       if (res.cancelled) {
         return NextResponse.json({ cancelled: true, items: [] });
       }
-      if (res.parsed && Array.isArray(res.parsed.items) && res.parsed.items.length > 0) {
+      const rawQuestions = Array.isArray(res.parsed?.clarificationQuestions)
+        ? (res.parsed!.clarificationQuestions as Record<string, unknown>[])
+        : [];
+      const clarificationQuestions: AiClarificationQuestion[] = rawQuestions
+        .map((rq, idx): AiClarificationQuestion | null => {
+          const questionText = sanitizeText(rq?.questionText, 180);
+          const extractedTableSummary =
+            sanitizeText(rq?.extractedTableSummary, 180) || 'נתוני תווית ערכים';
+          if (!questionText) return null;
+          const pIdxRaw = Number(rq?.photoIndex);
+          const photoIndex =
+            Number.isFinite(pIdxRaw) && pIdxRaw >= 1 && pIdxRaw <= validatedImages.length
+              ? Math.round(pIdxRaw) - 1
+              : Math.max(
+                  0,
+                  validatedImages.findIndex((v) => v.angle === 'label' && !v.labelProductName)
+                );
+          const targetImg = validatedImages[photoIndex];
+          // אם המשתמש כבר מילא שם מוצר ידנית על תמונה זו — מדלגים על שאלת ההבהרה!
+          if (targetImg?.labelProductName) return null;
+          const suggestedOptions = Array.isArray(rq?.suggestedOptions)
+            ? rq.suggestedOptions
+                .map((o) => sanitizeText(o, 70))
+                .filter(Boolean)
+                .slice(0, 4)
+            : [];
+          const est100 = rq?.per100gEstimate as Record<string, unknown> | undefined;
+          const per100gEstimate =
+            est100 && typeof est100 === 'object'
+              ? {
+                  calories: sanitizeNumber(est100.calories, 0, 2000, 150),
+                  protein: sanitizeNumber(est100.protein, 0, 100, 5),
+                  carbs: sanitizeNumber(est100.carbs, 0, 100, 15),
+                  fat: sanitizeNumber(est100.fat, 0, 100, 5),
+                }
+              : undefined;
+          return {
+            id: `cq-${Date.now().toString(36)}-${idx}`,
+            photoIndex,
+            photoHash: targetImg?.hash,
+            extractedTableSummary,
+            questionText,
+            suggestedOptions,
+            allowCustomOther: true,
+            defaultGramsHint: sanitizeNumber(rq?.defaultGramsHint, 1, 2000, 100),
+            per100gEstimate,
+          };
+        })
+        .filter((q): q is AiClarificationQuestion => q !== null)
+        .slice(0, 2);
+
+      const hasParsedItems =
+        Boolean(res.parsed && Array.isArray(res.parsed.items) && res.parsed.items.length > 0);
+      if (res.parsed && (hasParsedItems || clarificationQuestions.length > 0)) {
         const modelName = res.modelName || GEMINI_VISION_MODELS[0];
         const { groundAndNormalizeAiItems } = await import('@/lib/aiFoodGrounding');
 
-        const rawItems = mapRawGeminiItems(
-          res.parsed.items as Record<string, unknown>[],
-          sourceType,
-          modelName
-        );
+        const rawItems = hasParsedItems
+          ? mapRawGeminiItems(
+              res.parsed.items as Record<string, unknown>[],
+              sourceType,
+              modelName
+            )
+          : [];
 
         const existingNamesLower = rawItems.map((i) => i.name.toLowerCase());
         const rawExtras =
@@ -1681,7 +2364,9 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
             : [];
 
         const [items, suggestedExtras] = await Promise.all([
-          groundAndNormalizeAiItems(rawItems, priorityCustomCatalog),
+          rawItems.length > 0
+            ? groundAndNormalizeAiItems(rawItems, priorityCustomCatalog)
+            : Promise.resolve([]),
           rawExtras.length > 0
             ? groundAndNormalizeAiItems(rawExtras, priorityCustomCatalog)
             : Promise.resolve([]),
@@ -1690,15 +2375,42 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
         pendingSuggestedExtras = suggestedExtras;
         const syncedJob = await syncAnalyzeResultToServer({
           items,
+          clarificationQuestions:
+            clarificationQuestions.length > 0 ? clarificationQuestions : undefined,
           engine: res.modelName,
           isAiFallback: false,
         });
+        const finalSummary =
+          sanitizeText(res.parsed.summary, 240) ||
+          (clarificationQuestions.length > 0
+            ? 'זוהתה תווית ערכים שממתינה להבהרת מוצר'
+            : 'הארוחה פוענחה בהצלחה באמצעות AI');
+        pushTraceStep(
+          clarificationQuestions.length > 0 ? 'clarification_needed' : 'analyze_done',
+          `פוענחו ${items.length} פריטים${
+            clarificationQuestions.length > 0
+              ? ` · ${clarificationQuestions.length} שאלות הבהרה`
+              : ''
+          }`,
+          'ok'
+        );
+        persistAiTrace({
+          queueType: 'history',
+          model: res.modelName,
+          clarificationQuestions:
+            clarificationQuestions.length > 0 ? clarificationQuestions : undefined,
+          parsedItems: items,
+          rawResponseSummary: finalSummary,
+          targetName: targetTraineeC?.name,
+        });
         return NextResponse.json({
+          dryRun: isDryRun || undefined,
+          stepsTimeline: isDryRun ? aiTraceSteps : undefined,
           items,
           suggestedExtras,
-          summary:
-            sanitizeText(res.parsed.summary, 240) ||
-            'הארוחה פוענחה בהצלחה באמצעות AI',
+          clarificationQuestions:
+            clarificationQuestions.length > 0 ? clarificationQuestions : undefined,
+          summary: finalSummary,
           engine: res.modelName,
           isAiFallback: false,
           syncedJob,
@@ -1787,11 +2499,22 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
         isAiFallback: true,
         fallbackReason,
       });
+      const fbSummary = apiKey
+        ? `מנוע התמונות לא הגיב כרגע — זוהה לפי התיאור שכתבת (${items.length} מרכיבים).`
+        : `מנוע התמונות אינו זמין ללא מפתח Gemini בשרת — זוהה לפי התיאור שכתבת (${items.length} מרכיבים).`;
+      pushTraceStep('fallback', `זיהוי גיבוי מקומי (${fallbackReason})`, 'warn');
+      persistAiTrace({
+        queueType: 'history',
+        model: 'smart-hebrew-builtin',
+        parsedItems: items,
+        rawResponseSummary: fbSummary,
+        targetName: targetTraineeC?.name,
+      });
       return NextResponse.json({
+        dryRun: isDryRun || undefined,
+        stepsTimeline: isDryRun ? aiTraceSteps : undefined,
         items,
-        summary: apiKey
-          ? `מנוע התמונות לא הגיב כרגע — זוהה לפי התיאור שכתבת (${items.length} מרכיבים).`
-          : `מנוע התמונות אינו זמין ללא מפתח Gemini בשרת — זוהה לפי התיאור שכתבת (${items.length} מרכיבים).`,
+        summary: fbSummary,
         engine: 'smart-hebrew-builtin',
         isAiFallback: true,
         fallbackReason,
@@ -1803,15 +2526,26 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
       ? `מנוע זיהוי התמונות של AI נכשל זמנית (${geminiErrorMsg || 'נסה שוב'}). ניתן לתאר את הארוחה במילים (למשל: "פסטה 200 גרם") או לחפש במאגר.`
       : 'לזיהוי מתמונה בלבד נדרש חיבור מפתח GEMINI_API_KEY תקף בשרת. כתוב שם מאכל (למשל: "פסטה") או הוסף ממאגר המזון.';
 
+    const crashStage = apiKey ? 'vision_api' : 'validation';
+    pushTraceStep('failed', errMsg, 'error');
     const syncedJob = await syncAnalyzeResultToServer({
       items: [],
       errorMsg: errMsg,
+      errorStage: crashStage,
+    });
+    persistAiTrace({
+      queueType: 'crashed',
+      crashStage,
+      errorCode: 'ANALYZE_FAILED',
+      errorMessage: errMsg,
+      targetName: targetTraineeC?.name,
     });
 
     return NextResponse.json(
       {
         error: errMsg,
         syncedJob,
+        stepsTimeline: isDryRun ? aiTraceSteps : undefined,
       },
       { status: 422 }
     );
@@ -1822,10 +2556,22 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
         return await executeAnalyzePipeline();
       } catch (pipelineErr) {
         console.error('Execute analyze pipeline error:', pipelineErr);
+        const crashMsg =
+          pipelineErr instanceof Error
+            ? pipelineErr.message
+            : 'שגיאת שרת פנימית בלתי צפויה';
+        pushTraceStep('crash', crashMsg, 'error');
         const failedJob = await syncAnalyzeResultToServer({
           items: [],
           errorMsg: 'הפענוח הופסק עקב שגיאת שרת זמנית — ניתן לנסות שוב.',
+          errorStage: 'parser',
         }).catch(() => undefined);
+        persistAiTrace({
+          queueType: 'crashed',
+          crashStage: 'parser',
+          errorCode: 'PIPELINE_EXCEPTION',
+          errorMessage: crashMsg,
+        });
         return NextResponse.json(
           { error: 'שגיאה בפענוח הארוחה', syncedJob: failedJob },
           { status: 500 }

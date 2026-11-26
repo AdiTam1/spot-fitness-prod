@@ -29,6 +29,16 @@ export function normalizePendingAiJobs(
       continue;
     }
 
+    if (job.status === 'awaiting_clarification') {
+      const ageMs = getAiJobAgeMs(job, nowMs);
+      if (ageMs > 24 * 60 * 60 * 1000) {
+        changed = true;
+        continue;
+      }
+      normalized.push(job);
+      continue;
+    }
+
     if (job.status === 'processing') {
       const ageMs = getAiJobAgeMs(job, nowMs);
       if (ageMs > AI_JOB_AUTO_ARCHIVE_MS) {
@@ -66,4 +76,8 @@ export function isAiJobActivelyProcessing(
 ): boolean {
   if (job.status !== 'processing') return false;
   return getAiJobAgeMs(job, nowMs) <= AI_JOB_STALE_TIMEOUT_MS;
+}
+
+export function isAiJobAwaitingClarification(job: PendingAiMealJob): boolean {
+  return job.status === 'awaiting_clarification' && !job.acknowledged;
 }

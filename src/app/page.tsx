@@ -34,9 +34,11 @@ import {
   DailyWorkoutLog,
   DayType,
   LoggedFoodItem,
+  LoggedMealEntry,
   MealCardShortcutId,
   NutritionTemplate,
   PendingAiMealJob,
+  PhotoAngleKind,
   QuickContextChip,
   SavedMealPreset,
   StepsSyncSource,
@@ -67,6 +69,11 @@ import {
   isAiJobActivelyProcessing,
   normalizePendingAiJobs,
 } from '@/lib/aiJobs';
+import {
+  clearFailedAiDraft,
+  saveFailedAiDraft,
+} from '@/lib/aiDraftStore';
+import { appendMealHistoryEntry } from '@/lib/mealHistory';
 import { AndroidForceUpdateGate } from '@/components/AndroidForceUpdateGate';
 import {
   AppUpdateInfo,
@@ -179,6 +186,8 @@ export default function HomePage() {
     date: string;
     mealSlotId: string;
     initialTab?: string;
+    openAdjustWithDraft?: boolean;
+    openClarificationJobId?: string;
     nonce: number;
   } | null>(null);
   const [coachPushSettings, setCoachPushSettings] =
@@ -204,6 +213,7 @@ export default function HomePage() {
   const currentUserRef = useRef<AuthSessionUser | null>(null);
   const traineesRef = useRef<TraineeProfile[]>([]);
   const syncingCountRef = useRef<number>(0);
+  const liveBgJobIdsRef = useRef<string[]>([]);
   const activePostOpsRef = useRef<Map<symbol, AbortController>>(new Map());
   const mutationEpochRef = useRef<number>(0);
   const lastFetchAtRef = useRef<number>(0);
@@ -214,6 +224,9 @@ export default function HomePage() {
   useEffect(() => {
     traineesRef.current = trainees;
   }, [trainees]);
+  useEffect(() => {
+    liveBgJobIdsRef.current = liveBgJobIds;
+  }, [liveBgJobIds]);
 
   const abortAllPendingPostActions = useCallback(() => {
     activePostOpsRef.current.forEach((ctrl) => ctrl.abort());
@@ -527,7 +540,11 @@ export default function HomePage() {
       }
 
       if (data?.webBuildId && isWebVersionMismatch(data.webBuildId)) {
-        if (isSpotEditingBusy() || syncingCountRef.current > 0) {
+        if (
+          isSpotEditingBusy() ||
+          syncingCountRef.current > 0 ||
+          liveBgJobIdsRef.current.length > 0
+        ) {
           setPendingWebUpdateBuildId(data.webBuildId);
         } else {
           void performHardRefresh(data.webBuildId);
@@ -542,10 +559,20 @@ export default function HomePage() {
     if (!pendingWebUpdateBuildId) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const tryFlushRefresh = () => {
-      if (isSpotEditingBusy() || syncingCountRef.current > 0) return;
+      if (
+        isSpotEditingBusy() ||
+        syncingCountRef.current > 0 ||
+        liveBgJobIdsRef.current.length > 0
+      ) {
+        return;
+      }
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        if (!isSpotEditingBusy() && syncingCountRef.current === 0) {
+        if (
+          !isSpotEditingBusy() &&
+          syncingCountRef.current === 0 &&
+          liveBgJobIdsRef.current.length === 0
+        ) {
           void performHardRefresh(pendingWebUpdateBuildId);
         }
       }, 250);
@@ -556,7 +583,7 @@ export default function HomePage() {
       if (timer) clearTimeout(timer);
       unsub();
     };
-  }, [pendingWebUpdateBuildId, syncingCount]);
+  }, [pendingWebUpdateBuildId, syncingCount, liveBgJobIds.length]);
 
   useEffect(() => {
     async function initSecureSession() {
@@ -1837,6 +1864,7 @@ export default function HomePage() {
     mode: 'photo' | 'text' | 'adjust';
     imageDataUrl?: string;
     imageDataUrls?: string[];
+    imageMetas?: { angle: PhotoAngleKind; labelProductName?: string }[];
     textPrompt?: string;
     baseItems?: LoggedFoodItem[];
     selectedTargetIds?: string[];
@@ -1847,6 +1875,37 @@ export default function HomePage() {
     const jobId = `aijob-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const nowIso = new Date().toISOString();
     const isAdjust = payload.mode === 'adjust';
+    const draftMode: 'photo' | 'text' | 'adjust' = isAdjust
+      ? 'adjust'
+      : payload.mode === 'photo'
+      ? 'photo'
+      : 'text';
+    const photosSnapshot = (payload.imageDataUrls || (payload.imageDataUrl ? [payload.imageDataUrl] : [])).map(
+      (dataUrl, idx) => ({
+        dataUrl,
+        angle: payload.imageMetas?.[idx]?.angle || payload.contextParams?.imageAngles?.[idx] || 'unset',
+        labelProductName:
+          payload.imageMetas?.[idx]?.labelProductName ||
+          payload.contextParams?.imageLabelProducts?.[idx],
+      })
+    );
+    const failedDraftBase = {
+      traineeId: payload.traineeId,
+      date: payload.date,
+      mealSlotId: payload.mealSlotId,
+      mode: draftMode,
+      photos: photosSnapshot.length > 0 ? photosSnapshot : undefined,
+      textPrompt: payload.textPrompt,
+      adjustmentPrompt: payload.adjustmentPrompt,
+      selectedTargetIds: payload.selectedTargetIds,
+      activeChipLabels: payload.contextParams?.activeChipLabels,
+      chipQuantities: payload.contextParams?.chipQuantities,
+      contextParams: payload.contextParams,
+      includePreviousMealPhotos: Boolean(payload.contextParams?.includePreviousMealPhotos),
+      failedAt: nowIso,
+    };
+    void saveFailedAiDraft(failedDraftBase);
+
     const startedJob: PendingAiMealJob = {
       id: jobId,
       targetTraineeId: payload.traineeId,
@@ -1856,6 +1915,7 @@ export default function HomePage() {
       mode: payload.mode,
       replaceMealItems: isAdjust,
       summaryHint: (payload.adjustmentPrompt || payload.textPrompt || '').slice(0, 70),
+      retryPayload: failedDraftBase,
       status: 'processing',
       startedAt: nowIso,
       lastHeartbeatAt: nowIso,
@@ -1869,58 +1929,109 @@ export default function HomePage() {
 
     const abortController = new AbortController();
     bgJobAbortControllersRef.current.set(jobId, abortController);
+    liveBgJobIdsRef.current = [jobId, ...liveBgJobIdsRef.current.filter((id) => id !== jobId)];
     setLiveBgJobIds((prev) => [jobId, ...prev.filter((id) => id !== jobId)]);
     setLocalBgJobs((prev) => [startedJob, ...prev.slice(0, 5)]);
 
     void (async () => {
       try {
-        const res = await fetch('/api/ai/analyze-meal', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: abortController.signal,
-          body: JSON.stringify({
-            mode: isAdjust ? 'adjust-meal' : 'analyze',
-            imageDataUrl: payload.imageDataUrl,
-            imageDataUrls: payload.imageDataUrls,
-            textPrompt: payload.textPrompt,
-            baseItems: payload.baseItems,
-            selectedTargetIds: payload.selectedTargetIds,
-            correctionHistory: payload.correctionHistory,
-            adjustmentPrompt: payload.adjustmentPrompt,
+        const reqBody = JSON.stringify({
+          mode: isAdjust ? 'adjust-meal' : 'analyze',
+          imageDataUrl: payload.imageDataUrl,
+          imageDataUrls: payload.imageDataUrls,
+          textPrompt: payload.textPrompt,
+          baseItems: payload.baseItems,
+          selectedTargetIds: payload.selectedTargetIds,
+          correctionHistory: payload.correctionHistory,
+          adjustmentPrompt: payload.adjustmentPrompt,
+          traineeId: payload.traineeId,
+          date: payload.date,
+          mealSlotId: payload.mealSlotId,
+          contextParams: payload.contextParams,
+          backgroundJob: {
+            jobId,
             traineeId: payload.traineeId,
-            contextParams: payload.contextParams,
-            backgroundJob: {
-              jobId,
-              traineeId: payload.traineeId,
-              date: payload.date,
-              mealSlotId: payload.mealSlotId,
-              mealSlotName: payload.mealSlotName,
-              mode: payload.mode,
-              summaryHint: (payload.adjustmentPrompt || payload.textPrompt || '').slice(0, 70),
-            },
-          }),
+            date: payload.date,
+            mealSlotId: payload.mealSlotId,
+            mealSlotName: payload.mealSlotName,
+            mode: payload.mode,
+            summaryHint: (payload.adjustmentPrompt || payload.textPrompt || '').slice(0, 70),
+          },
         });
+
+        let res: Response | null = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          if (abortController.signal.aborted) return;
+          try {
+            const candidate = await fetch('/api/ai/analyze-meal', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal: abortController.signal,
+              body: reqBody,
+            });
+            res = candidate;
+            // שגיאות 502/503/504 בעת Deploy או עומס שרת זמני מקבלות Retry אוטומטי שקט
+            if (
+              candidate.status !== 502 &&
+              candidate.status !== 503 &&
+              candidate.status !== 504
+            ) {
+              break;
+            }
+          } catch (fetchErr) {
+            if (abortController.signal.aborted) throw fetchErr;
+            res = null;
+          }
+          if (attempt < 2) {
+            setLocalBgJobs((prev) =>
+              prev.map((j) =>
+                j.id === jobId
+                  ? {
+                      ...j,
+                      stageText: `השרת בתהליך עדכון/סנכרון — מנסה שוב אוטומטית (${attempt + 2}/3)...`,
+                    }
+                  : j
+              )
+            );
+            await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+          }
+        }
+
         if (abortController.signal.aborted) return;
-        const data = await res.json().catch(() => ({}));
+        const data = res ? await res.json().catch(() => ({})) : {};
         if (data?.cancelled) {
+          void clearFailedAiDraft(payload.traineeId, payload.date, payload.mealSlotId, draftMode);
           setLocalBgJobs((prev) => prev.filter((j) => j.id !== jobId));
           return;
         }
-        if (res.ok && Array.isArray(data.items) && data.items.length > 0) {
+        const hasClarifications =
+          Array.isArray(data.clarificationQuestions) &&
+          data.clarificationQuestions.length > 0;
+        const hasItems = Array.isArray(data.items) && data.items.length > 0;
+
+        if (res && res.ok && (hasItems || hasClarifications)) {
+          void clearFailedAiDraft(payload.traineeId, payload.date, payload.mealSlotId, draftMode);
           setLocalBgJobs((prev) =>
             prev.map((j) =>
               j.id === jobId
                 ? {
                     ...j,
-                    status: 'completed',
-                    completedAt: new Date().toISOString(),
+                    status: hasClarifications ? 'awaiting_clarification' : 'completed',
+                    completedAt: hasClarifications ? undefined : new Date().toISOString(),
                     lastHeartbeatAt: new Date().toISOString(),
-                    stageText: isAdjust ? 'התיקון הושלם וסונכרן ליומן' : 'הושלם וסונכרן ליומן',
-                    itemsCount: data.items.length,
+                    stageText: hasClarifications
+                      ? 'ממתין להבהרה קצרה על תווית הערכים'
+                      : isAdjust
+                      ? 'התיקון הושלם וסונכרן ליומן'
+                      : 'הושלם וסונכרן ליומן',
+                    itemsCount: hasItems ? data.items.length : 0,
+                    clarificationQuestions: hasClarifications
+                      ? data.clarificationQuestions
+                      : undefined,
                     engine: data.engine,
                     isAiFallback: Boolean(data.isAiFallback),
                     fallbackReason: data.fallbackReason,
-                    autoSyncedToLog: true,
+                    autoSyncedToLog: hasItems,
                     replaceMealItems: isAdjust,
                   }
                 : j
@@ -1928,6 +2039,16 @@ export default function HomePage() {
           );
           await fetchAuthorizedData({ force: true });
         } else {
+          const errMsg =
+            data?.error ||
+            (!res
+              ? 'שגיאת רשת או השרת עבר אתחול — הפרטים נשמרו לשליחה חוזרת'
+              : 'פענוח ה-AI נכשל — ניתן לנסות שוב');
+          void saveFailedAiDraft({
+            ...failedDraftBase,
+            errorMsg: errMsg,
+            failedAt: new Date().toISOString(),
+          });
           setLocalBgJobs((prev) =>
             prev.map((j) =>
               j.id === jobId
@@ -1937,7 +2058,12 @@ export default function HomePage() {
                     completedAt: new Date().toISOString(),
                     lastHeartbeatAt: new Date().toISOString(),
                     stageText: 'הפענוח נכשל',
-                    errorMsg: data.error || 'פענוח ה-AI נכשל — ניתן לנסות שוב',
+                    errorMsg: errMsg,
+                    retryPayload: {
+                      ...failedDraftBase,
+                      errorMsg: errMsg,
+                      failedAt: new Date().toISOString(),
+                    },
                   }
                 : j
             )
@@ -1949,19 +2075,29 @@ export default function HomePage() {
           setLocalBgJobs((prev) => prev.filter((j) => j.id !== jobId));
           return;
         }
+        const netMsg = 'החיבור מהדפדפן נקטע זמנית — אפשר להמתין או ללחוץ שלח שוב';
+        void saveFailedAiDraft({ ...failedDraftBase, errorMsg: netMsg, failedAt: new Date().toISOString() });
         setLocalBgJobs((prev) =>
           prev.map((j) =>
             j.id === jobId
               ? {
                   ...j,
-                  stageText: 'החיבור מהדפדפן נקטע — ממתין לתשובת השרת (אפשר לבטל)',
-                  summaryHint: 'מחכה לסנכרון חוזר מהשרת...',
+                  status: 'failed',
+                  completedAt: new Date().toISOString(),
+                  stageText: netMsg,
+                  errorMsg: netMsg,
+                  retryPayload: {
+                    ...failedDraftBase,
+                    errorMsg: netMsg,
+                    failedAt: new Date().toISOString(),
+                  },
                 }
               : j
           )
         );
       } finally {
         bgJobAbortControllersRef.current.delete(jobId);
+        liveBgJobIdsRef.current = liveBgJobIdsRef.current.filter((id) => id !== jobId);
         setLiveBgJobIds((prev) => prev.filter((id) => id !== jobId));
       }
     })();
@@ -2067,10 +2203,30 @@ export default function HomePage() {
       const existingMeal = currentLog.meals[mealSlotId];
       const nextPhotos =
         photoDataUrls && photoDataUrls.length > 0
-          ? photoDataUrls.slice(0, 3)
+          ? photoDataUrls.slice(0, 16)
           : photoDataUrl
           ? [photoDataUrl]
           : undefined;
+      const isCoachActor =
+        currentUser?.role === 'coach' || currentUser?.role === 'admin';
+      const nextMealTime = cleanMealTime ?? existingMeal?.mealTime;
+      const prevCount = existingMeal?.items?.length || 0;
+      const nextCount = items.length;
+      const histKind = isCoachActor
+        ? 'coach_edit'
+        : prevCount === 0 && nextCount > 0
+        ? 'manual_add'
+        : prevCount > 0 && nextCount === 0
+        ? 'manual_remove'
+        : 'manual_edit';
+      const histRes = appendMealHistoryEntry(existingMeal, items, {
+        kind: histKind,
+        actorId: currentUser?.id || traineeId,
+        actorName: isCoachActor ? currentUser?.name || 'מאמן' : t.name,
+        actorRole: currentUser?.role || 'trainee',
+        prevMealTime: existingMeal?.mealTime,
+        nextMealTime,
+      });
       return {
         ...t,
         logs: {
@@ -2080,12 +2236,14 @@ export default function HomePage() {
             meals: {
               ...currentLog.meals,
               [mealSlotId]: {
+                ...existingMeal,
                 mealSlotId,
                 items,
-                mealTime: cleanMealTime ?? existingMeal?.mealTime,
+                mealTime: nextMealTime,
                 photoDataUrl: nextPhotos?.[0] ?? photoDataUrl,
                 photoDataUrls: nextPhotos,
                 photoNote,
+                history: histRes.history,
                 coachFeedback: existingMeal?.coachFeedback,
                 coachFeedbackAuthor: existingMeal?.coachFeedbackAuthor,
                 coachFeedbackAt: existingMeal?.coachFeedbackAt,
@@ -2096,6 +2254,75 @@ export default function HomePage() {
         },
       };
     });
+  };
+
+  const handleMarkCoachMealEditsRead = async (params: {
+    mode: 'alert-visit' | 'banner' | 'badges';
+    alertId?: string;
+    date?: string;
+    mealSlotId?: string;
+  }) => {
+    // לעולם לא מאפסים צפייה כשמאמן או מנהל פותחים את תצוגת המתאמן
+    if (currentUserRef.current?.role !== 'trainee' || coachPreviewTraineeId) {
+      return;
+    }
+    const res = await postDataAction({
+      action: 'mark-coach-meal-edits-read',
+      ...params,
+    });
+    if (res?.ok) {
+      const json = await res.json().catch(() => null);
+      if (json?.trainee) {
+        setTrainees((prev) =>
+          prev.map((t) => (t.id === json.trainee.id ? json.trainee : t))
+        );
+      } else {
+        await fetchAuthorizedData();
+      }
+    }
+  };
+
+  const handleRestoreCoachDeletedItem = async (params: {
+    date: string;
+    mealSlotId: string;
+    noticeId?: string;
+    historyEventId?: string;
+    itemId?: string;
+  }) => {
+    const res = await postDataAction({
+      action: 'restore-coach-deleted-item',
+      ...params,
+    });
+    if (res?.ok) {
+      const json = await res.json().catch(() => null);
+      if (json?.trainee) {
+        setTrainees((prev) =>
+          prev.map((t) => (t.id === json.trainee.id ? json.trainee : t))
+        );
+      }
+      await fetchAuthorizedData({ force: true });
+    }
+  };
+
+  const handleRollbackMealHistory = async (params: {
+    traineeId: string;
+    date: string;
+    mealSlotId: string;
+    historyEntryId: string;
+  }) => {
+    const res = await postDataAction({
+      action: 'rollback-meal-history',
+      ...params,
+    });
+    if (res?.ok) {
+      const json = await res.json().catch(() => null);
+      if (json?.trainee) {
+        setTrainees((prev) =>
+          prev.map((t) => (t.id === json.trainee.id ? json.trainee : t))
+        );
+      }
+      await fetchAuthorizedData({ force: true });
+    }
   };
 
   const handleUpdateMealTime = async (
@@ -3279,6 +3506,10 @@ export default function HomePage() {
             onCustomFoodsUpdated={handleCustomFoodsUpdated}
             backgroundAiJobs={mergeTraineeBgJobs(loggedInTraineeProfile)}
             onStartBackgroundAiAnalysis={handleStartBackgroundAiAnalysis}
+            onMarkCoachMealEditsRead={handleMarkCoachMealEditsRead}
+            onRestoreCoachDeletedItem={handleRestoreCoachDeletedItem}
+            onRollbackMealHistory={handleRollbackMealHistory}
+            onRefreshDataFromServer={() => void fetchAuthorizedData({ force: true })}
             externalOpenMealRequest={externalOpenMealRequest}
             externalSectionRequest={externalSectionRequest}
             onConsumeExternalOpenMealRequest={handleConsumeExternalMealRequest}
@@ -3329,6 +3560,10 @@ export default function HomePage() {
             onCustomFoodsUpdated={handleCustomFoodsUpdated}
             backgroundAiJobs={mergeTraineeBgJobs(loggedInTraineeProfile)}
             onStartBackgroundAiAnalysis={handleStartBackgroundAiAnalysis}
+            onMarkCoachMealEditsRead={handleMarkCoachMealEditsRead}
+            onRestoreCoachDeletedItem={handleRestoreCoachDeletedItem}
+            onRollbackMealHistory={handleRollbackMealHistory}
+            onRefreshDataFromServer={() => void fetchAuthorizedData({ force: true })}
             externalOpenMealRequest={externalOpenMealRequest}
             externalSectionRequest={externalSectionRequest}
             onConsumeExternalOpenMealRequest={handleConsumeExternalMealRequest}
@@ -3434,11 +3669,36 @@ export default function HomePage() {
               date: job.date,
               mealSlotId: job.mealSlotId,
               initialTab:
-                job.status === 'completed'
+                job.status === 'awaiting_clarification'
+                  ? 'ai-clarify'
+                  : job.status === 'completed'
                   ? 'meal-items'
                   : job.mode === 'photo'
                   ? 'ai-photo'
+                  : job.mode === 'adjust'
+                  ? 'meal-items'
                   : 'ai-text',
+              openClarificationJobId:
+                job.status === 'awaiting_clarification' ? job.id : undefined,
+              openAdjustWithDraft: job.status === 'failed' && job.mode === 'adjust',
+              nonce: Date.now(),
+            });
+          }}
+          onRetryFailedJob={(job) => {
+            if (job.retryPayload) {
+              void saveFailedAiDraft(job.retryPayload);
+            }
+            setExternalOpenMealRequest({
+              traineeId: job.targetTraineeId,
+              date: job.date,
+              mealSlotId: job.mealSlotId,
+              initialTab:
+                job.mode === 'photo'
+                  ? 'ai-photo'
+                  : job.mode === 'adjust'
+                  ? 'meal-items'
+                  : 'ai-text',
+              openAdjustWithDraft: job.mode === 'adjust',
               nonce: Date.now(),
             });
           }}

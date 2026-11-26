@@ -1,7 +1,15 @@
 ﻿'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Check, Sparkles, X, AlertTriangle, Minimize2 } from 'lucide-react';
+import {
+  Check,
+  Sparkles,
+  X,
+  AlertTriangle,
+  Minimize2,
+  RotateCcw,
+  HelpCircle,
+} from 'lucide-react';
 import { PendingAiMealJob } from '@/types/nutrition';
 import { isAiJobActivelyProcessing } from '@/lib/aiJobs';
 
@@ -54,6 +62,7 @@ interface BackgroundAiSyncBannerProps {
   onAcknowledgeJob: (jobId: string) => void;
   onCancelJob?: (jobId: string) => void;
   onOpenJobMeal?: (job: PendingAiMealJob) => void;
+  onRetryFailedJob?: (job: PendingAiMealJob) => void;
 }
 
 export function BackgroundAiSyncBanner({
@@ -62,6 +71,7 @@ export function BackgroundAiSyncBanner({
   onAcknowledgeJob,
   onCancelJob,
   onOpenJobMeal,
+  onRetryFailedJob,
 }: BackgroundAiSyncBannerProps) {
   const activeProcessing = jobs.find((j) => isAiJobActivelyProcessing(j));
   const [collapsed, setCollapsed] = useState(false);
@@ -110,10 +120,20 @@ export function BackgroundAiSyncBanner({
         >
           {finishedJobs.slice(0, 2).map((job) => {
             const isOk = job.status === 'completed';
+            const isClarify = job.status === 'awaiting_clarification';
             const open = () => {
-              if (isOk && onOpenJobMeal) {
+              if (onOpenJobMeal) {
                 onOpenJobMeal(job);
-                onAcknowledgeJob(job.id);
+                if (isOk) {
+                  onAcknowledgeJob(job.id);
+                }
+              }
+            };
+            const retry = () => {
+              if (onRetryFailedJob) {
+                onRetryFailedJob(job);
+              } else if (onOpenJobMeal) {
+                onOpenJobMeal(job);
               }
             };
             return (
@@ -128,7 +148,11 @@ export function BackgroundAiSyncBanner({
                   display: 'flex',
                   alignItems: 'center',
                   gap: 10,
-                  borderColor: isOk ? undefined : 'var(--danger-text)',
+                  borderColor: isClarify
+                    ? 'var(--accent)'
+                    : isOk
+                    ? undefined
+                    : 'var(--danger-text)',
                 }}
               >
                 <button
@@ -143,18 +167,40 @@ export function BackgroundAiSyncBanner({
                     borderRadius: 999,
                     border: 0,
                     background: 'transparent',
-                    color: isOk ? 'var(--text)' : 'var(--danger-text)',
+                    color: isClarify
+                      ? 'var(--accent)'
+                      : isOk
+                      ? 'var(--text)'
+                      : 'var(--danger-text)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: 'pointer',
                   }}
                 >
-                  {isOk ? <Check size={20} strokeWidth={2.2} /> : <AlertTriangle size={20} />}
+                  {isClarify ? (
+                    <HelpCircle size={20} />
+                  ) : isOk ? (
+                    <Check size={20} strokeWidth={2.2} />
+                  ) : (
+                    <AlertTriangle size={20} />
+                  )}
                 </button>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: isOk ? 'var(--text)' : 'var(--danger-text)' }}>
-                    {isOk
+                  <div
+                    style={{
+                      fontSize: 15,
+                      fontWeight: 700,
+                      color: isClarify
+                        ? 'var(--text)'
+                        : isOk
+                        ? 'var(--text)'
+                        : 'var(--danger-text)',
+                    }}
+                  >
+                    {isClarify
+                      ? `נדרשת הבהרה קצרה · ${job.mealSlotName}`
+                      : isOk
                       ? job.mode === 'adjust' || job.replaceMealItems
                         ? `התיקון הושלם וסונכרן ל${job.mealSlotName}`
                         : `הושלם וסונכרן ל${job.mealSlotName}`
@@ -163,13 +209,33 @@ export function BackgroundAiSyncBanner({
                       : `פענוח ה-AI ל${job.mealSlotName} נכשל`}
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
-                    {isOk
+                    {isClarify
+                      ? job.clarificationQuestions?.[0]?.questionText ||
+                        'זוהתה תווית ערכים תזונתיים — לחץ להבהרת המוצר'
+                      : isOk
                       ? `${job.itemsCount || 1} מרכיבים${
                           job.isAiFallback ? ' · זיהוי גיבוי מקומי (בדוק כמויות)' : ''
                         }`
-                      : job.errorMsg || 'נסה שוב או הוסף ידנית מהמאגר'}
+                      : job.errorMsg || 'הפרטים נשמרו — לחץ שלח שוב'}
                   </div>
                 </div>
+                {isClarify && onOpenJobMeal && (
+                  <button
+                    type="button"
+                    onClick={open}
+                    className="btn-volt"
+                    style={{
+                      height: 38,
+                      padding: '0 14px',
+                      flex: 'none',
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      fontWeight: 700,
+                    }}
+                  >
+                    הבהר כעת
+                  </button>
+                )}
                 {isOk && onOpenJobMeal && (
                   <button
                     type="button"
@@ -178,6 +244,29 @@ export function BackgroundAiSyncBanner({
                     style={{ height: 40, padding: '0 16px', flex: 'none', cursor: 'pointer' }}
                   >
                     צפה
+                  </button>
+                )}
+                {!isOk && !isClarify && (
+                  <button
+                    type="button"
+                    onClick={retry}
+                    className="btn-surface"
+                    style={{
+                      height: 38,
+                      padding: '0 12px',
+                      flex: 'none',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      borderColor: 'rgba(239, 68, 68, 0.4)',
+                      color: 'var(--text)',
+                    }}
+                  >
+                    <RotateCcw size={14} />
+                    <span>שלח שוב</span>
                   </button>
                 )}
                 <button

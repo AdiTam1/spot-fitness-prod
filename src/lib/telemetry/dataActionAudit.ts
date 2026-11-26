@@ -12,6 +12,18 @@ const DATA_ACTION_MAP: Record<
   { category: AuditCategory; auditAction: string }
 > = {
   'trainee-self-update': { category: 'meal', auditAction: 'trainee_self_update' },
+  'mark-coach-meal-edits-read': {
+    category: 'meal',
+    auditAction: 'coach_meal_edits_read',
+  },
+  'restore-coach-deleted-item': {
+    category: 'meal',
+    auditAction: 'coach_deleted_item_restored',
+  },
+  'rollback-meal-history': {
+    category: 'meal',
+    auditAction: 'meal_history_rollback',
+  },
   'trainee-manage-saved-meals': {
     category: 'meal',
     auditAction: 'saved_meals_updated',

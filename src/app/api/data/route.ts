@@ -41,6 +41,7 @@ import {
   sanitizeCoachPushSettingsForClient,
   sanitizeTraineeForClient,
   updateServerDbState,
+  updateTraineeAtomic,
 } from '@/lib/serverStore';
 import {
   detectTraineeActivityEvents,
@@ -57,6 +58,12 @@ import { DEFAULT_TEMPLATES, getTodayIso } from '@/data/israeliFoodCatalog';
 import { recalculateParentDish } from '@/lib/compositeDishes';
 import { sanitizeMetricsScheduleConfig } from '@/lib/dateUtils';
 import { normalizePendingAiJobs } from '@/lib/aiJobs';
+import {
+  appendMealHistoryEntry,
+  applyCoachDiffToMeal,
+  clearCoachEditBadgesOnMeal,
+  stripTransientCoachBadges,
+} from '@/lib/mealHistory';
 import { diagnoseSupabaseError } from '@/lib/supabase';
 import {
   AccountStatus,
@@ -66,7 +73,9 @@ import {
   DailyLog,
   DayType,
   LoggedFoodItem,
+  LoggedMealEntry,
   MealCardShortcutId,
+  MealHistoryEntry,
   NutritionTemplate,
   QuickChipCategory,
   QuickContextChip,
@@ -74,12 +83,153 @@ import {
   SavedMealPreset,
   ServingToolKind,
   TraineeActiveDateRange,
+  TraineeCoachMealAlert,
   TraineeCustomUnit,
   TraineeGroup,
   TraineeOnboardingData,
   TraineeProfile,
   TraineeServingTool,
 } from '@/types/nutrition';
+
+function mergeHistoryLists(
+  serverHist?: MealHistoryEntry[],
+  clientHist?: MealHistoryEntry[]
+): MealHistoryEntry[] | undefined {
+  const sList = Array.isArray(serverHist) ? serverHist : [];
+  const cList = Array.isArray(clientHist) ? clientHist : [];
+  if (sList.length === 0 && cList.length === 0) return undefined;
+  const byId = new Map<string, MealHistoryEntry>();
+  for (const ev of [...cList, ...sList]) {
+    if (ev && ev.id && !byId.has(ev.id)) {
+      byId.set(ev.id, ev);
+    }
+  }
+  return Array.from(byId.values())
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    .slice(0, 45);
+}
+
+function recordTraineeMealDiffsToHistory(
+  existingLogs: Record<string, DailyLog>,
+  nextLogs: Record<string, DailyLog>,
+  actorId: string,
+  actorName: string
+): Record<string, DailyLog> {
+  const out = { ...nextLogs };
+  const allDates = new Set([
+    ...Object.keys(existingLogs || {}),
+    ...Object.keys(out || {}),
+  ]);
+  for (const dateKey of Array.from(allDates)) {
+    if (!dateKey || dateKey === '__profile_meta') continue;
+    const prevDay = existingLogs?.[dateKey];
+    const nextDay = out[dateKey];
+    if (!nextDay && !prevDay) continue;
+
+    const prevMeals = prevDay?.meals || {};
+    const nextMeals: Record<string, LoggedMealEntry> = {
+      ...(nextDay?.meals || {}),
+    };
+    const slotIds = new Set([
+      ...Object.keys(prevMeals),
+      ...Object.keys(nextMeals),
+    ]);
+
+    let dayMutated = false;
+    for (const slotId of Array.from(slotIds)) {
+      const prevMeal = prevMeals[slotId];
+      const nextMeal = nextMeals[slotId];
+      if (!prevMeal && !nextMeal) continue;
+
+      const mergedHist = mergeHistoryLists(prevMeal?.history, nextMeal?.history);
+      const clientAddedOwnEvent =
+        Array.isArray(nextMeal?.history) &&
+        nextMeal.history.length > 0 &&
+        !prevMeal?.history?.some((p) => p.id === nextMeal.history![0].id);
+
+      const finalNextItems = nextMeal?.items || [];
+      const baseMeal: LoggedMealEntry = nextMeal
+        ? {
+            ...nextMeal,
+            photoStore: {
+              ...(prevMeal?.photoStore || {}),
+              ...(nextMeal.photoStore || {}),
+            },
+            photoMetas:
+              nextMeal.photoMetas && nextMeal.photoMetas.length > 0
+                ? nextMeal.photoMetas
+                : prevMeal?.photoMetas,
+            coachEditState:
+              nextMeal.coachEditState !== undefined
+                ? nextMeal.coachEditState
+                : prevMeal?.coachEditState,
+            pendingCoachDeletedItems:
+              nextMeal.pendingCoachDeletedItems !== undefined
+                ? nextMeal.pendingCoachDeletedItems
+                : prevMeal?.pendingCoachDeletedItems,
+            history: mergedHist,
+          }
+        : {
+            mealSlotId: slotId,
+            items: [],
+            photoStore: prevMeal?.photoStore,
+            photoMetas: prevMeal?.photoMetas,
+            coachEditState: prevMeal?.coachEditState,
+            pendingCoachDeletedItems: prevMeal?.pendingCoachDeletedItems,
+            history: mergedHist,
+            updatedAt: new Date().toLocaleTimeString('he-IL', {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+          };
+
+      if (baseMeal.photoStore && Object.keys(baseMeal.photoStore).length === 0) {
+        delete baseMeal.photoStore;
+      }
+
+      if (!clientAddedOwnEvent) {
+        const prevCount = (prevMeal?.items || []).length;
+        const nextCount = finalNextItems.length;
+        const kind =
+          prevCount === 0 && nextCount > 0
+            ? 'manual_add'
+            : prevCount > 0 && nextCount === 0
+            ? 'manual_remove'
+            : 'manual_edit';
+        const diffRes = appendMealHistoryEntry(
+          { ...(prevMeal || { mealSlotId: slotId, items: [], updatedAt: '' }), history: mergedHist },
+          finalNextItems,
+          {
+            kind,
+            actorId,
+            actorName,
+            actorRole: 'trainee',
+            prevMealTime: prevMeal?.mealTime,
+            nextMealTime: nextMeal?.mealTime,
+          }
+        );
+        if (diffRes.entry) {
+          baseMeal.history = diffRes.history;
+          nextMeals[slotId] = baseMeal;
+          dayMutated = true;
+          continue;
+        }
+      }
+
+      if (nextMeal) {
+        nextMeals[slotId] = baseMeal;
+      }
+    }
+
+    if (dayMutated && nextDay) {
+      out[dateKey] = {
+        ...nextDay,
+        meals: nextMeals,
+      };
+    }
+  }
+  return out;
+}
 
 function mergeLogsPreservingPendingAi(
   existing: TraineeProfile,
@@ -131,25 +281,34 @@ function mergeLogsPreservingPendingAi(
     }
   }
 
-  // 2. שמירת ארוחות שפוענחו ע"י AI ברקע ושטרם אושרו בקליינט
-  const unackedCompleted = (existing.pendingAiJobs || []).filter(
-    (j) => j.status === 'completed' && !j.acknowledged && j.autoSyncedToLog
+  // 2. שמירת ארוחות שפוענחו ע"י AI ברקע (הושלמו או ממתינות להבהרה) ואיחוד שדות היסטוריה/מדיה
+  const unackedAiJobs = (existing.pendingAiJobs || []).filter(
+    (j) =>
+      (j.status === 'completed' || j.status === 'awaiting_clarification') &&
+      !j.acknowledged &&
+      j.autoSyncedToLog
   );
-  for (const job of unackedCompleted) {
+  for (const job of unackedAiJobs) {
     const serverMeal = existing.logs[job.date]?.meals?.[job.mealSlotId];
-    if (!serverMeal || !serverMeal.items?.length) continue;
+    if (!serverMeal) continue;
     const clientDay = merged[job.date] || existing.logs[job.date];
     const clientMeal = clientDay?.meals?.[job.mealSlotId];
     const clientItemIds = new Set((clientMeal?.items || []).map((i) => i.id));
     const isReplaceJob = Boolean(job.replaceMealItems || job.mode === 'adjust');
-    const missingFromClient = serverMeal.items.filter(
+    const missingFromClient = (serverMeal.items || []).filter(
       (i) => !clientItemIds.has(i.id)
     );
     const clientDiffersFromReplace =
       isReplaceJob &&
-      ((clientMeal?.items?.length || 0) !== serverMeal.items.length ||
+      ((clientMeal?.items?.length || 0) !== (serverMeal.items?.length || 0) ||
         missingFromClient.length > 0);
     if ((clientDiffersFromReplace || (!isReplaceJob && missingFromClient.length > 0)) && clientDay) {
+      const mergedPhotoUrls = [
+        ...(clientMeal?.photoDataUrls || []),
+        ...(serverMeal.photoDataUrls || []),
+      ]
+        .filter((u, i, arr) => Boolean(u) && arr.indexOf(u) === i)
+        .slice(0, 16);
       merged[job.date] = {
         ...clientDay,
         meals: {
@@ -158,16 +317,22 @@ function mergeLogsPreservingPendingAi(
             ...(clientMeal || serverMeal),
             mealTime: clientMeal?.mealTime || serverMeal.mealTime,
             items: isReplaceJob
-              ? [...serverMeal.items]
+              ? [...(serverMeal.items || [])]
               : [...(clientMeal?.items || []), ...missingFromClient],
             aiSuggestedExtras: isReplaceJob
               ? undefined
               : clientMeal?.aiSuggestedExtras ?? serverMeal.aiSuggestedExtras,
             photoDataUrl: clientMeal?.photoDataUrl || serverMeal.photoDataUrl,
-            photoDataUrls:
-              clientMeal?.photoDataUrls && clientMeal.photoDataUrls.length > 0
-                ? clientMeal.photoDataUrls
-                : serverMeal.photoDataUrls,
+            photoDataUrls: mergedPhotoUrls.length > 0 ? mergedPhotoUrls : undefined,
+            photoStore: {
+              ...(serverMeal.photoStore || {}),
+              ...(clientMeal?.photoStore || {}),
+            },
+            photoMetas:
+              serverMeal.photoMetas && serverMeal.photoMetas.length > 0
+                ? serverMeal.photoMetas
+                : clientMeal?.photoMetas,
+            history: mergeHistoryLists(serverMeal.history, clientMeal?.history),
           },
         },
       };
@@ -1221,8 +1386,7 @@ async function handleDataPost(
       if (session.role === 'trainee' && body.traineeId && body.traineeId !== session.id) {
         return NextResponse.json({ error: 'אין הרשאה' }, { status: 403 });
       }
-      const state = await getServerDbState();
-      const targetTrainee = state.trainees.find((t) => t.id === targetId);
+      const targetTrainee = await getSingleTraineeFromServer(targetId);
       if (
         !targetTrainee ||
         (session.role === 'trainee'
@@ -1237,64 +1401,332 @@ async function handleDataPost(
       const cancelProcessing = Boolean(body.cancelProcessing);
       const nowIso = new Date().toISOString();
 
-      let matchedExisting = false;
-      const baseNormalized = normalizePendingAiJobs(targetTrainee.pendingAiJobs).jobs;
-      let nextJobs = baseNormalized
-        .map((j) => {
-          if (jobId && j.id === jobId) {
-            matchedExisting = true;
-            if (cancelProcessing || j.status === 'processing') {
-              return {
-                ...j,
-                status: 'failed' as const,
-                completedAt: j.completedAt || nowIso,
-                stageText: 'בוטל ע"י המשתמש',
-                errorMsg: 'בוטל ע"י המשתמש',
-                acknowledged: true,
-              };
+      const { next: updatedTarget } = await updateTraineeAtomic(targetId, (t) => {
+        let matchedExisting = false;
+        const baseNormalized = normalizePendingAiJobs(t.pendingAiJobs).jobs;
+        let nextJobs = baseNormalized
+          .map((j) => {
+            if (jobId && j.id === jobId) {
+              matchedExisting = true;
+              if (cancelProcessing || j.status === 'processing') {
+                return {
+                  ...j,
+                  status: 'failed' as const,
+                  completedAt: j.completedAt || nowIso,
+                  stageText: 'בוטל ע"י המשתמש',
+                  errorMsg: 'בוטל ע"י המשתמש',
+                  acknowledged: true,
+                };
+              }
+              return null;
             }
-            return null;
-          }
-          if (clearAllFinished && j.status !== 'processing') {
-            return null;
-          }
-          return j;
-        })
-        .filter((j): j is NonNullable<typeof j> => Boolean(j));
+            if (clearAllFinished && j.status !== 'processing' && j.status !== 'awaiting_clarification') {
+              return null;
+            }
+            return j;
+          })
+          .filter((j): j is NonNullable<typeof j> => Boolean(j));
 
-      if (jobId && cancelProcessing && !matchedExisting) {
-        nextJobs = [
-          {
-            id: jobId,
-            targetTraineeId: targetId,
-            date: getTodayIso(),
-            mealSlotId: '',
-            mealSlotName: '',
-            mode: 'photo' as const,
-            status: 'failed' as const,
-            startedAt: nowIso,
-            completedAt: nowIso,
-            stageText: 'בוטל ע"י המשתמש',
-            errorMsg: 'בוטל ע"י המשתמש',
-            acknowledged: true,
-          },
-          ...nextJobs,
-        ].slice(0, 12);
-      }
-
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) =>
-          t.id === targetId ? { ...t, pendingAiJobs: nextJobs } : t
-        ),
-      }));
+        if (jobId && cancelProcessing && !matchedExisting) {
+          nextJobs = [
+            {
+              id: jobId,
+              targetTraineeId: targetId,
+              date: getTodayIso(),
+              mealSlotId: '',
+              mealSlotName: '',
+              mode: 'photo' as const,
+              status: 'failed' as const,
+              startedAt: nowIso,
+              completedAt: nowIso,
+              stageText: 'בוטל ע"י המשתמש',
+              errorMsg: 'בוטל ע"י המשתמש',
+              acknowledged: true,
+            },
+            ...nextJobs,
+          ].slice(0, 12);
+        }
+        return { ...t, pendingAiJobs: nextJobs };
+      });
 
       return NextResponse.json({
         ok: true,
-        pendingAiJobs: sanitizeTraineeForClient({
-          ...targetTrainee,
-          pendingAiJobs: nextJobs,
-        }).pendingAiJobs,
+        pendingAiJobs: sanitizeTraineeForClient(updatedTarget || targetTrainee).pendingAiJobs,
+      });
+    }
+
+    // סימון צפייה של המתאמן עצמו בלבד בהתראות/באדג'ים של עריכות מאמן (אסור למאמן/מנהל!)
+    if (action === 'mark-coach-meal-edits-read') {
+      if (session.role !== 'trainee') {
+        return NextResponse.json(
+          { error: 'סימון קריאת עריכות מאמן מתבצע אך ורק מצד המתאמן עצמו' },
+          { status: 403 }
+        );
+      }
+      const mode = String(body.mode || 'badges') as 'alert-visit' | 'banner' | 'badges';
+      const alertId = body.alertId ? sanitizeText(body.alertId, 80) : '';
+      const dateKey = body.date ? sanitizeText(body.date, 20) : '';
+      const mealSlotId = body.mealSlotId ? sanitizeText(body.mealSlotId, 60) : '';
+
+      const { next: updated } = await updateTraineeAtomic(session.id, (t) => {
+        if (t.status !== 'active') return null;
+
+        if (mode === 'alert-visit') {
+          const alerts = (t.coachMealAlerts || []).map((a) => {
+            if (a.dismissed) return a;
+            if (a.shownOnJournalVisit) {
+              return { ...a, dismissed: true };
+            }
+            return { ...a, shownOnJournalVisit: true };
+          });
+          return { ...t, coachMealAlerts: alerts };
+        }
+
+        if (mode === 'banner') {
+          const alerts = (t.coachMealAlerts || []).map((a) =>
+            !alertId || a.id === alertId || (dateKey && mealSlotId && a.date === dateKey && a.mealSlotId === mealSlotId)
+              ? { ...a, dismissed: true, shownOnJournalVisit: true }
+              : a
+          );
+          let nextLogs = t.logs;
+          if (dateKey && mealSlotId && t.logs[dateKey]?.meals?.[mealSlotId]) {
+            const targetMeal = t.logs[dateKey].meals[mealSlotId];
+            nextLogs = {
+              ...t.logs,
+              [dateKey]: {
+                ...t.logs[dateKey],
+                meals: {
+                  ...t.logs[dateKey].meals,
+                  [mealSlotId]: {
+                    ...targetMeal,
+                    coachEditState: targetMeal.coachEditState
+                      ? { ...targetMeal.coachEditState, unreadBanner: false }
+                      : undefined,
+                  },
+                },
+              },
+            };
+          }
+          return { ...t, coachMealAlerts: alerts, logs: nextLogs };
+        }
+
+        if (mode === 'badges' && dateKey && mealSlotId && t.logs[dateKey]?.meals?.[mealSlotId]) {
+          const clearedMeal = clearCoachEditBadgesOnMeal(t.logs[dateKey].meals[mealSlotId]);
+          const alerts = (t.coachMealAlerts || []).map((a) =>
+            a.date === dateKey && a.mealSlotId === mealSlotId
+              ? { ...a, dismissed: true, shownOnJournalVisit: true }
+              : a
+          );
+          return {
+            ...t,
+            coachMealAlerts: alerts,
+            logs: {
+              ...t.logs,
+              [dateKey]: {
+                ...t.logs[dateKey],
+                meals: {
+                  ...t.logs[dateKey].meals,
+                  [mealSlotId]: clearedMeal,
+                },
+              },
+            },
+          };
+        }
+
+        return null;
+      });
+
+      return NextResponse.json({
+        ok: true,
+        trainee: updated ? sanitizeTraineeForClient(updated) : undefined,
+      });
+    }
+
+    // שחזור פריט שנמחק ע"י מאמן מתוך היסטוריית הארוחה
+    if (action === 'restore-coach-deleted-item') {
+      if (session.role !== 'trainee') {
+        return NextResponse.json({ error: 'פעולה זמינה למתאמן בלבד' }, { status: 403 });
+      }
+      const dateKey = sanitizeText(body.date, 20);
+      const mealSlotId = sanitizeText(body.mealSlotId, 60);
+      const noticeId = body.noticeId ? sanitizeText(body.noticeId, 80) : '';
+      const historyEventId = body.historyEventId
+        ? sanitizeText(body.historyEventId, 80)
+        : '';
+      const itemId = body.itemId ? sanitizeText(body.itemId, 80) : '';
+
+      if (!dateKey || !mealSlotId) {
+        return NextResponse.json({ error: 'חסר תאריך או ארוחה' }, { status: 400 });
+      }
+
+      const nowIso = new Date().toISOString();
+      const nowTime = new Date().toLocaleTimeString('he-IL', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      const { next: updated } = await updateTraineeAtomic(session.id, (t) => {
+        if (t.status !== 'active') return null;
+        const dayLog = t.logs[dateKey];
+        const meal = dayLog?.meals?.[mealSlotId];
+        if (!dayLog || !meal) return null;
+
+        let restoredItem: LoggedFoodItem | undefined;
+        let nextNotices = meal.pendingCoachDeletedItems || [];
+
+        if (noticeId) {
+          const found = nextNotices.find((n) => n.id === noticeId);
+          if (found) {
+            restoredItem = found.item;
+            nextNotices = nextNotices.filter((n) => n.id !== noticeId);
+          }
+        }
+        if (!restoredItem && historyEventId) {
+          const hEv = (meal.history || []).find((h) => h.id === historyEventId);
+          const ch = hEv?.itemChanges?.find(
+            (c) =>
+              c.changeKind === 'removed' &&
+              c.removedItem &&
+              (!itemId || c.itemId === itemId)
+          );
+          if (ch?.removedItem) {
+            restoredItem = ch.removedItem;
+            nextNotices = nextNotices.filter((n) => n.item.id !== ch.itemId);
+          }
+        }
+        if (!restoredItem && itemId) {
+          const found = nextNotices.find((n) => n.item.id === itemId);
+          if (found) {
+            restoredItem = found.item;
+            nextNotices = nextNotices.filter((n) => n.id !== found.id);
+          }
+        }
+        if (!restoredItem) return null;
+
+        const cleanRestored: LoggedFoodItem = {
+          ...stripTransientCoachBadges([restoredItem])[0],
+          id: (meal.items || []).some((x) => x.id === restoredItem!.id)
+            ? `restored-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`
+            : restoredItem.id,
+        };
+        const nextItems = [...(meal.items || []), cleanRestored];
+        const histRes = appendMealHistoryEntry(meal, nextItems, {
+          timestamp: nowIso,
+          kind: 'restore_deleted',
+          actorId: session.id,
+          actorName: t.name,
+          actorRole: 'trainee',
+          summary: `שחזור פריט שנמחק ע"י מאמן: ${cleanRestored.name}`,
+        });
+
+        return {
+          ...t,
+          logs: {
+            ...t.logs,
+            [dateKey]: {
+              ...dayLog,
+              meals: {
+                ...dayLog.meals,
+                [mealSlotId]: {
+                  ...meal,
+                  items: nextItems,
+                  pendingCoachDeletedItems:
+                    nextNotices.length > 0 ? nextNotices : undefined,
+                  history: histRes.history,
+                  updatedAt: nowTime,
+                },
+              },
+            },
+          },
+        };
+      });
+
+      return NextResponse.json({
+        ok: true,
+        trainee: updated ? sanitizeTraineeForClient(updated) : undefined,
+      });
+    }
+
+    // שדרוג 1: החזרת ארוחה למצב קודם (Rollback מתוך ההיסטוריה הכללית)
+    if (action === 'rollback-meal-history') {
+      const targetId =
+        session.role === 'trainee' ? session.id : String(body.traineeId || '');
+      const dateKey = sanitizeText(body.date, 20);
+      const mealSlotId = sanitizeText(body.mealSlotId, 60);
+      const historyEntryId = sanitizeText(body.historyEntryId, 80);
+      if (!targetId || !dateKey || !mealSlotId || !historyEntryId) {
+        return NextResponse.json({ error: 'חסרים פרמטרים לשחזור' }, { status: 400 });
+      }
+      const existingCheck = await getSingleTraineeFromServer(targetId);
+      if (
+        !existingCheck ||
+        (session.role === 'trainee'
+          ? existingCheck.id !== session.id || existingCheck.status !== 'active'
+          : !canCoachAccessTrainee(session, existingCheck))
+      ) {
+        return NextResponse.json({ error: 'אין הרשאה' }, { status: 403 });
+      }
+
+      const nowIso = new Date().toISOString();
+      const nowTime = new Date().toLocaleTimeString('he-IL', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      const { next: updated } = await updateTraineeAtomic(targetId, (t) => {
+        const dayLog = t.logs[dateKey];
+        const meal = dayLog?.meals?.[mealSlotId];
+        if (!dayLog || !meal) return null;
+        const targetEv = (meal.history || []).find((h) => h.id === historyEntryId);
+        if (!targetEv || !Array.isArray(targetEv.itemsSnapshot)) return null;
+
+        const restoredItems = stripTransientCoachBadges(targetEv.itemsSnapshot);
+        const histRes = appendMealHistoryEntry(meal, restoredItems, {
+          timestamp: nowIso,
+          kind: 'rollback_snapshot',
+          actorId: session.id,
+          actorName: session.role === 'trainee' ? t.name : session.name,
+          actorRole: session.role,
+          prevMealTime: meal.mealTime,
+          nextMealTime: targetEv.mealTimeSnapshot ?? meal.mealTime,
+          summary: `הוחזר למצב מתוך ההיסטוריה (${targetEv.timeLabel})`,
+        });
+
+        let updatedMeal: LoggedMealEntry = {
+          ...meal,
+          items: restoredItems,
+          mealTime: targetEv.mealTimeSnapshot ?? meal.mealTime,
+          history: histRes.history,
+          updatedAt: nowTime,
+        };
+        if (session.role !== 'trainee') {
+          const cDiff = applyCoachDiffToMeal({
+            prevMeal: meal,
+            nextMeal: updatedMeal,
+            coachId: session.id,
+            coachName: session.name,
+            nowIso,
+          });
+          updatedMeal = cDiff.meal;
+        }
+        return {
+          ...t,
+          logs: {
+            ...t.logs,
+            [dateKey]: {
+              ...dayLog,
+              meals: {
+                ...dayLog.meals,
+                [mealSlotId]: updatedMeal,
+              },
+            },
+          },
+        };
+      });
+
+      return NextResponse.json({
+        ok: true,
+        trainee: updated ? sanitizeTraineeForClient(updated) : undefined,
       });
     }
 
@@ -1333,65 +1765,78 @@ async function handleDataPost(
       let prevTraineeSnapshot = null as TraineeProfile | null;
       let nextTraineeSnapshot = null as TraineeProfile | null;
 
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((existing) => {
-          if (existing.id !== session.id) return existing;
-          prevTraineeSnapshot = existing;
-          const todayBlocked = (existing.blockedDates || []).includes(getTodayIso());
-          const updated: TraineeProfile = {
-            ...existing,
-            name: sanitizeText(traineeInput.name, 80) || existing.name,
-            goal:
-              typeof traineeInput.goal === 'string' && sanitizeText(traineeInput.goal, 120)
-                ? sanitizeText(traineeInput.goal, 120)
-                : traineeInput.onboarding?.goal && sanitizeText(traineeInput.onboarding.goal, 120)
-                ? sanitizeText(traineeInput.onboarding.goal, 120)
-                : existing.goal,
-            currentWeight: todayBlocked ? existing.currentWeight : safeWeight,
-            targetWeight: sanitizeNumber(
-              traineeInput.targetWeight,
-              30,
-              300,
-              existing.targetWeight
-            ),
-            weightHistory:
-              !todayBlocked && Array.isArray(traineeInput.weightHistory)
-                ? traineeInput.weightHistory.slice(-60)
-                : existing.weightHistory,
-            measurementsHistory:
-              !todayBlocked && Array.isArray(traineeInput.measurementsHistory)
-                ? traineeInput.measurementsHistory.slice(-60)
-                : existing.measurementsHistory,
-            weeklyCheckIns: Array.isArray(traineeInput.weeklyCheckIns)
-              ? traineeInput.weeklyCheckIns.slice(-52)
-              : existing.weeklyCheckIns,
-            onboarding: traineeInput.onboarding || existing.onboarding,
-            favoriteFoodIds: Array.isArray(traineeInput.favoriteFoodIds)
-              ? traineeInput.favoriteFoodIds.slice(0, 50)
-              : existing.favoriteFoodIds,
-            mealCardShortcuts:
-              traineeInput.mealCardShortcuts !== undefined
-                ? sanitizeMealShortcuts(traineeInput.mealCardShortcuts)
-                : existing.mealCardShortcuts,
-            savedMeals: Array.isArray(traineeInput.savedMeals)
-              ? traineeInput.savedMeals.slice(0, 120)
-              : existing.savedMeals,
-            customServingTools: Array.isArray(traineeInput.customServingTools)
-              ? sanitizeServingTools(traineeInput.customServingTools)
-              : existing.customServingTools,
-            customFoodUnits: Array.isArray(traineeInput.customFoodUnits)
-              ? sanitizeCustomUnits(traineeInput.customFoodUnits)
-              : existing.customFoodUnits,
-            recentContextChips: Array.isArray(traineeInput.recentContextChips)
-              ? sanitizeQuickChips(traineeInput.recentContextChips, 'user', 60)
-              : existing.recentContextChips,
-            logs: mergeLogsPreservingPendingAi(existing, traineeInput.logs, true),
-          };
-          nextTraineeSnapshot = updated;
-          return updated;
-        }),
-      }));
+      await updateTraineeAtomic(session.id, (existing) => {
+        prevTraineeSnapshot = existing;
+        const todayBlocked = (existing.blockedDates || []).includes(getTodayIso());
+        const mergedLogs = mergeLogsPreservingPendingAi(existing, traineeInput.logs, true);
+        const historyAwareLogs = recordTraineeMealDiffsToHistory(
+          existing.logs || {},
+          mergedLogs || {},
+          session.id,
+          existing.name
+        );
+        const updated: TraineeProfile = {
+          ...existing,
+          name: sanitizeText(traineeInput.name, 80) || existing.name,
+          goal:
+            typeof traineeInput.goal === 'string' && sanitizeText(traineeInput.goal, 120)
+              ? sanitizeText(traineeInput.goal, 120)
+              : traineeInput.onboarding?.goal && sanitizeText(traineeInput.onboarding.goal, 120)
+              ? sanitizeText(traineeInput.onboarding.goal, 120)
+              : existing.goal,
+          currentWeight: todayBlocked ? existing.currentWeight : safeWeight,
+          targetWeight: sanitizeNumber(
+            traineeInput.targetWeight,
+            30,
+            300,
+            existing.targetWeight
+          ),
+          weightHistory:
+            !todayBlocked && Array.isArray(traineeInput.weightHistory)
+              ? traineeInput.weightHistory.slice(-60)
+              : existing.weightHistory,
+          measurementsHistory:
+            !todayBlocked && Array.isArray(traineeInput.measurementsHistory)
+              ? traineeInput.measurementsHistory.slice(-60)
+              : existing.measurementsHistory,
+          weeklyCheckIns: Array.isArray(traineeInput.weeklyCheckIns)
+            ? traineeInput.weeklyCheckIns.slice(-52)
+            : existing.weeklyCheckIns,
+          onboarding: traineeInput.onboarding || existing.onboarding,
+          favoriteFoodIds: Array.isArray(traineeInput.favoriteFoodIds)
+            ? traineeInput.favoriteFoodIds.slice(0, 50)
+            : existing.favoriteFoodIds,
+          mealCardShortcuts:
+            traineeInput.mealCardShortcuts !== undefined
+              ? sanitizeMealShortcuts(traineeInput.mealCardShortcuts)
+              : existing.mealCardShortcuts,
+          savedMeals: Array.isArray(traineeInput.savedMeals)
+            ? traineeInput.savedMeals.slice(0, 120)
+            : existing.savedMeals,
+          customServingTools: Array.isArray(traineeInput.customServingTools)
+            ? sanitizeServingTools(traineeInput.customServingTools)
+            : existing.customServingTools,
+          customFoodUnits: Array.isArray(traineeInput.customFoodUnits)
+            ? sanitizeCustomUnits(traineeInput.customFoodUnits)
+            : existing.customFoodUnits,
+          recentContextChips: Array.isArray(traineeInput.recentContextChips)
+            ? sanitizeQuickChips(traineeInput.recentContextChips, 'user', 60)
+            : existing.recentContextChips,
+          recentLabelProducts: Array.isArray(traineeInput.recentLabelProducts)
+            ? Array.from(
+                new Set([
+                  ...traineeInput.recentLabelProducts
+                    .map((s) => sanitizeText(s, 70))
+                    .filter(Boolean),
+                  ...(existing.recentLabelProducts || []),
+                ])
+              ).slice(0, 40)
+            : existing.recentLabelProducts,
+          logs: historyAwareLogs,
+        };
+        nextTraineeSnapshot = updated;
+        return updated;
+      });
 
       if (prevTraineeSnapshot && nextTraineeSnapshot) {
         const events = detectTraineeActivityEvents(
@@ -1935,54 +2380,135 @@ async function handleDataPost(
         );
       }
 
+      const resolveSlotDisplayName = (t: TraineeProfile, slotId: string) =>
+        t.workoutTemplate?.meals?.find((m) => m.id === slotId)?.name ||
+        t.restTemplate?.meals?.find((m) => m.id === slotId)?.name ||
+        slotId;
+
       let prevSnapshot: TraineeProfile | undefined;
       let nextSnapshot: TraineeProfile | undefined;
 
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) => {
-          if (t.id !== traineeInput.id) return t;
-          prevSnapshot = t;
-          const nextT: TraineeProfile = {
-            ...t,
-            name: sanitizeText(traineeInput.name, 80) || t.name,
-            goal:
-              typeof traineeInput.goal === 'string' && sanitizeText(traineeInput.goal, 120)
-                ? sanitizeText(traineeInput.goal, 120)
-                : traineeInput.onboarding?.goal && sanitizeText(traineeInput.onboarding.goal, 120)
-                ? sanitizeText(traineeInput.onboarding.goal, 120)
-                : t.goal,
-            logs: mergeLogsPreservingPendingAi(t, traineeInput.logs),
-            currentWeight: traineeInput.currentWeight,
-            targetWeight:
-              traineeInput.targetWeight || t.targetWeight,
-            weightHistory: traineeInput.weightHistory,
-            measurementsHistory:
-              traineeInput.measurementsHistory ||
-              t.measurementsHistory,
-            onboarding: traineeInput.onboarding || t.onboarding,
-            favoriteFoodIds: traineeInput.favoriteFoodIds,
-            mealCardShortcuts:
-              traineeInput.mealCardShortcuts !== undefined
-                ? sanitizeMealShortcuts(traineeInput.mealCardShortcuts)
-                : t.mealCardShortcuts,
-            savedMeals: Array.isArray(traineeInput.savedMeals)
-              ? traineeInput.savedMeals.slice(0, 120)
-              : t.savedMeals,
-            customServingTools: Array.isArray(traineeInput.customServingTools)
-              ? sanitizeServingTools(traineeInput.customServingTools)
-              : t.customServingTools,
-            customFoodUnits: Array.isArray(traineeInput.customFoodUnits)
-              ? sanitizeCustomUnits(traineeInput.customFoodUnits)
-              : t.customFoodUnits,
-            recentContextChips: Array.isArray(traineeInput.recentContextChips)
-              ? sanitizeQuickChips(traineeInput.recentContextChips, 'user', 60)
-              : t.recentContextChips,
-          };
-          nextSnapshot = nextT;
-          return nextT;
-        }),
-      }));
+      await updateTraineeAtomic(traineeInput.id, (t) => {
+        prevSnapshot = t;
+        const mergedLogsRaw = mergeLogsPreservingPendingAi(t, traineeInput.logs);
+        const nowIso = new Date().toISOString();
+        const coachEditedLogs: Record<string, DailyLog> = { ...(mergedLogsRaw || {}) };
+        const newAlerts: TraineeCoachMealAlert[] = [];
+
+        const allDates = new Set([
+          ...Object.keys(t.logs || {}),
+          ...Object.keys(coachEditedLogs || {}),
+        ]);
+        for (const dateKey of Array.from(allDates)) {
+          if (!dateKey || dateKey === '__profile_meta') continue;
+          const prevDay = t.logs?.[dateKey];
+          const nextDay = coachEditedLogs[dateKey];
+          const prevMeals = prevDay?.meals || {};
+          const nextMeals: Record<string, LoggedMealEntry> = { ...(nextDay?.meals || {}) };
+          const allSlots = new Set([
+            ...Object.keys(prevMeals),
+            ...Object.keys(nextMeals),
+          ]);
+          let dayChanged = false;
+          for (const slotId of Array.from(allSlots)) {
+            const prevMeal = prevMeals[slotId];
+            const nextMeal = nextMeals[slotId];
+            if (!prevMeal && !nextMeal) continue;
+            const slotName = resolveSlotDisplayName(t, slotId);
+            const fallbackEmptyMeal: LoggedMealEntry = nextMeal || {
+              mealSlotId: slotId,
+              items: [],
+              updatedAt: new Date().toLocaleTimeString('he-IL', {
+                hour: '2-digit',
+                minute: '2-digit',
+              }),
+            };
+            const diffRes = applyCoachDiffToMeal({
+              prevMeal,
+              nextMeal: fallbackEmptyMeal,
+              coachId: session.id,
+              coachName: session.name,
+              nowIso,
+              slotName,
+            });
+            if (diffRes.changed) {
+              nextMeals[slotId] = diffRes.meal;
+              dayChanged = true;
+              newAlerts.push({
+                id: `calert-${Date.now().toString(36)}-${slotId.slice(0, 8)}`,
+                coachId: session.id,
+                coachName: session.name,
+                date: dateKey,
+                mealSlotId: slotId,
+                mealSlotName: slotName,
+                summaryText:
+                  diffRes.meal.coachEditState?.summaryText ||
+                  `המאמן ${session.name} ערך את ${slotName}`,
+                editedAt: nowIso,
+                shownOnJournalVisit: false,
+                dismissed: false,
+              });
+            }
+          }
+          if (dayChanged) {
+            coachEditedLogs[dateKey] = {
+              ...(nextDay || prevDay || {
+                date: dateKey,
+                dayType: 'workout',
+                waterCups: 0,
+                waterGoal: 12,
+                meals: {},
+              }),
+              meals: nextMeals,
+            };
+          }
+        }
+
+        const dedupedPrevAlerts = (t.coachMealAlerts || []).filter(
+          (old) =>
+            !newAlerts.some(
+              (na) => na.date === old.date && na.mealSlotId === old.mealSlotId
+            )
+        );
+
+        const nextT: TraineeProfile = {
+          ...t,
+          name: sanitizeText(traineeInput.name, 80) || t.name,
+          goal:
+            typeof traineeInput.goal === 'string' && sanitizeText(traineeInput.goal, 120)
+              ? sanitizeText(traineeInput.goal, 120)
+              : traineeInput.onboarding?.goal && sanitizeText(traineeInput.onboarding.goal, 120)
+              ? sanitizeText(traineeInput.onboarding.goal, 120)
+              : t.goal,
+          logs: coachEditedLogs,
+          coachMealAlerts: [...newAlerts, ...dedupedPrevAlerts].slice(0, 15),
+          currentWeight: traineeInput.currentWeight,
+          targetWeight: traineeInput.targetWeight || t.targetWeight,
+          weightHistory: traineeInput.weightHistory,
+          measurementsHistory:
+            traineeInput.measurementsHistory || t.measurementsHistory,
+          onboarding: traineeInput.onboarding || t.onboarding,
+          favoriteFoodIds: traineeInput.favoriteFoodIds,
+          mealCardShortcuts:
+            traineeInput.mealCardShortcuts !== undefined
+              ? sanitizeMealShortcuts(traineeInput.mealCardShortcuts)
+              : t.mealCardShortcuts,
+          savedMeals: Array.isArray(traineeInput.savedMeals)
+            ? traineeInput.savedMeals.slice(0, 120)
+            : t.savedMeals,
+          customServingTools: Array.isArray(traineeInput.customServingTools)
+            ? sanitizeServingTools(traineeInput.customServingTools)
+            : t.customServingTools,
+          customFoodUnits: Array.isArray(traineeInput.customFoodUnits)
+            ? sanitizeCustomUnits(traineeInput.customFoodUnits)
+            : t.customFoodUnits,
+          recentContextChips: Array.isArray(traineeInput.recentContextChips)
+            ? sanitizeQuickChips(traineeInput.recentContextChips, 'user', 60)
+            : t.recentContextChips,
+        };
+        nextSnapshot = nextT;
+        return nextT;
+      });
 
       if (prevSnapshot && nextSnapshot) {
         const mealChanges = detectCoachChangedLoggedMeals(
@@ -2137,47 +2663,74 @@ async function handleDataPost(
         );
       }
 
+      const nowIso = new Date().toISOString();
       const nowTime = new Date().toLocaleTimeString('he-IL', {
         hour: '2-digit',
         minute: '2-digit',
       });
 
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) => {
-          if (t.id !== traineeId) return t;
-          const currentLog = t.logs[date] || {
-            date,
-            dayType: 'workout',
-            waterCups: 0,
-            waterGoal: 12,
-            meals: {},
-          };
-          const existingMeal = currentLog.meals[mealSlotId] || {
-            mealSlotId,
-            items: [],
-            updatedAt: nowTime,
-          };
-          return {
-            ...t,
-            logs: {
-              ...t.logs,
-              [date]: {
-                ...currentLog,
-                meals: {
-                  ...currentLog.meals,
-                  [mealSlotId]: {
-                    ...existingMeal,
-                    coachFeedback: feedback,
-                    coachFeedbackAuthor: session.name, // חתום מהשרת!
-                    coachFeedbackAt: nowTime,
-                  },
-                },
+      await updateTraineeAtomic(traineeId, (t) => {
+        const currentLog = t.logs[date] || {
+          date,
+          dayType: 'workout' as const,
+          waterCups: 0,
+          waterGoal: 12,
+          meals: {},
+        };
+        const existingMeal = currentLog.meals[mealSlotId] || {
+          mealSlotId,
+          items: [],
+          updatedAt: nowTime,
+        };
+        const slotName =
+          t.workoutTemplate?.meals?.find((m) => m.id === mealSlotId)?.name ||
+          t.restTemplate?.meals?.find((m) => m.id === mealSlotId)?.name ||
+          mealSlotId;
+        const diffRes = applyCoachDiffToMeal({
+          prevMeal: existingMeal,
+          nextMeal: {
+            ...existingMeal,
+            coachFeedback: feedback,
+            coachFeedbackAuthor: session.name, // חתום מהשרת!
+            coachFeedbackAt: nowTime,
+          },
+          coachId: session.id,
+          coachName: session.name,
+          nowIso,
+          slotName,
+        });
+        const newAlert: TraineeCoachMealAlert = {
+          id: `calert-fb-${Date.now().toString(36)}`,
+          coachId: session.id,
+          coachName: session.name,
+          date,
+          mealSlotId,
+          mealSlotName: slotName,
+          summaryText: `המאמן ${session.name} כתב משוב ב${slotName}`,
+          editedAt: nowIso,
+          shownOnJournalVisit: false,
+          dismissed: false,
+        };
+        return {
+          ...t,
+          coachMealAlerts: [
+            newAlert,
+            ...(t.coachMealAlerts || []).filter(
+              (a) => !(a.date === date && a.mealSlotId === mealSlotId)
+            ),
+          ].slice(0, 15),
+          logs: {
+            ...t.logs,
+            [date]: {
+              ...currentLog,
+              meals: {
+                ...currentLog.meals,
+                [mealSlotId]: diffRes.meal,
               },
             },
-          };
-        }),
-      }));
+          },
+        };
+      });
 
       return NextResponse.json({ ok: true, authorName: session.name });
     }

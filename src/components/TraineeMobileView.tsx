@@ -33,6 +33,7 @@ import {
   Ban,
   Lock,
   AlertTriangle,
+  X,
 } from 'lucide-react';
 import {
   AiContextParams,
@@ -45,6 +46,7 @@ import {
   MealCardShortcutId,
   MealTemplateSlot,
   PendingAiMealJob,
+  PhotoAngleKind,
   QuickContextChip,
   SavedMealPreset,
   StepsSyncSource,
@@ -205,6 +207,7 @@ interface TraineeMobileViewProps {
     mode: 'photo' | 'text' | 'adjust';
     imageDataUrl?: string;
     imageDataUrls?: string[];
+    imageMetas?: { angle: PhotoAngleKind; labelProductName?: string }[];
     textPrompt?: string;
     baseItems?: LoggedFoodItem[];
     selectedTargetIds?: string[];
@@ -212,11 +215,33 @@ interface TraineeMobileViewProps {
     adjustmentPrompt?: string;
     contextParams?: AiContextParams;
   }) => Promise<{ jobId: string }>;
+  onMarkCoachMealEditsRead?: (params: {
+    mode: 'alert-visit' | 'banner' | 'badges';
+    alertId?: string;
+    date?: string;
+    mealSlotId?: string;
+  }) => Promise<void>;
+  onRestoreCoachDeletedItem?: (params: {
+    date: string;
+    mealSlotId: string;
+    noticeId?: string;
+    historyEventId?: string;
+    itemId?: string;
+  }) => Promise<void>;
+  onRollbackMealHistory?: (params: {
+    traineeId: string;
+    date: string;
+    mealSlotId: string;
+    historyEntryId: string;
+  }) => Promise<void>;
+  onRefreshDataFromServer?: () => void;
   externalOpenMealRequest?: {
     traineeId: string;
     date: string;
     mealSlotId: string;
     initialTab?: string;
+    openAdjustWithDraft?: boolean;
+    openClarificationJobId?: string;
     nonce: number;
   } | null;
   externalSectionRequest?: {
@@ -304,6 +329,10 @@ export function TraineeMobileView({
   onCustomFoodsUpdated,
   backgroundAiJobs = [],
   onStartBackgroundAiAnalysis,
+  onMarkCoachMealEditsRead,
+  onRestoreCoachDeletedItem,
+  onRollbackMealHistory,
+  onRefreshDataFromServer,
   externalOpenMealRequest,
   externalSectionRequest,
   onConsumeExternalOpenMealRequest,
@@ -317,6 +346,11 @@ export function TraineeMobileView({
 }: TraineeMobileViewProps) {
   const todayIso = getTodayIso();
   const [selectedDate, setSelectedDate] = useState<string>(todayIso);
+  const [dismissedCoachAlertIds, setDismissedCoachAlertIds] = useState<string[]>([]);
+  const [sessionPinnedCoachAlertIds, setSessionPinnedCoachAlertIds] = useState<string[]>([]);
+  const coachAlertVisitSentIdsRef = useRef<Set<string>>(new Set());
+  const [externalOpenAdjustNonce, setExternalOpenAdjustNonce] = useState<number>(0);
+  const [externalClarifyJobId, setExternalClarifyJobId] = useState<string | undefined>(undefined);
   const [calendarModalOpen, setCalendarModalOpen] = useState(false);
   const [calendarCursor, setCalendarCursor] = useState<{ year: number; month: number }>(() => {
     const [y, m] = todayIso.split('-').map(Number);
@@ -423,10 +457,55 @@ export function TraineeMobileView({
     );
     if (targetSlot) {
       setActiveMealSlot(targetSlot);
-      setDrawerTab(externalOpenMealRequest.initialTab || 'hub');
+      setDrawerTab(
+        externalOpenMealRequest.initialTab === 'ai-clarify'
+          ? 'meal-items'
+          : externalOpenMealRequest.initialTab || 'hub'
+      );
+      if (externalOpenMealRequest.openAdjustWithDraft) {
+        setExternalOpenAdjustNonce(externalOpenMealRequest.nonce);
+      }
+      if (externalOpenMealRequest.openClarificationJobId) {
+        setExternalClarifyJobId(externalOpenMealRequest.openClarificationJobId);
+      } else {
+        setExternalClarifyJobId(undefined);
+      }
     }
     onConsumeExternalOpenMealRequest?.(externalOpenMealRequest.nonce);
   }, [externalOpenMealRequest, trainee.id, onConsumeExternalOpenMealRequest]);
+
+  // בכניסה של המתאמן עצמו ליומן: צמידים התראות חדשות לביקור זה ומעלים אוטומטית את אלו שכבר הוצגו בביקור קודם
+  useEffect(() => {
+    if (actorRole !== 'trainee' || isCoachPreview || mobileSection !== 'journal') return;
+    const alerts = trainee.coachMealAlerts || [];
+    const activeForVisit = alerts.filter(
+      (a) => !a.dismissed && !a.shownOnJournalVisit
+    );
+    const hasAlreadyShownOld = alerts.some(
+      (a) => !a.dismissed && a.shownOnJournalVisit && !sessionPinnedCoachAlertIds.includes(a.id)
+    );
+    if (activeForVisit.length > 0) {
+      const newlyVisibleIds = activeForVisit
+        .map((a) => a.id)
+        .filter((id) => !coachAlertVisitSentIdsRef.current.has(id));
+      if (newlyVisibleIds.length > 0) {
+        newlyVisibleIds.forEach((id) => coachAlertVisitSentIdsRef.current.add(id));
+        setSessionPinnedCoachAlertIds((prev) =>
+          Array.from(new Set([...prev, ...newlyVisibleIds]))
+        );
+        void onMarkCoachMealEditsRead?.({ mode: 'alert-visit' });
+      }
+    } else if (hasAlreadyShownOld) {
+      void onMarkCoachMealEditsRead?.({ mode: 'alert-visit' });
+    }
+  }, [
+    actorRole,
+    isCoachPreview,
+    mobileSection,
+    trainee.coachMealAlerts,
+    sessionPinnedCoachAlertIds,
+    onMarkCoachMealEditsRead,
+  ]);
 
   useEffect(() => {
     if (
@@ -1187,7 +1266,7 @@ export function TraineeMobileView({
             </section>
 
             {mobileSection === 'journal' && (
-              <header style={{ marginBottom: 18 }}>
+              <header style={{ marginBottom: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <h1
                   style={{
                     margin: 0,
@@ -1201,6 +1280,110 @@ export function TraineeMobileView({
                 >
                   {greeting}, {firstName}
                 </h1>
+                {(() => {
+                  const visibleCoachAlerts = (trainee.coachMealAlerts || []).filter(
+                    (a) =>
+                      !a.dismissed &&
+                      !dismissedCoachAlertIds.includes(a.id) &&
+                      (sessionPinnedCoachAlertIds.includes(a.id) ||
+                        !a.shownOnJournalVisit ||
+                        isCoachPreview)
+                  );
+                  if (visibleCoachAlerts.length === 0) return null;
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {visibleCoachAlerts.slice(0, 2).map((alert) => (
+                        <div
+                          key={alert.id}
+                          className="glass"
+                          role="status"
+                          style={{
+                            borderRadius: 22,
+                            padding: '10px 14px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 10,
+                            borderColor: 'var(--accent)',
+                          }}
+                        >
+                          <Sparkles size={18} color="var(--accent)" style={{ flexShrink: 0 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>
+                              המאמן {alert.coachName} ערך לך את {alert.mealSlotName}
+                            </div>
+                            <div style={{ fontSize: 12, color: 'var(--text-2)' }}>
+                              {alert.summaryText}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDismissedCoachAlertIds((prev) => [...prev, alert.id]);
+                              if (actorRole === 'trainee' && !isCoachPreview) {
+                                void onMarkCoachMealEditsRead?.({
+                                  mode: 'banner',
+                                  alertId: alert.id,
+                                  date: alert.date,
+                                  mealSlotId: alert.mealSlotId,
+                                });
+                              }
+                              setSelectedDate(alert.date);
+                              const targetSlot = findTraineeMealSlotById(
+                                trainee,
+                                alert.mealSlotId
+                              );
+                              if (targetSlot) {
+                                openMealDrawer(targetSlot, 'meal-items');
+                              }
+                            }}
+                            className="btn-surface"
+                            style={{
+                              height: 36,
+                              padding: '0 14px',
+                              fontSize: 13,
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                            }}
+                          >
+                            צפה
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="סגור התראת מאמן"
+                            onClick={() => {
+                              setDismissedCoachAlertIds((prev) => [...prev, alert.id]);
+                              if (actorRole === 'trainee' && !isCoachPreview) {
+                                void onMarkCoachMealEditsRead?.({
+                                  mode: 'banner',
+                                  alertId: alert.id,
+                                  date: alert.date,
+                                  mealSlotId: alert.mealSlotId,
+                                });
+                              }
+                            }}
+                            className="hit-44"
+                            style={{
+                              width: 32,
+                              height: 32,
+                              borderRadius: 999,
+                              border: 0,
+                              background: 'transparent',
+                              color: 'var(--text-2)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                            }}
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </header>
             )}
           </>
@@ -2023,6 +2206,22 @@ export function TraineeMobileView({
                               >
                                 {slot.name}
                               </span>
+                              {entry?.coachEditState?.unreadBadges && (
+                                <span
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 800,
+                                    padding: '2px 8px',
+                                    borderRadius: 999,
+                                    background: 'var(--sel-bg)',
+                                    color: 'var(--sel-text)',
+                                    border: '1px solid var(--sel-border)',
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  נערך ע״י {entry.coachEditState.lastCoachName}
+                                </span>
+                              )}
                             </span>
                             <span
                               style={{
@@ -2199,6 +2398,27 @@ export function TraineeMobileView({
                                           >
                                             {item.name}
                                           </span>
+                                          {item.coachBadge && (
+                                            <span
+                                              style={{
+                                                fontSize: 10.5,
+                                                fontWeight: 800,
+                                                padding: '1px 6px',
+                                                borderRadius: 999,
+                                                background:
+                                                  item.coachBadge === 'new'
+                                                    ? 'rgba(34, 197, 94, 0.16)'
+                                                    : 'var(--sel-bg)',
+                                                color:
+                                                  item.coachBadge === 'new'
+                                                    ? 'var(--ok-text)'
+                                                    : 'var(--sel-text)',
+                                                flexShrink: 0,
+                                              }}
+                                            >
+                                              {item.coachBadge === 'new' ? 'חדש' : 'נערך'}
+                                            </span>
+                                          )}
                                           {isComposite && (
                                             <button
                                               type="button"
@@ -3231,6 +3451,43 @@ export function TraineeMobileView({
         }
         onManageQuickChips={onManageQuickChips}
         actorRole={actorRole}
+        isCoachPreview={isCoachPreview}
+        recentLabelProducts={trainee.recentLabelProducts || []}
+        externalOpenAdjustNonce={externalOpenAdjustNonce}
+        externalClarificationJobId={externalClarifyJobId}
+        onMarkCoachBadgesRead={(slotId) => {
+          if (actorRole === 'trainee' && !isCoachPreview) {
+            void onMarkCoachMealEditsRead?.({
+              mode: 'badges',
+              date: selectedDate,
+              mealSlotId: slotId,
+            });
+          }
+        }}
+        onRestoreCoachDeletedItem={
+          actorRole === 'trainee' && !isCoachPreview && onRestoreCoachDeletedItem
+            ? (payload) =>
+                onRestoreCoachDeletedItem({
+                  date: selectedDate,
+                  mealSlotId: payload.mealSlotId,
+                  noticeId: payload.noticeId,
+                  historyEventId: payload.historyEventId,
+                  itemId: payload.itemId,
+                })
+            : undefined
+        }
+        onRollbackMealHistory={
+          onRollbackMealHistory
+            ? (payload) =>
+                onRollbackMealHistory({
+                  traineeId: trainee.id,
+                  date: selectedDate,
+                  mealSlotId: payload.mealSlotId,
+                  historyEntryId: payload.historyEntryId,
+                })
+            : undefined
+        }
+        onRefreshDataFromServer={onRefreshDataFromServer}
         showScraperSources={actorRole === 'admin' && Boolean(showScraperSources)}
         semanticSearchEnabled={Boolean(semanticSearchEnabled)}
         customFoods={customFoods}
