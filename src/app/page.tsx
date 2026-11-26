@@ -1644,7 +1644,7 @@ export default function HomePage() {
   };
 
   const handleManageQuickChips = async (payload: {
-    scope: 'user' | 'group' | 'global';
+    scope: 'user' | 'group' | 'coach-trainees' | 'global';
     op: 'touch' | 'upsert' | 'delete' | 'replace';
     traineeId?: string;
     groupId?: string;
@@ -1662,6 +1662,36 @@ export default function HomePage() {
     const json = await res.json();
     if (payload.scope === 'global' && Array.isArray(json.globalQuickChips)) {
       setGlobalQuickChips(json.globalQuickChips);
+    } else if (
+      payload.scope === 'coach-trainees' &&
+      Array.isArray(json.updatedGroups)
+    ) {
+      const grpById = new Map(
+        (json.updatedGroups as TraineeGroup[]).map((g) => [g.id, g])
+      );
+      setGroups((prev) => prev.map((g) => grpById.get(g.id) || g));
+      if (payload.chip?.label) {
+        const sharedChip: QuickContextChip = {
+          id: `shared-${Date.now()}`,
+          label: payload.chip.label,
+          category: (payload.chip.category as QuickContextChip['category']) || 'prep',
+          scope: 'coach',
+          ...(payload.chip.dropdownKind ? { dropdownKind: payload.chip.dropdownKind } : {}),
+          lastUsedAt: new Date().toISOString(),
+          useCount: 1,
+        };
+        setTrainees((prev) =>
+          prev.map((t) => ({
+            ...t,
+            recentContextChips: [
+              sharedChip,
+              ...(t.recentContextChips || []).filter(
+                (c) => !(c.label === sharedChip.label && c.category === sharedChip.category)
+              ),
+            ],
+          }))
+        );
+      }
     } else if (
       payload.scope === 'group' &&
       json.groupId &&
@@ -1809,6 +1839,8 @@ export default function HomePage() {
     imageDataUrls?: string[];
     textPrompt?: string;
     baseItems?: LoggedFoodItem[];
+    selectedTargetIds?: string[];
+    correctionHistory?: { beforeNames?: string[]; prompt: string; at?: string }[];
     adjustmentPrompt?: string;
     contextParams?: AiContextParams;
   }): Promise<{ jobId: string }> => {
@@ -1852,6 +1884,8 @@ export default function HomePage() {
             imageDataUrls: payload.imageDataUrls,
             textPrompt: payload.textPrompt,
             baseItems: payload.baseItems,
+            selectedTargetIds: payload.selectedTargetIds,
+            correctionHistory: payload.correctionHistory,
             adjustmentPrompt: payload.adjustmentPrompt,
             traineeId: payload.traineeId,
             contextParams: payload.contextParams,

@@ -1,15 +1,18 @@
 ﻿'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { NumberInput, TextInput, Textarea } from '@mantine/core';
+import { Collapse, NumberInput, Switch, TextInput, Textarea } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
   Bookmark,
   Check,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   Edit3,
   Heart,
   History,
+  Layers,
   Loader2,
   MessageCircle,
   Mic,
@@ -26,11 +29,26 @@ import {
 import {
   AiContextParams,
   DailyLog,
+  FoodCatalogItem,
   LoggedFoodItem,
   SavedMealPreset,
 } from '@/types/nutrition';
-import { calculateMacrosForGrams, sumMacros } from '@/data/israeliFoodCatalog';
+import {
+  ISRAELI_FOOD_CATALOG,
+  calculateMacrosForGrams,
+  sumMacros,
+} from '@/data/israeliFoodCatalog';
 import { computePer100gFromServing } from '@/lib/customFoods';
+import {
+  clampGrams,
+  cloneFoodItemWithFreshIds,
+  computeYieldPortionDish,
+  groupItemsAsCompositeDish,
+  hasCompositeComponents,
+  recalculateParentDish,
+  scaleSimpleFoodItemGrams,
+  stripNestedComponents,
+} from '@/lib/compositeDishes';
 import { normalizeHhMmTime, parseOptionalDecimal } from '@/lib/numericInput';
 import { ItemTimePill } from './ui/ItemTimePill';
 import {
@@ -117,6 +135,24 @@ export function SavedMealsLibraryTab({
   const [askingPresetId, setAskingPresetId] = useState<string | null>(null);
   const [questionText, setQuestionText] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [pickedIdsByPreset, setPickedIdsByPreset] = useState<Record<string, Set<string>>>({});
+  const [expandedPresetDishIds, setExpandedPresetDishIds] = useState<Set<string>>(new Set());
+  const [potServingDrafts, setPotServingDrafts] = useState<Record<string, string>>({});
+
+  // מצב בניית מנה מורכבת חדשה / סיר ביתי ישירות מהספרייה
+  const [creatingDishOpen, setCreatingDishOpen] = useState(false);
+  const [newDishTitle, setNewDishTitle] = useState('');
+  const [newDishIsPot, setNewDishIsPot] = useState(false);
+  const [newDishYieldGrams, setNewDishYieldGrams] = useState<string>('900');
+  const [newDishIngredients, setNewDishIngredients] = useState<LoggedFoodItem[]>([]);
+  const [newIngCatalogQuery, setNewIngCatalogQuery] = useState('');
+  const [manualIngName, setManualIngName] = useState('');
+  const [manualIngGrams, setManualIngGrams] = useState<string>('100');
+  const [manualIngCal, setManualIngCal] = useState<string>('');
+  const [manualIngPro, setManualIngPro] = useState<string>('0');
+  const [manualIngCarb, setManualIngCarb] = useState<string>('0');
+  const [manualIngFat, setManualIngFat] = useState<string>('0');
+  const [editYieldGrams, setEditYieldGrams] = useState<string>('');
   const [feedbackBanner, setFeedbackBanner] = useState<{
     msg: string;
     isError?: boolean;
@@ -206,20 +242,286 @@ export function SavedMealsLibraryTab({
     };
   };
 
-  const cloneItemsForLog = (items: LoggedFoodItem[]): LoggedFoodItem[] =>
-    items.map((it, idx) => ({
-      ...withDerivedPer100g(it),
-      id: `preset-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 5)}`,
-    }));
+  const cloneItemsForLog = (
+    items: LoggedFoodItem[],
+    preset?: SavedMealPreset
+  ): LoggedFoodItem[] => {
+    const baseList =
+      preset?.presetKind === 'dish' && items.length > 1
+        ? [
+            groupItemsAsCompositeDish(items, preset.title, {
+              sourcePresetId: preset.id,
+            }),
+          ]
+        : items;
+    return baseList.map((it) =>
+      cloneFoodItemWithFreshIds(it, 'preset', {
+        ...(preset?.id ? { sourcePresetId: preset.id } : {}),
+        ...(preset?.recipeYieldGrams && hasCompositeComponents(it)
+          ? { recipeYieldGrams: preset.recipeYieldGrams }
+          : {}),
+      })
+    );
+  };
+
+  const getSelectedIdsForPreset = (preset: SavedMealPreset): Set<string> => {
+    if (pickedIdsByPreset[preset.id]) return pickedIdsByPreset[preset.id];
+    const all = new Set<string>();
+    for (const it of preset.items) {
+      all.add(it.id);
+      for (const c of it.components || []) all.add(c.id);
+    }
+    return all;
+  };
+
+  const countSelectedTopForPreset = (preset: SavedMealPreset): number => {
+    const sel = getSelectedIdsForPreset(preset);
+    let cnt = 0;
+    for (const it of preset.items) {
+      if (hasCompositeComponents(it)) {
+        if (sel.has(it.id) || it.components!.some((c) => sel.has(c.id))) cnt += 1;
+      } else if (sel.has(it.id)) {
+        cnt += 1;
+      }
+    }
+    return cnt;
+  };
+
+  const togglePickPresetItem = (preset: SavedMealPreset, item: LoggedFoodItem) => {
+    setPickedIdsByPreset((prev) => {
+      const cur = new Set(getSelectedIdsForPreset(preset));
+      if (hasCompositeComponents(item)) {
+        const compIds = item.components!.map((c) => c.id);
+        const allChecked =
+          cur.has(item.id) ||
+          (compIds.length > 0 && compIds.every((id) => cur.has(id)));
+        if (allChecked) {
+          cur.delete(item.id);
+          for (const id of compIds) cur.delete(id);
+        } else {
+          cur.add(item.id);
+          for (const id of compIds) cur.add(id);
+        }
+      } else {
+        if (cur.has(item.id)) cur.delete(item.id);
+        else cur.add(item.id);
+      }
+      return { ...prev, [preset.id]: cur };
+    });
+  };
+
+  const togglePickPresetComponent = (
+    preset: SavedMealPreset,
+    parent: LoggedFoodItem,
+    comp: LoggedFoodItem
+  ) => {
+    setPickedIdsByPreset((prev) => {
+      const cur = new Set(getSelectedIdsForPreset(preset));
+      const compIds = parent.components?.map((c) => c.id) || [];
+      if (cur.has(parent.id)) {
+        cur.delete(parent.id);
+        for (const id of compIds) {
+          if (id !== comp.id) cur.add(id);
+        }
+      } else if (cur.has(comp.id)) {
+        cur.delete(comp.id);
+      } else {
+        cur.add(comp.id);
+        if (compIds.length > 0 && compIds.every((id) => cur.has(id))) {
+          cur.add(parent.id);
+        }
+      }
+      return { ...prev, [preset.id]: cur };
+    });
+  };
 
   const handleUsePresetExact = async (preset: SavedMealPreset) => {
     onAddItemsToMeal(
-      cloneItemsForLog(preset.items),
+      cloneItemsForLog(preset.items, preset),
       preset.photoDataUrl || preset.photoDataUrls?.[0]
     );
     setFeedbackBanner({ msg: `נטענה הארוחה "${preset.title}"` });
     if (onSavedMealAction) {
       await onSavedMealAction({ op: 'increment-use', presetId: preset.id });
+    }
+  };
+
+  const handleUsePickedFromPreset = async (preset: SavedMealPreset) => {
+    const sel = getSelectedIdsForPreset(preset);
+    const chosen: LoggedFoodItem[] = [];
+    for (const it of preset.items) {
+      if (sel.has(it.id)) {
+        chosen.push(it);
+      } else if (hasCompositeComponents(it)) {
+        const subComps = it.components!.filter((c) => sel.has(c.id));
+        if (subComps.length > 0) {
+          chosen.push(recalculateParentDish({ ...it, components: subComps }));
+        }
+      }
+    }
+    if (chosen.length === 0) {
+      setFeedbackBanner({ msg: 'יש לסמן לפחות פריט או מרכיב אחד להוספה', isError: true });
+      return;
+    }
+    const cloned = chosen.map((it) =>
+      cloneFoodItemWithFreshIds(it, 'pick', { sourcePresetId: preset.id })
+    );
+    onAddItemsToMeal(cloned, preset.photoDataUrl || preset.photoDataUrls?.[0]);
+    setFeedbackBanner({
+      msg: `נוספו ${cloned.length} פריטים נבחרים מתוך "${preset.title}"`,
+    });
+    if (onSavedMealAction) {
+      await onSavedMealAction({ op: 'increment-use', presetId: preset.id });
+    }
+  };
+
+  const handleUsePotYieldPortion = async (
+    preset: SavedMealPreset,
+    servingGrams: number
+  ) => {
+    if (!preset.recipeYieldGrams || preset.recipeYieldGrams <= 0) return;
+    const rawIngredients = preset.items.flatMap((it) =>
+      hasCompositeComponents(it)
+        ? it.components!.map(stripNestedComponents)
+        : [stripNestedComponents(it)]
+    );
+    if (rawIngredients.length === 0) return;
+
+    const dish = computeYieldPortionDish({
+      title: preset.title,
+      rawIngredients,
+      cookedYieldGrams: preset.recipeYieldGrams,
+      servingGrams,
+      source: 'manual',
+      sourcePresetId: preset.id,
+    });
+    onAddItemsToMeal([dish], preset.photoDataUrl || preset.photoDataUrls?.[0]);
+    setFeedbackBanner({
+      msg: `נוספה מנת צלחת (${Math.round(servingGrams)}g) מתוך הסיר "${preset.title}"`,
+    });
+    if (onSavedMealAction) {
+      await onSavedMealAction({ op: 'increment-use', presetId: preset.id });
+    }
+  };
+
+  const catalogQuickMatches = useMemo<FoodCatalogItem[]>(() => {
+    const q = newIngCatalogQuery.trim().toLowerCase();
+    if (!q) return [];
+    return ISRAELI_FOOD_CATALOG.filter(
+      (f) => f.name.toLowerCase().includes(q) || (f.brand && f.brand.toLowerCase().includes(q))
+    ).slice(0, 6);
+  }, [newIngCatalogQuery]);
+
+  const handleAddCatalogIngredientToNewDish = (food: FoodCatalogItem) => {
+    const grams = clampGrams(parseOptionalDecimal(manualIngGrams) ?? 100, 100);
+    const macros = calculateMacrosForGrams(food.per100g, grams);
+    setNewDishIngredients((prev) => [
+      ...prev,
+      {
+        id: `newing-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+        name: food.name,
+        unitLabel: `${grams} גרם`,
+        quantity: 1,
+        grams,
+        per100g: { ...food.per100g },
+        macros,
+        source: 'catalog',
+        inputConfidence: 'catalog',
+      },
+    ]);
+    setNewIngCatalogQuery('');
+  };
+
+  const handleAddManualIngredientToNewDish = () => {
+    const name = manualIngName.trim();
+    const grams = parseOptionalDecimal(manualIngGrams);
+    const cal = parseOptionalDecimal(manualIngCal);
+    if (!name || grams === undefined || grams <= 0 || cal === undefined || cal < 0) {
+      setFeedbackBanner({
+        msg: 'נא למלא שם מרכיב, גרמים (> 0) וקלוריות תקינות',
+        isError: true,
+      });
+      return;
+    }
+    const g = clampGrams(grams, 100);
+    const macros = {
+      calories: Math.round(cal),
+      protein: Math.round((parseOptionalDecimal(manualIngPro) ?? 0) * 10) / 10,
+      carbs: Math.round((parseOptionalDecimal(manualIngCarb) ?? 0) * 10) / 10,
+      fat: Math.round((parseOptionalDecimal(manualIngFat) ?? 0) * 10) / 10,
+    };
+    setNewDishIngredients((prev) => [
+      ...prev,
+      {
+        id: `maning-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+        name,
+        unitLabel: `${g} גרם`,
+        quantity: 1,
+        grams: g,
+        macros,
+        source: 'manual',
+        inputConfidence: 'reported',
+      },
+    ]);
+    setManualIngName('');
+    setManualIngCal('');
+    setManualIngPro('0');
+    setManualIngCarb('0');
+    setManualIngFat('0');
+  };
+
+  const handleSaveNewDishPreset = async () => {
+    if (!onSavedMealAction || !newDishTitle.trim() || newDishIngredients.length === 0) {
+      setFeedbackBanner({
+        msg: 'יש להזין שם מנה ולפחות מרכיב אחד',
+        isError: true,
+      });
+      return;
+    }
+    const yieldParsed = newDishIsPot
+      ? parseOptionalDecimal(newDishYieldGrams)
+      : undefined;
+    if (newDishIsPot && (yieldParsed === undefined || yieldParsed <= 0)) {
+      setFeedbackBanner({
+        msg: 'במצב סיר ביתי יש להזין משקל סיר מוכן כולל גדול מ-0',
+        isError: true,
+      });
+      return;
+    }
+
+    const compositeDish = groupItemsAsCompositeDish(
+      newDishIngredients,
+      newDishTitle.trim()
+    );
+    if (yieldParsed) {
+      compositeDish.recipeYieldGrams = clampGrams(yieldParsed, 900);
+    }
+
+    setBusyId('new-dish');
+    try {
+      const res = await onSavedMealAction({
+        op: 'upsert',
+        preset: {
+          title: newDishTitle.trim(),
+          presetKind: 'dish',
+          ...(yieldParsed ? { recipeYieldGrams: clampGrams(yieldParsed, 900) } : {}),
+          items: [compositeDish],
+          isFavorite: false,
+          isPinned: false,
+          useCount: 0,
+        },
+      });
+      if (res.error) {
+        setFeedbackBanner({ msg: res.error, isError: true });
+        return;
+      }
+      setCreatingDishOpen(false);
+      setNewDishTitle('');
+      setNewDishIngredients([]);
+      setNewDishIsPot(false);
+      setFeedbackBanner({ msg: `המנה הקבועה "${compositeDish.name}" נשמרה בספרייה!` });
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -283,12 +585,18 @@ export function SavedMealsLibraryTab({
     }
     setBusyId(preset.id);
     try {
+      const parsedYield = editYieldGrams.trim()
+        ? parseOptionalDecimal(editYieldGrams)
+        : undefined;
       const res = await onSavedMealAction({
         op: 'upsert',
         preset: {
           ...preset,
           title: editTitle.trim(),
-          items: editItems.map(withDerivedPer100g),
+          ...(parsedYield && parsedYield > 0 ? { recipeYieldGrams: parsedYield } : {}),
+          items: editItems.map((it) =>
+            hasCompositeComponents(it) ? recalculateParentDish(it) : withDerivedPer100g(it)
+          ),
         },
       });
       if (res.error) {
@@ -486,7 +794,202 @@ export function SavedMealsLibraryTab({
           </button>
         </div>
 
+        {onSavedMealAction && (
+          <button
+            type="button"
+            onClick={() => setCreatingDishOpen((p) => !p)}
+            className="btn-surface"
+            style={{
+              height: 40,
+              padding: '0 12px',
+              borderRadius: 999,
+              fontSize: 12.5,
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              flexShrink: 0,
+              cursor: 'pointer',
+              borderColor: creatingDishOpen ? 'var(--accent)' : undefined,
+            }}
+          >
+            <Plus size={14} />
+            <span>צור מנה / סיר</span>
+          </button>
+        )}
       </div>
+
+      {/* טופס יצירת מנה מורכבת או סיר ביתי ישירות לספרייה */}
+      {creatingDishOpen && (
+        <div
+          style={{
+            padding: 12,
+            borderRadius: 18,
+            background: 'var(--surface-2)',
+            border: '1px solid var(--line-2)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 14, fontWeight: 800 }}>
+              יצירת מנה מורכבת או מתכון סיר ביתי
+            </span>
+            <button
+              type="button"
+              onClick={() => setCreatingDishOpen(false)}
+              style={{ border: 0, background: 'transparent', color: 'var(--text-2)', fontSize: 12, cursor: 'pointer' }}
+            >
+              סגור
+            </button>
+          </div>
+          <TextInput
+            size="xs"
+            label="שם המנה"
+            placeholder='למשל: "קפה של בוקר" או "מג׳דרה בסיר"'
+            value={newDishTitle}
+            onChange={(e) => setNewDishTitle(e.currentTarget.value)}
+          />
+          <Switch
+            size="xs"
+            color="cyan"
+            checked={newDishIsPot}
+            onChange={(e) => setNewDishIsPot(e.currentTarget.checked)}
+            label={
+              <span style={{ fontSize: 12.5, fontWeight: 600 }}>
+                סיר ביתי (גלם ← מוכן: הכנס חומרי גלם יבשים + משקל הסיר המוכן)
+              </span>
+            }
+          />
+          {newDishIsPot && (
+            <NumberInput
+              size="xs"
+              label="משקל הסיר המוכן הסופי (גרם)"
+              placeholder="למשל 950"
+              value={newDishYieldGrams}
+              min={10}
+              max={20000}
+              onChange={(v) => setNewDishYieldGrams(String(v ?? ''))}
+            />
+          )}
+
+          {/* חיפוש מהיר ממאגר המזון הישראלי או הזנה ידנית */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)' }}>
+              הוסף מרכיבים למנה (במשקל גלם לסיר או במשקל אכילה):
+            </span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <TextInput
+                size="xs"
+                style={{ flex: 1 }}
+                placeholder="חפש במאגר (למשל: אורז, חלב, שמן זית)..."
+                value={newIngCatalogQuery}
+                onChange={(e) => setNewIngCatalogQuery(e.currentTarget.value)}
+              />
+              <TextInput
+                size="xs"
+                dir="ltr"
+                style={{ width: 82 }}
+                placeholder="גרם"
+                value={manualIngGrams}
+                onChange={(e) => setManualIngGrams(e.currentTarget.value)}
+              />
+            </div>
+            {catalogQuickMatches.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {catalogQuickMatches.map((food) => (
+                  <button
+                    key={food.id}
+                    type="button"
+                    onClick={() => handleAddCatalogIngredientToNewDish(food)}
+                    className="glass"
+                    style={{
+                      padding: '4px 9px',
+                      borderRadius: 999,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    + {food.name} ({Math.round(food.per100g.calories)}/100g)
+                  </button>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.6fr 0.6fr auto', gap: 5, alignItems: 'end' }}>
+              <TextInput
+                size="xs"
+                placeholder="או שם מרכיב ידני..."
+                value={manualIngName}
+                onChange={(e) => setManualIngName(e.currentTarget.value)}
+              />
+              <TextInput
+                size="xs"
+                dir="ltr"
+                placeholder="קק״ל"
+                value={manualIngCal}
+                onChange={(e) => setManualIngCal(e.currentTarget.value)}
+              />
+              <TextInput
+                size="xs"
+                dir="ltr"
+                placeholder="חלבון"
+                value={manualIngPro}
+                onChange={(e) => setManualIngPro(e.currentTarget.value)}
+              />
+              <button
+                type="button"
+                onClick={handleAddManualIngredientToNewDish}
+                className="glass"
+                style={{ height: 30, padding: '0 10px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+              >
+                + הוסף
+              </button>
+            </div>
+          </div>
+
+          {newDishIngredients.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {newDishIngredients.map((ing) => (
+                <div
+                  key={ing.id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '6px 8px',
+                    borderRadius: 10,
+                    background: 'var(--card)',
+                    fontSize: 12,
+                  }}
+                >
+                  <span>
+                    <b>{ing.name}</b> · {ing.grams}g · {ing.macros.calories} קק״ל
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNewDishIngredients((prev) => prev.filter((x) => x.id !== ing.id))
+                    }
+                    style={{ border: 0, background: 'transparent', color: 'var(--danger-text)', cursor: 'pointer' }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                disabled={busyId === 'new-dish'}
+                onClick={() => void handleSaveNewDishPreset()}
+                className="btn-volt"
+                style={{ height: 40, fontSize: 13.5, fontWeight: 800, cursor: 'pointer', marginTop: 4 }}
+              >
+                {busyId === 'new-dish' ? 'שומר...' : `שמור מנה (${newDishIngredients.length} מרכיבים)`}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 3 צ׳יפים פשוטים וברורים: שמורות / היסטוריית ארוחות / התייעצות מאמן */}
       <div data-h-scroll style={{ display: 'flex', gap: 6, paddingBottom: 2 }}>
@@ -922,7 +1425,10 @@ export function SavedMealsLibraryTab({
                           } else {
                             setEditingPresetId(preset.id);
                             setEditTitle(preset.title);
-                            setEditItems(preset.items.map((x) => ({ ...x })));
+                            setEditYieldGrams(
+                              preset.recipeYieldGrams ? String(preset.recipeYieldGrams) : ''
+                            );
+                            setEditItems(preset.items.map((x) => cloneFoodItemWithFreshIds(x, 'ed', { id: x.id })));
                             setEditGramsDrafts({});
                             const baseMap: Record<string, { grams: number; macros: { calories: number; protein: number; carbs: number; fat: number } }> = {};
                             for (const x of preset.items) {
@@ -967,15 +1473,189 @@ export function SavedMealsLibraryTab({
                     </div>
                   </div>
 
-                  {/* פירוט רכיבים */}
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                    {preset.items
-                      .map(
-                        (it) =>
-                          `${it.name} (${it.unitLabel}${it.itemTime ? ` · ${it.itemTime}` : ''})`
-                      )
-                      .join(' · ')}
+                  {/* פירוט מרכיבים אינטראקטיבי: הרחבה ובחירת פריטים ייחודיים להוספה */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 6,
+                      padding: 10,
+                      borderRadius: 14,
+                      background: 'var(--card)',
+                      border: '1px solid var(--line)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)', fontWeight: 700 }}>
+                      <span>בחר מה להוסיף מהמנה / ארוחה ({countSelectedTopForPreset(preset)} / {preset.items.length}):</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPickedIdsByPreset((prev) => {
+                            const next = { ...prev };
+                            if (countSelectedTopForPreset(preset) === preset.items.length) {
+                              next[preset.id] = new Set();
+                            } else {
+                              delete next[preset.id];
+                            }
+                            return next;
+                          });
+                        }}
+                        style={{ border: 0, background: 'transparent', color: 'var(--accent)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        {countSelectedTopForPreset(preset) === preset.items.length ? 'נקה הכל' : 'בחר הכל'}
+                      </button>
+                    </div>
+                    {preset.items.map((it) => {
+                      const sel = getSelectedIdsForPreset(preset);
+                      const isComp = hasCompositeComponents(it);
+                      const isDishExpanded = expandedPresetDishIds.has(it.id);
+                      const childAllSelected = isComp
+                        ? sel.has(it.id) || it.components!.every((c) => sel.has(c.id))
+                        : sel.has(it.id);
+                      const childPartial =
+                        isComp && !childAllSelected && it.components!.some((c) => sel.has(c.id));
+
+                      return (
+                        <div key={it.id} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
+                            <input
+                              type="checkbox"
+                              checked={childAllSelected}
+                              ref={(el) => {
+                                if (el) el.indeterminate = childPartial;
+                              }}
+                              onChange={() => togglePickPresetItem(preset, it)}
+                              aria-label={`בחר ${it.name}`}
+                            />
+                            <span style={{ flex: 1, fontWeight: 600 }}>
+                              {it.name}{' '}
+                              <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>
+                                ({it.unitLabel} · {Math.round(it.macros.calories)} קק״ל)
+                              </span>
+                            </span>
+                            {isComp && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedPresetDishIds((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(it.id)) next.delete(it.id);
+                                    else next.add(it.id);
+                                    return next;
+                                  })
+                                }
+                                className="glass"
+                                style={{
+                                  height: 24,
+                                  padding: '0 8px',
+                                  borderRadius: 999,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 3,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <Layers size={11} />
+                                <span>{it.components!.length}</span>
+                                {isDishExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                              </button>
+                            )}
+                          </div>
+                          {isComp && (
+                            <Collapse in={isDishExpanded}>
+                              <div
+                                style={{
+                                  paddingInlineStart: 24,
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: 4,
+                                  paddingTop: 2,
+                                }}
+                              >
+                                {it.components!.map((comp) => {
+                                  const compChecked = sel.has(it.id) || sel.has(comp.id);
+                                  return (
+                                    <label
+                                      key={comp.id}
+                                      style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={compChecked}
+                                        onChange={() => togglePickPresetComponent(preset, it, comp)}
+                                      />
+                                      <span>
+                                        {comp.name} ({comp.grams}g · {Math.round(comp.macros.calories)} קק״ל)
+                                      </span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </Collapse>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
+
+                  {/* מחשבון מנת צלחת מתוך סיר ביתי (גלם -> מוכן) */}
+                  {preset.recipeYieldGrams && preset.recipeYieldGrams > 0 && (() => {
+                    const plateGramsRaw = potServingDrafts[preset.id] ?? '200';
+                    const plateGrams = clampGrams(parseOptionalDecimal(plateGramsRaw) ?? 200, 200);
+                    const previewPlate = computeYieldPortionDish({
+                      title: preset.title,
+                      rawIngredients: preset.items.flatMap((it) =>
+                        hasCompositeComponents(it)
+                          ? it.components!.map(stripNestedComponents)
+                          : [stripNestedComponents(it)]
+                      ),
+                      cookedYieldGrams: preset.recipeYieldGrams,
+                      servingGrams: plateGrams,
+                    });
+                    return (
+                      <div
+                        style={{
+                          padding: 10,
+                          borderRadius: 14,
+                          background: 'rgba(56, 189, 248, 0.08)',
+                          border: '1px solid rgba(56, 189, 248, 0.28)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 6,
+                        }}
+                      >
+                        <div style={{ fontSize: 12.5, fontWeight: 800, color: '#38bdf8' }}>
+                          מתכון סיר ביתי · תפוקה מוכנה {Math.round(preset.recipeYieldGrams)} גרם
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <TextInput
+                            size="xs"
+                            dir="ltr"
+                            style={{ width: 100 }}
+                            label="שמתי בצלחת (ג׳)"
+                            value={plateGramsRaw}
+                            onChange={(e) => {
+                              const val = e.currentTarget.value;
+                              setPotServingDrafts((prev) => ({ ...prev, [preset.id]: val }));
+                            }}
+                          />
+                          <div className="num-mono" style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>
+                            = <b>{previewPlate.macros.calories} קק״ל</b> · ח׳ {previewPlate.macros.protein}g · פ׳ {previewPlate.macros.carbs}g · ש׳ {previewPlate.macros.fat}g
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleUsePotYieldPortion(preset, plateGrams)}
+                            className="btn-volt"
+                            style={{ padding: '6px 11px', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
+                          >
+                            + הוסף מנת צלחת ({Math.round(plateGrams)}g)
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* סטטוס התייעצות מול המאמן */}
                   {preset.coachQuestion && (
@@ -1027,7 +1707,26 @@ export function SavedMealsLibraryTab({
                       }}
                     >
                       <Plus size={12} />
-                      <span>הוסף בדיוק כמו שזה</span>
+                      <span>הוסף הכל</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleUsePickedFromPreset(preset)}
+                      className="btn-surface"
+                      style={{
+                        padding: '6px 10px',
+                        fontSize: 12,
+                        fontWeight: 800,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        cursor: 'pointer',
+                        borderColor: 'var(--accent)',
+                      }}
+                    >
+                      <Check size={12} />
+                      <span>הוסף נבחרים ({countSelectedTopForPreset(preset)})</span>
                     </button>
 
                     <button
@@ -1172,9 +1871,18 @@ export function SavedMealsLibraryTab({
                         value={editTitle}
                         onChange={(e) => setEditTitle(e.currentTarget.value)}
                       />
+                      {preset.recipeYieldGrams !== undefined && (
+                        <TextInput
+                          size="xs"
+                          dir="ltr"
+                          label="משקל סיר מוכן כולל (גרם)"
+                          value={editYieldGrams}
+                          onChange={(e) => setEditYieldGrams(e.currentTarget.value)}
+                        />
+                      )}
                       {editItems.map((it, idx) => (
+                        <div key={it.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         <div
-                          key={it.id}
                           style={{
                             display: 'grid',
                             gridTemplateColumns: '1.25fr 0.6fr auto',
@@ -1184,7 +1892,7 @@ export function SavedMealsLibraryTab({
                         >
                           <TextInput
                             size="xs"
-                            label={idx === 0 ? 'שם רכיב' : undefined}
+                            label={idx === 0 ? 'שם מנה / פריט' : undefined}
                             value={it.name}
                             onChange={(e) => {
                               const val = e.currentTarget.value;
@@ -1202,8 +1910,9 @@ export function SavedMealsLibraryTab({
                                 ? editGramsDrafts[it.id]
                                 : it.grams
                             }
-                            min={1}
-                            max={3000}
+                            min={0.1}
+                            max={10000}
+                            decimalScale={1}
                             clampBehavior="none"
                             onChange={(val) => {
                               setEditGramsDrafts((prev) => ({
@@ -1212,34 +1921,21 @@ export function SavedMealsLibraryTab({
                               }));
                               const parsed = parseOptionalDecimal(val);
                               if (parsed === undefined || parsed <= 0) return;
-                              const g = Math.max(1, Math.min(3000, Math.round(parsed * 10) / 10));
-                              if (!editScaleBaseRef.current[it.id]) {
-                                editScaleBaseRef.current[it.id] = {
-                                  grams: Math.max(1, it.grams),
-                                  macros: { ...it.macros },
-                                };
-                              }
-                              const base = editScaleBaseRef.current[it.id];
+                              const g = clampGrams(parsed, it.grams);
                               setEditItems((prev) =>
                                 prev.map((x, i) => {
                                   if (i !== idx) return x;
-                                  const nextMacros = x.per100g
-                                    ? calculateMacrosForGrams(x.per100g, g)
-                                    : (() => {
-                                        const ratio = g / Math.max(1, base.grams);
-                                        return {
-                                          calories: Math.round(base.macros.calories * ratio),
-                                          protein: Math.round(base.macros.protein * ratio * 10) / 10,
-                                          carbs: Math.round(base.macros.carbs * ratio * 10) / 10,
-                                          fat: Math.round(base.macros.fat * ratio * 10) / 10,
-                                        };
-                                      })();
-                                  return {
-                                    ...x,
-                                    grams: g,
-                                    unitLabel: `${g} גרם`,
-                                    macros: nextMacros,
-                                  };
+                                  if (hasCompositeComponents(x)) {
+                                    const curG = Math.max(0.1, x.grams);
+                                    const factor = g / curG;
+                                    return recalculateParentDish({
+                                      ...x,
+                                      components: x.components!.map((c) =>
+                                        scaleSimpleFoodItemGrams(c, clampGrams(c.grams * factor, c.grams))
+                                      ),
+                                    });
+                                  }
+                                  return scaleSimpleFoodItemGrams(x, g);
                                 })
                               );
                             }}
@@ -1266,6 +1962,63 @@ export function SavedMealsLibraryTab({
                               }}
                             />
                           </div>
+                        </div>
+                        {hasCompositeComponents(it) && (
+                          <div style={{ paddingInlineStart: 14, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {it.components!.map((comp, cIdx) => (
+                              <div
+                                key={comp.id}
+                                style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: 6, alignItems: 'center' }}
+                              >
+                                <TextInput
+                                  size="xs"
+                                  value={comp.name}
+                                  onChange={(e) => {
+                                    const name = e.currentTarget.value;
+                                    setEditItems((prev) =>
+                                      prev.map((x, i) =>
+                                        i === idx
+                                          ? recalculateParentDish({
+                                              ...x,
+                                              components: x.components!.map((c, ci) =>
+                                                ci === cIdx ? { ...c, name } : c
+                                              ),
+                                            })
+                                          : x
+                                      )
+                                    );
+                                  }}
+                                />
+                                <NumberInput
+                                  size="xs"
+                                  value={comp.grams}
+                                  min={0.1}
+                                  max={10000}
+                                  decimalScale={1}
+                                  onChange={(v) => {
+                                    const p = parseOptionalDecimal(v);
+                                    if (p === undefined || p <= 0) return;
+                                    const nextG = clampGrams(p, comp.grams);
+                                    setEditItems((prev) =>
+                                      prev.map((x, i) =>
+                                        i === idx
+                                          ? recalculateParentDish({
+                                              ...x,
+                                              components: x.components!.map((c, ci) =>
+                                                ci === cIdx
+                                                  ? stripNestedComponents(scaleSimpleFoodItemGrams(c, nextG))
+                                                  : c
+                                              ),
+                                            })
+                                          : x
+                                      )
+                                    );
+                                  }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         </div>
                       ))}
                       <button

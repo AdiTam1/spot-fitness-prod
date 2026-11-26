@@ -100,6 +100,7 @@ import { AdminApkUploadPanel } from './AdminApkUploadPanel';
 import { AdminAppVersionsAndPushPanel } from './AdminAppVersionsAndPushPanel';
 import { AdminMonitoringPanel } from './AdminMonitoringPanel';
 import { buildTraineeAiContextLines } from '@/lib/aiTraineeContext';
+import { hasCompositeComponents } from '@/lib/compositeDishes';
 import {
   DEFAULT_TEMPLATES,
   getTodayIso,
@@ -246,7 +247,7 @@ interface CoachDashboardViewProps {
     }
   ) => Promise<{ error?: string }>;
   onManageQuickChips?: (payload: {
-    scope: 'user' | 'group' | 'global';
+    scope: 'user' | 'group' | 'coach-trainees' | 'global';
     op: 'touch' | 'upsert' | 'delete' | 'replace';
     traineeId?: string;
     groupId?: string;
@@ -359,6 +360,7 @@ export function CoachDashboardView({
   const [activeSection, setActiveSection] = useState<
     'roster' | 'templates' | 'inspector' | 'users' | 'coaches' | 'scrapers' | 'monitoring'
   >('roster');
+  const [expandedCoachDishIds, setExpandedCoachDishIds] = useState<Record<string, boolean>>({});
 
   const [scraperReport, setScraperReport] = useState<ScraperSuiteReport | null>(
     null
@@ -5447,16 +5449,21 @@ export function CoachDashboardView({
                           borderRadius: 16,
                         }}
                       >
-                        {items.map((it) => (
+                        {items.map((it) => {
+                          const isComposite = hasCompositeComponents(it);
+                          const isExpanded = Boolean(expandedCoachDishIds[it.id]);
+                          return (
+                          <div key={it.id} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                           <div
-                            key={it.id}
                             style={{
                               display: 'flex',
                               justifyContent: 'space-between',
+                              alignItems: 'center',
                               fontSize: 13,
+                              gap: 8,
                             }}
                           >
-                            <span>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                               {it.itemTime && (
                                 <span
                                   dir="ltr"
@@ -5466,16 +5473,71 @@ export function CoachDashboardView({
                                   {it.itemTime} ·
                                 </span>
                               )}
-                              {it.name}{' '}
+                              <span>{it.name}</span>{' '}
                               <span style={{ color: 'var(--text-muted)' }}>
                                 ({it.unitLabel})
                               </span>
+                              {isComposite && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedCoachDishIds((prev) => ({
+                                      ...prev,
+                                      [it.id]: !prev[it.id],
+                                    }))
+                                  }
+                                  style={{
+                                    border: '1px solid var(--line)',
+                                    background: 'var(--card)',
+                                    color: 'var(--text-2)',
+                                    borderRadius: 999,
+                                    padding: '1px 7px',
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 3,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  <Layers size={10} />
+                                  <span>{it.components!.length} מרכיבים</span>
+                                </button>
+                              )}
                             </span>
-                            <span className="num-mono" style={{ fontWeight: 700 }}>
+                            <span className="num-mono" style={{ fontWeight: 700, flexShrink: 0 }}>
                               {it.macros.calories} קק״ל
                             </span>
                           </div>
-                        ))}
+                          {isComposite && isExpanded && (
+                            <div
+                              style={{
+                                paddingInlineStart: 12,
+                                borderInlineStart: '2px solid var(--line-2)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: 2,
+                                fontSize: 11.5,
+                                color: 'var(--text-2)',
+                              }}
+                            >
+                              {it.components!.map((comp) => (
+                                <div key={comp.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                                  <span>
+                                    {comp.name} ({comp.grams % 1 === 0 ? Math.round(comp.grams) : comp.grams}g)
+                                    {comp.inputConfidence === 'visual-estimate' ? ' · הערכת AI' : ''}
+                                    {comp.spiceDetails && comp.spiceDetails.length > 0 ? ` · ${comp.spiceDetails.join(', ')}` : ''}
+                                  </span>
+                                  <span className="num-mono">
+                                    {comp.macros.calories} קק״ל (ח׳ {comp.macros.protein} · פ׳ {comp.macros.carbs} · ש׳ {comp.macros.fat})
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          </div>
+                          );
+                        })}
                       </div>
                     )}
 

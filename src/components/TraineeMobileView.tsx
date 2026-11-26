@@ -22,6 +22,8 @@ import {
   ChevronRight,
   ChevronLeft,
   ChevronDown,
+  ChevronUp,
+  Layers,
   Mic,
   NotebookText,
   Barcode,
@@ -56,6 +58,7 @@ import {
 } from '@/types/nutrition';
 import type { CustomFoodsMutationResult } from '@/components/CustomFoodModal';
 import { getTodayIso, sumMacros } from '@/data/israeliFoodCatalog';
+import { hasCompositeComponents } from '@/lib/compositeDishes';
 import {
   ALL_MEAL_SHORTCUT_OPTIONS,
   DEFAULT_MEAL_CARD_SHORTCUTS,
@@ -182,7 +185,7 @@ interface TraineeMobileViewProps {
     }
   ) => Promise<{ error?: string }>;
   onManageQuickChips?: (payload: {
-    scope: 'user' | 'group' | 'global';
+    scope: 'user' | 'group' | 'coach-trainees' | 'global';
     op: 'touch' | 'upsert' | 'delete' | 'replace';
     traineeId?: string;
     groupId?: string;
@@ -204,6 +207,8 @@ interface TraineeMobileViewProps {
     imageDataUrls?: string[];
     textPrompt?: string;
     baseItems?: LoggedFoodItem[];
+    selectedTargetIds?: string[];
+    correctionHistory?: { beforeNames?: string[]; prompt: string; at?: string }[];
     adjustmentPrompt?: string;
     contextParams?: AiContextParams;
   }) => Promise<{ jobId: string }>;
@@ -326,6 +331,7 @@ export function TraineeMobileView({
   const [weekStripOpen, setWeekStripOpen] = useState(false);
   const [journalSubTab, setJournalSubTab] = useState<'meals' | 'activity'>('meals');
   const [expandedMealIds, setExpandedMealIds] = useState<Record<string, boolean>>({});
+  const [expandedDishIds, setExpandedDishIds] = useState<Record<string, boolean>>({});
   const [stepsModalOpen, setStepsModalOpen] = useState(false);
   const [showStickyCalBar, setShowStickyCalBar] = useState(false);
   const calorieCardRef = useRef<HTMLElement | null>(null);
@@ -2145,7 +2151,10 @@ export function TraineeMobileView({
                                     {entry.photoNote}
                                   </div>
                                 )}
-                                {loggedItems.map((item, i) => (
+                                {loggedItems.map((item, i) => {
+                                  const isComposite = hasCompositeComponents(item);
+                                  const isDishExpanded = Boolean(expandedDishIds[item.id]);
+                                  return (
                                   <div
                                     key={item.id}
                                     onClick={(e) => {
@@ -2154,72 +2163,157 @@ export function TraineeMobileView({
                                     }}
                                     style={{
                                       display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'space-between',
-                                      gap: 8,
+                                      flexDirection: 'column',
+                                      gap: 4,
                                       padding: '7px 0',
                                       cursor: isBlockedDay ? 'default' : 'pointer',
                                       borderBottom: i < loggedItems.length - 1 ? '1px solid var(--line)' : 'none',
                                     }}
                                   >
-                                    <div style={{ minWidth: 0, flex: 1 }}>
-                                      <div
-                                        style={{
-                                          fontSize: 13,
-                                          fontWeight: 600,
-                                          color: 'var(--text)',
-                                          whiteSpace: 'nowrap',
-                                          overflow: 'hidden',
-                                          textOverflow: 'ellipsis',
-                                        }}
-                                      >
-                                        {item.name}
-                                      </div>
-                                      <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
-                                        {item.unitLabel} · ח׳ {item.macros.protein}g · פ׳ {item.macros.carbs}g · ש׳ {item.macros.fat}g
-                                      </div>
-                                    </div>
                                     <div
                                       style={{
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: 6,
-                                        flexShrink: 0,
+                                        justifyContent: 'space-between',
+                                        gap: 8,
                                       }}
                                     >
-                                      {!isBlockedDay && onUpdateItemTime ? (
-                                        <ItemTimePill
-                                          value={item.itemTime}
-                                          fallbackTime={entry?.mealTime || slot.timeHint || '12:00'}
-                                          placeholderLabel="שעה"
-                                          ariaLabel={`שינוי שעה עבור ${item.name}`}
-                                          clearAriaLabel={`אפס שעה עבור ${item.name}`}
-                                          height={24}
-                                          onChange={(val) =>
-                                            onUpdateItemTime(
-                                              trainee.id,
-                                              selectedDate,
-                                              slot.id,
-                                              item.id,
-                                              normalizeHhMmTime(val) || ''
-                                            )
-                                          }
-                                        />
-                                      ) : item.itemTime ? (
-                                        <span dir="ltr" className="num-mono ltr-num" style={{ fontSize: 12, color: 'var(--text-2)' }}>
-                                          {item.itemTime}
-                                        </span>
-                                      ) : null}
+                                      <div style={{ minWidth: 0, flex: 1 }}>
+                                        <div
+                                          style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 6,
+                                            flexWrap: 'wrap',
+                                          }}
+                                        >
+                                          <span
+                                            style={{
+                                              fontSize: 13,
+                                              fontWeight: 600,
+                                              color: 'var(--text)',
+                                              whiteSpace: 'nowrap',
+                                              overflow: 'hidden',
+                                              textOverflow: 'ellipsis',
+                                            }}
+                                          >
+                                            {item.name}
+                                          </span>
+                                          {isComposite && (
+                                            <button
+                                              type="button"
+                                              aria-expanded={isDishExpanded}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setExpandedDishIds((prev) => ({
+                                                  ...prev,
+                                                  [item.id]: !prev[item.id],
+                                                }));
+                                              }}
+                                              style={{
+                                                border: '1px solid var(--line)',
+                                                background: 'var(--surface-2)',
+                                                color: 'var(--text-2)',
+                                                borderRadius: 999,
+                                                padding: '1px 7px',
+                                                fontSize: 11,
+                                                fontWeight: 700,
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: 3,
+                                                cursor: 'pointer',
+                                                flexShrink: 0,
+                                              }}
+                                            >
+                                              <Layers size={10} />
+                                              <span>{item.components!.length} מרכיבים</span>
+                                              {isDishExpanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                                            </button>
+                                          )}
+                                        </div>
+                                        <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                                          {item.unitLabel} · ח׳ {item.macros.protein}g · פ׳ {item.macros.carbs}g · ש׳ {item.macros.fat}g
+                                        </div>
+                                      </div>
                                       <div
-                                        className="num-mono"
-                                        style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: 6,
+                                          flexShrink: 0,
+                                        }}
                                       >
-                                        {item.macros.calories}{' '}
-                                        <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 500 }}>קק״ל</span>
+                                        {!isBlockedDay && onUpdateItemTime ? (
+                                          <ItemTimePill
+                                            value={item.itemTime}
+                                            fallbackTime={entry?.mealTime || slot.timeHint || '12:00'}
+                                            placeholderLabel="שעה"
+                                            ariaLabel={`שינוי שעה עבור ${item.name}`}
+                                            clearAriaLabel={`אפס שעה עבור ${item.name}`}
+                                            height={24}
+                                            onChange={(val) =>
+                                              onUpdateItemTime(
+                                                trainee.id,
+                                                selectedDate,
+                                                slot.id,
+                                                item.id,
+                                                normalizeHhMmTime(val) || ''
+                                              )
+                                            }
+                                          />
+                                        ) : item.itemTime ? (
+                                          <span dir="ltr" className="num-mono ltr-num" style={{ fontSize: 12, color: 'var(--text-2)' }}>
+                                            {item.itemTime}
+                                          </span>
+                                        ) : null}
+                                        <div
+                                          className="num-mono"
+                                          style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}
+                                        >
+                                          {item.macros.calories}{' '}
+                                          <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 500 }}>קק״ל</span>
+                                        </div>
                                       </div>
                                     </div>
+                                    {isComposite && isDishExpanded && (
+                                      <div
+                                        onClick={(e) => e.stopPropagation()}
+                                        style={{
+                                          paddingInlineStart: 12,
+                                          borderInlineStart: '2px solid var(--line-2)',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          gap: 3,
+                                          marginTop: 2,
+                                        }}
+                                      >
+                                        {item.components!.map((comp) => (
+                                          <div
+                                            key={comp.id}
+                                            style={{
+                                              display: 'flex',
+                                              justifyContent: 'space-between',
+                                              fontSize: 11.5,
+                                              color: 'var(--text-2)',
+                                              gap: 8,
+                                            }}
+                                          >
+                                            <span>
+                                              {comp.name} ({comp.grams % 1 === 0 ? Math.round(comp.grams) : comp.grams}g)
+                                              {comp.spiceDetails && comp.spiceDetails.length > 0
+                                                ? ` · ${comp.spiceDetails.join(', ')}`
+                                                : ''}
+                                            </span>
+                                            <span className="num-mono" style={{ flexShrink: 0 }}>
+                                              {comp.macros.calories} קק״ל
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
                                   </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             )}
                           </div>

@@ -8,12 +8,21 @@ import {
 import {
   AiContextParams,
   FoodCatalogItem,
+  FoodComponentRole,
+  FoodInputConfidence,
   LoggedFoodItem,
   PendingAiMealJob,
   ReferenceObjectKind,
   ServingToolKind,
   TraineeCustomUnit,
 } from '@/types/nutrition';
+import {
+  buildSelectiveScopedPayload,
+  clampGrams,
+  mergeScopedAdjustmentResult,
+  recalculateParentDish,
+  stripNestedComponents,
+} from '@/lib/compositeDishes';
 import {
   sanitizeNumber,
   sanitizeText,
@@ -297,13 +306,55 @@ function formatContextParamsPrompt(ctx?: AiContextParams): string {
       .join(', ');
     lines.push(`- כלי הגשה בשימוש: ${ctx.servingToolLabel}${dims ? ` (${dims})` : ''}`);
   }
-  lines.push(
-    `- שומנים נסתרים / רטבים: ${
-      ctx.saucesAndOils && ctx.saucesAndOils.trim()
-        ? ctx.saucesAndOils.trim()
-        : 'ללא תוספת שמן/רטבים נסתרים (אלא אם נראה בבירור בתמונה)'
-    }`
-  );
+  const activeChips = Array.isArray(ctx.activeChipLabels) ? ctx.activeChipLabels : [];
+  const hasExplicitNoOilChip = activeChips.some((l) => /ללא שמן בכלל|רוטב מתבלינים בלבד/i.test(l));
+  const hasExplicitOilOrFriedChip = activeChips.some((l) => /עם שמן|מטוגן|בטיגון/i.test(l));
+  const hasBakedChip = activeChips.some((l) => /אפוי|גריל/i.test(l));
+
+  if (hasExplicitNoOilChip && hasExplicitOilOrFriedChip) {
+    lines.push(
+      '- מדיניות סתירת תגיות שמן (כלל ההחמרה הקלורית!): המשתמש סימן במקביל גם "ללא שמן" וגם תג מחייב שמן/טיגון — פסק לחומרה: קיים שמן בישול/טיגון ויש לחשוף אותו כשורת מרכיב גלויה.'
+    );
+  } else if (hasExplicitOilOrFriedChip) {
+    lines.push(
+      '- שמן בישול / טיגון: המשתמש ציין שימוש בשמן או טיגון — כלול במפורש שורת מרכיב של שמן בישול/טיגון עם componentRole="cooking-oil".'
+    );
+  } else if (hasExplicitNoOilChip) {
+    lines.push(
+      '- שמן בישול: המשתמש סימן מפורשות "ללא שמן בכלל" / "תיבול יבש בלבד" — אל תוסיף שורת שמן בישול.'
+    );
+  } else if (hasBakedChip) {
+    lines.push(
+      '- שיטת הכנה: המשתמש סימן אפוי/גריל — אל תניח טיגון בשמן עמוק.'
+    );
+  } else {
+    lines.push(
+      '- שמן בישול / טיגון (שקוף ומופרד מרטבים): לא צוין אחרת — במנות שנראות מטוגנות/מושחמות/מוקפצות (שניצל מצופה פריך, בצל מושחם במג׳דרה, חביתה), הצג שורת מרכיב גלויה של שמן טיגון (visual-estimate) כדי שהמשתמש יראה וידייק אם אפוי/ספריי; במזונות נקיים ולא שומניים אל תמציא שמן.'
+    );
+  }
+
+  if (ctx.chipQuantities && Object.keys(ctx.chipQuantities).length > 0) {
+    const qtyParts = Object.entries(ctx.chipQuantities)
+      .filter(([, q]) => q && Number.isFinite(q.amount) && q.amount > 0)
+      .map(([chipLabel, q]) => {
+        const unitHe =
+          q.unit === 'tbsp'
+            ? 'כפות'
+            : q.unit === 'tsp'
+            ? 'כפיות'
+            : q.unit === 'ml'
+            ? 'מ"ל'
+            : 'גרם';
+        return `${chipLabel}: ${q.amount} ${unitHe}`;
+      });
+    if (qtyParts.length > 0) {
+      lines.push(`- כמויות מדויקות שנבחרו מתוך התגיות: ${qtyParts.join(' | ')}`);
+    }
+  }
+
+  if (ctx.saucesAndOils && ctx.saucesAndOils.trim()) {
+    lines.push(`- רטבים ותוספות נוזליות: ${ctx.saucesAndOils.trim()}`);
+  }
   if (ctx.portionOrGrams?.trim()) {
     lines.push(`- כמויות/משקל שדווחו: ${ctx.portionOrGrams.trim()}`);
   }
@@ -345,45 +396,98 @@ function formatContextParamsPrompt(ctx?: AiContextParams): string {
   return lines.join('\n');
 }
 
+function mapSingleRawGeminiItem(
+  it: Record<string, unknown>,
+  sourceType: 'ai-photo' | 'ai-text',
+  modelName: string,
+  allowComponents: boolean,
+  idx: number
+): LoggedFoodItem {
+  const macros = (it.macros as Record<string, number>) || {};
+  const rawPer100 = (it.per100g as Record<string, number>) || null;
+  const grams = clampGrams(it.grams, 100);
+  const parsedPer100g =
+    rawPer100 && Number.isFinite(Number(rawPer100.calories))
+      ? {
+          calories: Math.round(sanitizeNumber(rawPer100.calories, 0, 950, 0)),
+          protein: Math.round(sanitizeNumber(rawPer100.protein, 0, 100, 0) * 10) / 10,
+          carbs: Math.round(sanitizeNumber(rawPer100.carbs, 0, 100, 0) * 10) / 10,
+          fat: Math.round(sanitizeNumber(rawPer100.fat, 0, 100, 0) * 10) / 10,
+        }
+      : undefined;
+  const visualReason = sanitizeText(it.visualReason, 160) || undefined;
+  const fromUserText = typeof it.fromUserText === 'boolean' ? it.fromUserText : undefined;
+
+  const rawRole = it.componentRole;
+  const componentRole: FoodComponentRole | undefined =
+    rawRole === 'ingredient' ||
+    rawRole === 'cooking-oil' ||
+    rawRole === 'spice-group' ||
+    rawRole === 'sauce'
+      ? rawRole
+      : undefined;
+
+  const rawConf = it.inputConfidence;
+  const inputConfidence: FoodInputConfidence | undefined =
+    fromUserText
+      ? 'reported'
+      : rawConf === 'reported' || rawConf === 'visual-estimate' || rawConf === 'catalog'
+      ? rawConf
+      : 'visual-estimate';
+
+  const spiceDetails = Array.isArray(it.spiceDetails)
+    ? (it.spiceDetails as unknown[])
+        .map((s) => sanitizeText(s, 36))
+        .filter(Boolean)
+        .slice(0, 15)
+    : undefined;
+
+  const rawComponents =
+    allowComponents && Array.isArray(it.components) && it.components.length > 0
+      ? (it.components as Record<string, unknown>[])
+          .slice(0, 20)
+          .map((comp, cIdx) =>
+            mapSingleRawGeminiItem(comp, sourceType, modelName, false, cIdx)
+          )
+      : undefined;
+
+  const baseItem: LoggedFoodItem = {
+    id: `gemini-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 5)}`,
+    name: sanitizeText(it.name, 120) || 'פריט מזון',
+    unitLabel: sanitizeText(it.unitLabel, 80) || `${grams} גרם`,
+    quantity: sanitizeNumber(it.quantity, 0.1, 100, 1),
+    grams,
+    per100g: parsedPer100g,
+    macros: {
+      calories: Math.round(sanitizeNumber(macros.calories, 0, 10000, 0)),
+      protein: Math.round(sanitizeNumber(macros.protein, 0, 1000, 0) * 10) / 10,
+      carbs: Math.round(sanitizeNumber(macros.carbs, 0, 1000, 0) * 10) / 10,
+      fat: Math.round(sanitizeNumber(macros.fat, 0, 1000, 0) * 10) / 10,
+    },
+    source: sourceType,
+    aiEngine: modelName,
+    isAiFallback: false,
+    fromUserText,
+    visualReason,
+    ...(componentRole ? { componentRole } : {}),
+    ...(spiceDetails && spiceDetails.length > 0 ? { spiceDetails } : {}),
+    inputConfidence,
+    ...(rawComponents ? { components: rawComponents } : {}),
+  };
+
+  return rawComponents && rawComponents.length > 0
+    ? recalculateParentDish(baseItem)
+    : baseItem;
+}
+
 function mapRawGeminiItems(
   rawItems: Record<string, unknown>[],
   sourceType: 'ai-photo' | 'ai-text',
   modelName: string
 ): LoggedFoodItem[] {
-  return rawItems.map((it, idx) => {
-    const macros = (it.macros as Record<string, number>) || {};
-    const rawPer100 = (it.per100g as Record<string, number>) || null;
-    const grams = sanitizeNumber(it.grams, 1, 5000, 100);
-    const parsedPer100g =
-      rawPer100 && Number.isFinite(Number(rawPer100.calories))
-        ? {
-            calories: Math.round(sanitizeNumber(rawPer100.calories, 0, 950, 0)),
-            protein: Math.round(sanitizeNumber(rawPer100.protein, 0, 100, 0) * 10) / 10,
-            carbs: Math.round(sanitizeNumber(rawPer100.carbs, 0, 100, 0) * 10) / 10,
-            fat: Math.round(sanitizeNumber(rawPer100.fat, 0, 100, 0) * 10) / 10,
-          }
-        : undefined;
-    const visualReason = sanitizeText(it.visualReason, 160) || undefined;
-    return {
-      id: `gemini-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 5)}`,
-      name: sanitizeText(it.name, 120) || 'פריט מזון',
-      unitLabel: sanitizeText(it.unitLabel, 80) || `${grams} גרם`,
-      quantity: sanitizeNumber(it.quantity, 0.1, 100, 1),
-      grams,
-      per100g: parsedPer100g,
-      macros: {
-        calories: Math.round(sanitizeNumber(macros.calories, 0, 10000, 0)),
-        protein: Math.round(sanitizeNumber(macros.protein, 0, 1000, 0) * 10) / 10,
-        carbs: Math.round(sanitizeNumber(macros.carbs, 0, 1000, 0) * 10) / 10,
-        fat: Math.round(sanitizeNumber(macros.fat, 0, 1000, 0) * 10) / 10,
-      },
-      source: sourceType,
-      aiEngine: modelName,
-      isAiFallback: false,
-      fromUserText: typeof it.fromUserText === 'boolean' ? it.fromUserText : undefined,
-      visualReason,
-    };
-  });
+  return rawItems.map((it, idx) =>
+    mapSingleRawGeminiItem(it, sourceType, modelName, true, idx)
+  );
 }
 
 function adjustMealFallback(
@@ -517,6 +621,8 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
       toolKind = 'plate',
       toolName,
       baseItems,
+      selectedTargetIds,
+      correctionHistory,
       adjustmentPrompt,
       traineeId: bodyTraineeId,
       backgroundJob,
@@ -532,6 +638,8 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
       toolKind?: ServingToolKind;
       toolName?: string;
       baseItems?: LoggedFoodItem[];
+      selectedTargetIds?: string[];
+      correctionHistory?: { beforeNames?: string[]; prompt: string; at?: string }[];
       adjustmentPrompt?: string;
       traineeId?: string;
       backgroundJob?: {
@@ -1134,36 +1242,106 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
           : '';
 
       const contextBlock = formatContextParamsPrompt(contextParams);
+      const cleanSelectedIds = Array.isArray(selectedTargetIds)
+        ? selectedTargetIds
+            .map((id) => sanitizeText(id, 80))
+            .filter(Boolean)
+            .slice(0, 40)
+        : [];
+      const cleanHistory = Array.isArray(correctionHistory)
+        ? correctionHistory
+            .slice(-6)
+            .map((h) => ({
+              beforeNames: Array.isArray(h?.beforeNames)
+                ? h.beforeNames.map((n) => sanitizeText(n, 60)).filter(Boolean).slice(0, 15)
+                : [],
+              prompt: sanitizeText(h?.prompt, 240),
+            }))
+            .filter((h) => h.prompt)
+        : [];
+
+      const isScoped = cleanSelectedIds.length > 0;
+      const scopedPayload = isScoped
+        ? buildSelectiveScopedPayload(cleanBaseItems, new Set(cleanSelectedIds))
+        : null;
+      if (isScoped && scopedPayload && scopedPayload.targetItems.length === 0) {
+        return NextResponse.json(
+          { error: 'לא נמצאו פריטים תואמים לבחירה לתיקון' },
+          { status: 400 }
+        );
+      }
+
       let geminiErrorMsg = '';
       if (apiKey) {
+        const historyBlock =
+          cleanHistory.length > 0
+            ? `\nהיסטוריית תיקונים שכבר בוצעו בארוחה זו (הקשר רציף כדי לא להחזיר טעויות קודמות!):\n${cleanHistory
+                .map(
+                  (h, idx) =>
+                    `${idx + 1}. לפני כן: [${h.beforeNames.join(', ') || 'מנה'}] -> בקשת משתמש: "${h.prompt}"`
+                )
+                .join('\n')}`
+            : '';
+
+        const scopedPromptBlock =
+          isScoped && scopedPayload
+            ? `מצב תיקון ממוקד (Scoped Edit — המשתמש בחר ספציפית מה לתקן!):
+הארוחה המלאה עד כה (כולל המרכיבים והשינויים הקודמים):
+${JSON.stringify(cleanBaseItems)}
+${historyBlock}
+
+חלקים נעולים לקריאה בלבד (אסור לשנות, להסיר או להחזיר אותם במערך התשובה!):
+${JSON.stringify(scopedPayload.lockedContextItems)}
+
+המטרה היחידה לתיקון ועדכון כעת (targetItems):
+${JSON.stringify(scopedPayload.targetItems)}
+${
+  scopedPayload.partialParentMap.length > 0
+    ? `\nהערת שיוך חשוב: המרכיבים שנבחרו שייכים למנת האב: ${scopedPayload.partialParentMap
+        .map(
+          (p) =>
+            `"${p.parentName}" (מרכיבים נעולים אחרים באותה מנה: ${p.lockedComponentNames.join(', ') || 'אין'})`
+        )
+        .join(' | ')}. החזר במערך "items" אך ורק את המרכיב/ים המתוקנים שמחליפים את היעד (ללא מנת האב השלמה וללא המרכיבים הנעולים!).`
+    : '\nהחזר במערך "items" אך ורק את הגרסה המתוקנת של targetItems (ללא הפריטים מהחלק הנעול!).'
+}`
+            : `מרכיבי הבסיס הקיימים כרגע בארוחה (JSON):
+${JSON.stringify(cleanBaseItems)}
+${historyBlock}`;
+
         const adjustInstruction = `אתה תזונאי קליני וספורט מומחה בישראל.
 המתאמן מבקש לתקן, להחליף, להסיר או לעדכן ארוחה שכבר פוענחה.
-מרכיבי הבסיס הקיימים כרגע בארוחה (JSON):
-${JSON.stringify(cleanBaseItems)}
+${scopedPromptBlock}
 
 ${cleanAdjustment ? `הוראת התיקון של המתאמן (עובדה מחייבת — עדיפות עליונה!): "${cleanAdjustment}"` : ''}
 ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : ''}${traineeProfileContext ? `\n\n${traineeProfileContext}` : ''}${customFoodsHint}
 
-כללי חובה להבנת כוונת התיקון (החלפה / הסרה / שימור):
-1. אתה מחזיר במערך "items" את **הרשימה המלאה והסופית של כל הארוחה אחרי התיקון** (לעולם אל תשכפל פריטים!).
-2. **החלפה ("הסלק הוא בעצם כבד", "במקום X זה Y", "לא X אלא Y", "שנה שניצל מטוגן לאפוי"):** מחק לחלוטין את הפריט הישן (X) והחזר במקומו רק את הפריט המתוקן (Y). אסור בהחלט להחזיר גם את X וגם את Y!
-3. **הסרה ("בלי X", "תוריד X", "הסר X", "לא אכלתי X"):** מחק את X לחלוטין מהמערך.
-4. **עדכון כמות ("האורז הוא 120 גרם", "רק חצי שניצל"):** עדכן רק את הגרמים, היחידה והמאקרו של הפריט הקיים — אל תיצור שורה חדשה נוספת!
-5. **הוספה ("תוסיף גם כף שמן", "יש בנוסף..."):** שמור את הקיימים והוסף רק את התוספת המבוקשת.
-6. **כתיבת רשימה מלאה מחדש ("אכלתי רק X ו-Y", "זה בעצם A, B ו-C"):** השאר אך ורק את המרכיבים שתוארו כעת והסר כל פריט ישן שאינו תואם.
-7. אם המתאמן ציין שם מאכל מתוקן, שיטת הכנה (אפוי/מבושל/מטוגן) או משקל מפורש בגרמים — אלה נתוני אמת נעולים! לעולם אל תשנה אותם.
-8. לכל פריט חדש או מעודכן, ספק "per100g" לפי מצב ההכנה המוכן והמדויק בישראל (כגון אורז מבושל ~130 קק"ל, כבד עוף אפוי ~172 קק"ל, שניצל אפוי ~165 קק"ל; במשקאות אלכוהוליים כגון יין ~83-85 קק"ל כולל תרומת אלכוהול ~7 קק"ל/גרם), וחשב את "macros" לפי grams * per100g / 100.
+כללי חובה להבנת כוונת התיקון (החלפה / הסרה / שימור / מנות מורכבות):
+1. ${
+          isScoped
+            ? 'במצב ממוקד זה החזר במערך "items" אך ורק את המנות/מרכיבים שנבחרו לאחר התיקון (ואם מוחקים את כל הבחירה החזר [] או הוסר ב-summary).'
+            : 'אתה מחזיר במערך "items" את **הרשימה המלאה והסופית של כל הארוחה אחרי התיקון** (לעולם אל תשכפל פריטים!).'
+        }
+2. **החלפה ("הסלק הוא בעצם כבד", "במקום X זה Y", "לא X אלא Y", "שנה שניצל מטוגן לאפוי"):** מחק לחלוטין את הפריט/מרכיב הישן (X) והחזר במקומו רק את המתוקן (Y).
+3. **הסרה ("בלי X", "תוריד X", "הסר X", "לא אכלתי X"):** מחק את X לחלוטין.
+4. **עדכון כמות ("האורז הוא 120 גרם", "רק חצי שניצל", "פחות שמן"):** עדכן רק את הגרמים, היחידה והמאקרו של הפריט הקיים — אל תיצור שורה חדשה נוספת!
+5. **שמירה על מבנה מנה ומרכיבים (\`components\`):** אם הפריט הוא מנה מורכבת ואיננו במצב בחירה חלקית, השב את המנה כולה עם \`components\` מעודכנים ומאוחדים; עדכן שמן/תבלינים בצורה מפורשת (\`componentRole\`: \`"cooking-oil"\` / \`"spice-group"\` עם \`spiceDetails\`).
+6. אם המתאמן ציין שם מאכל מתוקן, שיטת הכנה (אפוי/מבושל/מטוגן) או משקל מפורש בגרמים — אלה נתוני אמת נעולים ו-\`inputConfidence: "reported"\`.
+7. לכל פריט/מרכיב חדש או מעודכן, ספק "per100g" לפי מצב ההכנה המוכן והמדויק בישראל (כגון אורז מבושל ~130 קק"ל, כבד עוף אפוי ~172 קק"ל, שניצל אפוי ~165 קק"ל), וחשב את "macros" לפי grams * per100g / 100.
+8. אם המשתמש ציין העדפה עקרונית שחוזרת על עצמה ("אני תמיד אופה שניצל בלי שמן", "הקפה שלי תמיד עם חלב סויה"), ציין אותה בקצרה בשדה האופציונלי "learnedRuleHint" (עד 70 תווים), אחרת null.
 
 החזר JSON תקני בלבד:
 {
   "summary": "סיכום קצר בעברית של מה הוסר, מה הוחלף ומה נשאר",
+  "learnedRuleHint": null,
   "items": [
     {
-      "name": "שם המאכל בעברית",
+      "name": "שם המאכל או המנה בעברית",
       "unitLabel": "תיאור יחידה ומשקל",
       "quantity": 1,
       "grams": 150,
       "fromUserText": true,
+      "inputConfidence": "reported",
       "per100g": { "calories": 172, "protein": 25.8, "carbs": 1.1, "fat": 6.4 },
       "macros": { "calories": 258, "protein": 38.7, "carbs": 1.7, "fat": 9.6 }
     }
@@ -1190,44 +1368,90 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
         if (res.cancelled) {
           return NextResponse.json({ cancelled: true, items: [] });
         }
-        if (res.parsed && Array.isArray(res.parsed.items) && res.parsed.items.length > 0) {
-          const { groundAndNormalizeAiItems } = await import('@/lib/aiFoodGrounding');
-          const rawMapped = mapRawGeminiItems(
-            res.parsed.items as Record<string, unknown>[],
-            sourceType,
-            res.modelName || GEMINI_VISION_MODELS[0]
-          );
-          const groundedItems = await groundAndNormalizeAiItems(
-            rawMapped,
-            priorityCustomCatalog
-          );
-          const baseTimeByName = new Map<string, string>();
-          for (const bi of cleanBaseItems as LoggedFoodItem[]) {
-            const nt = normalizeHhMmTime(bi?.itemTime);
-            if (bi?.name && nt) {
-              baseTimeByName.set(bi.name.trim().toLowerCase(), nt);
+        if (res.parsed && Array.isArray(res.parsed.items)) {
+          const isExplicitClearInScoped = isScoped && res.parsed.items.length === 0;
+          if (res.parsed.items.length > 0 || isExplicitClearInScoped) {
+            const { groundAndNormalizeAiItems } = await import('@/lib/aiFoodGrounding');
+            const rawMapped = mapRawGeminiItems(
+              res.parsed.items as Record<string, unknown>[],
+              sourceType,
+              res.modelName || GEMINI_VISION_MODELS[0]
+            );
+            let normalizedTargets =
+              rawMapped.length > 0
+                ? await groundAndNormalizeAiItems(rawMapped, priorityCustomCatalog)
+                : [];
+
+            // הגנה מפני מצב ש-Gemini החזיר מנת אב עטופה גם כשנבחרו מרכיבים חלקיים מתוכה
+            if (
+              isScoped &&
+              scopedPayload?.selectionKind === 'partial-components' &&
+              scopedPayload.partialParentMap.length === 1 &&
+              normalizedTargets.length === 1 &&
+              Array.isArray(normalizedTargets[0].components) &&
+              normalizedTargets[0].components.length > 0
+            ) {
+              const pName = scopedPayload.partialParentMap[0].parentName.trim().toLowerCase();
+              if (normalizedTargets[0].name.trim().toLowerCase() === pName) {
+                const lockedNames = new Set(
+                  scopedPayload.partialParentMap[0].lockedComponentNames.map((s) =>
+                    s.split(' (')[0].trim().toLowerCase()
+                  )
+                );
+                normalizedTargets = normalizedTargets[0].components.filter(
+                  (c) => !lockedNames.has(c.name.trim().toLowerCase())
+                );
+              }
             }
+
+            const baseTimeByName = new Map<string, string>();
+            for (const bi of cleanBaseItems as LoggedFoodItem[]) {
+              const nt = normalizeHhMmTime(bi?.itemTime);
+              if (bi?.name && nt) {
+                baseTimeByName.set(bi.name.trim().toLowerCase(), nt);
+              }
+            }
+            const timedTargets = normalizedTargets.map((it) => {
+              if (it.itemTime) return it;
+              const prevTime = baseTimeByName.get(it.name.trim().toLowerCase());
+              return prevTime ? { ...it, itemTime: prevTime } : it;
+            });
+
+            const items = isScoped
+              ? mergeScopedAdjustmentResult({
+                  currentItems: cleanBaseItems,
+                  selectedTargetIds: cleanSelectedIds,
+                  adjustedItems: timedTargets.map((it) =>
+                    scopedPayload?.selectionKind === 'partial-components'
+                      ? stripNestedComponents(it)
+                      : it
+                  ),
+                })
+              : timedTargets;
+
+            const learnedRuleHint =
+              typeof res.parsed.learnedRuleHint === 'string' &&
+              res.parsed.learnedRuleHint.trim().length >= 4
+                ? sanitizeText(res.parsed.learnedRuleHint, 80)
+                : undefined;
+
+            const syncedJob = await syncAnalyzeResultToServer({
+              items,
+              engine: res.modelName,
+              isAiFallback: false,
+              replaceItems: true,
+            });
+            return NextResponse.json({
+              items,
+              summary:
+                sanitizeText(res.parsed.summary, 240) ||
+                'הארוחה עודכנה בהצלחה לפי בקשתך',
+              ...(learnedRuleHint ? { learnedRuleHint } : {}),
+              engine: res.modelName,
+              isAiFallback: false,
+              syncedJob,
+            });
           }
-          const items = groundedItems.map((it) => {
-            if (it.itemTime) return it;
-            const prevTime = baseTimeByName.get(it.name.trim().toLowerCase());
-            return prevTime ? { ...it, itemTime: prevTime } : it;
-          });
-          const syncedJob = await syncAnalyzeResultToServer({
-            items,
-            engine: res.modelName,
-            isAiFallback: false,
-            replaceItems: true,
-          });
-          return NextResponse.json({
-            items,
-            summary:
-              sanitizeText(res.parsed.summary, 240) ||
-              'הארוחה עודכנה בהצלחה לפי בקשתך',
-            engine: res.modelName,
-            isAiFallback: false,
-            syncedJob,
-          });
         }
         geminiErrorMsg = res.errorMsg || 'מודל Gemini לא החזיר תוצאה';
       }
@@ -1236,7 +1460,9 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
         ? 'לא הוגדר GEMINI_API_KEY בשרת'
         : geminiErrorMsg || 'מודל Gemini לא החזיר תוצאה';
 
-      const adjusted = adjustMealFallback(cleanBaseItems, cleanAdjustment).map(
+      const fallbackSource =
+        isScoped && scopedPayload ? scopedPayload.targetItems : cleanBaseItems;
+      const fallbackAdjustedTargets = adjustMealFallback(fallbackSource, cleanAdjustment).map(
         (it) => ({
           ...it,
           aiEngine: 'smart-hebrew-builtin',
@@ -1244,6 +1470,13 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
           fallbackReason,
         })
       );
+      const adjusted = isScoped
+        ? mergeScopedAdjustmentResult({
+            currentItems: cleanBaseItems,
+            selectedTargetIds: cleanSelectedIds,
+            adjustedItems: fallbackAdjustedTargets,
+          })
+        : fallbackAdjustedTargets;
 
       if (adjusted.length > 0) {
         const syncedJob = await syncAnalyzeResultToServer({
@@ -1302,13 +1535,39 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
   "summary": "תיאור קצר בעברית של מה שזוהה והערכת כמות",
   "items": [
     {
-      "name": "שם המאכל בעברית",
-      "unitLabel": "תיאור היחידה והמשקל, למשל: מנה (150 גרם)",
+      "name": "שם המנה או המאכל בעברית (למשל: מג׳דרה / שניצל מטוגן / קפה הפוך / בננה)",
+      "unitLabel": "תיאור היחידה והמשקל, למשל: מנה (250 גרם)",
       "quantity": 1,
-      "grams": 150,
-      "fromUserText": true,
-      "per100g": { "calories": 172, "protein": 25.8, "carbs": 1.1, "fat": 6.4 },
-      "macros": { "calories": 258, "protein": 38.7, "carbs": 1.7, "fat": 9.6 }
+      "grams": 250,
+      "fromUserText": false,
+      "inputConfidence": "visual-estimate",
+      "per100g": { "calories": 136, "protein": 4.8, "carbs": 18.2, "fat": 4.9 },
+      "macros": { "calories": 340, "protein": 12, "carbs": 45.5, "fat": 12.2 },
+      "components": [
+        {
+          "name": "אורז לבן מבושל",
+          "unitLabel": "120 גרם",
+          "quantity": 1,
+          "grams": 120,
+          "fromUserText": false,
+          "inputConfidence": "visual-estimate",
+          "componentRole": "ingredient",
+          "per100g": { "calories": 130, "protein": 2.7, "carbs": 28.2, "fat": 0.3 },
+          "macros": { "calories": 156, "protein": 3.2, "carbs": 33.8, "fat": 0.4 }
+        },
+        {
+          "name": "שמן טיגון / בישול",
+          "unitLabel": "10 גרם",
+          "quantity": 1,
+          "grams": 10,
+          "fromUserText": false,
+          "inputConfidence": "visual-estimate",
+          "componentRole": "cooking-oil",
+          "visualReason": "בצל מושחם והברקת טיגון — ניתן לערוך אם בושל ללא שמן",
+          "per100g": { "calories": 884, "protein": 0, "carbs": 0, "fat": 100 },
+          "macros": { "calories": 88, "protein": 0, "carbs": 0, "fat": 10 }
+        }
+      ]
     }
   ],
   "suggestedExtras": [
@@ -1318,6 +1577,7 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
       "quantity": 1,
       "grams": 100,
       "fromUserText": false,
+      "inputConfidence": "visual-estimate",
       "visualReason": "זוהה חזותית בצלחת לצד המנות שצוינו",
       "per100g": { "calories": 35, "protein": 1.2, "carbs": 6.5, "fat": 0.3 },
       "macros": { "calories": 35, "protein": 1.2, "carbs": 6.5, "fat": 0.3 }
@@ -1325,22 +1585,27 @@ ${contextBlock ? `\nנתוני הקשר של הארוחה:\n${contextBlock}` : '
   ]
 }
 
-היררכיית אמת ודיוק מחייבת (חובה לקיים בסדר הבא!):
-1. טקסט ומשקלים שכתב המתאמן גוברים על הראייה הממוחשבת (Text Overrides Pixels!):
-   - כל שם מאכל, שיטת הכנה (אפוי / צלוי / מבושל / מטוגן) ומשקל מפורש בגרם/יחידות שהמתאמן כתב הם **עובדה מוחלטת**.
-   - **לעולם אל תשנה גרמים** שדווחו מפורשות עבור פריט, **לעולם אל תשמיט פריט** שהמתאמן ציין, ו**לעולם אל תחליף פריט מדווח בפריט אחר** בגלל צבע/מראה דומה (למשל: "כבד אפוי" בצבע כהה הוא כבד אפוי — לעולם אל תחליף אותו ב"סלק" או תנחש שהוא משהו אחר!).
-   - אם המתאמן ציין פריט בשם בלבד *ללא משקל*, הערך את הגרמים שלו מהתמונה ומכלי ההגשה. אם ניתן משקל נטו כולל של המנה ("netFoodWeightGrams"), שמר גרמים מפורשים כפי שהם והתאם רק את הפריטים חסרי המשקל לסה"כ הנטו.
-2. מדיניות פריטים נוספים שלא הוזכרו בטקסט (strict vs hybrid):
+היררכיית אמת, פיצול מנות ודיוק מחייבת (חובה לקיים בסדר הבא!):
+1. **פיצול מנות מורכבות למרכיבים (\`components\`) — רמה 3 מקסימום:**
+   - כאשר המנה בצלחת היא **מנה מעורבת/מורכבת/מבושלת** (כגון מג׳דרה, שקשוקה, מוקפץ, פסטה ברוטב, שניצל מטוגן, סלט מתובל עם תוספות, כריך, קפה עם חלב) — החזר אותה כפריט אב אחד ב-"items" (למשל \`"מג׳דרה"\`) והכנס ל-\`"components"\` את המרכיבים השונים המרכיבים אותה (למשל אורז מבושל, עדשים ירוקות, בצל מטוגן, שמן בישול), כך שסכום המשקל והמאקרו של המרכיבים יהיה תואם לסך המנה.
+   - פריט פשוט, שלם או ארוז (בננה, ביצה קשה, גביע קוטג׳, תפוח, פיתה ריקה) נשאר פריט שטוח **ללא \`components\`**. אסור לקנן \`components\` בתוך \`components\`.
+2. **איחוד תבלינים ושקיפות שמן בישול vs רטבים:**
+   - תבלינים זניחים (מלח, פלפל, מעט עשבי תיבול) שסכומם המצטבר מתחת ל־**10 קק״ל** במנה — **אל תוסיף שורה עבורם**.
+   - אם סך התבלינים במנה הוא **10 קק״ל ומעלה** — אחד את כולם לשורת מרכיב **אחת בלבד** עם \`name: "תבלינים"\`, \`componentRole: "spice-group"\`, ורשימת השמות במערך \`"spiceDetails": ["פפריקה", "כמון", ...]\`.
+   - **שמן בישול / טיגון נפרד מרטבים:** במנות שרואים בהן טיגון, השחמה או בישול משומן (בצל מטוגן במג׳דרה, שניצל מטוגן פריך, חביתה, מוקפץ), הצג במפורש מרכיב \`componentRole: "cooking-oil"\` ו-\`inputConfidence: "visual-estimate"\` (כדי שהמשתמש יראה וידייק את הגרמים או ימחק אם אפוי/ספריי) — אלא אם צוין מפורשות \`ללא שמן בכלל\` / \`אפוי בתנור\`.
+3. טקסט ומשקלים שכתב המתאמן גוברים על הראייה הממוחשבת (Text Overrides Pixels!):
+   - כל שם מאכל, שיטת הכנה (אפוי / צלוי / מבושל / מטוגן) ומשקל מפורש בגרם/יחידות שהמתאמן כתב הם **עובדה מוחלטת** (\`fromUserText: true\`, \`inputConfidence: "reported"\`).
+   - **לעולם אל תשנה גרמים** שדווחו מפורשות עבור פריט, **לעולם אל תשמיט פריט** שהמתאמן ציין, ו**לעולם אל תחליף פריט מדווח בפריט אחר** בגלל צבע/מראה דומה.
+   - אם המתאמן ציין פריט בשם בלבד *ללא משקל*, הערך את הגרמים שלו מהתמונה ומכלי ההגשה. אם ניתן משקל נטו כולל של המנה ("netFoodWeightGrams"), שמור גרמים מפורשים כפי שהם והתאם רק את הפריטים חסרי המשקל לסה"כ הנטו.
+4. מדיניות פריטים נוספים שלא הוזכרו בטקסט (strict vs hybrid):
    - אם "strictUserList=true": המתאמן אישר כי פירט הכל. החזר ב-"items" **אך ורק** את הפריטים שצוינו בטקסט, והחזר "suggestedExtras": [] (מערך ריק).
-   - אם המתאמן כתב תיאור ארוחה חלקי (ללא strictUserList=true): הכנס ל-"items" את כל הפריטים שציין בטקסט במדויק ("fromUserText": true). אם אתה מזהה בתמונה *בביטחון גבוה* רכיב נפרד נוסף ש*אינו* אחד המרכיבים שהמתאמן כבר הזכיר (ושלא נחשב כשמן נסתר), הוסף אותו אך ורק ל-"suggestedExtras" עם הסבר קצר ב-"visualReason" — כדי שהמתאמן יאשר או יסיר אותו בלחיצה!
-   - אם המתאמן לא כתב תיאור רכיבים כלל (תמונה בלבד): הכנס את כל רכיבי המנה ל-"items" ואת "suggestedExtras": [].
-3. דיוק נפח וזוויות צילום (כשמצורפות תמונות):
-   - 2 תמונות (מלמעלה + ~45°): למעלה לשטח/קוטר ומהצד לגובה/עובי.
-   - קזז אפקט זווית וקח בחשבון כלי הגשה ו-Packing Fraction (עלים ~0.4, פסטה ~0.65, אורז ~0.85, בשר/מוצק ~0.95).
-   - שומנים נסתרים: אם המתאמן הזין ללא תוספת שמן/רטבים, אל תמציא שמן זית/טחינה.
-4. חישוב "per100g", נוזלים, אלכוהול ומצב הכנה מוכן לאכילה:
-   - עבור כל פריט, ציין ערכים ל-100 גרם לפי המנה *המוכנה* (אורז *מבושל* ~130 קק"ל ל-100g ולא יבש ~360 קק"ל; שניצל *אפוי* ~165 קק"ל ולא מטוגן ~225 קק"ל; כבד עוף *אפוי* ~172 קק"ל), וחשב "macros" כ-"per100g * (grams / 100)" בהתאמה לנתוני משרד הבריאות / מוצרים ישראליים.
-   - **נוזלים, מ״ל לעומת גרם ואלכוהול**: כשמתאמן מדווח משקל של משקה בגרמים (למשל "200 גרם כוס יין") מדובר במשקל הנוזל נטו לאחר איפוס הכוס (ביין/מים/בירה/חלב 1 מ״ל ≈ 1 גרם; בשמן ~0.92g/ml; בדבש/טחינה משקל בגרמים מדויק כמות שהוא). במשקאות אלכוהוליים (יין אדום חצי יבש ~85 קק"ל/100g, יין יבש ~83 קק"ל/100g, בירה ~43 קק"ל/100g), שמור את הקלוריות הכוללות גם של האלכוהול (~7 קק״ל לגרם אלכוהול) מעבר לפחמימות בלבד!`;
+   - אם המתאמן כתב תיאור ארוחה חלקי (ללא strictUserList=true): הכנס ל-"items" את כל הפריטים שציין בטקסט במדויק ("fromUserText": true). אם אתה מזהה בתמונה *בביטחון גבוה* רכיב נפרד נוסף ש*אינו* אחד המרכיבים שהמתאמן כבר הזכיר (ושלא נחשב כשמן טיגון של מנה קיימת), הוסף אותו אך ורק ל-"suggestedExtras" עם הסבר קצר ב-"visualReason".
+   - אם המתאמן לא כתב תיאור רכיבים כלל (תמונה בלבד): הכנס את כל המנות והמרכיבים ל-"items" ואת "suggestedExtras": [].
+5. דיוק נפח וזוויות צילום (כשמצורפות תמונות):
+   - 2 תמונות (מלמעלה + ~45°): למעלה לשטח/קוטר ומהצד לגובה/עובי; קזז אפקט זווית וקח בחשבון Packing Fraction.
+6. חישוב "per100g", נוזלים, אלכוהול ומצב הכנה מוכן לאכילה:
+   - עבור כל פריט/מרכיב, ציין ערכים ל-100 גרם לפי מצב ההכנה *המוכן* (אורז *מבושל* ~130 קק"ל ל-100g ולא יבש ~360 קק"ל; שניצל *אפוי* ~165 קק"ל ולא מטוגן ~225 קק"ל), וחשב "macros" כ-"per100g * (grams / 100)" בהתאמה לנתוני משרד הבריאות / מוצרים ישראליים.
+   - במשקאות אלכוהוליים (יין ~83-85 קק"ל/100g, בירה ~43 קק"ל/100g), שמור את הקלוריות הכוללות גם של האלכוהול (~7 קק"ל/גרם אלכוהול).`;
 
       const parts: GeminiPart[] = [{ text: systemInstruction }];
 

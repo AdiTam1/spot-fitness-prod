@@ -12,7 +12,7 @@ interface QuickChipsAdminPanelProps {
   groupId?: string;
   chips: QuickContextChip[];
   onManageQuickChips?: (payload: {
-    scope: 'user' | 'group' | 'global';
+    scope: 'user' | 'group' | 'coach-trainees' | 'global';
     op: 'touch' | 'upsert' | 'delete' | 'replace';
     traineeId?: string;
     groupId?: string;
@@ -23,7 +23,8 @@ interface QuickChipsAdminPanelProps {
 }
 
 const CHIP_CAT_OPTIONS: { value: QuickChipCategory; label: string }[] = [
-  { value: 'sauce', label: 'רוטב / שמן' },
+  { value: 'oil', label: 'שמן / טיגון' },
+  { value: 'sauce', label: 'רוטב' },
   { value: 'prep', label: 'הכנה / בישול' },
   { value: 'portion', label: 'כמות / גודל מנה' },
   { value: 'drink', label: 'שתייה / צד' },

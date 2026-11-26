@@ -54,6 +54,7 @@ import {
   type CoachMealPushDispatchItem,
 } from '@/lib/traineeMealPushNotifier';
 import { DEFAULT_TEMPLATES, getTodayIso } from '@/data/israeliFoodCatalog';
+import { recalculateParentDish } from '@/lib/compositeDishes';
 import { sanitizeMetricsScheduleConfig } from '@/lib/dateUtils';
 import { normalizePendingAiJobs } from '@/lib/aiJobs';
 import { diagnoseSupabaseError } from '@/lib/supabase';
@@ -176,6 +177,7 @@ function mergeLogsPreservingPendingAi(
 }
 
 const ALLOWED_CHIP_CATEGORIES = new Set<QuickChipCategory>([
+  'oil',
   'sauce',
   'prep',
   'portion',
@@ -318,7 +320,7 @@ function sanitizeActiveDateRange(raw: unknown): TraineeActiveDateRange | undefin
 
 function sanitizeQuickChips(
   raw: unknown,
-  scope: 'user' | 'group' | 'global',
+  scope: 'user' | 'group' | 'coach' | 'global',
   maxCount: number,
   groupId?: string
 ): QuickContextChip[] {
@@ -332,13 +334,23 @@ function sanitizeQuickChips(
       const category = ALLOWED_CHIP_CATEGORIES.has(obj.category as QuickChipCategory)
         ? (obj.category as QuickChipCategory)
         : 'prep';
+      const dropdownKind =
+        obj.dropdownKind === 'oil' ||
+        obj.dropdownKind === 'sauce' ||
+        obj.dropdownKind === 'portion'
+          ? obj.dropdownKind
+          : undefined;
       return {
         id: sanitizeText(obj.id, 60) || generateSecureId('chip'),
         label,
         category,
-        scope,
+        scope: obj.scope === 'coach' && scope === 'user' ? 'coach' : scope,
         groupId: scope === 'group' ? groupId || obj.groupId : undefined,
         createdBy: obj.createdBy ? sanitizeText(obj.createdBy, 60) : undefined,
+        ...(dropdownKind ? { dropdownKind } : {}),
+        ...(typeof obj.priorityOrder === 'number'
+          ? { priorityOrder: obj.priorityOrder }
+          : {}),
         lastUsedAt: obj.lastUsedAt || new Date().toISOString(),
         useCount: sanitizeNumber(obj.useCount, 0, 100000, 1),
       } as QuickContextChip;
@@ -350,57 +362,119 @@ function sanitizeQuickChips(
   );
 }
 
+function sanitizeSingleLoggedItem(
+  item: unknown,
+  allowComponents: boolean
+): LoggedFoodItem {
+  const obj = (item || {}) as Partial<LoggedFoodItem>;
+  const rawGrams = Number(obj.grams);
+  const grams =
+    Number.isFinite(rawGrams) && rawGrams > 0
+      ? Math.min(10000, Math.max(0.1, Math.round(rawGrams * 10) / 10))
+      : 100;
+  const rawPer100 = obj.per100g;
+  const sanitizedPer100g =
+    rawPer100 &&
+    typeof rawPer100 === 'object' &&
+    Number.isFinite(Number(rawPer100.calories))
+      ? {
+          calories: Math.round(sanitizeNumber(rawPer100.calories, 0, 950, 0)),
+          protein:
+            Math.round(sanitizeNumber(rawPer100.protein, 0, 100, 0) * 100) /
+            100,
+          carbs:
+            Math.round(sanitizeNumber(rawPer100.carbs, 0, 100, 0) * 100) / 100,
+          fat: Math.round(sanitizeNumber(rawPer100.fat, 0, 100, 0) * 100) / 100,
+        }
+      : undefined;
+
+  const componentRole =
+    obj.componentRole === 'ingredient' ||
+    obj.componentRole === 'cooking-oil' ||
+    obj.componentRole === 'spice-group' ||
+    obj.componentRole === 'sauce'
+      ? obj.componentRole
+      : undefined;
+
+  const inputConfidence =
+    obj.inputConfidence === 'reported' ||
+    obj.inputConfidence === 'visual-estimate' ||
+    obj.inputConfidence === 'catalog'
+      ? obj.inputConfidence
+      : undefined;
+
+  const spiceDetails = Array.isArray(obj.spiceDetails)
+    ? obj.spiceDetails
+        .map((s) => sanitizeText(s, 36))
+        .filter(Boolean)
+        .slice(0, 15)
+    : undefined;
+
+  const sanitizedComponents =
+    allowComponents && Array.isArray(obj.components) && obj.components.length > 0
+      ? obj.components
+          .slice(0, 30)
+          .map((comp) => sanitizeSingleLoggedItem(comp, false))
+      : undefined;
+
+  const baseItem: LoggedFoodItem = {
+    id: sanitizeText(obj.id, 60) || generateSecureId('food'),
+    name: sanitizeText(obj.name, 90) || 'פריט מזון',
+    unitLabel: sanitizeText(obj.unitLabel, 60) || 'גרם',
+    quantity: sanitizeNumber(obj.quantity, 0.05, 500, 1),
+    grams,
+    ...(sanitizedPer100g ? { per100g: sanitizedPer100g } : {}),
+    ...(normalizeHhMmTime(obj.itemTime)
+      ? { itemTime: normalizeHhMmTime(obj.itemTime) }
+      : {}),
+    macros: {
+      calories: sanitizeNumber(obj.macros?.calories, 0, 25000, 0),
+      protein: sanitizeNumber(obj.macros?.protein, 0, 2000, 0),
+      carbs: sanitizeNumber(obj.macros?.carbs, 0, 2000, 0),
+      fat: sanitizeNumber(obj.macros?.fat, 0, 2000, 0),
+    },
+    source:
+      obj.source === 'ai-photo' ||
+      obj.source === 'ai-text' ||
+      obj.source === 'catalog' ||
+      obj.source === 'barcode' ||
+      obj.source === 'manual'
+        ? obj.source
+        : 'manual',
+    aiEngine: obj.aiEngine ? sanitizeText(obj.aiEngine, 60) : undefined,
+    isAiFallback: obj.isAiFallback !== undefined ? Boolean(obj.isAiFallback) : undefined,
+    fallbackReason: obj.fallbackReason
+      ? sanitizeText(obj.fallbackReason, 160)
+      : undefined,
+    ...(obj.fromUserText !== undefined
+      ? { fromUserText: Boolean(obj.fromUserText) }
+      : {}),
+    ...(obj.matchedCatalogId
+      ? { matchedCatalogId: sanitizeText(obj.matchedCatalogId, 60) }
+      : {}),
+    ...(obj.visualReason
+      ? { visualReason: sanitizeText(obj.visualReason, 160) }
+      : {}),
+    ...(componentRole ? { componentRole } : {}),
+    ...(spiceDetails && spiceDetails.length > 0 ? { spiceDetails } : {}),
+    ...(inputConfidence ? { inputConfidence } : {}),
+    ...(obj.sourcePresetId
+      ? { sourcePresetId: sanitizeText(obj.sourcePresetId, 60) }
+      : {}),
+    ...(obj.recipeYieldGrams !== undefined && Number(obj.recipeYieldGrams) > 0
+      ? { recipeYieldGrams: sanitizeNumber(obj.recipeYieldGrams, 1, 20000, 0) }
+      : {}),
+    ...(sanitizedComponents ? { components: sanitizedComponents } : {}),
+  };
+
+  return sanitizedComponents && sanitizedComponents.length > 0
+    ? recalculateParentDish(baseItem)
+    : baseItem;
+}
+
 function sanitizeLoggedItems(raw: unknown): LoggedFoodItem[] {
   if (!Array.isArray(raw)) return [];
-  return raw.slice(0, 35).map((item) => {
-    const obj = (item || {}) as Partial<LoggedFoodItem>;
-    const grams = sanitizeNumber(obj.grams, 1, 5000, 100);
-    const rawPer100 = obj.per100g;
-    const sanitizedPer100g =
-      rawPer100 &&
-      typeof rawPer100 === 'object' &&
-      Number.isFinite(Number(rawPer100.calories))
-        ? {
-            calories: Math.round(sanitizeNumber(rawPer100.calories, 0, 950, 0)),
-            protein:
-              Math.round(sanitizeNumber(rawPer100.protein, 0, 100, 0) * 100) /
-              100,
-            carbs:
-              Math.round(sanitizeNumber(rawPer100.carbs, 0, 100, 0) * 100) / 100,
-            fat: Math.round(sanitizeNumber(rawPer100.fat, 0, 100, 0) * 100) / 100,
-          }
-        : undefined;
-    return {
-      id: sanitizeText(obj.id, 60) || generateSecureId('food'),
-      name: sanitizeText(obj.name, 90) || 'פריט מזון',
-      unitLabel: sanitizeText(obj.unitLabel, 40) || 'גרם',
-      quantity: sanitizeNumber(obj.quantity, 0.05, 500, 1),
-      grams,
-      ...(sanitizedPer100g ? { per100g: sanitizedPer100g } : {}),
-      ...(normalizeHhMmTime(obj.itemTime)
-        ? { itemTime: normalizeHhMmTime(obj.itemTime) }
-        : {}),
-      macros: {
-        calories: sanitizeNumber(obj.macros?.calories, 0, 10000, 0),
-        protein: sanitizeNumber(obj.macros?.protein, 0, 1000, 0),
-        carbs: sanitizeNumber(obj.macros?.carbs, 0, 1000, 0),
-        fat: sanitizeNumber(obj.macros?.fat, 0, 1000, 0),
-      },
-      source:
-        obj.source === 'ai-photo' ||
-        obj.source === 'ai-text' ||
-        obj.source === 'catalog' ||
-        obj.source === 'barcode' ||
-        obj.source === 'manual'
-          ? obj.source
-          : 'manual',
-      aiEngine: obj.aiEngine ? sanitizeText(obj.aiEngine, 60) : undefined,
-      isAiFallback: obj.isAiFallback !== undefined ? Boolean(obj.isAiFallback) : undefined,
-      fallbackReason: obj.fallbackReason
-        ? sanitizeText(obj.fallbackReason, 160)
-        : undefined,
-    };
-  });
+  return raw.slice(0, 35).map((item) => sanitizeSingleLoggedItem(item, true));
 }
 
 function buildSanitizedSavedPreset(
@@ -441,6 +515,14 @@ function buildSanitizedSavedPreset(
     mealSlotId: raw.mealSlotId
       ? sanitizeText(raw.mealSlotId, 50)
       : existing?.mealSlotId,
+    presetKind:
+      raw.presetKind === 'dish' || raw.presetKind === 'meal'
+        ? raw.presetKind
+        : existing?.presetKind,
+    recipeYieldGrams:
+      raw.recipeYieldGrams !== undefined && Number(raw.recipeYieldGrams) > 0
+        ? sanitizeNumber(raw.recipeYieldGrams, 1, 20000, 0)
+        : existing?.recipeYieldGrams,
     items,
     totalCalories: Math.round(totals.calories),
     totalProtein: Math.round(totals.protein * 10) / 10,
@@ -723,7 +805,11 @@ async function handleDataPost(
     }
 
     if (action === 'manage-quick-chips') {
-      const scope = String(body.scope || 'user') as 'user' | 'group' | 'global';
+      const scope = String(body.scope || 'user') as
+        | 'user'
+        | 'group'
+        | 'coach-trainees'
+        | 'global';
       const op = String(body.op || 'touch') as 'touch' | 'upsert' | 'delete' | 'replace';
       const state = await getServerDbState();
 
@@ -751,6 +837,12 @@ async function handleDataPost(
           )
             ? (chipInput.category as QuickChipCategory)
             : 'prep';
+          const dropdownKind =
+            chipInput.dropdownKind === 'oil' ||
+            chipInput.dropdownKind === 'sauce' ||
+            chipInput.dropdownKind === 'portion'
+              ? chipInput.dropdownKind
+              : undefined;
           const existingIdx = nextGlobal.findIndex(
             (c) => c.id === chipInput.id || (c.label === label && c.category === category)
           );
@@ -760,6 +852,7 @@ async function handleDataPost(
               ...nextGlobal[existingIdx],
               label,
               category,
+              ...(dropdownKind ? { dropdownKind } : {}),
               lastUsedAt: nowIso,
               useCount: (nextGlobal[existingIdx].useCount || 0) + 1,
             };
@@ -770,6 +863,7 @@ async function handleDataPost(
               category,
               scope: 'global',
               createdBy: session.name,
+              ...(dropdownKind ? { dropdownKind } : {}),
               lastUsedAt: nowIso,
               useCount: 1,
             });
@@ -846,6 +940,106 @@ async function handleDataPost(
         return NextResponse.json({ ok: true, groupId, customQuickChips: nextGroupChips });
       }
 
+      if (scope === 'coach-trainees') {
+        if (session.role === 'trainee') {
+          return NextResponse.json(
+            { error: 'רק מאמן או מנהל רשאים לשתף תגים עם מתאמנים' },
+            { status: 403 }
+          );
+        }
+        const chipInput = (body.chip || {}) as Partial<QuickContextChip>;
+        const label = sanitizeText(chipInput.label, 50);
+        if (!label) {
+          return NextResponse.json({ error: 'חסר טקסט לצ׳יפ' }, { status: 400 });
+        }
+        const category = ALLOWED_CHIP_CATEGORIES.has(
+          chipInput.category as QuickChipCategory
+        )
+          ? (chipInput.category as QuickChipCategory)
+          : 'prep';
+        const dropdownKind =
+          chipInput.dropdownKind === 'oil' ||
+          chipInput.dropdownKind === 'sauce' ||
+          chipInput.dropdownKind === 'portion'
+            ? chipInput.dropdownKind
+            : undefined;
+        const nowIso = new Date().toISOString();
+
+        const ownedGroups = state.groups.filter((g) => canCoachManageGroup(session, g));
+        const accessibleTrainees = state.trainees.filter((t) =>
+          canCoachAccessTrainee(session, t)
+        );
+        const ownedGroupIds = new Set(ownedGroups.map((g) => g.id));
+        const accessibleTraineeIds = new Set(accessibleTrainees.map((t) => t.id));
+
+        const upsertIntoList = (
+          existingList: QuickContextChip[],
+          chipScope: QuickContextChip['scope'],
+          prefix: string,
+          groupId?: string
+        ): QuickContextChip[] => {
+          const list = [...(existingList || [])];
+          const idx = list.findIndex((c) => c.label === label && c.category === category);
+          if (idx >= 0) {
+            list[idx] = {
+              ...list[idx],
+              ...(dropdownKind ? { dropdownKind } : {}),
+              lastUsedAt: nowIso,
+              useCount: (list[idx].useCount || 0) + 1,
+            };
+          } else {
+            list.unshift({
+              id: generateSecureId(prefix),
+              label,
+              category,
+              scope: chipScope,
+              ...(groupId ? { groupId } : {}),
+              createdBy: session.name,
+              ...(dropdownKind ? { dropdownKind } : {}),
+              lastUsedAt: nowIso,
+              useCount: 1,
+            });
+          }
+          return list.slice(0, 60);
+        };
+
+        const nextState = await updateServerDbState((prev) => ({
+          ...prev,
+          groups: prev.groups.map((g) =>
+            ownedGroupIds.has(g.id)
+              ? {
+                  ...g,
+                  customQuickChips: upsertIntoList(
+                    g.customQuickChips || [],
+                    'group',
+                    'grpchip',
+                    g.id
+                  ),
+                }
+              : g
+          ),
+          trainees: prev.trainees.map((t) =>
+            accessibleTraineeIds.has(t.id)
+              ? {
+                  ...t,
+                  recentContextChips: upsertIntoList(
+                    t.recentContextChips || [],
+                    'coach',
+                    'cchip'
+                  ),
+                }
+              : t
+          ),
+        }));
+
+        return NextResponse.json({
+          ok: true,
+          scope: 'coach-trainees',
+          updatedGroups: nextState.groups.filter((g) => ownedGroupIds.has(g.id)),
+          updatedTraineesCount: accessibleTraineeIds.size,
+        });
+      }
+
       // scope === 'user': צ'יפים מהירים פר-משתמש מסודרים לפי MRU
       const targetId =
         session.role === 'trainee' ? session.id : String(body.traineeId || '');
@@ -881,12 +1075,19 @@ async function handleDataPost(
           const category = ALLOWED_CHIP_CATEGORIES.has(rawC.category as QuickChipCategory)
             ? (rawC.category as QuickChipCategory)
             : 'prep';
+          const dropdownKind =
+            rawC.dropdownKind === 'oil' ||
+            rawC.dropdownKind === 'sauce' ||
+            rawC.dropdownKind === 'portion'
+              ? rawC.dropdownKind
+              : undefined;
           const idx = nextUserChips.findIndex(
             (c) => c.label === label && c.category === category
           );
           if (idx >= 0) {
             nextUserChips[idx] = {
               ...nextUserChips[idx],
+              ...(dropdownKind ? { dropdownKind } : {}),
               lastUsedAt: nowIso,
               useCount: (nextUserChips[idx].useCount || 0) + 1,
             };
@@ -897,6 +1098,7 @@ async function handleDataPost(
               category,
               scope: 'user',
               createdBy: session.name,
+              ...(dropdownKind ? { dropdownKind } : {}),
               lastUsedAt: nowIso,
               useCount: 1,
             });

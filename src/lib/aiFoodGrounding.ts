@@ -11,6 +11,12 @@ import {
   getOrCreateQueryEmbeddingText,
   searchFoodCatalogSql,
 } from '@/lib/supabase';
+import {
+  clampGrams,
+  hasCompositeComponents,
+  recalculateParentDish,
+  stripNestedComponents,
+} from '@/lib/compositeDishes';
 import { FoodCatalogItem, LoggedFoodItem, MacroTargets } from '@/types/nutrition';
 
 const PREP_GROUPS: Record<string, string[]> = {
@@ -217,7 +223,7 @@ function sanitizePer100g(raw?: MacroTargets): MacroTargets | undefined {
 }
 
 function derivePer100gFromMacros(macros: MacroTargets, grams: number): MacroTargets {
-  const safeGrams = grams > 0 ? grams : 100;
+  const safeGrams = grams >= 0.1 ? grams : 100;
   const factor = 100 / safeGrams;
   return {
     calories: Math.min(950, Math.round(Math.max(0, macros.calories) * factor)),
@@ -299,10 +305,82 @@ async function querySupabaseCatalogWithTimeout(
   }
 }
 
+async function groundSingleFlatItem(
+  item: LoggedFoodItem,
+  priorityCatalog: FoodCatalogItem[] | undefined,
+  semanticEnabled: boolean
+): Promise<LoggedFoodItem> {
+  const grams = clampGrams(item.grams, 100);
+  const validAiPer100g =
+    sanitizePer100g(item.per100g) || derivePer100gFromMacros(item.macros, grams);
+
+  // תבלינים מאוחדים שומרים על חישוב המודל ופירוט השמות בלי שיחליפו אותם בתבלין בודד מהמאגר
+  if (item.componentRole === 'spice-group') {
+    return {
+      ...item,
+      grams,
+      per100g: validAiPer100g,
+      macros: calculateMacrosForGrams(validAiPer100g, grams),
+    };
+  }
+
+  let matched =
+    Array.isArray(priorityCatalog) && priorityCatalog.length > 0
+      ? findBestCandidate(
+          item.name,
+          priorityCatalog,
+          validAiPer100g,
+          true,
+          semanticEnabled,
+          false
+        )
+      : undefined;
+
+  if (!matched) {
+    matched = findBestCandidate(
+      item.name,
+      ISRAELI_FOOD_CATALOG,
+      validAiPer100g,
+      false,
+      semanticEnabled,
+      false
+    );
+  }
+
+  if (!matched) {
+    const dbLookup = await querySupabaseCatalogWithTimeout(
+      item.name,
+      semanticEnabled
+    );
+    if (dbLookup.items.length > 0) {
+      matched = findBestCandidate(
+        item.name,
+        dbLookup.items,
+        validAiPer100g,
+        false,
+        semanticEnabled,
+        dbLookup.usedSemanticRrf
+      );
+    }
+  }
+
+  const resolvedPer100g = matched
+    ? sanitizePer100g(matched.per100g) || validAiPer100g
+    : validAiPer100g;
+
+  return {
+    ...item,
+    grams,
+    per100g: resolvedPer100g,
+    macros: calculateMacrosForGrams(resolvedPer100g, grams),
+    matchedCatalogId: matched?.id ?? item.matchedCatalogId,
+  };
+}
+
 /**
  * Split-Brain DB Grounding & Deterministic Macro Scaler:
- * נועל שמות ומצבי הכנה תואמים למאגר הישראלי המאומת (כאשר יש התאמה בביטחון גבוה)
- * ומחשב את הקלוריות והמאקרו דטרמיניסטית מתוך (grams / 100) * per100g כדי לבטל טעויות חשבון.
+ * נועל שמות ומצבי הכנה תואמים למאגר הישראלי המאומת (כאשר יש התאמה בביטחון גבוה),
+ * עובר גם על רכיבי משנה של מנות מורכבות ומחשב את המנה הכוללת דטרמיניסטית מסך המרכיבים.
  */
 export async function groundAndNormalizeAiItems(
   items: LoggedFoodItem[],
@@ -313,61 +391,22 @@ export async function groundAndNormalizeAiItems(
 
   return Promise.all(
     items.map(async (item) => {
-      const grams = item.grams > 0 ? item.grams : 100;
-      const validAiPer100g =
-        sanitizePer100g(item.per100g) || derivePer100gFromMacros(item.macros, grams);
-
-      let matched =
-        Array.isArray(priorityCatalog) && priorityCatalog.length > 0
-          ? findBestCandidate(
-              item.name,
+      if (hasCompositeComponents(item)) {
+        const groundedChildren = await Promise.all(
+          item.components!.map((comp) =>
+            groundSingleFlatItem(
+              stripNestedComponents(comp),
               priorityCatalog,
-              validAiPer100g,
-              true,
-              semanticEnabled,
-              false
+              semanticEnabled
             )
-          : undefined;
-
-      if (!matched) {
-        matched = findBestCandidate(
-          item.name,
-          ISRAELI_FOOD_CATALOG,
-          validAiPer100g,
-          false,
-          semanticEnabled,
-          false
+          )
         );
+        return recalculateParentDish({
+          ...item,
+          components: groundedChildren,
+        });
       }
-
-      if (!matched) {
-        const dbLookup = await querySupabaseCatalogWithTimeout(
-          item.name,
-          semanticEnabled
-        );
-        if (dbLookup.items.length > 0) {
-          matched = findBestCandidate(
-            item.name,
-            dbLookup.items,
-            validAiPer100g,
-            false,
-            semanticEnabled,
-            dbLookup.usedSemanticRrf
-          );
-        }
-      }
-
-      const resolvedPer100g = matched
-        ? sanitizePer100g(matched.per100g) || validAiPer100g
-        : validAiPer100g;
-
-      return {
-        ...item,
-        grams,
-        per100g: resolvedPer100g,
-        macros: calculateMacrosForGrams(resolvedPer100g, grams),
-        matchedCatalogId: matched?.id ?? item.matchedCatalogId,
-      };
+      return groundSingleFlatItem(item, priorityCatalog, semanticEnabled);
     })
   );
 }

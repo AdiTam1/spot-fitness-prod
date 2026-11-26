@@ -43,6 +43,8 @@ import {
   Ruler,
   History,
   RefreshCw,
+  Layers,
+  CheckSquare,
 } from 'lucide-react';
 import {
   AiContextParams,
@@ -115,7 +117,16 @@ import { ItemTimePill } from './ui/ItemTimePill';
 import { SegmentedPill } from './ui/SegmentedPill';
 import { SavedMealsLibraryTab } from './SavedMealsLibraryTab';
 import { AiQuickContextPanel } from './AiQuickContextPanel';
+import { CompositeDishRow, type ItemFieldDraft } from './CompositeDishRow';
 import { useAiProgressMessage } from './BackgroundAiSyncBanner';
+import {
+  cloneFoodItemWithFreshIds,
+  groupItemsAsCompositeDish,
+  hasCompositeComponents,
+  recalculateParentDish,
+  removeSelectedFromItems,
+  stripNestedComponents,
+} from '@/lib/compositeDishes';
 import {
   startUnifiedVoiceCapture,
   VoiceCaptureController,
@@ -192,7 +203,7 @@ interface AddMealDrawerProps {
     customFoodUnits?: TraineeCustomUnit[];
   }) => Promise<{ error?: string }>;
   onManageQuickChips?: (payload: {
-    scope: 'user' | 'group' | 'global';
+    scope: 'user' | 'group' | 'coach-trainees' | 'global';
     op: 'touch' | 'upsert' | 'delete' | 'replace';
     traineeId?: string;
     groupId?: string;
@@ -217,6 +228,8 @@ interface AddMealDrawerProps {
     imageDataUrls?: string[];
     textPrompt?: string;
     baseItems?: LoggedFoodItem[];
+    selectedTargetIds?: string[];
+    correctionHistory?: { beforeNames?: string[]; prompt: string; at?: string }[];
     adjustmentPrompt?: string;
     contextParams?: AiContextParams;
   }) => Promise<{ jobId: string }>;
@@ -294,7 +307,18 @@ export function AddMealDrawer({
   const [correctionVoiceState, setCorrectionVoiceState] = useState<VoiceCaptureState>('idle');
   const [suggestedExtras, setSuggestedExtras] = useState<LoggedFoodItem[]>([]);
   const [preCorrectionItems, setPreCorrectionItems] = useState<LoggedFoodItem[] | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [groupModalOpen, setGroupModalOpen] = useState(false);
+  const [groupDishTitle, setGroupDishTitle] = useState('');
+  const [correctionHistory, setCorrectionHistory] = useState<
+    { beforeNames?: string[]; prompt: string; at?: string }[]
+  >([]);
+  const [learnedRuleHint, setLearnedRuleHint] = useState<string | null>(null);
+  const [savingRuleHint, setSavingRuleHint] = useState(false);
+  const [targetDishIdForAdd, setTargetDishIdForAdd] = useState<string | null>(null);
   const [saveAsPreset, setSaveAsPreset] = useState(false);
+  const [savePresetAsSingleDish, setSavePresetAsSingleDish] = useState(false);
   const [presetTitleInput, setPresetTitleInput] = useState('');
   const [voiceState, setVoiceState] = useState<VoiceCaptureState>('idle');
   const [aiLoading, setAiLoading] = useState(false);
@@ -506,6 +530,13 @@ export function AddMealDrawer({
         );
         setPreCorrectionItems(null);
         setCorrectionError(null);
+        setSelectionMode(false);
+        setSelectedIds(new Set());
+        setGroupModalOpen(false);
+        setGroupDishTitle('');
+        setCorrectionHistory([]);
+        setLearnedRuleHint(null);
+        setTargetDishIdForAdd(null);
         stopCorrectionVoice(false);
         setPhotoDataUrl(entryPhotos[0] || existingEntry?.photoDataUrl);
         setPhotoItems(
@@ -522,6 +553,7 @@ export function AddMealDrawer({
         setFreeTextPrompt('');
         setContextParams({ customUnits: customFoodUnits });
         setSaveAsPreset(false);
+        setSavePresetAsSingleDish(false);
         setPresetTitleInput('');
         setSearchQuery('');
         setSourceGroup('all');
@@ -1298,7 +1330,7 @@ export function AddMealDrawer({
     if (parsedGrams === undefined || parsedGrams <= 0) {
       return false;
     }
-    const totalGrams = Math.max(1, parsedGrams);
+    const totalGrams = Math.max(0.1, Math.round(parsedGrams * 10) / 10);
     const parsedQuantity = parseOptionalDecimal(quantity);
     const safeQuantity =
       selectedUnitLabel === 'custom-grams'
@@ -1331,6 +1363,7 @@ export function AddMealDrawer({
       ...(normalizedItemTime ? { itemTime: normalizedItemTime } : {}),
       macros: calculatedMacros,
       source: sourceOverride,
+      inputConfidence: 'catalog',
     };
 
     trackFoodInteraction(
@@ -1339,7 +1372,7 @@ export function AddMealDrawer({
       selectedUnitLabel === 'custom-grams' ? `${totalGrams} גרם` : selectedUnitLabel,
       totalGrams
     );
-    setItems((prev) => [...prev, newItem]);
+    appendItemsSmart([newItem]);
     return true;
   };
 
@@ -1526,7 +1559,7 @@ export function AddMealDrawer({
         return;
       }
       if (Array.isArray(data.items) && data.items.length > 0) {
-        setItems((prev) => [...prev, ...data.items]);
+        appendItemsSmart(data.items);
         if (Array.isArray(data.suggestedExtras) && data.suggestedExtras.length > 0) {
           setSuggestedExtras((prev) => [...prev, ...data.suggestedExtras]);
         }
@@ -1712,124 +1745,192 @@ export function AddMealDrawer({
     }
   };
 
-  const rescaleLoggedItemForGrams = (
-    item: LoggedFoodItem,
-    safeGrams: number,
-    base: { grams: number; macros: { calories: number; protein: number; carbs: number; fat: number } }
-  ): LoggedFoodItem => {
-    const nextMacros = item.per100g
-      ? calculateMacrosForGrams(item.per100g, safeGrams)
-      : (() => {
-          const ratio = safeGrams / Math.max(1, base.grams);
-          return {
-            calories: Math.round(base.macros.calories * ratio),
-            protein: Math.round(base.macros.protein * ratio * 10) / 10,
-            carbs: Math.round(base.macros.carbs * ratio * 10) / 10,
-            fat: Math.round(base.macros.fat * ratio * 10) / 10,
-          };
-        })();
-    return {
-      ...item,
-      grams: safeGrams,
-      unitLabel: `${safeGrams} גרם`,
-      macros: nextMacros,
-    };
-  };
-
-  const ensureItemScaleBase = (item: LoggedFoodItem) => {
-    if (!itemScaleBaseRef.current[item.id]) {
-      itemScaleBaseRef.current[item.id] = {
-        grams: Math.max(1, item.grams),
-        macros: { ...item.macros },
-      };
+  const appendItemsSmart = (newItems: LoggedFoodItem[]) => {
+    if (newItems.length === 0) return;
+    if (targetDishIdForAdd) {
+      const additions = newItems.flatMap((it) =>
+        hasCompositeComponents(it)
+          ? it.components!.map(stripNestedComponents)
+          : [stripNestedComponents(it)]
+      );
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === targetDishIdForAdd
+            ? recalculateParentDish({
+                ...it,
+                components: [...(it.components || []), ...additions],
+              })
+            : it
+        )
+      );
+      setEditingItemId(targetDishIdForAdd);
+      setTargetDishIdForAdd(null);
+      setAiSummary({ msg: `נוספו ${additions.length} מרכיבים לתוך המנה` });
+      return;
     }
-    return itemScaleBaseRef.current[item.id];
+    setItems((prev) => [...prev, ...newItems]);
   };
 
-  const updateLoggedItemGrams = (id: string, newGrams: number) => {
-    const safeGrams = Math.max(1, Math.min(5000, newGrams));
-    setItems((prev) =>
-      prev.map((item) => {
-        if (item.id !== id) return item;
-        const base = ensureItemScaleBase(item);
-        return rescaleLoggedItemForGrams(item, safeGrams, base);
-      })
-    );
-    setItemFieldDrafts((prev) => {
-      if (!prev[id]) return prev;
-      const next = { ...prev };
-      delete next[id];
+  const updateLoggedItemFull = (nextItem: LoggedFoodItem) => {
+    setItems((prev) => prev.map((it) => (it.id === nextItem.id ? nextItem : it)));
+  };
+
+  const handleToggleSelectTop = (item: LoggedFoodItem) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (hasCompositeComponents(item)) {
+        const compIds = item.components!.map((c) => c.id);
+        const allSelected =
+          next.has(item.id) ||
+          (compIds.length > 0 && compIds.every((id) => next.has(id)));
+        if (allSelected) {
+          next.delete(item.id);
+          for (const id of compIds) next.delete(id);
+        } else {
+          next.add(item.id);
+          for (const id of compIds) next.add(id);
+        }
+      } else {
+        if (next.has(item.id)) next.delete(item.id);
+        else next.add(item.id);
+      }
       return next;
     });
   };
 
-  const handleLoggedItemGramsInputChange = (
-    item: LoggedFoodItem,
-    val: string | number
+  const handleToggleSelectComponent = (
+    parent: LoggedFoodItem,
+    comp: LoggedFoodItem
   ) => {
-    const base = ensureItemScaleBase(item);
-    setItemFieldDrafts((prev) => ({
-      ...prev,
-      [item.id]: { grams: val },
-    }));
-    const parsed = parseOptionalDecimal(val);
-    if (parsed !== undefined && parsed > 0) {
-      const safeGrams = Math.max(1, Math.min(5000, Math.round(parsed * 10) / 10));
-      setItems((prev) =>
-        prev.map((it) =>
-          it.id === item.id ? rescaleLoggedItemForGrams(it, safeGrams, base) : it
-        )
-      );
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const compIds = parent.components?.map((c) => c.id) || [];
+      if (next.has(parent.id)) {
+        // הפיכה לבחירה חלקית: כל שאר המרכיבים נשארים, והמרכיב הזה נמחק
+        next.delete(parent.id);
+        for (const id of compIds) {
+          if (id !== comp.id) next.add(id);
+        }
+      } else if (next.has(comp.id)) {
+        next.delete(comp.id);
+      } else {
+        next.add(comp.id);
+        if (compIds.length > 0 && compIds.every((id) => next.has(id))) {
+          next.add(parent.id);
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedIds.size === 0) return;
+    setItems((prev) => removeSelectedFromItems(prev, selectedIds));
+    setSelectedIds(new Set());
+    setSelectionMode(false);
+    notifications.show({
+      title: 'הפריטים הוסרו',
+      message: 'הפריטים שנבחרו הוסרו מהארוחה.',
+      color: 'orange',
+    });
+  };
+
+  const handleConfirmGroupSelected = () => {
+    const title = groupDishTitle.trim();
+    if (!title || selectedIds.size === 0) return;
+    const selectedTop = items.filter((it) => selectedIds.has(it.id));
+    if (selectedTop.length < 2) return;
+
+    const firstIdx = items.findIndex((it) => selectedIds.has(it.id));
+    const grouped = groupItemsAsCompositeDish(selectedTop, title);
+    const remaining = items.filter((it) => !selectedIds.has(it.id));
+    const insertAt = Math.min(Math.max(0, firstIdx), remaining.length);
+    const nextList = [
+      ...remaining.slice(0, insertAt),
+      grouped,
+      ...remaining.slice(insertAt),
+    ];
+
+    setItems(nextList);
+    setEditingItemId(grouped.id);
+    setSelectedIds(new Set());
+    setSelectionMode(false);
+    setGroupDishTitle('');
+    setGroupModalOpen(false);
+    notifications.show({
+      title: 'אוחדו למנה אחת',
+      message: `המנה "${grouped.name}" נוצרה בהצלחה.`,
+      color: 'teal',
+    });
+  };
+
+  const handleSyncBackPreset = async (dish: LoggedFoodItem) => {
+    if (!dish.sourcePresetId || !onSavedMealAction) return;
+    const targetPreset = savedMeals.find((p) => p.id === dish.sourcePresetId);
+    if (!targetPreset) return;
+
+    const clonedDish = cloneFoodItemWithFreshIds(dish, 'sync', {
+      sourcePresetId: targetPreset.id,
+    });
+    const nextPresetItems =
+      targetPreset.items.length <= 1 || targetPreset.presetKind === 'dish'
+        ? [clonedDish]
+        : targetPreset.items.map((it) =>
+            it.name.trim().toLowerCase() === dish.name.trim().toLowerCase()
+              ? clonedDish
+              : it
+          );
+
+    const res = await onSavedMealAction({
+      op: 'upsert',
+      preset: {
+        ...targetPreset,
+        items: nextPresetItems,
+      },
+    });
+    if (res.error) {
+      notifications.show({ title: 'שגיאה', message: res.error, color: 'red' });
+      return;
     }
+    notifications.show({
+      title: 'המנה השמורה עודכנה',
+      message: `"${targetPreset.title}" עודכנה בספרייה לשימוש עתידי.`,
+      color: 'teal',
+    });
   };
 
-  const handleLoggedItemMacroInputChange = (
-    item: LoggedFoodItem,
-    field: 'calories' | 'protein' | 'carbs' | 'fat',
-    val: string | number
-  ) => {
-    setItemFieldDrafts((prev) => ({
-      ...prev,
-      [item.id]: { ...(prev[item.id] || {}), [field]: val },
-    }));
-    const parsed = parseOptionalDecimal(val);
-    if (parsed !== undefined && parsed >= 0) {
-      const normalized =
-        field === 'calories'
-          ? Math.round(parsed)
-          : Math.round(parsed * 10) / 10;
-      setItems((prev) =>
-        prev.map((it) => {
-          if (it.id !== item.id) return it;
-          const nextMacros = { ...it.macros, [field]: normalized };
-          const safeGrams = Math.max(1, it.grams);
-          itemScaleBaseRef.current[item.id] = {
-            grams: safeGrams,
-            macros: nextMacros,
-          };
-          return {
-            ...it,
-            macros: nextMacros,
-            per100g: it.per100g
-              ? computePer100gFromServing(nextMacros, safeGrams)
-              : it.per100g,
-          };
-        })
-      );
+  const handleSaveLearnedRuleHint = async () => {
+    const cleanRule = (learnedRuleHint || '').trim();
+    if (!cleanRule || savingRuleHint) return;
+    setSavingRuleHint(true);
+    try {
+      const res = await fetch('/api/ai/recommend-meal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'learn-preference',
+          traineeId,
+          userFeedbackText: cleanRule,
+          customApiKey: geminiApiKey,
+        }),
+      });
+      if (await handlePossibleAuthRejection(res)) return;
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.learnedRule) {
+        const nextPrefs = data.aiLearnedPreferences || data.allPreferences;
+        if (onPreferenceLearned && Array.isArray(nextPrefs)) {
+          onPreferenceLearned(nextPrefs);
+        }
+        setLearnedRuleHint(null);
+        notifications.show({
+          title: 'העדפה נשמרה למנות הבאות',
+          message: `"${data.learnedRule}"`,
+          color: 'teal',
+        });
+      }
+    } finally {
+      setSavingRuleHint(false);
     }
-  };
-
-  const updateLoggedItemName = (id: string, name: string) => {
-    setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, name } : item))
-    );
-  };
-
-  const updateLoggedItemTime = (id: string, nextTime: string) => {
-    const clean = normalizeHhMmTime(nextTime);
-    setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, itemTime: clean } : item))
-    );
   };
 
   const removeItem = (id: string) => {
@@ -1928,7 +2029,8 @@ export function AddMealDrawer({
         cur.macros.calories !== base.macros.calories ||
         cur.macros.protein !== base.macros.protein ||
         cur.macros.carbs !== base.macros.carbs ||
-        cur.macros.fat !== base.macros.fat
+        cur.macros.fat !== base.macros.fat ||
+        JSON.stringify(cur.components || []) !== JSON.stringify(base.components || [])
       ) {
         return true;
       }
@@ -2050,12 +2152,16 @@ export function AddMealDrawer({
         const aiItem = finalItems.find(
           (it) => it.aiEngine || it.isAiFallback !== undefined
         );
+        const presetItemsToSave = savePresetAsSingleDish
+          ? [groupItemsAsCompositeDish(finalItems, autoTitle)]
+          : finalItems;
         await onSavedMealAction({
           op: 'upsert',
           preset: {
             title: autoTitle,
             mealSlotId: mealSlot.id,
-            items: finalItems,
+            presetKind: savePresetAsSingleDish ? 'dish' : 'meal',
+            items: presetItemsToSave,
             photoDataUrls: allMealPhotos.length > 0 ? allMealPhotos : undefined,
             photoDataUrl: primaryPhoto,
             contextParams,
@@ -2110,6 +2216,16 @@ export function AddMealDrawer({
     stopCorrectionVoice(false);
     setCorrectionError(null);
 
+    const scopedIds =
+      selectionMode && selectedIds.size > 0 ? Array.from(selectedIds) : undefined;
+    const nextHistoryEntry = {
+      beforeNames: items.map((i) => i.name),
+      prompt: cleanPrompt,
+      at: new Date().toISOString(),
+    };
+    const nextHistory = [...correctionHistory, nextHistoryEntry].slice(-6);
+    setCorrectionHistory(nextHistory);
+
     // הרצת תיקון ברקע (תומך ביציאה מהחלונית / יציאה מהאפליקצייה + פוש + סנכרון חוזר אוטומטי!)
     if (onStartBackgroundAiAnalysis && traineeId && selectedDate && mealSlot) {
       const baseSnapshot = [...items];
@@ -2117,6 +2233,8 @@ export function AddMealDrawer({
       pendingAdjustReplaceRef.current = true;
       setCorrectionOpen(false);
       setCorrectionText('');
+      setSelectionMode(false);
+      setSelectedIds(new Set());
       setAiSummary(null);
       await onStartBackgroundAiAnalysis({
         traineeId,
@@ -2125,6 +2243,8 @@ export function AddMealDrawer({
         mealSlotName: mealSlot.name,
         mode: 'adjust',
         baseItems: baseSnapshot,
+        selectedTargetIds: scopedIds,
+        correctionHistory: nextHistory,
         adjustmentPrompt: cleanPrompt,
         contextParams,
         imageDataUrl: allMealPhotos[0],
@@ -2141,6 +2261,8 @@ export function AddMealDrawer({
         body: JSON.stringify({
           mode: 'adjust-meal',
           baseItems: items,
+          selectedTargetIds: scopedIds,
+          correctionHistory: nextHistory,
           adjustmentPrompt: cleanPrompt,
           contextParams,
           traineeId,
@@ -2149,7 +2271,7 @@ export function AddMealDrawer({
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !Array.isArray(data.items) || data.items.length === 0) {
+      if (!res.ok || !Array.isArray(data.items) || (data.items.length === 0 && !scopedIds)) {
         setCorrectionError(
           data?.error || 'לא הצלחנו לעדכן את הארוחה כרגע — נסה שוב בעוד רגע.'
         );
@@ -2171,6 +2293,11 @@ export function AddMealDrawer({
       setItems(nextItemsWithTimes);
       setItemFieldDrafts({});
       itemScaleBaseRef.current = {};
+      setSelectionMode(false);
+      setSelectedIds(new Set());
+      if (typeof data.learnedRuleHint === 'string' && data.learnedRuleHint.trim()) {
+        setLearnedRuleHint(data.learnedRuleHint.trim());
+      }
       const nextNames = new Set(
         (data.items as LoggedFoodItem[]).map((it) => it.name.trim().toLowerCase())
       );
@@ -2890,6 +3017,45 @@ export function AddMealDrawer({
             gap: 14,
           }}
         >
+          {/* באנר ייעודי בעת הוספת מרכיב ישירות לתוך מנה מורכבת קיימת */}
+          {targetDishIdForAdd && activeTab !== 'meal-items' && (() => {
+            const targetDish = items.find((it) => it.id === targetDishIdForAdd);
+            if (!targetDish) return null;
+            return (
+              <div
+                style={{
+                  padding: '9px 12px',
+                  borderRadius: 14,
+                  background: 'rgba(56, 189, 248, 0.12)',
+                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                }}
+              >
+                <span>מוסיף מרכיב לתוך המנה: &quot;{targetDish.name}&quot;</span>
+                <button
+                  type="button"
+                  onClick={() => setTargetDishIdForAdd(null)}
+                  style={{
+                    border: 0,
+                    background: 'transparent',
+                    color: 'var(--text-2)',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  בטל (הוסף לארוחה רגיל)
+                </button>
+              </div>
+            );
+          })()}
+
           {aiSummary && !heroScreen && (
             <div
               style={{
@@ -2953,29 +3119,24 @@ export function AddMealDrawer({
 
           {/* Hub: big photo tile, 2×2 shortcuts and saved meals / history */}
           {activeTab === 'hub' && trimmedQuery.length === 0 && (() => {
-            const cloneItemsWithPer100g = (srcItems: LoggedFoodItem[], prefix: string): LoggedFoodItem[] =>
-              srcItems.map((it, i) => {
-                if (it.per100g) {
-                  return { ...it, id: `${prefix}-${Date.now()}-${i}` };
-                }
-                const g = Math.max(1, it.grams || 0);
-                const factor = 100 / g;
-                const fitsBounds =
-                  (it.macros.calories > 0 || it.macros.protein > 0 || it.macros.carbs > 0 || it.macros.fat > 0) &&
-                  it.macros.calories * factor <= 950 &&
-                  it.macros.protein * factor <= 100 &&
-                  it.macros.carbs * factor <= 100 &&
-                  it.macros.fat * factor <= 100;
-                return {
-                  ...it,
-                  id: `${prefix}-${Date.now()}-${i}`,
-                  ...(fitsBounds ? { per100g: computePer100gFromServing(it.macros, g) } : {}),
-                };
-              });
+            const cloneItemsWithPer100g = (
+              srcItems: LoggedFoodItem[],
+              prefix: string,
+              sourcePresetId?: string
+            ): LoggedFoodItem[] =>
+              srcItems.map((it) =>
+                cloneFoodItemWithFreshIds(it, prefix, {
+                  ...(sourcePresetId ? { sourcePresetId } : {}),
+                })
+              );
 
             const addPreset = (preset: SavedMealPreset) => {
-              const cloned = cloneItemsWithPer100g(preset.items, 'hub-pre');
-              setItems((prev) => [...prev, ...cloned]);
+              const sourceItems =
+                preset.presetKind === 'dish' && preset.items.length > 1
+                  ? [groupItemsAsCompositeDish(preset.items, preset.title, { sourcePresetId: preset.id })]
+                  : preset.items;
+              const cloned = cloneItemsWithPer100g(sourceItems, 'hub-pre', preset.id);
+              appendItemsSmart(cloned);
               if (preset.photoDataUrl && !photoDataUrl) {
                 setPhotoDataUrl(preset.photoDataUrl);
               }
@@ -3309,7 +3470,7 @@ export function AddMealDrawer({
                           label={`הוסף מהיסטוריה ${histMeal.title}`}
                           onClick={() => {
                             const cloned = cloneItemsWithPer100g(histMeal.items, 'hub-hist');
-                            setItems((prev) => [...prev, ...cloned]);
+                            appendItemsSmart(cloned);
                             if (histMeal.photoDataUrl && !photoDataUrl) {
                               setPhotoDataUrl(histMeal.photoDataUrl);
                             }
@@ -3429,11 +3590,14 @@ export function AddMealDrawer({
                   <button
                     type="button"
                     onClick={() => {
-                      const cloned = preset.items.map((it, i) => ({
-                        ...it,
-                        id: `srch-pre-${Date.now()}-${i}`,
-                      }));
-                      setItems((prev) => [...prev, ...cloned]);
+                      const srcList =
+                        preset.presetKind === 'dish' && preset.items.length > 1
+                          ? [groupItemsAsCompositeDish(preset.items, preset.title, { sourcePresetId: preset.id })]
+                          : preset.items;
+                      const cloned = srcList.map((it) =>
+                        cloneFoodItemWithFreshIds(it, 'srch-pre', { sourcePresetId: preset.id })
+                      );
+                      appendItemsSmart(cloned);
                       if (preset.photoDataUrl && !photoDataUrl) {
                         setPhotoDataUrl(preset.photoDataUrl);
                       }
@@ -3461,7 +3625,7 @@ export function AddMealDrawer({
                 customUnits: customFoodUnits,
               }}
               onAddItemsToMeal={(newItems, img) => {
-                setItems((prev) => [...prev, ...newItems]);
+                appendItemsSmart(newItems);
                 if (img && !photoDataUrl) {
                   setPhotoDataUrl(img);
                 }
@@ -3603,7 +3767,7 @@ export function AddMealDrawer({
                             type="button"
                             aria-label={`הוסף את ${option.title} לארוחה`}
                             onClick={() => {
-                              setItems((prev) => [...prev, ...option.items]);
+                              appendItemsSmart(option.items);
                               setAiSummary({ msg: `נוספה לארוחה ההצעה: "${option.title}"` });
                             }}
                             className="glass"
@@ -4809,6 +4973,7 @@ export function AddMealDrawer({
 
                 <AiQuickContextPanel
                   traineeId={traineeId}
+                  actorRole={actorRole}
                   customServingTools={customServingTools}
                   customFoodUnits={customFoodUnits}
                   recentContextChips={recentContextChips}
@@ -4924,6 +5089,7 @@ export function AddMealDrawer({
 
                 <AiQuickContextPanel
                   traineeId={traineeId}
+                  actorRole={actorRole}
                   customServingTools={customServingTools}
                   customFoodUnits={customFoodUnits}
                   recentContextChips={recentContextChips}
@@ -5209,31 +5375,131 @@ export function AddMealDrawer({
                       justifyContent: 'space-between',
                       alignItems: 'center',
                       gap: 8,
+                      flexWrap: 'wrap',
                     }}
                   >
                     <span style={{ fontSize: 17, fontWeight: 700 }}>
-                      מרכיבי הארוחה הנוכחית ({items.length})
+                      פריטי הארוחה ({items.length})
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => navigateTab('hub')}
-                      style={{
-                        padding: '8px 14px',
-                        borderRadius: 999,
-                        border: 'none',
-                        background: 'var(--contrast-btn-bg)',
-                        color: 'var(--contrast-btn-text)',
-                        fontSize: 13,
-                        fontWeight: 700,
-                        fontFamily: 'inherit',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      + הוסף עוד פריטים
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {items.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectionMode) {
+                              setSelectionMode(false);
+                              setSelectedIds(new Set());
+                            } else {
+                              setSelectionMode(true);
+                            }
+                          }}
+                          className="glass"
+                          style={{
+                            padding: '8px 12px',
+                            borderRadius: 999,
+                            fontSize: 13,
+                            fontWeight: 700,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            cursor: 'pointer',
+                            borderColor: selectionMode ? 'var(--accent)' : undefined,
+                            color: selectionMode ? 'var(--accent)' : 'var(--text)',
+                          }}
+                        >
+                          <CheckSquare size={14} />
+                          <span>{selectionMode ? 'סיים בחירה' : 'בחר'}</span>
+                        </button>
+                      )}
+                      {selectionMode && items.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedIds.size > 0) {
+                              setSelectedIds(new Set());
+                            } else {
+                              const all = new Set<string>();
+                              for (const it of items) {
+                                all.add(it.id);
+                                for (const c of it.components || []) all.add(c.id);
+                              }
+                              setSelectedIds(all);
+                            }
+                          }}
+                          className="glass"
+                          style={{
+                            padding: '8px 10px',
+                            borderRadius: 999,
+                            fontSize: 12.5,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {selectedIds.size > 0 ? 'נקה' : 'בחר הכל'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTargetDishIdForAdd(null);
+                          navigateTab('hub');
+                        }}
+                        style={{
+                          padding: '8px 14px',
+                          borderRadius: 999,
+                          border: 'none',
+                          background: 'var(--contrast-btn-bg)',
+                          color: 'var(--contrast-btn-text)',
+                          fontSize: 13,
+                          fontWeight: 700,
+                          fontFamily: 'inherit',
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        + הוסף עוד פריטים
+                      </button>
+                    </div>
                   </div>
                   )}
+
+                {learnedRuleHint && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 10,
+                      padding: '9px 12px',
+                      borderRadius: 16,
+                      background: 'rgba(16, 185, 129, 0.1)',
+                      border: '1px solid rgba(16, 185, 129, 0.3)',
+                    }}
+                  >
+                    <span style={{ fontSize: 12.5, fontWeight: 600 }}>
+                      למדתי מהתיקון: <b>&quot;{learnedRuleHint}&quot;</b>
+                    </span>
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      <button
+                        type="button"
+                        disabled={savingRuleHint}
+                        onClick={() => void handleSaveLearnedRuleHint()}
+                        className="btn-volt"
+                        style={{ height: 30, padding: '0 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        {savingRuleHint ? 'שומר...' : 'זכור לפעמים הבאות'}
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="התעלם"
+                        onClick={() => setLearnedRuleHint(null)}
+                        style={{ border: 0, background: 'transparent', color: 'var(--text-2)', cursor: 'pointer' }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {preCorrectionItems !== null && (
                   <div
@@ -5368,7 +5634,7 @@ export function AddMealDrawer({
                             <button
                               type="button"
                               onClick={() => {
-                                setItems((prev) => [...prev, extra]);
+                                appendItemsSmart([extra]);
                                 setSuggestedExtras((prev) =>
                                   prev.filter((p) => p.id !== extra.id)
                                 );
@@ -5436,233 +5702,42 @@ export function AddMealDrawer({
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                    {items.map((item) => {
-                      const isEditing = editingItemId === item.id;
-                      const itemDraft = itemFieldDrafts[item.id];
-                      return (
-                        <div
-                          key={item.id}
-                          style={{
-                            borderBottom: '1px solid var(--line)',
-                            padding: '8px 2px',
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              gap: 10,
-                            }}
-                          >
-                            <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                              <button
-                                type="button"
-                                aria-label={isEditing ? 'סגור עריכה' : `ערוך ${item.name}`}
-                                aria-expanded={isEditing}
-                                onClick={() => setEditingItemId(isEditing ? null : item.id)}
-                                style={{ minWidth: 0, background: 'transparent', border: 0, padding: 0, textAlign: 'start', color: 'inherit', fontFamily: 'inherit', cursor: 'pointer' }}
-                              >
-                                <div style={{ fontSize: 16, fontWeight: 600 }}>{item.name}</div>
-                              </button>
-                              <div style={{ fontSize: 13, color: 'var(--text-2)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                                <span
-                                  onClick={() => setEditingItemId(isEditing ? null : item.id)}
-                                  style={{ cursor: 'pointer' }}
-                                >
-                                  <bdi dir="ltr" className="num-mono ltr-num">{item.macros.calories}</bdi> קק״ל
-                                  {item.isAiFallback ? ' · לא AI' : item.aiEngine ? ' · AI' : ''}
-                                  {item.itemTime ? ` · ${item.itemTime}` : ''}
-                                </span>
-                              </div>
-                            </div>
-                            <span
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 2,
-                                padding: 3,
-                                borderRadius: 999,
-                                background: 'var(--surface-2)',
-                                flex: 'none',
-                              }}
-                            >
-                              <button
-                                type="button"
-                                aria-label={`הפחת כמות ${item.name}`}
-                                onClick={() => updateLoggedItemGrams(item.id, item.grams - 10)}
-                                style={{ width: 44, height: 40, borderRadius: 999, border: 0, background: 'transparent', color: 'var(--text-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                              >
-                                <Minus size={16} strokeWidth={2.2} />
-                              </button>
-                              <bdi dir="ltr" className="num-mono ltr-num" style={{ minWidth: 56, textAlign: 'center', fontSize: 14, fontWeight: 600 }}>
-                                {Math.round(item.grams)} ג׳
-                              </bdi>
-                              <button
-                                type="button"
-                                aria-label={`הוסף כמות ${item.name}`}
-                                onClick={() => updateLoggedItemGrams(item.id, item.grams + 10)}
-                                style={{ width: 44, height: 40, borderRadius: 999, border: 0, background: 'transparent', color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                              >
-                                <Plus size={16} strokeWidth={2.2} />
-                              </button>
-                            </span>
-                          </div>
-
-                          <Collapse in={isEditing}>
-                            <div
-                              style={{
-                                marginTop: 10,
-                                paddingTop: 10,
-                                borderTop: '1px solid var(--border-subtle)',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: 8,
-                              }}
-                            >
-                              <div
-                                style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: 'minmax(0, 1fr) auto',
-                                  gap: 8,
-                                  alignItems: 'end',
-                                }}
-                              >
-                                <TextInput
-                                  size="xs"
-                                  label="שם המרכיב"
-                                  value={item.name}
-                                  onChange={(e) =>
-                                    updateLoggedItemName(item.id, e.currentTarget.value)
-                                  }
-                                />
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                  <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)' }}>
-                                    שעה למנה
-                                  </span>
-                                  <ItemTimePill
-                                    value={item.itemTime}
-                                    fallbackTime={mealTime || mealSlot.timeHint || '12:00'}
-                                    placeholderLabel="לפי הארוחה"
-                                    ariaLabel={`שעה עבור ${item.name}`}
-                                    clearAriaLabel={`אפס שעה עבור ${item.name}`}
-                                    height={30}
-                                    onChange={(val) => updateLoggedItemTime(item.id, val)}
-                                  />
-                                </div>
-                              </div>
-                              <div className="spot-macro-5-grid">
-                                <NumberInput
-                                  size="xs"
-                                  label="גרם"
-                                  placeholder="100"
-                                  value={
-                                    itemDraft?.grams !== undefined
-                                      ? itemDraft.grams
-                                      : item.grams
-                                  }
-                                  min={1}
-                                  max={5000}
-                                  step={5}
-                                  clampBehavior="none"
-                                  onChange={(val) =>
-                                    handleLoggedItemGramsInputChange(item, val)
-                                  }
-                                />
-                                <NumberInput
-                                  size="xs"
-                                  label="קק״ל"
-                                  placeholder="0"
-                                  value={
-                                    itemDraft?.calories !== undefined
-                                      ? itemDraft.calories
-                                      : item.macros.calories
-                                  }
-                                  min={0}
-                                  clampBehavior="none"
-                                  onChange={(val) =>
-                                    handleLoggedItemMacroInputChange(
-                                      item,
-                                      'calories',
-                                      val
-                                    )
-                                  }
-                                />
-                                <NumberInput
-                                  size="xs"
-                                  label="חלבון"
-                                  placeholder="0"
-                                  value={
-                                    itemDraft?.protein !== undefined
-                                      ? itemDraft.protein
-                                      : item.macros.protein
-                                  }
-                                  min={0}
-                                  decimalScale={1}
-                                  clampBehavior="none"
-                                  onChange={(val) =>
-                                    handleLoggedItemMacroInputChange(
-                                      item,
-                                      'protein',
-                                      val
-                                    )
-                                  }
-                                />
-                                <NumberInput
-                                  size="xs"
-                                  label="פחמימה"
-                                  placeholder="0"
-                                  value={
-                                    itemDraft?.carbs !== undefined
-                                      ? itemDraft.carbs
-                                      : item.macros.carbs
-                                  }
-                                  min={0}
-                                  decimalScale={1}
-                                  clampBehavior="none"
-                                  onChange={(val) =>
-                                    handleLoggedItemMacroInputChange(
-                                      item,
-                                      'carbs',
-                                      val
-                                    )
-                                  }
-                                />
-                                <NumberInput
-                                  size="xs"
-                                  label="שומן"
-                                  placeholder="0"
-                                  value={
-                                    itemDraft?.fat !== undefined
-                                      ? itemDraft.fat
-                                      : item.macros.fat
-                                  }
-                                  min={0}
-                                  decimalScale={1}
-                                  clampBehavior="none"
-                                  onChange={(val) =>
-                                    handleLoggedItemMacroInputChange(
-                                      item,
-                                      'fat',
-                                      val
-                                    )
-                                  }
-                                />
-                              </div>
-                              <button
-                                type="button"
-                                aria-label={`הסר ${item.name}`}
-                                onClick={() => removeItem(item.id)}
-                                style={{ alignSelf: 'flex-start', minHeight: 44, display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: 0, padding: 0, color: 'var(--danger-text)', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
-                              >
-                                <Trash2 size={15} />
-                                הסר מרכיב
-                              </button>
-                            </div>
-                          </Collapse>
-                        </div>
-                      );
-                    })}
+                    {items.map((item) => (
+                      <CompositeDishRow
+                        key={item.id}
+                        item={item}
+                        mealTimeFallback={mealTime || mealSlot.timeHint || '12:00'}
+                        selectionMode={selectionMode}
+                        selectedIds={selectedIds}
+                        onToggleSelectTop={handleToggleSelectTop}
+                        onToggleSelectComponent={handleToggleSelectComponent}
+                        isExpanded={editingItemId === item.id}
+                        onToggleExpand={() =>
+                          setEditingItemId(editingItemId === item.id ? null : item.id)
+                        }
+                        onUpdateItem={updateLoggedItemFull}
+                        onRemoveItem={removeItem}
+                        onRequestAddIngredient={(dishId) => {
+                          setTargetDishIdForAdd(dishId);
+                          navigateTab('catalog');
+                        }}
+                        canSyncBackPreset={Boolean(
+                          item.sourcePresetId &&
+                            onSavedMealAction &&
+                            savedMeals.some((p) => p.id === item.sourcePresetId)
+                        )}
+                        onSyncBackPreset={(d) => void handleSyncBackPreset(d)}
+                        itemDraft={itemFieldDrafts[item.id]}
+                        onDraftChange={(id, draft) =>
+                          setItemFieldDrafts((prev) => {
+                            const next = { ...prev };
+                            if (draft === null) delete next[id];
+                            else next[id] = draft;
+                            return next;
+                          })
+                        }
+                      />
+                    ))}
                   </div>
                 )}
 
@@ -5795,17 +5870,34 @@ export function AddMealDrawer({
                       }
                     />
                     {saveAsPreset && (
-                      <TextInput
-                        size="xs"
-                        placeholder={
-                          items
-                            .slice(0, 2)
-                            .map((i) => i.name)
-                            .join(' + ') || 'שם למנה השמורה'
-                        }
-                        value={presetTitleInput}
-                        onChange={(e) => setPresetTitleInput(e.currentTarget.value)}
-                      />
+                      <>
+                        <TextInput
+                          size="xs"
+                          placeholder={
+                            items
+                              .slice(0, 2)
+                              .map((i) => i.name)
+                              .join(' + ') || 'שם למנה השמורה'
+                          }
+                          value={presetTitleInput}
+                          onChange={(e) => setPresetTitleInput(e.currentTarget.value)}
+                        />
+                        {items.length > 1 && (
+                          <Switch
+                            size="xs"
+                            color="teal"
+                            checked={savePresetAsSingleDish}
+                            onChange={(e) =>
+                              setSavePresetAsSingleDish(e.currentTarget.checked)
+                            }
+                            label={
+                              <span style={{ fontSize: 12, color: 'var(--text-2)' }}>
+                                שמור כמנה אחת מקופלת (כגון &quot;קפה&quot; המכילה את חומרי הגלם)
+                              </span>
+                            }
+                          />
+                        )}
+                      </>
                     )}
                   </div>
                 )}
@@ -5823,67 +5915,144 @@ export function AddMealDrawer({
               padding: '10px 16px calc(var(--sa-bottom) + 12px)',
               display: 'flex',
               alignItems: 'center',
-              gap: 10,
+              gap: 8,
             }}
           >
-            <button
-              type="button"
-              className="glass"
-              disabled={isSlotBgProcessing || correctionLoading}
-              onClick={() => setCorrectionOpen(true)}
-              style={{
-                height: 56,
-                padding: '0 20px',
-                borderRadius: 999,
-                flex: 'none',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-                fontFamily: 'inherit',
-                fontSize: 15,
-                fontWeight: 600,
-                cursor: isSlotBgProcessing ? 'wait' : 'pointer',
-                opacity: isSlotBgProcessing ? 0.65 : 1,
-              }}
-            >
-              {isSlotBgProcessing && slotBgProcessingJob?.mode === 'adjust' ? (
-                <>
-                  <Loader2 size={16} className="spot-spinner" />
-                  <span>מתקן...</span>
-                </>
-              ) : (
-                <>
+            {selectionMode ? (
+              <>
+                <button
+                  type="button"
+                  disabled={selectedIds.size === 0}
+                  onClick={handleDeleteSelected}
+                  className="glass"
+                  style={{
+                    height: 52,
+                    padding: '0 14px',
+                    borderRadius: 999,
+                    fontSize: 13.5,
+                    fontWeight: 700,
+                    color: selectedIds.size > 0 ? 'var(--danger-text)' : 'var(--text-3)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    cursor: selectedIds.size > 0 ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  <Trash2 size={15} />
+                  <span>מחק ({selectedIds.size})</span>
+                </button>
+                {items.filter((it) => selectedIds.has(it.id)).length >= 2 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const selTop = items.filter((it) => selectedIds.has(it.id));
+                      setGroupDishTitle(
+                        selTop
+                          .slice(0, 2)
+                          .map((x) => x.name)
+                          .join(' + ')
+                      );
+                      setGroupModalOpen(true);
+                    }}
+                    className="glass"
+                    style={{
+                      height: 52,
+                      padding: '0 14px',
+                      borderRadius: 999,
+                      fontSize: 13.5,
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Layers size={15} />
+                    <span>אחד למנה</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={selectedIds.size === 0 || isSlotBgProcessing || correctionLoading}
+                  onClick={() => setCorrectionOpen(true)}
+                  className="btn-volt"
+                  style={{
+                    flex: 1,
+                    height: 52,
+                    fontSize: 14.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    cursor: selectedIds.size > 0 ? 'pointer' : 'not-allowed',
+                  }}
+                >
                   <Wand2 size={16} />
-                  <span>תקן</span>
-                </>
-              )}
-            </button>
-            <button
-              type="button"
-              disabled={savingMeal || !hasMealChanges}
-              title={!hasMealChanges ? 'הוסף, הסר או ערוך פריט כדי לשמור שינויים' : undefined}
-              onClick={() => void handleSaveMealAndClose()}
-              className="btn-volt"
-              style={{
-                flex: 1,
-                height: 56,
-                fontSize: 16,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                cursor: hasMealChanges ? 'pointer' : 'not-allowed',
-              }}
-            >
-              {savingMeal ? <Loader2 size={16} className="spot-spinner" /> : <Check size={16} />}
-              <span>
-                {savingMeal
-                  ? 'שומר ארוחה...'
-                  : !hasMealChanges
-                  ? `אין שינויים לשמירה (${currentTotals.calories} קק״ל)`
-                  : `שמור ארוחה (${currentTotals.calories} קק״ל)`}
-              </span>
-            </button>
+                  <span>תקן נבחרים ב-AI ({selectedIds.size})</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="glass"
+                  disabled={isSlotBgProcessing || correctionLoading}
+                  onClick={() => setCorrectionOpen(true)}
+                  style={{
+                    height: 56,
+                    padding: '0 20px',
+                    borderRadius: 999,
+                    flex: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    fontFamily: 'inherit',
+                    fontSize: 15,
+                    fontWeight: 600,
+                    cursor: isSlotBgProcessing ? 'wait' : 'pointer',
+                    opacity: isSlotBgProcessing ? 0.65 : 1,
+                  }}
+                >
+                  {isSlotBgProcessing && slotBgProcessingJob?.mode === 'adjust' ? (
+                    <>
+                      <Loader2 size={16} className="spot-spinner" />
+                      <span>מתקן...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 size={16} />
+                      <span>תקן</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  disabled={savingMeal || !hasMealChanges}
+                  title={!hasMealChanges ? 'הוסף, הסר או ערוך פריט כדי לשמור שינויים' : undefined}
+                  onClick={() => void handleSaveMealAndClose()}
+                  className="btn-volt"
+                  style={{
+                    flex: 1,
+                    height: 56,
+                    fontSize: 16,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    cursor: hasMealChanges ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  {savingMeal ? <Loader2 size={16} className="spot-spinner" /> : <Check size={16} />}
+                  <span>
+                    {savingMeal
+                      ? 'שומר ארוחה...'
+                      : !hasMealChanges
+                      ? `אין שינויים לשמירה (${currentTotals.calories} קק״ל)`
+                      : `שמור ארוחה (${currentTotals.calories} קק״ל)`}
+                  </span>
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -6400,12 +6569,18 @@ export function AddMealDrawer({
             setCorrectionError(null);
           }
         }}
-        title="תיקון הארוחה עם AI"
+        title={
+          selectionMode && selectedIds.size > 0
+            ? `תיקון ממוקד ב-AI (${selectedIds.size} נבחרים)`
+            : 'תיקון הארוחה עם AI'
+        }
         zIndex={270}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.45 }}>
-            תאר מה לשנות, להחליף, להסיר או לעדכן בגרמים — שאר המרכיבים והמשקלים יישארו כפי שהם.
+            {selectionMode && selectedIds.size > 0
+              ? 'ה-AI יקבל את ההקשר וההיסטוריה המלאה של הארוחה, אך ישנה אך ורק את הפריטים/מרכיבים שסימנת — שאר המנות נשארות נעולות.'
+              : 'תאר מה לשנות, להחליף, להסיר או לעדכן בגרמים — שאר המרכיבים והמשקלים יישארו כפי שהם.'}
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {[
@@ -6615,6 +6790,40 @@ export function AddMealDrawer({
         />
       </Modal>
 
+      <Modal
+        opened={groupModalOpen}
+        onClose={() => setGroupModalOpen(false)}
+        title="איחוד פריטים למנה אחת"
+        zIndex={275}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>
+            תן שם למנה המאוחדת (לדוגמה: &quot;קפה&quot; או &quot;סלט קצוץ&quot;). הפריטים שסימנת יהפכו למרכיבים פנימיים שניתן להרחיב, להכפיל או לערוך.
+          </span>
+          <TextInput
+            label="שם המנה"
+            placeholder="קפה"
+            value={groupDishTitle}
+            onChange={(e) => setGroupDishTitle(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleConfirmGroupSelected();
+              }
+            }}
+          />
+          <button
+            type="button"
+            disabled={!groupDishTitle.trim()}
+            onClick={handleConfirmGroupSelected}
+            className="btn-volt"
+            style={{ height: 46, fontSize: 15, fontWeight: 700, cursor: 'pointer' }}
+          >
+            אחד למנה
+          </button>
+        </div>
+      </Modal>
+
       <BarcodeScannerModal
         opened={barcodeModalOpen}
         onClose={() => {
@@ -6637,8 +6846,7 @@ export function AddMealDrawer({
             product.per100g,
             defaultUnit.grams
           );
-          setItems((prev) => [
-            ...prev,
+          appendItemsSmart([
             {
               id: `bc-${Date.now()}`,
               name: (() => {
@@ -6653,6 +6861,7 @@ export function AddMealDrawer({
               per100g: { ...product.per100g },
               macros,
               source: 'barcode',
+              inputConfidence: 'catalog',
             },
           ]);
           setAiSummary({ msg: `נוסף מסורק ברקוד: ${product.name}` });

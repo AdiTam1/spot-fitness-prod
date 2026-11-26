@@ -228,7 +228,15 @@ export function TraineeProfileView({
         const m = sumMacros(entry.items.map((item) => item.macros));
         const slotName = slotNames.get(slotId) || slotId;
         const summary = entry.items
-          .map((i) => (i.itemTime ? `${i.name} (${i.itemTime})` : i.name))
+          .map((i) => {
+            const compsLabel =
+              Array.isArray(i.components) && i.components.length > 0
+                ? ` [${i.components.map((c) => c.name).join(', ')}]`
+                : '';
+            return i.itemTime
+              ? `${i.name}${compsLabel} (${i.itemTime})`
+              : `${i.name}${compsLabel}`;
+          })
           .join(', ');
         rows.push({
           id: `${date}-${slotId}`,

@@ -177,6 +177,17 @@ export type FoodEntrySource =
   | 'barcode'
   | 'manual';
 
+export type FoodComponentRole =
+  | 'ingredient'
+  | 'cooking-oil'
+  | 'spice-group'
+  | 'sauce';
+
+export type FoodInputConfidence =
+  | 'reported'
+  | 'visual-estimate'
+  | 'catalog';
+
 export interface LoggedFoodItem {
   id: string;
   name: string;
@@ -193,6 +204,13 @@ export interface LoggedFoodItem {
   fromUserText?: boolean;
   matchedCatalogId?: string;
   visualReason?: string;
+  /** רכיבים פנימיים (רמה 3: ארוחה <- מנה <- מרכיבים). נסכמים תמיד למנה */
+  components?: LoggedFoodItem[];
+  componentRole?: FoodComponentRole;
+  spiceDetails?: string[];
+  inputConfidence?: FoodInputConfidence;
+  sourcePresetId?: string;
+  recipeYieldGrams?: number;
 }
 
 export interface LoggedMealEntry {
@@ -403,6 +421,7 @@ export interface CoachDirectoryItem {
 }
 
 export type QuickChipCategory =
+  | 'oil'
   | 'sauce'
   | 'prep'
   | 'portion'
@@ -410,15 +429,19 @@ export type QuickChipCategory =
   | 'source'
   | 'tool-hint';
 
+export type QuickChipDropdownKind = 'oil' | 'sauce' | 'portion';
+
 export interface QuickContextChip {
   id: string;
   label: string;
   category: QuickChipCategory;
-  scope: 'user' | 'group' | 'global';
+  scope: 'user' | 'group' | 'coach' | 'global';
   groupId?: string;
   createdBy?: string;
   lastUsedAt?: string;
   useCount?: number;
+  dropdownKind?: QuickChipDropdownKind;
+  priorityOrder?: number;
 }
 
 export type ReferenceObjectKind =
@@ -455,6 +478,11 @@ export interface TraineeCustomUnit {
   updatedAt?: string;
 }
 
+export interface AiChipQuantityEntry {
+  amount: number;
+  unit: 'tbsp' | 'tsp' | 'g' | 'ml';
+}
+
 export interface AiContextParams {
   servingToolId?: string;
   servingToolLabel?: string;
@@ -468,6 +496,7 @@ export interface AiContextParams {
   drinksAndSides?: string;
   mealSource?: 'home' | 'restaurant' | 'packaged' | '';
   activeChipLabels?: string[];
+  chipQuantities?: Record<string, AiChipQuantityEntry>;
   imageAngles?: ('top-down' | 'side-45' | 'label' | 'other')[];
   customUnits?: TraineeCustomUnit[];
   strictUserList?: boolean;
@@ -488,6 +517,8 @@ export interface SavedMealPreset {
   id: string;
   title: string;
   mealSlotId?: string;
+  presetKind?: 'dish' | 'meal';
+  recipeYieldGrams?: number;
   items: LoggedFoodItem[];
   totalCalories: number;
   totalProtein: number;
