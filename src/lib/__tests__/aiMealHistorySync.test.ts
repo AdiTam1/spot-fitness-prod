@@ -26,11 +26,16 @@ import {
   measureTraineeHealthSnapshot,
 } from '../telemetry/diagnosticsSummary';
 import { shouldPersistApiLogToDb } from '../telemetry/filterRules';
+import {
+  sanitizeTraineeForRosterList,
+  serializeSyncTimestampRows,
+} from '../traineeSanitize';
 import type {
   AiConversationTraceRecord,
   LoggedFoodItem,
   LoggedMealEntry,
   PendingAiMealJob,
+  TraineeProfile,
 } from '@/types/nutrition';
 
 function makeFood(
@@ -531,5 +536,154 @@ describe('telemetry diagnostics summary & persistence rules', () => {
     assert.equal(summary.startup.maxDataKB, 415);
     assert.ok(summary.autoFindings.length >= 3);
     assert.equal(summary.timeline.length, 3);
+  });
+});
+
+describe('sanitizeTraineeForRosterList payload trimming', () => {
+  it('strips heavy meal photos, history, and job retry blobs without mutating source or losing dashboard metrics', () => {
+    const bigPhoto = 'data:image/jpeg;base64,' + 'Z'.repeat(50_000);
+    const savedThumb = 'data:image/jpeg;base64,SAVED_THUMB';
+    const source: TraineeProfile = {
+      id: 't-roster-1',
+      email: 'roster@example.com',
+      password: 'hashed-secret-value',
+      status: 'active',
+      phone: '050-0000000',
+      name: 'רונית',
+      avatar: 'ר',
+      goal: 'חיטוב',
+      currentWeight: 62,
+      targetWeight: 58,
+      tolerancePercent: 10,
+      primaryCoachId: 'coach-admin',
+      sharedCoachIds: [],
+      workoutTemplate: { id: 'w1', name: 'יום אימון', description: '', dayType: 'workout', tolerancePercent: 10, meals: [] },
+      restTemplate: { id: 'r1', name: 'יום מנוחה', description: '', dayType: 'rest', tolerancePercent: 10, meals: [] },
+      favoriteFoodIds: ['f1'],
+      weightHistory: [{ date: '2026-11-26', weight: 62 }],
+      savedMeals: [
+        {
+          id: 'sm-1',
+          title: 'ארוחה שמורה',
+          items: [makeFood('i1', 'יוגורט', 150, 90, 12)],
+          totalCalories: 90,
+          totalProtein: 12,
+          totalCarbs: 5,
+          totalFat: 2,
+          photoDataUrls: [savedThumb, bigPhoto],
+          isFavorite: false,
+          isPinned: false,
+          useCount: 1,
+          createdAt: '2026-11-26T10:00:00.000Z',
+          updatedAt: '2026-11-26T10:00:00.000Z',
+        },
+      ],
+      pendingAiJobs: [
+        {
+          id: 'job-1',
+          targetTraineeId: 't-roster-1',
+          date: '2026-11-26',
+          mealSlotId: 'm1',
+          mealSlotName: 'בוקר',
+          mode: 'photo',
+          status: 'processing',
+          startedAt: new Date().toISOString(),
+          photoDataUrls: [bigPhoto],
+          retryPayload: {
+            mode: 'photo',
+            traineeId: 't-roster-1',
+            date: '2026-11-26',
+            mealSlotId: 'm1',
+            failedAt: '2026-11-26T08:15:00.000Z',
+            photos: [{ dataUrl: bigPhoto, angle: 'top-down' }],
+          },
+        },
+      ],
+      logs: {
+        '2026-11-26': {
+          date: '2026-11-26',
+          dayType: 'workout',
+          waterCups: 7,
+          waterGoal: 10,
+          sleepHours: 7.5,
+          steps: 9400,
+          meals: {
+            m1: {
+              mealSlotId: 'm1',
+              items: [makeFood('f1', 'שייק חלבון', 300, 220, 28)],
+              mealTime: '08:15',
+              photoDataUrl: bigPhoto,
+              photoDataUrls: [bigPhoto],
+              photoStore: { h1: bigPhoto },
+              photoMetas: [{ hash: 'h1', angle: 'top-down' }],
+              coachFeedback: 'מעולה!',
+              history: [
+                {
+                  id: 'hist-1',
+                  timestamp: '2026-11-26T08:16:00.000Z',
+                  timeLabel: '08:16',
+                  kind: 'ai_analyze',
+                  actorId: 't-roster-1',
+                  actorName: 'רונית',
+                  actorRole: 'trainee',
+                  summary: 'זיהוי AI',
+                  itemsSnapshot: [makeFood('f1', 'שייק חלבון', 300, 220, 28)],
+                },
+              ],
+              updatedAt: '2026-11-26T08:16:00.000Z',
+            },
+          },
+        },
+      },
+    };
+
+    const slim = sanitizeTraineeForRosterList(source);
+
+    // אבטחה ושמירה על ערכי דאשבורד
+    assert.equal(slim.password, '');
+    assert.equal(slim.logs['2026-11-26'].steps, 9400);
+    assert.equal(slim.logs['2026-11-26'].waterCups, 7);
+    const slimMeal = slim.logs['2026-11-26'].meals.m1;
+    assert.equal(slimMeal.items.length, 1);
+    assert.equal(slimMeal.mealTime, '08:15');
+    assert.equal(slimMeal.coachFeedback, 'מעולה!');
+
+    // השמטת שדות כבדים ברוסטר
+    assert.equal(slimMeal.photoDataUrl, undefined);
+    assert.equal(slimMeal.photoDataUrls, undefined);
+    assert.equal(slimMeal.photoStore, undefined);
+    assert.equal(slimMeal.photoMetas, undefined);
+    assert.equal(slimMeal.history, undefined);
+    assert.equal(slim.pendingAiJobs?.[0].photoDataUrls, undefined);
+    assert.equal(slim.pendingAiJobs?.[0].retryPayload, undefined);
+
+    // שמירה על תמונה יחידה של SavedMeal עבור CoachSavedMealsPanel
+    assert.equal(slim.savedMeals?.[0].photoDataUrl, savedThumb);
+    assert.equal(slim.savedMeals?.[0].photoDataUrls, undefined);
+
+    // אובייקט המקור לא נפגע במוטציה
+    assert.equal(source.logs['2026-11-26'].meals.m1.photoDataUrl, bigPhoto);
+    assert.ok(source.logs['2026-11-26'].meals.m1.photoStore?.h1);
+    assert.equal(source.logs['2026-11-26'].meals.m1.history?.length, 1);
+  });
+
+  it('produces order-independent sync stamps and falls back cleanly if any updated_at is missing', () => {
+    const a = serializeSyncTimestampRows([
+      { id: 'b', updated_at: '2026-11-26T10:00:00Z' },
+      { id: 'a', updated_at: '2026-11-26T09:00:00Z' },
+    ]);
+    const b = serializeSyncTimestampRows([
+      { id: 'a', updated_at: '2026-11-26T09:00:00Z' },
+      { id: 'b', updated_at: '2026-11-26T10:00:00Z' },
+    ]);
+    assert.equal(a, 'a:2026-11-26T09:00:00Z,b:2026-11-26T10:00:00Z');
+    assert.equal(a, b);
+    assert.equal(
+      serializeSyncTimestampRows([
+        { id: 'a', updated_at: '2026-11-26T09:00:00Z' },
+        { id: 'b', updated_at: null },
+      ]),
+      null
+    );
   });
 });

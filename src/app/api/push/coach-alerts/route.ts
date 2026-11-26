@@ -15,8 +15,9 @@ import {
   canCoachManageGroup,
   createDefaultCoachPushSettings,
   getServerDbState,
+  getServerMetaAndCoachesState,
   sanitizeCoachPushSettingsForClient,
-  updateServerDbState,
+  updateServerMetaState,
 } from '@/lib/serverStore';
 import { dispatchPushToTargets } from '@/lib/pushDispatcher';
 import {
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
 
     const op = body?.op || '';
     const nowIso = new Date().toISOString();
-    const state = await getServerDbState();
+    const metaState = await getServerMetaAndCoachesState();
 
     if (op === 'register-web-push') {
       const subEndpoint =
@@ -118,7 +119,7 @@ export async function POST(request: NextRequest) {
         isDeclarativeCapable: Boolean(body.isDeclarativeCapable),
       };
 
-      const updatedState = await updateServerDbState((prev) => {
+      const updatedState = await updateServerMetaState((prev) => {
         const currentSettings =
           prev.coachPushSettings?.[session.id] ||
           createDefaultCoachPushSettings(session.id);
@@ -154,7 +155,7 @@ export async function POST(request: NextRequest) {
         typeof body.endpoint === 'string'
           ? body.endpoint.trim().slice(0, 1000)
           : '';
-      await updateServerDbState((prev) => {
+      await updateServerMetaState((prev) => {
         const currentSettings = prev.coachPushSettings?.[session.id];
         if (!currentSettings) return prev;
         return {
@@ -177,13 +178,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (op === 'save-preferences') {
+      const state = await getServerDbState();
       const allowedTraineeIds = new Set(
         state.trainees
           .filter((t) => canCoachAccessTrainee(session, t))
           .map((t) => t.id)
       );
       const allowedGroupIds = new Set(
-        state.groups
+        metaState.groups
           .filter((g) => canCoachManageGroup(session, g))
           .map((g) => g.id)
       );
@@ -208,7 +210,7 @@ export async function POST(request: NextRequest) {
           ).slice(0, 100)
         : undefined;
 
-      const updatedState = await updateServerDbState((prev) => {
+      const updatedState = await updateServerMetaState((prev) => {
         const current =
           prev.coachPushSettings?.[session.id] ||
           createDefaultCoachPushSettings(session.id);
@@ -263,7 +265,7 @@ export async function POST(request: NextRequest) {
 
     if (op === 'test-self') {
       const cfg =
-        state.coachPushSettings?.[session.id] ||
+        metaState.coachPushSettings?.[session.id] ||
         createDefaultCoachPushSettings(session.id);
       if (
         (cfg.webPushSubscriptions?.length || 0) +
@@ -299,7 +301,7 @@ export async function POST(request: NextRequest) {
       ) {
         const deadFcm = new Set(sendRes.invalidFcmTokens);
         const deadWeb = new Set(sendRes.expiredWebEndpoints);
-        await updateServerDbState((prev) => {
+        await updateServerMetaState((prev) => {
           const cur = prev.coachPushSettings?.[session.id];
           if (!cur) return prev;
           return {

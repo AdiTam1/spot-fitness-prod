@@ -6,6 +6,7 @@ import {
   stripLegacySeededRecommendedOptionsFromTrainee,
 } from '@/data/israeliFoodCatalog';
 import {
+  AccountStatus,
   AppReleasePolicy,
   AppUpdatePushHistoryEntry,
   AuthSessionUser,
@@ -23,17 +24,28 @@ import {
   UserRole,
 } from '@/types/nutrition';
 import { hashPassword } from '@/lib/serverAuth';
-import { normalizePendingAiJobs } from '@/lib/aiJobs';
 import {
+  redactFcmTokens,
+  redactWebPushSubscriptions,
+  sanitizeTraineeForClient,
+  sanitizeTraineeForRosterList,
+} from '@/lib/traineeSanitize';
+export { sanitizeTraineeForClient, sanitizeTraineeForRosterList };
+import {
+  checkTraineeEmailExistsInSupabase,
   deleteCoachFromSupabase,
   deleteGroupFromSupabase,
   deleteTemplateFromSupabase,
   deleteTraineeFromSupabase,
+  findTraineeLoginCandidateInSupabase,
+  getRosterSyncStampFromSupabase,
+  getTraineeSyncStampFromSupabase,
   isSupabaseConfigured,
   LiveAuthRecord,
   loadAppReleasePolicyFromSupabase,
   loadCoachLiveAuthState,
   loadCustomFoodsContextFromSupabase,
+  loadMetaCoachesGroupsTemplatesFromSupabase,
   loadQuickChipsContextForTraineeFromSupabase,
   loadSemanticSearchEnabledFromSupabase,
   loadSingleCoachFromSupabase,
@@ -41,6 +53,7 @@ import {
   loadSingleTraineeWithVersionFromSupabase,
   loadStateFromSupabase,
   loadTraineeLiveAuthState,
+  loadTraineeSyncBundleFromSupabase,
   saveAppReleasePolicyToSupabase,
   saveCoachCustomFoodsToSupabase,
   saveCoachPushSettingsToSupabase,
@@ -54,6 +67,7 @@ import {
   saveTemplatesToSupabase,
   saveTraineesToSupabase,
   touchUserLastSeenInSupabase,
+  TraineeLoginLookupResult,
   recordUserClientVersionInSupabase,
   appendAppUpdatePushHistoryInSupabase,
 } from '@/lib/supabase';
@@ -216,7 +230,9 @@ function saveLocalServerFile(state: ServerDatabaseState) {
   }
 }
 
-export async function getServerDbState(): Promise<ServerDatabaseState> {
+async function loadServerStateInternal(
+  includeTrainees: boolean
+): Promise<ServerDatabaseState> {
   const coachEmail = (process.env.COACH_EMAIL || 'coach@spot.co.il')
     .trim()
     .toLowerCase();
@@ -226,7 +242,9 @@ export async function getServerDbState(): Promise<ServerDatabaseState> {
   const coachInviteCode = (process.env.COACH_INVITE_CODE || 'SPOT2026').trim();
 
   if (isSupabaseConfigured) {
-    const remote = await loadStateFromSupabase();
+    const remote = includeTrainees
+      ? await loadStateFromSupabase()
+      : await loadMetaCoachesGroupsTemplatesFromSupabase();
 
     let templates = remote.templates;
     if (templates.length === 0) {
@@ -255,9 +273,11 @@ export async function getServerDbState(): Promise<ServerDatabaseState> {
     const cleanedTemplates = templates.map(
       (tpl) => stripLegacySeededRecommendedOptionsFromTemplate(tpl).template
     );
-    const cleanedTrainees = remote.trainees.map(
-      (t) => stripLegacySeededRecommendedOptionsFromTrainee(t).trainee
-    );
+    const cleanedTrainees = includeTrainees
+      ? remote.trainees.map(
+          (t) => stripLegacySeededRecommendedOptionsFromTrainee(t).trainee
+        )
+      : [];
 
     return {
       coachEmail,
@@ -283,18 +303,86 @@ export async function getServerDbState(): Promise<ServerDatabaseState> {
   }
 
   const localState = loadLocalServerFile();
-  localState.coachEmail = coachEmail;
-  localState.coachPasswordHash = coachPasswordHash;
-  localState.templates = (localState.templates || []).map(
-    (tpl) => stripLegacySeededRecommendedOptionsFromTemplate(tpl).template
-  );
-  localState.trainees = (localState.trainees || []).map(
-    (t) => stripLegacySeededRecommendedOptionsFromTrainee(t).trainee
-  );
-  if (!localState.appReleasePolicy) {
-    localState.appReleasePolicy = { androidBlockedUpToVersionCode: 0 };
+  return {
+    ...localState,
+    coachEmail,
+    coachPasswordHash,
+    coachInviteCode: localState.coachInviteCode || coachInviteCode,
+    templates: (localState.templates || []).map(
+      (tpl) => stripLegacySeededRecommendedOptionsFromTemplate(tpl).template
+    ),
+    trainees: includeTrainees
+      ? (localState.trainees || []).map(
+          (t) => stripLegacySeededRecommendedOptionsFromTrainee(t).trainee
+        )
+      : [],
+    appReleasePolicy: localState.appReleasePolicy || {
+      androidBlockedUpToVersionCode: 0,
+    },
+  };
+}
+
+/**
+ * טוען את מטא-המערכת, המאמנים, הקבוצות והתבניות ללא סריקה של טבלת trainees.
+ */
+export async function getServerMetaAndCoachesState(): Promise<ServerDatabaseState> {
+  return loadServerStateInternal(false);
+}
+
+export async function getServerDbState(): Promise<ServerDatabaseState> {
+  return loadServerStateInternal(true);
+}
+
+export async function findTraineeLoginCandidateOnServer(
+  cleanEmail: string
+): Promise<TraineeLoginLookupResult> {
+  if (isSupabaseConfigured) {
+    return await findTraineeLoginCandidateInSupabase(cleanEmail);
   }
-  return localState;
+  const targetEmail = cleanEmail.trim().toLowerCase();
+  const state = loadLocalServerFile();
+  const matched = (state.trainees || []).find(
+    (t) => (t.email || '').trim().toLowerCase() === targetEmail
+  );
+  if (!matched) return { candidate: null };
+  return {
+    candidate: {
+      id: matched.id,
+      email: matched.email || '',
+      password: matched.password || '',
+      status: matched.status || 'active',
+      name: matched.name,
+      sessionVersion: Math.max(1, Number(matched.sessionVersion) || 1),
+    },
+  };
+}
+
+export async function checkTraineeEmailExistsOnServer(
+  cleanEmail: string
+): Promise<{ exists: boolean; dbUnavailable?: boolean; dbError?: string }> {
+  if (isSupabaseConfigured) {
+    return await checkTraineeEmailExistsInSupabase(cleanEmail);
+  }
+  const targetEmail = cleanEmail.trim().toLowerCase();
+  const state = loadLocalServerFile();
+  const exists = (state.trainees || []).some(
+    (t) => (t.email || '').trim().toLowerCase() === targetEmail
+  );
+  return { exists };
+}
+
+export async function createSingleTraineeOnServer(
+  trainee: TraineeProfile
+): Promise<void> {
+  if (isSupabaseConfigured) {
+    await saveTraineesToSupabase([trainee]);
+    return;
+  }
+  const current = loadLocalServerFile();
+  saveLocalServerFile({
+    ...current,
+    trainees: [...(current.trainees || []), trainee],
+  });
 }
 
 export function invalidateSemanticSearchFlagCache(nextValue?: boolean): void {
@@ -438,7 +526,7 @@ export async function recordUserClientVersionOnServer(
       (cached.appVersionCode ?? null) === (normalized.appVersionCode ?? null) &&
       (cached.appVersionName ?? null) === (normalized.appVersionName ?? null) &&
       (cached.webBuildId ?? null) === (normalized.webBuildId ?? null);
-    if (sameVersion && Number.isFinite(cachedTs) && nowMs - cachedTs < 5 * 60_000) {
+    if (sameVersion && Number.isFinite(cachedTs) && nowMs - cachedTs < 30 * 60_000) {
       return;
     }
   }
@@ -504,6 +592,66 @@ export async function getSingleCoachFromServer(
   return state.coaches.find((c) => c.id === coachId) || null;
 }
 
+export async function getTraineeSyncStampOnServer(
+  traineeId: string
+): Promise<{ stamp: string | null; status?: AccountStatus }> {
+  if (isSupabaseConfigured) {
+    return await getTraineeSyncStampFromSupabase(traineeId);
+  }
+  return { stamp: null };
+}
+
+export async function getRosterSyncStampOnServer(
+  previewTraineeId?: string
+): Promise<string | null> {
+  if (isSupabaseConfigured) {
+    return await getRosterSyncStampFromSupabase(previewTraineeId);
+  }
+  return null;
+}
+
+export async function getTraineeSyncBundleOnServer(opts: {
+  groupId?: string;
+  coachIds?: string[];
+}): Promise<{
+  globalQuickChips: QuickContextChip[];
+  groupQuickChips: QuickContextChip[];
+  globalCustomFoods: CustomFoodItem[];
+  coachCustomFoods: Record<string, CustomFoodItem[]>;
+  semanticSearchEnabled: boolean;
+}> {
+  if (isSupabaseConfigured) {
+    return await loadTraineeSyncBundleFromSupabase(opts);
+  }
+  const state = await getServerMetaAndCoachesState();
+  const globalQuickChips = Array.isArray(state.globalQuickChips)
+    ? state.globalQuickChips
+    : [];
+  const groupQuickChips = opts.groupId
+    ? state.groups.find((g) => g.id === opts.groupId)?.customQuickChips || []
+    : [];
+  const globalCustomFoods = Array.isArray(state.globalCustomFoods)
+    ? state.globalCustomFoods
+    : [];
+  const rawCoach = state.coachCustomFoods || {};
+  let coachCustomFoods: Record<string, CustomFoodItem[]> = rawCoach;
+  if (Array.isArray(opts.coachIds)) {
+    coachCustomFoods = {};
+    for (const id of opts.coachIds) {
+      if (Array.isArray(rawCoach[id])) {
+        coachCustomFoods[id] = rawCoach[id];
+      }
+    }
+  }
+  return {
+    globalQuickChips,
+    groupQuickChips,
+    globalCustomFoods,
+    coachCustomFoods,
+    semanticSearchEnabled: Boolean(state.semanticSearchEnabled),
+  };
+}
+
 export async function getQuickChipsContextForTrainee(
   groupId?: string
 ): Promise<{
@@ -549,12 +697,11 @@ export async function getCustomFoodsContextForUser(opts: {
   return { globalCustomFoods, coachCustomFoods };
 }
 
-export async function updateServerDbState(
-  updater: (prev: ServerDatabaseState) => ServerDatabaseState
+async function persistUpdatedStateDiff(
+  current: ServerDatabaseState,
+  next: ServerDatabaseState,
+  options: { skipTrainees: boolean }
 ): Promise<ServerDatabaseState> {
-  const current = await getServerDbState();
-  const next = updater(current);
-
   if (isSupabaseConfigured) {
     const tasks: Promise<unknown>[] = [];
     if (next.coaches !== current.coaches) {
@@ -566,7 +713,7 @@ export async function updateServerDbState(
     if (next.templates !== current.templates) {
       tasks.push(saveTemplatesToSupabase(next.templates));
     }
-    if (next.trainees !== current.trainees) {
+    if (!options.skipTrainees && next.trainees !== current.trainees) {
       // שליחת עדכון אך ורק לשורות המתאמנים שהשתנו בפועל (מונע דריסות צולבות ועומס מיותר)
       const changedTrainees = next.trainees.filter((nt) => {
         const ct = current.trainees.find((x) => x.id === nt.id);
@@ -602,14 +749,42 @@ export async function updateServerDbState(
     if (tasks.length > 0) {
       await Promise.all(tasks);
     }
-  } else {
-    if (next.semanticSearchEnabled !== current.semanticSearchEnabled) {
-      invalidateSemanticSearchFlagCache(Boolean(next.semanticSearchEnabled));
-    }
-    saveLocalServerFile(next);
+    return next;
   }
 
+  if (next.semanticSearchEnabled !== current.semanticSearchEnabled) {
+    invalidateSemanticSearchFlagCache(Boolean(next.semanticSearchEnabled));
+  }
+  if (options.skipTrainees) {
+    const existingLocal = loadLocalServerFile();
+    const merged: ServerDatabaseState = {
+      ...next,
+      trainees: existingLocal.trainees || [],
+    };
+    saveLocalServerFile(merged);
+    return merged;
+  }
+  saveLocalServerFile(next);
   return next;
+}
+
+/**
+ * מעדכן הגדרות מערכת / מאמנים / קבוצות / מוצרים מערכתיים מבלי לסרוק את טבלת trainees.
+ */
+export async function updateServerMetaState(
+  updater: (prev: ServerDatabaseState) => ServerDatabaseState
+): Promise<ServerDatabaseState> {
+  const current = await getServerMetaAndCoachesState();
+  const next = updater(current);
+  return persistUpdatedStateDiff(current, next, { skipTrainees: true });
+}
+
+export async function updateServerDbState(
+  updater: (prev: ServerDatabaseState) => ServerDatabaseState
+): Promise<ServerDatabaseState> {
+  const current = await getServerDbState();
+  const next = updater(current);
+  return persistUpdatedStateDiff(current, next, { skipTrainees: false });
 }
 
 /**
@@ -829,25 +1004,6 @@ export function canCoachManageGroup(
   return false;
 }
 
-function redactFcmTokens(
-  tokens?: TraineeFcmTokenEntry[]
-): TraineeFcmTokenEntry[] {
-  return (tokens || []).map((entry) => ({
-    ...entry,
-    token: entry.token ? `fcm_${entry.token.slice(-6)}` : '',
-  }));
-}
-
-function redactWebPushSubscriptions(
-  subs?: TraineeWebPushSubscriptionEntry[]
-): TraineeWebPushSubscriptionEntry[] {
-  return (subs || []).map((sub, idx) => ({
-    ...sub,
-    endpoint: `webpush_${idx}_${sub.endpoint ? sub.endpoint.slice(-8) : ''}`,
-    keys: { p256dh: '', auth: '' },
-  }));
-}
-
 export function createDefaultCoachPushSettings(
   coachId: string
 ): CoachPushSubscriptionSettings {
@@ -878,20 +1034,6 @@ export function sanitizeCoachPushSettingsForClient(
     coachId,
     webPushSubscriptions: redactWebPushSubscriptions(base.webPushSubscriptions),
     fcmTokens: redactFcmTokens(base.fcmTokens),
-  };
-}
-
-export function sanitizeTraineeForClient(
-  trainee: TraineeProfile
-): TraineeProfile {
-  return {
-    ...trainee,
-    password: '',
-    pendingAiJobs: normalizePendingAiJobs(trainee.pendingAiJobs).jobs,
-    fcmTokens: redactFcmTokens(trainee.fcmTokens),
-    webPushSubscriptions: redactWebPushSubscriptions(
-      trainee.webPushSubscriptions
-    ),
   };
 }
 

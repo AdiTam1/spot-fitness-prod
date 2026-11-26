@@ -361,7 +361,7 @@ export function AdminMonitoringPanel({
       if (document.visibilityState === 'visible') {
         void loadSnapshot();
       }
-    }, 5000);
+    }, 15000);
     return () => clearInterval(t);
   }, [liveRefresh, loadSnapshot]);
 

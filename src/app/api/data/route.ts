@@ -29,18 +29,21 @@ import {
   deleteGroupOnServer,
   deleteTemplateOnServer,
   deleteTraineeOnServer,
-  getCustomFoodsContextForUser,
-  getQuickChipsContextForTrainee,
-  getSemanticSearchEnabledFast,
+  getRosterSyncStampOnServer,
   getServerDbState,
+  getServerMetaAndCoachesState,
   getSingleCoachFromServer,
   getSingleTraineeFromServer,
+  getTraineeSyncBundleOnServer,
+  getTraineeSyncStampOnServer,
   isPrimaryOwnerOfTrainee,
   isSuperAdmin,
   sanitizeCoachForClient,
   sanitizeCoachPushSettingsForClient,
   sanitizeTraineeForClient,
+  sanitizeTraineeForRosterList,
   updateServerDbState,
+  updateServerMetaState,
   updateTraineeAtomic,
 } from '@/lib/serverStore';
 import {
@@ -759,10 +762,41 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
   const session = auth.session;
   ctx.setActor(session);
 
+  const { searchParams } = new URL(request.url);
+  const since = sanitizeText(searchParams.get('since') || '', 160);
+
   // 1. מתאמן מחובר: מקבל אך ורק את הפרופיל של עצמו + צ'יפים קבוצתיים/כלליים לקונטקסט AI
   if (session.role === 'trainee') {
+    if (since) {
+      const stampCheck = await getTraineeSyncStampOnServer(session.id);
+      if (stampCheck.status && stampCheck.status !== 'active') {
+        ctx.setErrorCode('ACCOUNT_BLOCKED', 'החשבון אינו פעיל');
+        const res = NextResponse.json(
+          { error: 'החשבון אינו פעיל', code: 'ACCOUNT_BLOCKED' },
+          { status: 403, headers: { 'Cache-Control': 'no-store, max-age=0' } }
+        );
+        return clearSessionCookie(res);
+      }
+      if (stampCheck.stamp && stampCheck.stamp === since) {
+        ctx.setActionName('trainee_sync_not_modified');
+        ctx.setAiUsage({ diag: { authMs, payloadKB: 0, notModified: true } });
+        return NextResponse.json(
+          { notModified: true, syncVersion: stampCheck.stamp },
+          {
+            headers: {
+              'Cache-Control': 'no-store, max-age=0',
+              'x-spot-payload-kb': '0',
+            },
+          }
+        );
+      }
+    }
+
     const profileStartMs = Date.now();
-    const myProfile = await getSingleTraineeFromServer(session.id);
+    const [preStampRes, myProfile] = await Promise.all([
+      getTraineeSyncStampOnServer(session.id),
+      getSingleTraineeFromServer(session.id),
+    ]);
     const profileMs = Date.now() - profileStartMs;
     if (!myProfile) {
       ctx.setErrorCode('PROFILE_LOAD_FAILED', 'טעינת הפרופיל מהשרת נכשלה זמנית');
@@ -784,11 +818,9 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
     const normalizedJobsRes = normalizePendingAiJobs(myProfile.pendingAiJobs);
     if (normalizedJobsRes.changed) {
       const cleanJobs = normalizedJobsRes.jobs;
-      const healTask = updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) =>
-          t.id === myProfile.id ? { ...t, pendingAiJobs: cleanJobs } : t
-        ),
+      const healTask = updateTraineeAtomic(myProfile.id, (prevTr) => ({
+        ...prevTr,
+        pendingAiJobs: cleanJobs,
       })).catch(() => {});
       try {
         waitUntil(healTask);
@@ -803,16 +835,15 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
     ].filter(Boolean);
 
     const extrasStartMs = Date.now();
-    const [chipsCtx, customFoodsCtx, semanticSearchEnabled] = await Promise.all([
-      getQuickChipsContextForTrainee(myProfile.groupId),
-      getCustomFoodsContextForUser({ coachIds: coachIdsForTrainee }),
-      getSemanticSearchEnabledFast(),
-    ]);
+    const bundle = await getTraineeSyncBundleOnServer({
+      groupId: myProfile.groupId,
+      coachIds: coachIdsForTrainee,
+    });
     const extrasMs = Date.now() - extrasStartMs;
 
-    const sharedCoachCustomFoods: Record<string, typeof customFoodsCtx.globalCustomFoods> = {};
+    const sharedCoachCustomFoods: Record<string, typeof bundle.globalCustomFoods> = {};
     for (const cId of coachIdsForTrainee) {
-      const list = customFoodsCtx.coachCustomFoods[cId];
+      const list = bundle.coachCustomFoods[cId];
       if (Array.isArray(list) && list.length > 0) {
         sharedCoachCustomFoods[cId] = list.filter((cf) => cf.scope === 'coach-trainees');
       }
@@ -840,11 +871,12 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
       groups: [],
       coaches: [],
       coachDirectory: [],
-      globalQuickChips: chipsCtx.globalQuickChips,
-      groupQuickChips: chipsCtx.groupQuickChips,
-      globalCustomFoods: customFoodsCtx.globalCustomFoods,
+      globalQuickChips: bundle.globalQuickChips,
+      groupQuickChips: bundle.groupQuickChips,
+      globalCustomFoods: bundle.globalCustomFoods,
       sharedCoachCustomFoods,
-      semanticSearchEnabled,
+      semanticSearchEnabled: bundle.semanticSearchEnabled,
+      syncVersion: preStampRes.stamp,
       role: 'trainee',
     });
     const payloadKB = Math.round(Buffer.byteLength(responseBody, 'utf8') / 1024);
@@ -871,11 +903,81 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
     });
   }
 
-  const state = await getServerDbState();
+  const requestedTraineeId = sanitizeText(searchParams.get('traineeId') || '', 80);
+  if (requestedTraineeId) {
+    const singleStartMs = Date.now();
+    const singleTrainee = await getSingleTraineeFromServer(requestedTraineeId);
+    const singleLoadMs = Date.now() - singleStartMs;
+    if (!singleTrainee || !canCoachAccessTrainee(session, singleTrainee)) {
+      ctx.setErrorCode('FORBIDDEN', 'אין הרשאה לצפות במתאמן זה');
+      return NextResponse.json(
+        { error: 'אין הרשאה לצפות במתאמן זה' },
+        { status: 403, headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      );
+    }
+    const singleBody = JSON.stringify({
+      trainee: sanitizeTraineeForClient(singleTrainee),
+    });
+    const payloadKB = Math.round(Buffer.byteLength(singleBody, 'utf8') / 1024);
+    ctx.setActionName('coach_preview_trainee');
+    ctx.setAiUsage({
+      diag: {
+        authMs,
+        singleLoadMs,
+        payloadKB,
+        traineeId: requestedTraineeId,
+      },
+    });
+    return new NextResponse(singleBody, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store, max-age=0',
+        'x-spot-payload-kb': String(payloadKB),
+      },
+    });
+  }
+
+  const previewTraineeId = sanitizeText(
+    searchParams.get('previewTraineeId') || '',
+    80
+  );
+  if (since) {
+    const stamp = await getRosterSyncStampOnServer(previewTraineeId);
+    if (stamp && stamp === since) {
+      ctx.setActionName(
+        session.role === 'coach' ? 'coach_sync_not_modified' : 'admin_sync_not_modified'
+      );
+      ctx.setAiUsage({ diag: { authMs, payloadKB: 0, notModified: true } });
+      return NextResponse.json(
+        { notModified: true, syncVersion: stamp },
+        {
+          headers: {
+            'Cache-Control': 'no-store, max-age=0',
+            'x-spot-payload-kb': '0',
+          },
+        }
+      );
+    }
+  }
+
+  const loadStartMs = Date.now();
+  const [preRosterStamp, state] = await Promise.all([
+    getRosterSyncStampOnServer(previewTraineeId),
+    getServerDbState(),
+  ]);
+  const loadMs = Date.now() - loadStartMs;
+
+  const sanitizeForRoster = (t: TraineeProfile) =>
+    previewTraineeId && t.id === previewTraineeId
+      ? sanitizeTraineeForClient(t)
+      : sanitizeTraineeForRosterList(t);
 
   // 2. מאמן רגיל מחובר: מקבל אך ורק מתאמנים שלו או ששותפו איתו + טמפלייטים מותרים לו
   if (session.role === 'coach') {
-    const liveCoach = await getSingleCoachFromServer(session.id);
+    const liveCoach =
+      state.coaches.find((c) => c.id === session.id) ||
+      (await getSingleCoachFromServer(session.id));
     if (!liveCoach || liveCoach.status !== 'active') {
       const res = NextResponse.json(
         { error: 'חשבון המאמן מושהה' },
@@ -886,7 +988,7 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
 
     const visibleTrainees = state.trainees
       .filter((t) => canCoachAccessTrainee(session, t))
-      .map((t) => sanitizeTraineeForClient(t));
+      .map(sanitizeForRoster);
 
     const visibleTemplates = state.templates.filter((tpl) =>
       canCoachViewTemplate(session, tpl)
@@ -896,27 +998,44 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
       canCoachManageGroup(session, grp)
     );
 
-    return NextResponse.json(
-      {
-        trainees: visibleTrainees,
-        templates: visibleTemplates,
-        groups: visibleGroups,
-        coaches: [], // מאמן רגיל לעולם לא מקבל את טבלת המאמנים המלאה
-        myCoachProfile: sanitizeCoachForClient(liveCoach),
-        coachDirectory: buildCoachDirectory(state), // שמות בלבד לצורך שיתוף
-        coachInviteCode: liveCoach.inviteCode,
-        globalQuickChips: state.globalQuickChips || [],
-        globalCustomFoods: state.globalCustomFoods || [],
-        myCoachCustomFoods: state.coachCustomFoods?.[session.id] || [],
-        coachPushSettings: sanitizeCoachPushSettingsForClient(
-          state.coachPushSettings?.[session.id],
-          session.id
-        ),
-        semanticSearchEnabled: Boolean(state.semanticSearchEnabled),
-        role: 'coach',
+    const coachResponseBody = JSON.stringify({
+      trainees: visibleTrainees,
+      templates: visibleTemplates,
+      groups: visibleGroups,
+      coaches: [], // מאמן רגיל לעולם לא מקבל את טבלת המאמנים המלאה
+      myCoachProfile: sanitizeCoachForClient(liveCoach),
+      coachDirectory: buildCoachDirectory(state), // שמות בלבד לצורך שיתוף
+      coachInviteCode: liveCoach.inviteCode,
+      globalQuickChips: state.globalQuickChips || [],
+      globalCustomFoods: state.globalCustomFoods || [],
+      myCoachCustomFoods: state.coachCustomFoods?.[session.id] || [],
+      coachPushSettings: sanitizeCoachPushSettingsForClient(
+        state.coachPushSettings?.[session.id],
+        session.id
+      ),
+      semanticSearchEnabled: Boolean(state.semanticSearchEnabled),
+      syncVersion: preRosterStamp,
+      role: 'coach',
+    });
+    const payloadKB = Math.round(Buffer.byteLength(coachResponseBody, 'utf8') / 1024);
+    ctx.setActionName('coach_sync');
+    ctx.setAiUsage({
+      diag: {
+        authMs,
+        loadMs,
+        payloadKB,
+        traineesCount: visibleTrainees.length,
+        hasPreviewTrainee: Boolean(previewTraineeId),
       },
-      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
-    );
+    });
+    return new NextResponse(coachResponseBody, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store, max-age=0',
+        'x-spot-payload-kb': String(payloadKB),
+      },
+    });
   }
 
   // 3. מנהל ראשי (Super Admin): גישה מלאה לכל המאמנים, המתאמנים, הקבוצות והטמפלייטים
@@ -926,36 +1045,54 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
       : undefined;
 
   const adminSelfProfile = state.coaches.find((c) => c.id === 'coach-admin');
-  return NextResponse.json(
-    {
-      trainees: state.trainees.map((t) => sanitizeTraineeForClient(t)),
-      templates: state.templates,
-      groups: state.groups,
-      coaches: state.coaches
-        .filter((c) => c.id !== 'coach-admin')
-        .map((c) => sanitizeCoachForClient(c)),
-      myCoachProfile: adminSelfProfile
-        ? sanitizeCoachForClient(adminSelfProfile)
-        : undefined,
-      coachDirectory: buildCoachDirectory(state),
-      coachInviteCode: state.coachInviteCode,
-      globalQuickChips: state.globalQuickChips || [],
-      globalCustomFoods: state.globalCustomFoods || [],
-      myCoachCustomFoods: state.coachCustomFoods?.['coach-admin'] || [],
-      coachPushSettings: sanitizeCoachPushSettingsForClient(
-        state.coachPushSettings?.[session.id],
-        session.id
-      ),
-      appReleasePolicy: state.appReleasePolicy || {
-        androidBlockedUpToVersionCode: 0,
-      },
-      adminShowScraperSources: Boolean(state.showScraperSourcesToAdmin),
-      semanticSearchEnabled: Boolean(state.semanticSearchEnabled),
-      role: 'admin',
-      dbError,
+  const rosterTrainees = state.trainees.map(sanitizeForRoster);
+  const adminResponseBody = JSON.stringify({
+    trainees: rosterTrainees,
+    templates: state.templates,
+    groups: state.groups,
+    coaches: state.coaches
+      .filter((c) => c.id !== 'coach-admin')
+      .map((c) => sanitizeCoachForClient(c)),
+    myCoachProfile: adminSelfProfile
+      ? sanitizeCoachForClient(adminSelfProfile)
+      : undefined,
+    coachDirectory: buildCoachDirectory(state),
+    coachInviteCode: state.coachInviteCode,
+    globalQuickChips: state.globalQuickChips || [],
+    globalCustomFoods: state.globalCustomFoods || [],
+    myCoachCustomFoods: state.coachCustomFoods?.['coach-admin'] || [],
+    coachPushSettings: sanitizeCoachPushSettingsForClient(
+      state.coachPushSettings?.[session.id],
+      session.id
+    ),
+    appReleasePolicy: state.appReleasePolicy || {
+      androidBlockedUpToVersionCode: 0,
     },
-    { headers: { 'Cache-Control': 'no-store, max-age=0' } }
-  );
+    adminShowScraperSources: Boolean(state.showScraperSourcesToAdmin),
+    semanticSearchEnabled: Boolean(state.semanticSearchEnabled),
+    syncVersion: preRosterStamp,
+    role: 'admin',
+    dbError,
+  });
+  const payloadKB = Math.round(Buffer.byteLength(adminResponseBody, 'utf8') / 1024);
+  ctx.setActionName('admin_sync');
+  ctx.setAiUsage({
+    diag: {
+      authMs,
+      loadMs,
+      payloadKB,
+      traineesCount: rosterTrainees.length,
+      hasPreviewTrainee: Boolean(previewTraineeId),
+    },
+  });
+  return new NextResponse(adminResponseBody, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store, max-age=0',
+      'x-spot-payload-kb': String(payloadKB),
+    },
+  });
 });
 
 async function handleDataPost(
@@ -1005,8 +1142,7 @@ async function handleDataPost(
         return NextResponse.json({ error: 'אין הרשאה' }, { status: 403 });
       }
 
-      const state = await getServerDbState();
-      const target = state.trainees.find((t) => t.id === requestedId);
+      const target = await getSingleTraineeFromServer(requestedId);
       if (
         !target ||
         (session.role === 'trainee'
@@ -1025,17 +1161,10 @@ async function handleDataPost(
           ? sanitizeCustomUnits(body.customFoodUnits)
           : target.customFoodUnits || [];
 
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) =>
-          t.id === requestedId
-            ? {
-                ...t,
-                customServingTools: nextTools,
-                customFoodUnits: nextUnits,
-              }
-            : t
-        ),
+      await updateTraineeAtomic(requestedId, (prevTr) => ({
+        ...prevTr,
+        customServingTools: nextTools,
+        customFoodUnits: nextUnits,
       }));
 
       return NextResponse.json({
@@ -1052,7 +1181,6 @@ async function handleDataPost(
         | 'coach-trainees'
         | 'global';
       const op = String(body.op || 'touch') as 'touch' | 'upsert' | 'delete' | 'replace';
-      const state = await getServerDbState();
 
       if (scope === 'global') {
         if (!isSuperAdmin(session)) {
@@ -1061,6 +1189,7 @@ async function handleDataPost(
             { status: 403 }
           );
         }
+        const state = await getServerMetaAndCoachesState();
         let nextGlobal = [...(state.globalQuickChips || [])];
         if (op === 'replace') {
           nextGlobal = sanitizeQuickChips(body.chips, 'global', 50);
@@ -1112,7 +1241,7 @@ async function handleDataPost(
           nextGlobal = nextGlobal.slice(0, 50);
         }
 
-        await updateServerDbState((prev) => ({
+        await updateServerMetaState((prev) => ({
           ...prev,
           globalQuickChips: nextGlobal,
         }));
@@ -1123,8 +1252,9 @@ async function handleDataPost(
         if (session.role === 'trainee') {
           return NextResponse.json({ error: 'אין הרשאה לעדכן צ׳יפים קבוצתיים' }, { status: 403 });
         }
+        const metaState = await getServerMetaAndCoachesState();
         const groupId = String(body.groupId || '');
-        const grp = state.groups.find((g) => g.id === groupId);
+        const grp = metaState.groups.find((g) => g.id === groupId);
         if (!grp || !canCoachManageGroup(session, grp)) {
           return NextResponse.json({ error: 'אין הרשאה לקבוצה זו' }, { status: 403 });
         }
@@ -1172,7 +1302,7 @@ async function handleDataPost(
           nextGroupChips = nextGroupChips.slice(0, 40);
         }
 
-        await updateServerDbState((prev) => ({
+        await updateServerMetaState((prev) => ({
           ...prev,
           groups: prev.groups.map((g) =>
             g.id === groupId ? { ...g, customQuickChips: nextGroupChips } : g
@@ -1206,6 +1336,7 @@ async function handleDataPost(
             : undefined;
         const nowIso = new Date().toISOString();
 
+        const state = await getServerDbState();
         const ownedGroups = state.groups.filter((g) => canCoachManageGroup(session, g));
         const accessibleTrainees = state.trainees.filter((t) =>
           canCoachAccessTrainee(session, t)
@@ -1281,13 +1412,13 @@ async function handleDataPost(
         });
       }
 
-      // scope === 'user': צ'יפים מהירים פר-משתמש מסודרים לפי MRU
+      // scope === 'user': צ'יפים מהירים פר-משתמש מסודרים לפי MRU (עדכון אטומי למתאמן בודד)
       const targetId =
         session.role === 'trainee' ? session.id : String(body.traineeId || '');
       if (session.role === 'trainee' && body.traineeId && body.traineeId !== session.id) {
         return NextResponse.json({ error: 'אין הרשאה' }, { status: 403 });
       }
-      const target = state.trainees.find((t) => t.id === targetId);
+      const target = await getSingleTraineeFromServer(targetId);
       if (
         !target ||
         (session.role === 'trainee'
@@ -1297,67 +1428,69 @@ async function handleDataPost(
         return NextResponse.json({ error: 'אין הרשאה לעדכן צ׳יפים למשתמש זה' }, { status: 403 });
       }
 
-      let nextUserChips = [...(target.recentContextChips || [])];
-      const nowIso = new Date().toISOString();
-      if (op === 'replace') {
-        nextUserChips = sanitizeQuickChips(body.chips, 'user', 60);
-      } else if (op === 'delete') {
-        const chipId = String(body.chipId || '');
-        nextUserChips = nextUserChips.filter((c) => c.id !== chipId);
-      } else {
-        const chipsList = Array.isArray(body.chips)
-          ? (body.chips as Partial<QuickContextChip>[])
-          : body.chip
-          ? [body.chip as Partial<QuickContextChip>]
-          : [];
-        for (const rawC of chipsList) {
-          const label = sanitizeText(rawC.label, 50);
-          if (!label) continue;
-          const category = ALLOWED_CHIP_CATEGORIES.has(rawC.category as QuickChipCategory)
-            ? (rawC.category as QuickChipCategory)
-            : 'prep';
-          const dropdownKind =
-            rawC.dropdownKind === 'oil' ||
-            rawC.dropdownKind === 'sauce' ||
-            rawC.dropdownKind === 'portion'
-              ? rawC.dropdownKind
-              : undefined;
-          const idx = nextUserChips.findIndex(
-            (c) => c.label === label && c.category === category
-          );
-          if (idx >= 0) {
-            nextUserChips[idx] = {
-              ...nextUserChips[idx],
-              ...(dropdownKind ? { dropdownKind } : {}),
-              lastUsedAt: nowIso,
-              useCount: (nextUserChips[idx].useCount || 0) + 1,
-            };
+      const { next: updatedChipTrainee } = await updateTraineeAtomic(
+        targetId,
+        (prevTarget) => {
+          let nextUserChips = [...(prevTarget.recentContextChips || [])];
+          const nowIso = new Date().toISOString();
+          if (op === 'replace') {
+            nextUserChips = sanitizeQuickChips(body.chips, 'user', 60);
+          } else if (op === 'delete') {
+            const chipId = String(body.chipId || '');
+            nextUserChips = nextUserChips.filter((c) => c.id !== chipId);
           } else {
-            nextUserChips.unshift({
-              id: generateSecureId('uchip'),
-              label,
-              category,
-              scope: 'user',
-              createdBy: session.name,
-              ...(dropdownKind ? { dropdownKind } : {}),
-              lastUsedAt: nowIso,
-              useCount: 1,
-            });
+            const chipsList = Array.isArray(body.chips)
+              ? (body.chips as Partial<QuickContextChip>[])
+              : body.chip
+              ? [body.chip as Partial<QuickContextChip>]
+              : [];
+            for (const rawC of chipsList) {
+              const label = sanitizeText(rawC.label, 50);
+              if (!label) continue;
+              const category = ALLOWED_CHIP_CATEGORIES.has(rawC.category as QuickChipCategory)
+                ? (rawC.category as QuickChipCategory)
+                : 'prep';
+              const dropdownKind =
+                rawC.dropdownKind === 'oil' ||
+                rawC.dropdownKind === 'sauce' ||
+                rawC.dropdownKind === 'portion'
+                  ? rawC.dropdownKind
+                  : undefined;
+              const idx = nextUserChips.findIndex(
+                (c) => c.label === label && c.category === category
+              );
+              if (idx >= 0) {
+                nextUserChips[idx] = {
+                  ...nextUserChips[idx],
+                  ...(dropdownKind ? { dropdownKind } : {}),
+                  lastUsedAt: nowIso,
+                  useCount: (nextUserChips[idx].useCount || 0) + 1,
+                };
+              } else {
+                nextUserChips.unshift({
+                  id: generateSecureId('uchip'),
+                  label,
+                  category,
+                  scope: 'user',
+                  createdBy: session.name,
+                  ...(dropdownKind ? { dropdownKind } : {}),
+                  lastUsedAt: nowIso,
+                  useCount: 1,
+                });
+              }
+            }
+            nextUserChips = nextUserChips
+              .sort((a, b) => (b.lastUsedAt || '').localeCompare(a.lastUsedAt || ''))
+              .slice(0, 60);
           }
+          return { ...prevTarget, recentContextChips: nextUserChips };
         }
-        nextUserChips = nextUserChips
-          .sort((a, b) => (b.lastUsedAt || '').localeCompare(a.lastUsedAt || ''))
-          .slice(0, 60);
-      }
+      );
 
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) =>
-          t.id === targetId ? { ...t, recentContextChips: nextUserChips } : t
-        ),
-      }));
-
-      return NextResponse.json({ ok: true, recentContextChips: nextUserChips });
+      return NextResponse.json({
+        ok: true,
+        recentContextChips: updatedChipTrainee?.recentContextChips || [],
+      });
     }
 
     if (action === 'trainee-manage-saved-meals') {
@@ -1366,8 +1499,7 @@ async function handleDataPost(
       if (session.role === 'trainee' && body.traineeId && body.traineeId !== session.id) {
         return NextResponse.json({ error: 'אין הרשאה' }, { status: 403 });
       }
-      const state = await getServerDbState();
-      const targetTrainee = state.trainees.find((t) => t.id === targetId);
+      const targetTrainee = await getSingleTraineeFromServer(targetId);
       if (
         !targetTrainee ||
         (session.role === 'trainee'
@@ -1385,75 +1517,94 @@ async function handleDataPost(
         | 'ask-question'
         | 'delete';
       const presetId = sanitizeText(body.presetId, 60);
-      const currentMeals = [...(targetTrainee.savedMeals || [])];
-      let nextMeals = [...currentMeals];
 
-      if (op === 'delete') {
-        nextMeals = currentMeals.filter((m) => m.id !== presetId);
-      } else if (op === 'toggle-pin' || op === 'toggle-favorite' || op === 'increment-use') {
-        const nowIso = new Date().toISOString();
-        nextMeals = currentMeals.map((m) => {
-          if (m.id !== presetId) return m;
-          if (op === 'toggle-pin') {
-            return { ...m, isPinned: !m.isPinned, updatedAt: nowIso };
-          }
-          if (op === 'toggle-favorite') {
-            return { ...m, isFavorite: !m.isFavorite, updatedAt: nowIso };
-          }
-          return {
-            ...m,
-            useCount: (m.useCount || 0) + 1,
-            lastUsedAt: nowIso,
-            updatedAt: nowIso,
-          };
-        });
-      } else if (op === 'ask-question') {
-        const question = sanitizeText(body.question, 400);
-        if (!question) {
-          return NextResponse.json({ error: 'נא להזין שאלה למאמן' }, { status: 400 });
-        }
-        const nowIso = new Date().toISOString();
-        nextMeals = currentMeals.map((m) =>
-          m.id === presetId
-            ? {
-                ...m,
-                updatedAt: nowIso,
-                coachQuestion: {
-                  id: m.coachQuestion?.id || generateSecureId('q'),
-                  question,
-                  askedAt: nowIso,
-                  status: 'pending',
-                },
-              }
-            : m
-        );
-      } else {
+      if (op === 'ask-question' && !sanitizeText(body.question, 400)) {
+        return NextResponse.json({ error: 'נא להזין שאלה למאמן' }, { status: 400 });
+      }
+
+      if (
+        op !== 'delete' &&
+        op !== 'toggle-pin' &&
+        op !== 'toggle-favorite' &&
+        op !== 'increment-use' &&
+        op !== 'ask-question'
+      ) {
         const rawPreset = (body.preset || {}) as Partial<SavedMealPreset>;
-        const existing = rawPreset.id
-          ? currentMeals.find((m) => m.id === rawPreset.id)
+        const existingCheck = rawPreset.id
+          ? (targetTrainee.savedMeals || []).find((m) => m.id === rawPreset.id)
           : undefined;
-        const sanitized = buildSanitizedSavedPreset(rawPreset, existing);
-        if (!sanitized) {
+        if (!buildSanitizedSavedPreset(rawPreset, existingCheck)) {
           return NextResponse.json(
             { error: 'שם הארוחה או רכיבי המנה חסרים' },
             { status: 400 }
           );
         }
-        if (existing) {
-          nextMeals = currentMeals.map((m) => (m.id === existing.id ? sanitized : m));
-        } else {
-          nextMeals = [sanitized, ...currentMeals].slice(0, 120);
-        }
       }
 
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) =>
-          t.id === targetId ? { ...t, savedMeals: nextMeals } : t
-        ),
-      }));
+      const { next: updatedSavedTrainee } = await updateTraineeAtomic(
+        targetId,
+        (prevTr) => {
+          const currentMeals = [...(prevTr.savedMeals || [])];
+          let nextMeals = [...currentMeals];
 
-      return NextResponse.json({ ok: true, savedMeals: nextMeals });
+          if (op === 'delete') {
+            nextMeals = currentMeals.filter((m) => m.id !== presetId);
+          } else if (op === 'toggle-pin' || op === 'toggle-favorite' || op === 'increment-use') {
+            const nowIso = new Date().toISOString();
+            nextMeals = currentMeals.map((m) => {
+              if (m.id !== presetId) return m;
+              if (op === 'toggle-pin') {
+                return { ...m, isPinned: !m.isPinned, updatedAt: nowIso };
+              }
+              if (op === 'toggle-favorite') {
+                return { ...m, isFavorite: !m.isFavorite, updatedAt: nowIso };
+              }
+              return {
+                ...m,
+                useCount: (m.useCount || 0) + 1,
+                lastUsedAt: nowIso,
+                updatedAt: nowIso,
+              };
+            });
+          } else if (op === 'ask-question') {
+            const question = sanitizeText(body.question, 400);
+            const nowIso = new Date().toISOString();
+            nextMeals = currentMeals.map((m) =>
+              m.id === presetId
+                ? {
+                    ...m,
+                    updatedAt: nowIso,
+                    coachQuestion: {
+                      id: m.coachQuestion?.id || generateSecureId('q'),
+                      question,
+                      askedAt: nowIso,
+                      status: 'pending',
+                    },
+                  }
+                : m
+            );
+          } else {
+            const rawPreset = (body.preset || {}) as Partial<SavedMealPreset>;
+            const existing = rawPreset.id
+              ? currentMeals.find((m) => m.id === rawPreset.id)
+              : undefined;
+            const sanitized = buildSanitizedSavedPreset(rawPreset, existing);
+            if (!sanitized) return prevTr;
+            if (existing) {
+              nextMeals = currentMeals.map((m) => (m.id === existing.id ? sanitized : m));
+            } else {
+              nextMeals = [sanitized, ...currentMeals].slice(0, 120);
+            }
+          }
+
+          return { ...prevTr, savedMeals: nextMeals };
+        }
+      );
+
+      return NextResponse.json({
+        ok: true,
+        savedMeals: updatedSavedTrainee?.savedMeals || [],
+      });
     }
 
     if (action === 'ack-ai-jobs') {

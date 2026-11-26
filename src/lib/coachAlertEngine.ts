@@ -7,8 +7,8 @@ import {
 import { generateSecureId } from '@/lib/serverAuth';
 import {
   canCoachAccessTrainee,
-  getServerDbState,
-  updateServerDbState,
+  getServerMetaAndCoachesState,
+  updateServerMetaState,
 } from '@/lib/serverStore';
 import { dispatchPushToTargets } from '@/lib/pushDispatcher';
 
@@ -199,7 +199,7 @@ export async function notifySubscribedCoachesForEvents(params: {
   const { trainee, events, origin } = params;
   if (!events.length) return;
 
-  const state = await getServerDbState();
+  const state = await getServerMetaAndCoachesState();
   const settingsMap = state.coachPushSettings || {};
   const entries = Object.entries(settingsMap);
   if (entries.length === 0) return;
@@ -260,7 +260,7 @@ export async function notifySubscribedCoachesForEvents(params: {
   );
 
   if (deadTargetsByCoach.size > 0) {
-    await updateServerDbState((prev) => {
+    await updateServerMetaState((prev) => {
       const nextMap: Record<string, CoachPushSubscriptionSettings> = {
         ...(prev.coachPushSettings || {}),
       };

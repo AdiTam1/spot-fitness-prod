@@ -10,10 +10,11 @@ import {
 import {
   canCoachAccessTrainee,
   getCustomFoodsContextForUser,
-  getServerDbState,
+  getServerMetaAndCoachesState,
   getSingleTraineeFromServer,
   isSuperAdmin,
-  updateServerDbState,
+  updateServerMetaState,
+  updateTraineeAtomic,
 } from '@/lib/serverStore';
 import {
   computePer100gFromServing,
@@ -208,34 +209,37 @@ export const GET = withTelemetryHandler(
 
     const { searchParams } = new URL(request.url);
     const traineeId = sanitizeText(searchParams.get('traineeId') || '', 60);
-    const state = await getServerDbState();
 
     if (traineeId) {
-      const trainee = state.trainees.find((t) => t.id === traineeId);
+      const [trainee, metaState] = await Promise.all([
+        getSingleTraineeFromServer(traineeId),
+        getServerMetaAndCoachesState(),
+      ]);
       if (!trainee || !canCoachAccessTrainee(session, trainee)) {
         return NextResponse.json({ error: 'אין הרשאה למתאמן זה' }, { status: 403 });
       }
       return NextResponse.json({
         customFoods: resolveVisibleCustomFoodsForTrainee(
           trainee,
-          state.coachCustomFoods,
-          state.globalCustomFoods
+          metaState.coachCustomFoods,
+          metaState.globalCustomFoods
         ),
         traineeCustomFoods: trainee.customFoods || [],
-        myCoachCustomFoods: state.coachCustomFoods?.[session.id] || [],
-        globalCustomFoods: state.globalCustomFoods || [],
+        myCoachCustomFoods: metaState.coachCustomFoods?.[session.id] || [],
+        globalCustomFoods: metaState.globalCustomFoods || [],
       });
     }
 
+    const metaState = await getServerMetaAndCoachesState();
     return NextResponse.json({
       customFoods: resolveVisibleCustomFoodsForCoach(
         session.id,
         session.role,
-        state.coachCustomFoods,
-        state.globalCustomFoods
+        metaState.coachCustomFoods,
+        metaState.globalCustomFoods
       ),
-      myCoachCustomFoods: state.coachCustomFoods?.[session.id] || [],
-      globalCustomFoods: state.globalCustomFoods || [],
+      myCoachCustomFoods: metaState.coachCustomFoods?.[session.id] || [],
+      globalCustomFoods: metaState.globalCustomFoods || [],
     });
   }
 );
@@ -263,7 +267,13 @@ export const POST = withTelemetryHandler(
       const op = sanitizeText(body.op, 40) || 'upsert';
       ctx.setActionName(`custom_food_${op}`);
 
-      const state = await getServerDbState();
+      let metaStateCache: Awaited<ReturnType<typeof getServerMetaAndCoachesState>> | null = null;
+      const getMetaState = async () => {
+        if (!metaStateCache) {
+          metaStateCache = await getServerMetaAndCoachesState();
+        }
+        return metaStateCache;
+      };
 
       // -----------------------------------------------------------------------
       // 1. מחיקת מוצר אישי עם RBAC קפדני לפי scope
@@ -282,14 +292,16 @@ export const POST = withTelemetryHandler(
               { status: 403 }
             );
           }
-          const nextGlobal = (state.globalCustomFoods || []).filter(
-            (c) => c.id !== foodId
-          );
-          await updateServerDbState((prev) => ({
+          const updatedMeta = await updateServerMetaState((prev) => ({
             ...prev,
-            globalCustomFoods: nextGlobal,
+            globalCustomFoods: (prev.globalCustomFoods || []).filter(
+              (c) => c.id !== foodId
+            ),
           }));
-          return NextResponse.json({ ok: true, globalCustomFoods: nextGlobal });
+          return NextResponse.json({
+            ok: true,
+            globalCustomFoods: updatedMeta.globalCustomFoods || [],
+          });
         }
 
         if (scope === 'coach-private' || scope === 'coach-trainees') {
@@ -297,16 +309,19 @@ export const POST = withTelemetryHandler(
             return NextResponse.json({ error: 'אין הרשאה' }, { status: 403 });
           }
           const ownerCoachId = session.id;
-          const prevList = state.coachCustomFoods?.[ownerCoachId] || [];
-          const nextList = prevList.filter((c) => c.id !== foodId);
-          await updateServerDbState((prev) => ({
+          const updatedMeta = await updateServerMetaState((prev) => ({
             ...prev,
             coachCustomFoods: {
               ...(prev.coachCustomFoods || {}),
-              [ownerCoachId]: nextList,
+              [ownerCoachId]: (prev.coachCustomFoods?.[ownerCoachId] || []).filter(
+                (c) => c.id !== foodId
+              ),
             },
           }));
-          return NextResponse.json({ ok: true, myCoachCustomFoods: nextList });
+          return NextResponse.json({
+            ok: true,
+            myCoachCustomFoods: updatedMeta.coachCustomFoods?.[ownerCoachId] || [],
+          });
         }
 
         const targetTraineeId =
@@ -316,7 +331,7 @@ export const POST = withTelemetryHandler(
         if (!targetTraineeId) {
           return NextResponse.json({ error: 'חסר מזהה מתאמן' }, { status: 400 });
         }
-        const trainee = state.trainees.find((t) => t.id === targetTraineeId);
+        const trainee = await getSingleTraineeFromServer(targetTraineeId);
         if (
           !trainee ||
           (session.role === 'trainee'
@@ -326,15 +341,11 @@ export const POST = withTelemetryHandler(
           return NextResponse.json({ error: 'אין הרשאה למחוק מוצר זה' }, { status: 403 });
         }
 
-        const nextTraineeFoods = (trainee.customFoods || []).filter(
-          (c) => c.id !== foodId
-        );
-        await updateServerDbState((prev) => ({
-          ...prev,
-          trainees: prev.trainees.map((t) =>
-            t.id === targetTraineeId ? { ...t, customFoods: nextTraineeFoods } : t
-          ),
+        const { next } = await updateTraineeAtomic(targetTraineeId, (prevTr) => ({
+          ...prevTr,
+          customFoods: (prevTr.customFoods || []).filter((c) => c.id !== foodId),
         }));
+        const nextTraineeFoods = next?.customFoods || [];
         return NextResponse.json({
           ok: true,
           traineeId: targetTraineeId,
@@ -355,9 +366,10 @@ export const POST = withTelemetryHandler(
         const sourceItemId = sanitizeText(body.sourceItemId ?? body.id, 80);
         const sourceTraineeId = sanitizeText(body.sourceTraineeId ?? body.traineeId, 60);
 
+        const state = await getMetaState();
         let sourceItem: CustomFoodItem | undefined;
         if (sourceTraineeId) {
-          const tr = state.trainees.find((t) => t.id === sourceTraineeId);
+          const tr = await getSingleTraineeFromServer(sourceTraineeId);
           if (!tr || !canCoachAccessTrainee(session, tr)) {
             return NextResponse.json({ error: 'אין הרשאה למתאמן זה' }, { status: 403 });
           }
@@ -400,7 +412,7 @@ export const POST = withTelemetryHandler(
         }
 
         const trimmed = currentCoachFoods.slice(0, MAX_COACH_CUSTOM_FOODS);
-        await updateServerDbState((prev) => ({
+        await updateServerMetaState((prev) => ({
           ...prev,
           coachCustomFoods: {
             ...(prev.coachCustomFoods || {}),
@@ -428,9 +440,10 @@ export const POST = withTelemetryHandler(
         const sourceItemId = sanitizeText(body.sourceItemId ?? body.id, 80);
         const sourceTraineeId = sanitizeText(body.sourceTraineeId ?? body.traineeId, 60);
 
+        const state = await getMetaState();
         let sourceItem: CustomFoodItem | undefined;
         if (sourceTraineeId) {
-          const tr = state.trainees.find((t) => t.id === sourceTraineeId);
+          const tr = await getSingleTraineeFromServer(sourceTraineeId);
           sourceItem = tr?.customFoods?.find((c) => c.id === sourceItemId);
         }
         if (!sourceItem) {
@@ -468,7 +481,7 @@ export const POST = withTelemetryHandler(
         else currentGlobal.unshift(globalItem);
 
         const trimmed = currentGlobal.slice(0, MAX_GLOBAL_CUSTOM_FOODS);
-        await updateServerDbState((prev) => ({
+        await updateServerMetaState((prev) => ({
           ...prev,
           globalCustomFoods: trimmed,
         }));
@@ -504,6 +517,7 @@ export const POST = withTelemetryHandler(
       const itemId = sanitizeText(body.id, 80);
 
       if (effectiveScope === 'global') {
+        const state = await getMetaState();
         const currentGlobal = [...(state.globalCustomFoods || [])];
         const existing = itemId ? currentGlobal.find((c) => c.id === itemId) : undefined;
         const built = buildSanitizedCustomFood(body, {
@@ -523,7 +537,7 @@ export const POST = withTelemetryHandler(
         const adminCoachFoods = (state.coachCustomFoods?.['coach-admin'] || []).filter(
           (c) => c.id !== built.item!.id
         );
-        await updateServerDbState((prev) => ({
+        await updateServerMetaState((prev) => ({
           ...prev,
           globalCustomFoods: nextGlobal,
           ...(prev.coachCustomFoods?.['coach-admin']
@@ -547,6 +561,7 @@ export const POST = withTelemetryHandler(
         if (session.role === 'trainee') {
           return NextResponse.json({ error: 'אין הרשאה' }, { status: 403 });
         }
+        const state = await getMetaState();
         const coachId = session.id;
         const currentList = [...(state.coachCustomFoods?.[coachId] || [])];
         const existing = itemId ? currentList.find((c) => c.id === itemId) : undefined;
@@ -567,7 +582,7 @@ export const POST = withTelemetryHandler(
           ? (state.globalCustomFoods || []).filter((c) => c.id !== built.item!.id)
           : state.globalCustomFoods;
 
-        await updateServerDbState((prev) => ({
+        await updateServerMetaState((prev) => ({
           ...prev,
           coachCustomFoods: {
             ...(prev.coachCustomFoods || {}),
@@ -591,7 +606,7 @@ export const POST = withTelemetryHandler(
       if (!targetTraineeId) {
         return NextResponse.json({ error: 'יש לבחור מתאמן למוצר האישי' }, { status: 400 });
       }
-      const trainee = state.trainees.find((t) => t.id === targetTraineeId);
+      const trainee = await getSingleTraineeFromServer(targetTraineeId);
       if (
         !trainee ||
         (session.role === 'trainee'
@@ -601,8 +616,9 @@ export const POST = withTelemetryHandler(
         return NextResponse.json({ error: 'אין הרשאה למתאמן זה' }, { status: 403 });
       }
 
-      const currentTraineeFoods = [...(trainee.customFoods || [])];
-      const existing = itemId ? currentTraineeFoods.find((c) => c.id === itemId) : undefined;
+      const existing = itemId
+        ? (trainee.customFoods || []).find((c) => c.id === itemId)
+        : undefined;
       const built = buildSanitizedCustomFood(body, {
         scope: 'trainee',
         ownerId: session.id,
@@ -614,16 +630,17 @@ export const POST = withTelemetryHandler(
       if (!built.item) {
         return NextResponse.json({ error: built.error || 'נתונים לא תקינים' }, { status: 400 });
       }
-      const nextTraineeFoods = existing
-        ? currentTraineeFoods.map((c) => (c.id === built.item!.id ? built.item! : c))
-        : [built.item, ...currentTraineeFoods].slice(0, MAX_TRAINEE_CUSTOM_FOODS);
 
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) =>
-          t.id === targetTraineeId ? { ...t, customFoods: nextTraineeFoods } : t
-        ),
-      }));
+      const { next } = await updateTraineeAtomic(targetTraineeId, (prevTr) => {
+        const list = [...(prevTr.customFoods || [])];
+        const idx = list.findIndex((c) => c.id === built.item!.id);
+        const nextList =
+          idx >= 0
+            ? list.map((c) => (c.id === built.item!.id ? built.item! : c))
+            : [built.item!, ...list].slice(0, MAX_TRAINEE_CUSTOM_FOODS);
+        return { ...prevTr, customFoods: nextList };
+      });
+      const nextTraineeFoods = next?.customFoods || [];
 
       return NextResponse.json({
         ok: true,

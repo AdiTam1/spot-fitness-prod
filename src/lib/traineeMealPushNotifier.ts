@@ -1,5 +1,5 @@
 import { generateSecureId } from '@/lib/serverAuth';
-import { updateServerDbState } from '@/lib/serverStore';
+import { updateTraineeAtomic } from '@/lib/serverStore';
 import {
   sendUnifiedPushToTrainee,
   shouldNotifyTraineeCoachMealChange,
@@ -249,25 +249,24 @@ export async function dispatchCoachMealChangePushes(
 
   if (updatesByTrainee.size === 0) return;
 
-  await updateServerDbState((prev) => ({
-    ...prev,
-    trainees: prev.trainees.map((t) => {
-      const upd = updatesByTrainee.get(t.id);
-      if (!upd) return t;
-      const cleaned = stripDeadPushTargetsFromTrainee(
-        t,
-        upd.invalidFcm,
-        upd.expiredWeb
-      );
-      return {
-        ...cleaned,
-        pushHistory:
-          upd.histories.length > 0
-            ? [...upd.histories, ...(cleaned.pushHistory || [])].slice(0, 20)
-            : cleaned.pushHistory || [],
-      };
-    }),
-  })).catch(() => {});
+  await Promise.all(
+    Array.from(updatesByTrainee.entries()).map(([traineeId, upd]) =>
+      updateTraineeAtomic(traineeId, (t) => {
+        const cleaned = stripDeadPushTargetsFromTrainee(
+          t,
+          upd.invalidFcm,
+          upd.expiredWeb
+        );
+        return {
+          ...cleaned,
+          pushHistory:
+            upd.histories.length > 0
+              ? [...upd.histories, ...(cleaned.pushHistory || [])].slice(0, 20)
+              : cleaned.pushHistory || [],
+        };
+      }).catch(() => {})
+    )
+  );
 }
 
 export function buildPlanMealChangeSummary(

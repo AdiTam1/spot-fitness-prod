@@ -9,7 +9,7 @@ import {
   verifyCsrfOrigin,
 } from '@/lib/serverAuth';
 import { authenticateActiveSession } from '@/lib/liveAuth';
-import { updateServerDbState } from '@/lib/serverStore';
+import { updateTraineeAtomic } from '@/lib/serverStore';
 
 export async function POST(request: NextRequest) {
   try {
@@ -43,11 +43,10 @@ export async function POST(request: NextRequest) {
 
     const nextAvatar = cleanName.charAt(0) || auth.liveName.charAt(0) || 'מ';
 
-    await updateServerDbState((prev) => ({
-      ...prev,
-      trainees: prev.trainees.map((t) =>
-        t.id === session.id ? { ...t, name: cleanName, avatar: nextAvatar } : t
-      ),
+    await updateTraineeAtomic(session.id, (t) => ({
+      ...t,
+      name: cleanName,
+      avatar: nextAvatar,
     }));
 
     const updatedUser = { ...session, name: cleanName };

@@ -1,4 +1,6 @@
+import crypto from 'crypto';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { serializeSyncTimestampRows } from '@/lib/traineeSanitize';
 import {
   AccountStatus,
   AppReleasePolicy,
@@ -437,7 +439,246 @@ export function diagnoseSupabaseError(rawMessage: string): string {
 
 let metaWriteQueue: Promise<unknown> = Promise.resolve();
 
-export async function loadStateFromSupabase(): Promise<{
+interface TraineeBatchErrorLike {
+  message?: string;
+  code?: string;
+  details?: string;
+  hint?: string;
+}
+
+/**
+ * טוען את כל שורות המתאמנים באצוות קטנות לפי מפתחות כדי למנוע [57014] statement timeout
+ * בטבלת trainees עם עמודות logs/TOAST כבדות.
+ */
+async function loadAllTraineesRowsBatchedFromSupabase(): Promise<{
+  data: Record<string, unknown>[];
+  error: TraineeBatchErrorLike | null;
+}> {
+  if (!supabase) return { data: [], error: null };
+
+  const idRes = await supabase.from('trainees').select('id');
+  if (idRes.error) {
+    return { data: [], error: idRes.error };
+  }
+
+  const ids = (Array.isArray(idRes.data) ? idRes.data : [])
+    .map((r) => String((r as { id?: unknown }).id || '').trim())
+    .filter(Boolean);
+
+  if (ids.length === 0) {
+    return { data: [], error: null };
+  }
+
+  const BATCH_SIZE = 3;
+  const CONCURRENCY = 2;
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+    chunks.push(ids.slice(i, i + BATCH_SIZE));
+  }
+
+  const rows: Record<string, unknown>[] = [];
+  let firstError: TraineeBatchErrorLike | null = null;
+
+  for (let i = 0; i < chunks.length; i += CONCURRENCY) {
+    const windowChunks = chunks.slice(i, i + CONCURRENCY);
+    const windowResults = await Promise.all(
+      windowChunks.map(async (chunk) => {
+        const res = await supabase!
+          .from('trainees')
+          .select('*')
+          .in('id', chunk);
+        if (!res.error && Array.isArray(res.data)) {
+          return {
+            rows: res.data as Record<string, unknown>[],
+            error: null as TraineeBatchErrorLike | null,
+          };
+        }
+        // Fallback: שורה-אחר-שורה באצווה שנכשלה כדי שמתאמן כבד אחד לא יפיל את השכנים
+        const recovered: Record<string, unknown>[] = [];
+        let chunkErr: TraineeBatchErrorLike | null = res.error;
+        for (const singleId of chunk) {
+          const singleRes = await supabase!
+            .from('trainees')
+            .select('*')
+            .eq('id', singleId)
+            .maybeSingle();
+          if (!singleRes.error && singleRes.data) {
+            recovered.push(singleRes.data as Record<string, unknown>);
+          } else if (singleRes.error && !chunkErr) {
+            chunkErr = singleRes.error;
+          }
+        }
+        return {
+          rows: recovered,
+          error: recovered.length === chunk.length ? null : chunkErr,
+        };
+      })
+    );
+
+    for (const r of windowResults) {
+      rows.push(...r.rows);
+      if (r.error && !firstError) {
+        firstError = r.error;
+      }
+    }
+  }
+
+  return { data: rows, error: firstError };
+}
+
+export interface TraineeLoginCandidate {
+  id: string;
+  email: string;
+  password: string;
+  status: AccountStatus;
+  name: string;
+  sessionVersion: number;
+}
+
+export interface TraineeLoginLookupResult {
+  candidate: TraineeLoginCandidate | null;
+  dbUnavailable?: boolean;
+  dbError?: string;
+}
+
+/**
+ * שליפה ממוקדת ומהירה לכניסת מתאמן לפי אימייל בלבד — ללא עמודת logs וללא סריקת כל הטבלה.
+ */
+export async function findTraineeLoginCandidateInSupabase(
+  cleanEmail: string
+): Promise<TraineeLoginLookupResult> {
+  if (!supabase) return { candidate: null };
+  const targetEmail = cleanEmail.trim().toLowerCase();
+  if (!targetEmail) return { candidate: null };
+
+  try {
+    const fastRes = await supabase
+      .from('trainees')
+      .select('id, email, password, status, name, session_version')
+      .ilike('email', targetEmail)
+      .limit(25);
+
+    if (!fastRes.error) {
+      const matched = (Array.isArray(fastRes.data) ? fastRes.data : []).find(
+        (r) =>
+          String((r as { email?: unknown }).email || '')
+            .trim()
+            .toLowerCase() === targetEmail
+      ) as Record<string, unknown> | undefined;
+
+      if (!matched) return { candidate: null };
+      return {
+        candidate: {
+          id: String(matched.id),
+          email: String(matched.email || ''),
+          password: String(matched.password || ''),
+          status: (matched.status as AccountStatus) || 'active',
+          name: String(matched.name || 'מתאמן'),
+          sessionVersion: Math.max(1, Number(matched.session_version) || 1),
+        },
+      };
+    }
+
+    if (!isMissingColumnOrSchemaError(fastRes.error)) {
+      return {
+        candidate: null,
+        dbUnavailable: true,
+        dbError:
+          diagnoseSupabaseError(
+            fastRes.error.message || fastRes.error.code || 'DB error'
+          ) || fastRes.error.message,
+      };
+    }
+
+    // Fallback אם עמודת session_version עדיין לא קיימת בסכמה
+    const legacyRes = await supabase
+      .from('trainees')
+      .select('id, email, password, status, name')
+      .ilike('email', targetEmail)
+      .limit(25);
+
+    if (legacyRes.error) {
+      return {
+        candidate: null,
+        dbUnavailable: true,
+        dbError:
+          diagnoseSupabaseError(
+            legacyRes.error.message || legacyRes.error.code || 'DB error'
+          ) || legacyRes.error.message,
+      };
+    }
+
+    const legacyMatched = (Array.isArray(legacyRes.data) ? legacyRes.data : []).find(
+      (r) =>
+        String((r as { email?: unknown }).email || '')
+          .trim()
+          .toLowerCase() === targetEmail
+    ) as Record<string, unknown> | undefined;
+
+    if (!legacyMatched) return { candidate: null };
+    const full = await loadSingleTraineeFromSupabase(String(legacyMatched.id));
+    if (!full) return { candidate: null };
+    return {
+      candidate: {
+        id: full.id,
+        email: full.email || '',
+        password: full.password || '',
+        status: full.status || 'active',
+        name: full.name,
+        sessionVersion: Math.max(1, Number(full.sessionVersion) || 1),
+      },
+    };
+  } catch (err) {
+    return {
+      candidate: null,
+      dbUnavailable: true,
+      dbError: err instanceof Error ? err.message : 'DB exception',
+    };
+  }
+}
+
+export async function checkTraineeEmailExistsInSupabase(
+  cleanEmail: string
+): Promise<{ exists: boolean; dbUnavailable?: boolean; dbError?: string }> {
+  if (!supabase) return { exists: false };
+  const targetEmail = cleanEmail.trim().toLowerCase();
+  if (!targetEmail) return { exists: false };
+
+  try {
+    const res = await supabase
+      .from('trainees')
+      .select('id, email')
+      .ilike('email', targetEmail)
+      .limit(25);
+
+    if (res.error) {
+      return {
+        exists: false,
+        dbUnavailable: true,
+        dbError:
+          diagnoseSupabaseError(
+            res.error.message || res.error.code || 'DB error'
+          ) || res.error.message,
+      };
+    }
+
+    const exists = (Array.isArray(res.data) ? res.data : []).some(
+      (r) =>
+        String((r as { email?: unknown }).email || '')
+          .trim()
+          .toLowerCase() === targetEmail
+    );
+    return { exists };
+  } catch (err) {
+    return {
+      exists: false,
+      dbUnavailable: true,
+      dbError: err instanceof Error ? err.message : 'DB exception',
+    };
+  }
+}
+
+export type SupabaseLoadedState = {
   coaches: CoachProfile[];
   groups: TraineeGroup[];
   templates: NutritionTemplate[];
@@ -452,7 +693,19 @@ export async function loadStateFromSupabase(): Promise<{
   userClientVersions?: Record<string, UserClientVersionInfo>;
   appUpdatePushHistory?: AppUpdatePushHistoryEntry[];
   readErrors: string[];
-}> {
+};
+
+export async function loadMetaCoachesGroupsTemplatesFromSupabase(): Promise<SupabaseLoadedState> {
+  return loadSupabaseStateInternal(false);
+}
+
+export async function loadStateFromSupabase(): Promise<SupabaseLoadedState> {
+  return loadSupabaseStateInternal(true);
+}
+
+async function loadSupabaseStateInternal(
+  includeTrainees: boolean
+): Promise<SupabaseLoadedState> {
   if (!supabase) {
     return {
       coaches: [],
@@ -479,7 +732,12 @@ export async function loadStateFromSupabase(): Promise<{
       .from('nutrition_templates')
       .select('*')
       .not('id', 'like', '__spot_system_food_%'),
-    supabase.from('trainees').select('*'),
+    includeTrainees
+      ? loadAllTraineesRowsBatchedFromSupabase()
+      : Promise.resolve({
+          data: [] as Record<string, unknown>[],
+          error: null as TraineeBatchErrorLike | null,
+        }),
   ]);
 
   const readErrors: string[] = [];
@@ -998,6 +1256,233 @@ export async function loadCustomFoodsContextFromSupabase(
   }
 }
 
+export function computeSyncStampDigest(parts: string[]): string {
+  return crypto.createHash('sha1').update(parts.join('\n')).digest('hex').slice(0, 16);
+}
+
+/**
+ * בדיקת שינויים קלת-משקל למתאמן בודד (~250 בתים בלבד מ-Supabase):
+ * בודקת updated_at של שורת המתאמן, מטא-המערכת והקבוצה לפני הורדת JSON מלא.
+ */
+export async function getTraineeSyncStampFromSupabase(
+  traineeId: string
+): Promise<{ stamp: string | null; status?: AccountStatus }> {
+  if (!supabase) return { stamp: null };
+  try {
+    const [trRes, metaRes] = await Promise.all([
+      supabase
+        .from('trainees')
+        .select('updated_at, group_id, status')
+        .eq('id', traineeId)
+        .maybeSingle(),
+      supabase
+        .from('nutrition_templates')
+        .select('updated_at')
+        .eq('id', SYSTEM_META_TEMPLATE_ID)
+        .maybeSingle(),
+    ]);
+
+    if (trRes.error || !trRes.data) {
+      return { stamp: null };
+    }
+    const status = (trRes.data.status as AccountStatus) || 'active';
+    const trUpdatedAt =
+      typeof trRes.data.updated_at === 'string' ? trRes.data.updated_at : '';
+    const metaUpdatedAt =
+      !metaRes.error && typeof metaRes.data?.updated_at === 'string'
+        ? metaRes.data.updated_at
+        : '';
+
+    if (!trUpdatedAt || !metaUpdatedAt) {
+      return { stamp: null, status };
+    }
+
+    const groupId =
+      typeof trRes.data.group_id === 'string' ? trRes.data.group_id.trim() : '';
+    let grpUpdatedAt = 'none';
+    if (groupId) {
+      const grpRes = await supabase
+        .from('trainee_groups')
+        .select('updated_at')
+        .eq('id', groupId)
+        .maybeSingle();
+      if (grpRes.error) {
+        return { stamp: null, status };
+      }
+      if (grpRes.data) {
+        if (typeof grpRes.data.updated_at !== 'string' || !grpRes.data.updated_at) {
+          return { stamp: null, status };
+        }
+        grpUpdatedAt = grpRes.data.updated_at;
+      } else {
+        grpUpdatedAt = 'meta';
+      }
+    }
+
+    return {
+      stamp: `tr:${computeSyncStampDigest([
+        trUpdatedAt,
+        metaUpdatedAt,
+        `${groupId}:${grpUpdatedAt}`,
+      ])}`,
+      status,
+    };
+  } catch {
+    return { stamp: null };
+  }
+}
+
+/**
+ * בדיקת שינויים קלת-משקל לדאשבורד מאמן/מנהל (~1.5KB מ-Supabase במקום מגה-בייטים בסנכרון סרק).
+ */
+export async function getRosterSyncStampFromSupabase(
+  previewTraineeId?: string
+): Promise<string | null> {
+  if (!supabase) return null;
+  try {
+    const [trRes, coachRes, grpRes, tplRes] = await Promise.all([
+      supabase.from('trainees').select('id, updated_at'),
+      supabase.from('coaches').select('id, updated_at'),
+      supabase.from('trainee_groups').select('id, updated_at'),
+      supabase
+        .from('nutrition_templates')
+        .select('id, updated_at')
+        .not('id', 'like', '__spot_system_food_%'),
+    ]);
+
+    if (trRes.error || coachRes.error || grpRes.error || tplRes.error) {
+      return null;
+    }
+
+    const trSig = serializeSyncTimestampRows(trRes.data);
+    const coachSig = serializeSyncTimestampRows(coachRes.data);
+    const grpSig = serializeSyncTimestampRows(grpRes.data);
+    const tplSig = serializeSyncTimestampRows(tplRes.data);
+
+    if (
+      trSig === null ||
+      coachSig === null ||
+      grpSig === null ||
+      tplSig === null
+    ) {
+      return null;
+    }
+
+    return `ro:${computeSyncStampDigest([
+      trSig,
+      coachSig,
+      grpSig,
+      tplSig,
+      `preview:${previewTraineeId || ''}`,
+    ])}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * שולף את קונטקסט המתאמן (צ׳יפים, מאכלים אישיים וחיפוש סמנטי) בקריאת מטא יחידה במקום 3 קריאות כפולות.
+ */
+export async function loadTraineeSyncBundleFromSupabase(opts: {
+  groupId?: string;
+  coachIds?: string[];
+}): Promise<{
+  globalQuickChips: QuickContextChip[];
+  groupQuickChips: QuickContextChip[];
+  globalCustomFoods: CustomFoodItem[];
+  coachCustomFoods: Record<string, CustomFoodItem[]>;
+  semanticSearchEnabled: boolean;
+}> {
+  if (!supabase) {
+    return {
+      globalQuickChips: [],
+      groupQuickChips: [],
+      globalCustomFoods: [],
+      coachCustomFoods: {},
+      semanticSearchEnabled: false,
+    };
+  }
+
+  try {
+    const [metaRes, grpRes] = await Promise.all([
+      supabase
+        .from('nutrition_templates')
+        .select('meals')
+        .eq('id', SYSTEM_META_TEMPLATE_ID)
+        .maybeSingle(),
+      opts.groupId
+        ? supabase
+            .from('trainee_groups')
+            .select('custom_quick_chips')
+            .eq('id', opts.groupId)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+
+    const metaMeals = metaRes.data?.meals as
+      | {
+          globalQuickChips?: QuickContextChip[];
+          groups?: TraineeGroup[];
+          globalCustomFoods?: CustomFoodItem[];
+          coachCustomFoods?: Record<string, CustomFoodItem[]>;
+          semanticSearchEnabled?: boolean;
+        }
+      | undefined;
+
+    const globalQuickChips = Array.isArray(metaMeals?.globalQuickChips)
+      ? metaMeals.globalQuickChips
+      : [];
+    const globalCustomFoods = Array.isArray(metaMeals?.globalCustomFoods)
+      ? metaMeals.globalCustomFoods
+      : [];
+    const rawCoachFoods =
+      metaMeals?.coachCustomFoods && typeof metaMeals.coachCustomFoods === 'object'
+        ? metaMeals.coachCustomFoods
+        : {};
+
+    let coachCustomFoods: Record<string, CustomFoodItem[]> = rawCoachFoods;
+    if (Array.isArray(opts.coachIds)) {
+      coachCustomFoods = {};
+      for (const cId of opts.coachIds) {
+        if (Array.isArray(rawCoachFoods[cId])) {
+          coachCustomFoods[cId] = rawCoachFoods[cId];
+        }
+      }
+    }
+
+    let groupQuickChips: QuickContextChip[] = [];
+    if (opts.groupId) {
+      const rowChips = (
+        grpRes.data as { custom_quick_chips?: QuickContextChip[] } | null
+      )?.custom_quick_chips;
+      if (Array.isArray(rowChips)) {
+        groupQuickChips = rowChips;
+      } else if (Array.isArray(metaMeals?.groups)) {
+        const fb = metaMeals.groups.find((g) => g.id === opts.groupId);
+        if (Array.isArray(fb?.customQuickChips)) {
+          groupQuickChips = fb.customQuickChips;
+        }
+      }
+    }
+
+    return {
+      globalQuickChips,
+      groupQuickChips,
+      globalCustomFoods,
+      coachCustomFoods,
+      semanticSearchEnabled: Boolean(metaMeals?.semanticSearchEnabled),
+    };
+  } catch {
+    return {
+      globalQuickChips: [],
+      groupQuickChips: [],
+      globalCustomFoods: [],
+      coachCustomFoods: {},
+      semanticSearchEnabled: false,
+    };
+  }
+}
+
 export interface SystemMetaShape {
   coaches?: CoachProfile[];
   groups?: TraineeGroup[];
@@ -1161,7 +1646,7 @@ export async function recordUserClientVersionInSupabase(
         (prev.appVersionCode ?? null) === (info.appVersionCode ?? null) &&
         (prev.appVersionName ?? null) === (info.appVersionName ?? null) &&
         (prev.webBuildId ?? null) === (info.webBuildId ?? null);
-      if (sameVersion && Number.isFinite(prevTs) && Date.now() - prevTs < 5 * 60_000) {
+      if (sameVersion && Number.isFinite(prevTs) && Date.now() - prevTs < 30 * 60_000) {
         return null;
       }
     }

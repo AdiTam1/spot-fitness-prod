@@ -219,12 +219,17 @@ export default function HomePage() {
   const [pushPromptBusy, setPushPromptBusy] = useState(false);
 
   const currentUserRef = useRef<AuthSessionUser | null>(null);
+  const coachPreviewTraineeIdRef = useRef<string | null>(null);
   const traineesRef = useRef<TraineeProfile[]>([]);
   const syncingCountRef = useRef<number>(0);
   const liveBgJobIdsRef = useRef<string[]>([]);
   const activePostOpsRef = useRef<Map<symbol, AbortController>>(new Map());
   const mutationEpochRef = useRef<number>(0);
   const lastFetchAtRef = useRef<number>(0);
+  const inFlightDataFetchRef = useRef<Promise<void> | null>(null);
+  const lastSyncVersionRef = useRef<string | null>(null);
+  const lastSyncUserKeyRef = useRef<string | null>(null);
+  const previewLoadingTraineeIdRef = useRef<string | null>(null);
   const lastHeartbeatAtRef = useRef<number>(0);
   const lastSlowDataDiagAtRef = useRef<number>(0);
   const lastDataFetchDiagRef = useRef<{
@@ -236,6 +241,9 @@ export default function HomePage() {
   useEffect(() => {
     currentUserRef.current = currentUser;
   }, [currentUser]);
+  useEffect(() => {
+    coachPreviewTraineeIdRef.current = coachPreviewTraineeId;
+  }, [coachPreviewTraineeId]);
   useEffect(() => {
     traineesRef.current = trainees;
   }, [trainees]);
@@ -271,6 +279,8 @@ export default function HomePage() {
       }
       abortAllPendingPostActions();
       currentUserRef.current = null;
+      lastSyncVersionRef.current = null;
+      lastSyncUserKeyRef.current = null;
       setSyncError(null);
       setManualSyncing(false);
       setCurrentUser(null);
@@ -405,129 +415,211 @@ export default function HomePage() {
       lastDataFetchDiagRef.current = { ok: true, status: 200, durationMs: 0, payloadKB: 0 };
       return;
     }
-    const startEpoch = mutationEpochRef.current;
-    const reqStartedAt = Date.now();
-    lastFetchAtRef.current = reqStartedAt;
-    try {
-      const dataRes = await fetch(`/api/data?t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
-      });
-      const durationMs = Math.max(0, Date.now() - reqStartedAt);
-      const payloadKBHeader = Number(dataRes.headers.get('x-spot-payload-kb') || 0);
-      if (dataRes.status === 401 || dataRes.status === 403) {
-        const errBody = (await dataRes.json().catch(() => null)) as {
-          code?: AuthRejectionCode;
-          error?: string;
-        } | null;
-        clearAllClientSessionState(
-          errBody?.code && errBody.code !== 'UNAUTHENTICATED' && errBody.error
-            ? { code: errBody.code, message: errBody.error }
-            : undefined,
-          `api_data_${dataRes.status}`
-        );
-        lastDataFetchDiagRef.current = { ok: false, status: dataRes.status, durationMs, payloadKB: 0 };
-        return;
-      }
-      if (dataRes.ok) {
-        const remoteData = await dataRes.json();
-        const resolvedPayloadKB =
-          Number.isFinite(payloadKBHeader) && payloadKBHeader > 0
-            ? payloadKBHeader
-            : Math.round(JSON.stringify(remoteData).length / 1024);
-
-        if (
-          (durationMs >= 1500 || resolvedPayloadKB >= 300) &&
-          Date.now() - lastSlowDataDiagAtRef.current >= 90_000
-        ) {
-          lastSlowDataDiagAtRef.current = Date.now();
-          trackClientEvent('performance', 'api_data_profile', {
-            screen: currentUserRef.current?.role === 'trainee' ? 'trainee_app' : 'coach_dashboard',
-            flushNow: true,
-            details: {
-              durationMs,
-              payloadKB: resolvedPayloadKB,
-              forced: Boolean(opts?.force),
-              ...getClientRuntimeContext(),
-            },
-          });
-        }
-
-        // אם בוצעה בינתיים שמירה מקומית חדשה בזמן שהמשיכה הייתה באוויר — אל תדרוס state טרי
-        if (
+    if (!opts?.force && inFlightDataFetchRef.current) {
+      return inFlightDataFetchRef.current;
+    }
+    const runFetch = (async () => {
+      const startEpoch = mutationEpochRef.current;
+      const reqStartedAt = Date.now();
+      lastFetchAtRef.current = reqStartedAt;
+      try {
+        const activePreviewId = coachPreviewTraineeIdRef.current;
+        const previewQuery =
+          activePreviewId && currentUserRef.current?.role !== 'trainee'
+            ? `&previewTraineeId=${encodeURIComponent(activePreviewId)}`
+            : '';
+        const curUserKey = currentUserRef.current
+          ? `${currentUserRef.current.id}:${currentUserRef.current.role}:${activePreviewId || ''}`
+          : '';
+        const canUseSince =
           !opts?.force &&
-          (syncingCountRef.current > 0 || mutationEpochRef.current !== startEpoch)
-        ) {
+          Boolean(lastSyncVersionRef.current) &&
+          Boolean(curUserKey) &&
+          lastSyncUserKeyRef.current === curUserKey;
+        const sinceQuery = canUseSince
+          ? `&since=${encodeURIComponent(lastSyncVersionRef.current!)}`
+          : '';
+        const dataRes = await fetch(
+          `/api/data?t=${Date.now()}${previewQuery}${sinceQuery}`,
+          {
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+          }
+        );
+        const durationMs = Math.max(0, Date.now() - reqStartedAt);
+        const payloadKBHeader = Number(dataRes.headers.get('x-spot-payload-kb') || 0);
+        if (dataRes.status === 401 || dataRes.status === 403) {
+          const errBody = (await dataRes.json().catch(() => null)) as {
+            code?: AuthRejectionCode;
+            error?: string;
+          } | null;
+          clearAllClientSessionState(
+            errBody?.code && errBody.code !== 'UNAUTHENTICATED' && errBody.error
+              ? { code: errBody.code, message: errBody.error }
+              : undefined,
+            `api_data_${dataRes.status}`
+          );
+          lastDataFetchDiagRef.current = { ok: false, status: dataRes.status, durationMs, payloadKB: 0 };
+          return;
+        }
+        if (dataRes.ok) {
+          const remoteData = await dataRes.json();
+          if (remoteData?.notModified === true) {
+            if (typeof remoteData.syncVersion === 'string') {
+              lastSyncVersionRef.current = remoteData.syncVersion;
+            }
+            lastDataFetchDiagRef.current = {
+              ok: true,
+              status: dataRes.status,
+              durationMs,
+              payloadKB: 0,
+            };
+            return;
+          }
+          const resolvedPayloadKB =
+            Number.isFinite(payloadKBHeader) && payloadKBHeader > 0
+              ? payloadKBHeader
+              : Math.round(JSON.stringify(remoteData).length / 1024);
+
+          if (
+            (durationMs >= 1500 || resolvedPayloadKB >= 300) &&
+            Date.now() - lastSlowDataDiagAtRef.current >= 90_000
+          ) {
+            lastSlowDataDiagAtRef.current = Date.now();
+            trackClientEvent('performance', 'api_data_profile', {
+              screen: currentUserRef.current?.role === 'trainee' ? 'trainee_app' : 'coach_dashboard',
+              flushNow: true,
+              details: {
+                durationMs,
+                payloadKB: resolvedPayloadKB,
+                forced: Boolean(opts?.force),
+                ...getClientRuntimeContext(),
+              },
+            });
+          }
+
+          // אם בוצעה בינתיים שמירה מקומית חדשה בזמן שהמשיכה הייתה באוויר — אל תדרוס state טרי
+          if (
+            !opts?.force &&
+            (syncingCountRef.current > 0 || mutationEpochRef.current !== startEpoch)
+          ) {
+            lastDataFetchDiagRef.current = { ok: true, status: dataRes.status, durationMs, payloadKB: resolvedPayloadKB };
+            return;
+          }
+          if (Array.isArray(remoteData.trainees)) {
+            setTrainees(remoteData.trainees);
+          }
+          if (Array.isArray(remoteData.templates)) {
+            setTemplates(remoteData.templates);
+          }
+          if (Array.isArray(remoteData.groups)) {
+            setGroups(remoteData.groups);
+          }
+          if (Array.isArray(remoteData.globalQuickChips)) {
+            setGlobalQuickChips(remoteData.globalQuickChips);
+          }
+          if (Array.isArray(remoteData.groupQuickChips)) {
+            setTraineeGroupQuickChips(remoteData.groupQuickChips);
+          }
+          if (Array.isArray(remoteData.globalCustomFoods)) {
+            setGlobalCustomFoods(remoteData.globalCustomFoods);
+          }
+          if (Array.isArray(remoteData.myCoachCustomFoods)) {
+            setMyCoachCustomFoods(remoteData.myCoachCustomFoods);
+          }
+          if (
+            remoteData.sharedCoachCustomFoods &&
+            typeof remoteData.sharedCoachCustomFoods === 'object'
+          ) {
+            setSharedCoachCustomFoods(remoteData.sharedCoachCustomFoods);
+          }
+          if (Array.isArray(remoteData.coaches)) {
+            setCoaches(remoteData.coaches);
+          }
+          if (remoteData.myCoachProfile) {
+            setMyCoachProfile(remoteData.myCoachProfile);
+          }
+          if (Array.isArray(remoteData.coachDirectory)) {
+            setCoachDirectory(remoteData.coachDirectory);
+          }
+          if (remoteData.coachInviteCode) {
+            setCoachInviteCode(remoteData.coachInviteCode);
+          }
+          if (remoteData.coachPushSettings) {
+            setCoachPushSettings(remoteData.coachPushSettings);
+          }
+          if (remoteData.appReleasePolicy) {
+            setAppReleasePolicy(remoteData.appReleasePolicy as AppReleasePolicy);
+          }
+          if (typeof remoteData.adminShowScraperSources === 'boolean') {
+            setAdminShowScraperSources(remoteData.adminShowScraperSources);
+          }
+          if (typeof remoteData.semanticSearchEnabled === 'boolean') {
+            setSemanticSearchEnabled(remoteData.semanticSearchEnabled);
+          }
+          if (remoteData.dbError) {
+            setSyncError(remoteData.dbError);
+          }
+          if (typeof remoteData.syncVersion === 'string' && curUserKey) {
+            lastSyncVersionRef.current = remoteData.syncVersion;
+            lastSyncUserKeyRef.current = curUserKey;
+          } else {
+            lastSyncVersionRef.current = null;
+          }
           lastDataFetchDiagRef.current = { ok: true, status: dataRes.status, durationMs, payloadKB: resolvedPayloadKB };
           return;
         }
-        if (Array.isArray(remoteData.trainees)) {
-          setTrainees(remoteData.trainees);
-        }
-        if (Array.isArray(remoteData.templates)) {
-          setTemplates(remoteData.templates);
-        }
-        if (Array.isArray(remoteData.groups)) {
-          setGroups(remoteData.groups);
-        }
-        if (Array.isArray(remoteData.globalQuickChips)) {
-          setGlobalQuickChips(remoteData.globalQuickChips);
-        }
-        if (Array.isArray(remoteData.groupQuickChips)) {
-          setTraineeGroupQuickChips(remoteData.groupQuickChips);
-        }
-        if (Array.isArray(remoteData.globalCustomFoods)) {
-          setGlobalCustomFoods(remoteData.globalCustomFoods);
-        }
-        if (Array.isArray(remoteData.myCoachCustomFoods)) {
-          setMyCoachCustomFoods(remoteData.myCoachCustomFoods);
-        }
-        if (
-          remoteData.sharedCoachCustomFoods &&
-          typeof remoteData.sharedCoachCustomFoods === 'object'
-        ) {
-          setSharedCoachCustomFoods(remoteData.sharedCoachCustomFoods);
-        }
-        if (Array.isArray(remoteData.coaches)) {
-          setCoaches(remoteData.coaches);
-        }
-        if (remoteData.myCoachProfile) {
-          setMyCoachProfile(remoteData.myCoachProfile);
-        }
-        if (Array.isArray(remoteData.coachDirectory)) {
-          setCoachDirectory(remoteData.coachDirectory);
-        }
-        if (remoteData.coachInviteCode) {
-          setCoachInviteCode(remoteData.coachInviteCode);
-        }
-        if (remoteData.coachPushSettings) {
-          setCoachPushSettings(remoteData.coachPushSettings);
-        }
-        if (remoteData.appReleasePolicy) {
-          setAppReleasePolicy(remoteData.appReleasePolicy as AppReleasePolicy);
-        }
-        if (typeof remoteData.adminShowScraperSources === 'boolean') {
-          setAdminShowScraperSources(remoteData.adminShowScraperSources);
-        }
-        if (typeof remoteData.semanticSearchEnabled === 'boolean') {
-          setSemanticSearchEnabled(remoteData.semanticSearchEnabled);
-        }
-        if (remoteData.dbError) {
-          setSyncError(remoteData.dbError);
-        }
-        lastDataFetchDiagRef.current = { ok: true, status: dataRes.status, durationMs, payloadKB: resolvedPayloadKB };
-        return;
+        lastDataFetchDiagRef.current = { ok: false, status: dataRes.status, durationMs, payloadKB: 0 };
+      } catch {
+        lastDataFetchDiagRef.current = {
+          ok: false,
+          status: 0,
+          durationMs: Math.max(0, Date.now() - reqStartedAt),
+          payloadKB: 0,
+        };
       }
-      lastDataFetchDiagRef.current = { ok: false, status: dataRes.status, durationMs, payloadKB: 0 };
-    } catch {
-      lastDataFetchDiagRef.current = {
-        ok: false,
-        status: 0,
-        durationMs: Math.max(0, Date.now() - reqStartedAt),
-        payloadKB: 0,
-      };
+    })();
+
+    inFlightDataFetchRef.current = runFetch;
+    try {
+      await runFetch;
+    } finally {
+      if (inFlightDataFetchRef.current === runFetch) {
+        inFlightDataFetchRef.current = null;
+      }
     }
   }, [clearAllClientSessionState]);
+
+  const enterCoachPreview = useCallback(async (id: string) => {
+    coachPreviewTraineeIdRef.current = id;
+    setCoachPreviewTraineeId(id);
+    previewLoadingTraineeIdRef.current = id;
+    try {
+      const res = await fetch(
+        `/api/data?traineeId=${encodeURIComponent(id)}&t=${Date.now()}`,
+        {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+        }
+      );
+      if (!res.ok) return;
+      const data = (await res.json().catch(() => null)) as {
+        trainee?: TraineeProfile;
+      } | null;
+      if (!data?.trainee) return;
+      if (coachPreviewTraineeIdRef.current !== id) return;
+      const fullTrainee = data.trainee;
+      setTrainees((prev) =>
+        prev.map((t) => (t.id === fullTrainee.id ? fullTrainee : t))
+      );
+    } catch {
+      // במקרה כשל רגעי הרוסטר כבר מוצג למאמן
+    } finally {
+      if (previewLoadingTraineeIdRef.current === id) {
+        previewLoadingTraineeIdRef.current = null;
+      }
+    }
+  }, []);
 
   const runHeartbeatAndVersionCheck = useCallback(async () => {
     if (typeof window === 'undefined' || !window.navigator.onLine) return;
@@ -689,6 +781,9 @@ export default function HomePage() {
           };
           if (sessionData.user) {
             recordKnownAuthSessionHint(sessionData.user);
+            currentUserRef.current = sessionData.user;
+            lastSyncVersionRef.current = null;
+            lastSyncUserKeyRef.current = null;
             setCurrentUser(sessionData.user);
             await fetchAuthorizedData();
             const dataDiag = lastDataFetchDiagRef.current;
@@ -822,12 +917,13 @@ export default function HomePage() {
       }
     }, hbIntervalMs);
 
+    const dataPollMs = currentUser?.role === 'trainee' ? 30000 : 60000;
     const dataInterval = currentUser
       ? setInterval(() => {
           if (document.visibilityState === 'visible' && window.navigator.onLine) {
             void fetchAuthorizedData();
           }
-        }, 25000)
+        }, dataPollMs)
       : null;
 
     return () => {
@@ -1390,6 +1486,10 @@ export default function HomePage() {
   const handleLoginSuccess = async (user: AuthSessionUser) => {
     abortAllPendingPostActions();
     recordKnownAuthSessionHint(user);
+    currentUserRef.current = user;
+    lastSyncVersionRef.current = null;
+    lastSyncUserKeyRef.current = null;
+    coachPreviewTraineeIdRef.current = null;
     setSessionNotice(null);
     setCurrentUser(user);
     setCoachPreviewTraineeId(null);
@@ -3896,7 +3996,7 @@ export default function HomePage() {
             onAdminSemanticSearchEnabledChange={setSemanticSearchEnabled}
             onUpdateAppPolicy={handleUpdateAppPolicy}
             onApkReleasePublished={(policy) => setAppReleasePolicy(policy)}
-            onPreviewTraineeMobile={(id) => setCoachPreviewTraineeId(id)}
+            onPreviewTraineeMobile={(id) => void enterCoachPreview(id)}
           />
         )}
       </main>

@@ -15,8 +15,10 @@ import {
 } from '@/lib/serverAuth';
 import { authenticateActiveSession } from '@/lib/liveAuth';
 import {
-  getServerDbState,
-  updateServerDbState,
+  checkTraineeEmailExistsOnServer,
+  createSingleTraineeOnServer,
+  findTraineeLoginCandidateOnServer,
+  getServerMetaAndCoachesState,
 } from '@/lib/serverStore';
 import {
   AccountStatus,
@@ -111,7 +113,7 @@ export const POST = withTelemetryHandler('/api/auth/session', async (request, ct
     const body = await request.json();
     const { action } = body as { action: 'login' | 'register' };
     ctx.setActionName(action || 'login');
-    const dbState = await getServerDbState();
+    const dbState = await getServerMetaAndCoachesState();
 
     // =========================================================================
     // מסלול א': הרשמת מתאמן חדש עם ניתוב חכם לפי קוד הזמנה אישי של מאמן
@@ -133,13 +135,27 @@ export const POST = withTelemetryHandler('/api/auth/session', async (request, ct
         );
       }
 
-      // בדיקת ייחודיות אימייל גלובלית (מנהל ראשי + מאמנים + מתאמנים)
-      const emailExists =
+      // בדיקת ייחודיות אימייל גלובלית (מנהל ראשי + מאמנים + בדיקת מתאמן ממוקדת ללא סריקת logs)
+      const adminOrCoachExists =
         email === dbState.coachEmail.toLowerCase() ||
-        dbState.coaches.some((c) => c.email.toLowerCase() === email) ||
-        dbState.trainees.some((t) => (t.email || '').toLowerCase() === email);
+        dbState.coaches.some((c) => c.email.toLowerCase() === email);
+      let traineeEmailExists = false;
+      if (!adminOrCoachExists) {
+        const lookup = await checkTraineeEmailExistsOnServer(email);
+        if (lookup.dbUnavailable) {
+          ctx.setErrorCode('DB_UNAVAILABLE', lookup.dbError || 'DB error');
+          return NextResponse.json(
+            {
+              error: 'תקלה זמנית בחיבור למסד הנתונים — נסה שוב בעוד רגע',
+              transient: true,
+            },
+            { status: 503 }
+          );
+        }
+        traineeEmailExists = lookup.exists;
+      }
 
-      if (emailExists) {
+      if (adminOrCoachExists || traineeEmailExists) {
         return NextResponse.json(
           { error: 'כתובת האימייל הזו כבר רשומה במערכת' },
           { status: 409 }
@@ -256,10 +272,7 @@ export const POST = withTelemetryHandler('/api/auth/session', async (request, ct
         sessionVersion: 1,
       };
 
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: [...prev.trainees, newTrainee],
-      }));
+      await createSingleTraineeOnServer(newTrainee);
 
       const sessionUser: AuthSessionUser = {
         id: newTrainee.id,
@@ -351,12 +364,29 @@ export const POST = withTelemetryHandler('/api/auth/session', async (request, ct
       return attachSessionCookie(res, coachUser);
     }
 
-    // 3. בדיקת התחברות מתאמן (Trainee)
-    const matchedTrainee = dbState.trainees.find(
-      (t) =>
-        (t.email || '').toLowerCase() === cleanEmail &&
-        verifyPassword(cleanPass, t.password || '')
-    );
+    // 3. בדיקת התחברות מתאמן (Trainee) - שליפה מהירה לפי אימייל ללא logs JSONB
+    const traineeLookup = await findTraineeLoginCandidateOnServer(cleanEmail);
+    if (traineeLookup.dbUnavailable) {
+      ctx.setErrorCode('DB_UNAVAILABLE', traineeLookup.dbError || 'DB error');
+      ctx.recordAudit({
+        category: 'auth',
+        action: 'login_db_unavailable',
+        status: 'failed',
+      });
+      return NextResponse.json(
+        {
+          error: 'תקלה זמנית בחיבור למסד הנתונים — נסה שוב בעוד רגע',
+          transient: true,
+        },
+        { status: 503 }
+      );
+    }
+
+    const candidateTrainee = traineeLookup.candidate;
+    const matchedTrainee =
+      candidateTrainee && verifyPassword(cleanPass, candidateTrainee.password || '')
+        ? candidateTrainee
+        : null;
 
     if (!matchedTrainee) {
       ctx.setErrorCode('INVALID_CREDENTIALS', 'אימייל או סיסמה שגויים');
