@@ -151,6 +151,7 @@ interface EmbeddedTraineeMeta {
   enableWorkoutRestSplit?: boolean;
   coachAiNotes?: string;
   aiLearnedPreferences?: string[];
+  showLearnedPreferencesInRecommendations?: boolean;
   weeklyCheckIns?: WeeklyCheckInEntry[];
   measurementsHistory?: BodyMeasurementEntry[];
   observationDates?: string[];
@@ -301,6 +302,9 @@ function mapRowToTrainee(row: Record<string, unknown>): TraineeProfile {
       : Array.isArray(row.ai_learned_preferences)
       ? (row.ai_learned_preferences as string[])
       : [],
+    showLearnedPreferencesInRecommendations: Boolean(
+      embeddedMeta.showLearnedPreferencesInRecommendations
+    ),
     weeklyCheckIns: Array.isArray(embeddedMeta.weeklyCheckIns)
       ? embeddedMeta.weeklyCheckIns
       : Array.isArray(row.weekly_check_ins)
@@ -1433,6 +1437,9 @@ function packTraineeLogsWithMeta(t: TraineeProfile) {
       enableWorkoutRestSplit: Boolean(t.enableWorkoutRestSplit),
       coachAiNotes: t.coachAiNotes || '',
       aiLearnedPreferences: t.aiLearnedPreferences || [],
+      showLearnedPreferencesInRecommendations: Boolean(
+        t.showLearnedPreferencesInRecommendations
+      ),
       weeklyCheckIns: t.weeklyCheckIns || [],
       measurementsHistory: t.measurementsHistory || [],
       observationDates: t.observationDates || [],

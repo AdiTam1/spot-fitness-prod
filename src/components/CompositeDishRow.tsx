@@ -459,7 +459,7 @@ export function CompositeDishRow({
                 <ItemTimePill
                   value={item.itemTime}
                   fallbackTime={mealTimeFallback}
-                  placeholderLabel="שעה למנה"
+                  placeholderLabel={mealTimeFallback}
                   ariaLabel={`שעה עבור ${item.name}`}
                   clearAriaLabel={`אפס שעה עבור ${item.name}`}
                   height={52}
@@ -901,7 +901,7 @@ export function CompositeDishRow({
                 <ItemTimePill
                   value={item.itemTime}
                   fallbackTime={mealTimeFallback}
-                  placeholderLabel="לפי הארוחה"
+                  placeholderLabel={mealTimeFallback}
                   ariaLabel={`שעה עבור ${item.name}`}
                   clearAriaLabel={`אפס שעה עבור ${item.name}`}
                   height={52}

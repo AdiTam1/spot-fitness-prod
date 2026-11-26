@@ -194,6 +194,7 @@ interface CoachDashboardViewProps {
       enableWorkoutRestSplit?: boolean;
       coachAiNotes?: string;
       aiLearnedPreferences?: string[];
+      showLearnedPreferencesInRecommendations?: boolean;
       goal?: string;
       onboardingOverrides?: {
         dietaryPreferences?: string[];
@@ -4668,14 +4669,50 @@ export function CoachDashboardView({
                 <div style={{ marginTop: 4, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
                   <div
                     style={{
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: 'var(--text-secondary)',
-                      marginBottom: 6,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 10,
+                      flexWrap: 'wrap',
+                      marginBottom: 8,
                     }}
                   >
-                    כללים קבועים שה-AI שומר עבור המתאמן (
-                    {(selectedTrainee.aiLearnedPreferences || []).length}):
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
+                      כללים קבועים שה-AI שומר עבור המתאמן (
+                      {(selectedTrainee.aiLearnedPreferences || []).length}):
+                    </div>
+                    {onUpdateAiNotesAndSplit && (
+                      <Switch
+                        size="xs"
+                        color="teal"
+                        disabled={isBusy(`ai-pref-vis-${selectedTrainee.id}`)}
+                        checked={Boolean(selectedTrainee.showLearnedPreferencesInRecommendations)}
+                        onChange={(e) => {
+                          const nextVal = e.currentTarget.checked;
+                          void runBusy(
+                            `ai-pref-vis-${selectedTrainee.id}`,
+                            () =>
+                              onUpdateAiNotesAndSplit(selectedTrainee.id, {
+                                showLearnedPreferencesInRecommendations: nextVal,
+                              }),
+                            nextVal
+                              ? 'העדפות יוצגו למתאמן בדף ההצעות'
+                              : 'העדפות הוסתרו מדף ההצעות של המתאמן'
+                          );
+                        }}
+                        label={
+                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>
+                            הצג בדף ההצעות למתאמן
+                          </span>
+                        }
+                      />
+                    )}
                   </div>
                   {(selectedTrainee.aiLearnedPreferences || []).length === 0 ? (
                     <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>

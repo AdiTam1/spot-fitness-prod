@@ -892,6 +892,7 @@ export interface TraineeProfile {
   enableWorkoutRestSplit?: boolean; // ברירת מחדל false - נפתח למתאמן רק אם המאמן הפעיל זאת
   coachAiNotes?: string; // הערות והנחיות מאמן שמוזרקות לפרומפט ה-AI
   aiLearnedPreferences?: string[]; // זיכרון העדפות נלמד מתגובות המתאמן להצעות AI
+  showLearnedPreferencesInRecommendations?: boolean; // ברירת מחדל false - מוצג ב"מה לאכול?" רק אם המאמן הפעיל זאת
   weeklyCheckIns?: WeeklyCheckInEntry[];
   observationDates?: string[]; // תאריכי ימי תשקיף (YYYY-MM-DD)
   blockedDates?: string[]; // תאריכי ימים חסומים להזנה לחלוטין (YYYY-MM-DD)

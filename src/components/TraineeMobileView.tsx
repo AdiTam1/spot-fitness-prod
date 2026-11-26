@@ -2396,7 +2396,10 @@ export function TraineeMobileView({
                                               textOverflow: 'ellipsis',
                                             }}
                                           >
-                                            {item.name}
+                                            {item.name
+                                              .replace(/&#x27;|&#39;|&apos;/gi, "'")
+                                              .replace(/&quot;/gi, '"')
+                                              .replace(/&amp;/gi, '&')}
                                           </span>
                                           {item.coachBadge && (
                                             <span
@@ -2467,7 +2470,7 @@ export function TraineeMobileView({
                                           <ItemTimePill
                                             value={item.itemTime}
                                             fallbackTime={entry?.mealTime || slot.timeHint || '12:00'}
-                                            placeholderLabel="שעה"
+                                            placeholderLabel={entry?.mealTime || slot.timeHint || '12:00'}
                                             ariaLabel={`שינוי שעה עבור ${item.name}`}
                                             clearAriaLabel={`אפס שעה עבור ${item.name}`}
                                             height={24}
@@ -3427,6 +3430,7 @@ export function TraineeMobileView({
         traineeId={trainee.id}
         traineeName={trainee.name}
         learnedPreferences={trainee.aiLearnedPreferences || []}
+        showLearnedPreferences={Boolean(trainee.showLearnedPreferencesInRecommendations)}
         onPreferenceLearned={(prefs) => {
           if (onPreferenceLearned) {
             onPreferenceLearned(trainee.id, prefs);

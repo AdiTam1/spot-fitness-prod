@@ -1426,6 +1426,7 @@ export default function HomePage() {
       enableWorkoutRestSplit?: boolean;
       coachAiNotes?: string;
       aiLearnedPreferences?: string[];
+      showLearnedPreferencesInRecommendations?: boolean;
       goal?: string;
       onboardingOverrides?: {
         dietaryPreferences?: string[];
@@ -1471,6 +1472,12 @@ export default function HomePage() {
           ...(payload.aiLearnedPreferences !== undefined
             ? { aiLearnedPreferences: payload.aiLearnedPreferences }
             : {}),
+          ...(payload.showLearnedPreferencesInRecommendations !== undefined
+            ? {
+                showLearnedPreferencesInRecommendations:
+                  payload.showLearnedPreferencesInRecommendations,
+              }
+            : {}),
           goal: nextGoal,
           onboarding: nextOnboarding,
         };
@@ -1497,6 +1504,12 @@ export default function HomePage() {
                 ...(json.coachAiNotes !== undefined ? { coachAiNotes: json.coachAiNotes } : {}),
                 ...(Array.isArray(json.aiLearnedPreferences)
                   ? { aiLearnedPreferences: json.aiLearnedPreferences }
+                  : {}),
+                ...(typeof json.showLearnedPreferencesInRecommendations === 'boolean'
+                  ? {
+                      showLearnedPreferencesInRecommendations:
+                        json.showLearnedPreferencesInRecommendations,
+                    }
                   : {}),
               }
             : t

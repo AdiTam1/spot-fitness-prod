@@ -2022,6 +2022,11 @@ async function handleDataPost(
             .slice(-30)
         : target.aiLearnedPreferences;
 
+      const showLearnedPreferencesInRecommendations =
+        typeof body.showLearnedPreferencesInRecommendations === 'boolean'
+          ? body.showLearnedPreferencesInRecommendations
+          : target.showLearnedPreferencesInRecommendations;
+
       const nextGoal =
         typeof body.goal === 'string' && sanitizeText(body.goal, 120)
           ? sanitizeText(body.goal, 120)
@@ -2089,20 +2094,14 @@ async function handleDataPost(
         };
       }
 
-      await updateServerDbState((prev) => ({
-        ...prev,
-        trainees: prev.trainees.map((t) =>
-          t.id === traineeId
-            ? {
-                ...t,
-                enableWorkoutRestSplit,
-                coachAiNotes,
-                aiLearnedPreferences,
-                goal: nextGoal,
-                onboarding: nextOnboarding,
-              }
-            : t
-        ),
+      await updateTraineeAtomic(traineeId, (t) => ({
+        ...t,
+        enableWorkoutRestSplit,
+        coachAiNotes,
+        aiLearnedPreferences,
+        showLearnedPreferencesInRecommendations,
+        goal: nextGoal,
+        onboarding: nextOnboarding,
       }));
 
       return NextResponse.json({
@@ -2110,6 +2109,9 @@ async function handleDataPost(
         enableWorkoutRestSplit,
         coachAiNotes,
         aiLearnedPreferences,
+        showLearnedPreferencesInRecommendations: Boolean(
+          showLearnedPreferencesInRecommendations
+        ),
         goal: nextGoal,
         onboarding: nextOnboarding,
       });

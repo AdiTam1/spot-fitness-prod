@@ -252,7 +252,7 @@ function buildSmartConstrainedSuggestions(
         carbs: 16.5,
         fat: 0.3,
       }),
-      scaleItem('שוקולד מריר 70% (כמות מדודה לחיטוב)', 12, '2 קוביות קטנות', {
+      scaleItem('שוקולד מריר 70%', 12, '2 קוביות קטנות', {
         calories: 70,
         protein: 0.9,
         carbs: 5.5,
@@ -261,8 +261,8 @@ function buildSmartConstrainedSuggestions(
     );
     options.push({
       id: 'opt-1',
-      title: 'קערת חלבון ושוקולד מריר מדוד (חלופת חיטוב חכמה למתוק)',
-      whyItFits: `עונה על החשק למתוק מהשאלון עם חלופה עשירה בחלבון וכמות שוקולד מדודה המתאימה למטרת ${goalLabel}`,
+      title: 'קערת יוגורט חלבון, פירות ושוקולד מריר',
+      whyItFits: 'אופן הכנה: מוזגים את היוגורט לקערה, מוסיפים מעל פרי חתוך ושוברים את קוביות השוקולד.',
       items: opt1Items,
       totals: sumMacros(opt1Items.map((i) => i.macros)),
     });
@@ -274,13 +274,13 @@ function buildSmartConstrainedSuggestions(
         '2 פרוסות',
         { calories: 135, protein: 6.5, carbs: 23, fat: 1.5 }
       ),
-      scaleItem('גבינה צהובה עמק לייט 9% + רוטב עגבניות', 60, '2 פרוסות + כף רסק', {
+      scaleItem('גבינה צהובה עמק לייט 9% + רסק עגבניות', 60, '2 פרוסות + כף רסק', {
         calories: 118,
         protein: 16.2,
         carbs: 3.5,
         fat: 4.5,
       }),
-      scaleItem("קוטג' 3%-5% בצד לחלבון נוסף", 125, 'חצי גביע', {
+      scaleItem("קוטג' 3%-5%", 125, 'חצי גביע', {
         calories: 108,
         protein: 14,
         carbs: 2,
@@ -289,8 +289,8 @@ function buildSmartConstrainedSuggestions(
     );
     options.push({
       id: 'opt-1',
-      title: 'טוסט-פיצה חלבון מאוזן (חלופת חיטוב למאפה/פיצה)',
-      whyItFits: `מספק תחושה של פיצה/טוסט עם גבינה רזה והרבה חלבון בלי הקלוריות העודפות, בהתאמה ל${goalLabel}`,
+      title: 'טוסט-פיצה עם גבינה צהובה וקוטג׳ בצד',
+      whyItFits: 'אופן הכנה: מורחים כף רסק עגבניות על פרוסות הלחם, מניחים מעל גבינה צהובה וקולים בטוסטר; מגישים עם הקוטג׳ בצד.',
       items: opt1Items,
       totals: sumMacros(opt1Items.map((i) => i.macros)),
     });
@@ -316,7 +316,7 @@ function buildSmartConstrainedSuggestions(
       );
     } else if (noDairy) {
       opt1Items.push(
-        scaleItem('טופו צלוי / ממרח עדשים עשיר בחלבון (ללא חלב)', 140, 'מנה', {
+        scaleItem('טופו צלוי / ממרח עדשים', 140, 'מנה', {
           calories: 175,
           protein: 19.6,
           carbs: 3.5,
@@ -347,7 +347,7 @@ function buildSmartConstrainedSuggestions(
 
     if (noGluten) {
       opt1Items.push(
-        scaleItem('פריכיות אורז מלא / תפוח אדמה אפוי', 130, 'מנה ללא גלוטן', {
+        scaleItem('פריכיות אורז מלא / תפוח אדמה אפוי', 130, 'מנה', {
           calories: 130,
           protein: 2.8,
           carbs: 28,
@@ -370,15 +370,13 @@ function buildSmartConstrainedSuggestions(
     options.push({
       id: 'opt-1',
       title: noDairy
-        ? 'ארוחת חלבון פרווה / צמחית ללא מוצרי חלב'
+        ? 'חביתה עם מנת חלבון פרווה ולחם / תפוח אדמה'
         : onlyYellowCheese
-        ? 'חביתת חלבון עם גבינה צהובה 9% (ללא גבינות רכות)'
+        ? 'חביתת ביצים עם גבינה צהובה 9% ולחם כוסמין'
         : noGluten
-        ? 'ארוחת חלבון מותאמת ללא גלוטן'
-        : goalMode === 'bulk'
-        ? 'ארוחת חלבון ואנרגיה מוגדלת למסה'
-        : 'ארוחת חלבון משביעה ומאוזנת לחיטוב',
-      whyItFits: `מותאמת למטרת ${goalLabel}, יתרת המאקרו והמגבלות האישיות מהשאלון`,
+        ? 'חביתת ביצים עם פריכיות או תפוח אדמה אפוי'
+        : 'חביתת ביצים עם קוטג׳ ולחם כוסמין מלא',
+      whyItFits: 'אופן הכנה: מכינים חביתה או מקושקשת במחבת נון-סטיק עם מעט ספריי שמן, ומגישים לצד התוספת והלחם/פריכיות.',
       items: opt1Items,
       totals: sumMacros(opt1Items.map((i) => i.macros)),
     });
@@ -399,7 +397,7 @@ function buildSmartConstrainedSuggestions(
     );
   } else {
     opt2Items.push(
-      scaleItem('נתחי טופו / קטניות מוקפצים', 160, 'מנה עשירה בחלבון', {
+      scaleItem('נתחי טופו / קטניות מוקפצים', 160, 'מנה', {
         calories: 210,
         protein: 24,
         carbs: 8,
@@ -410,15 +408,15 @@ function buildSmartConstrainedSuggestions(
   opt2Items.push(
     noRice
       ? scaleItem(
-          'בטטה אפויה (ללא גלוטן)',
+          'בטטה אפויה בתנור',
           goalMode === 'bulk' ? 220 : 150,
-          goalMode === 'bulk' ? 'מנה מוגדלת' : 'יחידה בינונית',
+          goalMode === 'bulk' ? 'מנה גדולה' : 'יחידה בינונית',
           goalMode === 'bulk'
             ? { calories: 198, protein: 4.4, carbs: 45.5, fat: 0.4 }
             : { calories: 135, protein: 3.0, carbs: 31.0, fat: 0.3 }
         )
       : scaleItem(
-          'אורז בסמטי מבושל (ללא גלוטן)',
+          'אורז בסמטי מבושל',
           goalMode === 'bulk' ? 210 : 140,
           goalMode === 'bulk' ? 'כוס וחצי מבושלת' : 'כוס מבושלת',
           goalMode === 'bulk'
@@ -428,7 +426,7 @@ function buildSmartConstrainedSuggestions(
   );
   if (goalMode === 'bulk') {
     opt2Items.push(
-      scaleItem('שמן זית / אבוקדו לתוספת אנרגיה בריאה', 10, 'כף', {
+      scaleItem('שמן זית / אבוקדו', 10, 'כף', {
         calories: 88,
         protein: 0,
         carbs: 0,
@@ -437,7 +435,7 @@ function buildSmartConstrainedSuggestions(
     );
   } else {
     opt2Items.push(
-      scaleItem('סלט ירקות טרי עשיר בנפח', 180, 'קערה גדולה', {
+      scaleItem('סלט ירקות טרי קצוץ', 180, 'קערה גדולה', {
         calories: 38,
         protein: 1.8,
         carbs: 7.2,
@@ -450,20 +448,18 @@ function buildSmartConstrainedSuggestions(
     id: 'opt-2',
     title: !noChicken
       ? `חזה עוף על הפלנצ׳ה עם ${noRice ? 'בטטה אפויה' : 'אורז בסמטי'}${
-          goalMode === 'cut' ? ' וסלט עשיר' : ''
+          goalMode !== 'bulk' ? ' וסלט ירקות' : ''
         }`
-      : `קערת חלבון צמחי ו${noRice ? 'בטטה אפויה' : 'אורז בסמטי'}`,
+      : `נתחי טופו מוקפצים עם ${noRice ? 'בטטה אפויה' : 'אורז בסמטי'}`,
     whyItFits:
-      goalMode === 'cut'
-        ? 'נפח גדול ושובע ממושך עם חלבון גבוה וצפיפות קלורית מבוקרת לחיטוב'
-        : goalMode === 'bulk'
-        ? 'עשירה בחלבון מלא, פחמימה וקלוריות איכותיות לעלייה נקייה במסת השריר'
-        : 'ארוחה חמה מאוזנת ללא גלוטן וללא מוצרי חלב',
+      goalMode === 'bulk'
+        ? 'אופן הכנה: צולים את מנת החלבון במחבת פסים/פלנצ׳ה כ-4 דקות מכל צד עם תבלינים, ומגישים לצד התוספת החמה ושמן זית/אבוקדו.'
+        : 'אופן הכנה: צולים את מנת החלבון על פלנצ׳ה חמה כ-4 דקות מכל צד עם פפריקה ופלפל, ומגישים עם הפחמימה והירקות חתוכים בצד.',
     items: opt2Items,
     totals: sumMacros(opt2Items.map((i) => i.macros)),
   });
 
-  // אופציה 3: ארוחה מהירה / טבעונית / כשרה
+  // אופציה 3: ארוחה מהירה
   const opt3Items: LoggedFoodItem[] = [];
   if (!noFish) {
     opt3Items.push(
@@ -496,7 +492,7 @@ function buildSmartConstrainedSuggestions(
   } else {
     opt3Items.push(
       scaleItem(
-        noDairy ? 'סקופ אבקת חלבון צמחית (אפונה / סויה)' : 'סקופ אבקת חלבון (Whey / צמחי)',
+        noDairy ? 'אבקת חלבון צמחית (אפונה / סויה)' : 'אבקת חלבון (Whey / צמחי)',
         32,
         'סקופ אחד',
         { calories: 123, protein: 25, carbs: 2.5, fat: 1.4 }
@@ -522,7 +518,7 @@ function buildSmartConstrainedSuggestions(
             fat: 5.7,
           })
         : scaleItem(
-            goalMode === 'bulk' ? 'חמאת בוטנים טבעית / שקדים' : 'שקדים טבעיים מדודים',
+            goalMode === 'bulk' ? 'חמאת בוטנים טבעית / שקדים' : 'שקדים טבעיים',
             goalMode === 'bulk' ? 25 : 15,
             goalMode === 'bulk' ? 'כף גדושה' : 'כ-12 יחידות',
             goalMode === 'bulk'
@@ -535,13 +531,15 @@ function buildSmartConstrainedSuggestions(
   options.push({
     id: 'opt-3',
     title: !noFish
-      ? `טונה במים עם בטטה אפויה ו${noSesame ? 'חצי אבוקדו' : 'כף טחינה'}${
-          kosher ? ' (פרווה)' : ''
-        }`
-      : `שייק חלבון ${noDairy ? 'צמחי ' : ''}מהיר עם ${
+      ? `טונה במים עם בטטה אפויה ו${noSesame ? 'אבוקדו' : 'טחינה'}`
+      : `שייק חלבון עם ${
           !noOats && goalMode === 'bulk' ? 'שיבולת שועל' : 'בננה'
-        } ו${noNuts ? 'שוקולד מריר' : goalMode === 'bulk' ? 'חמאת בוטנים' : 'שקדים מדודים'}`,
-    whyItFits: `פתרון מהיר להשלמת החלבון והאנרגיה המותאם למטרת ${goalLabel} ולשאלון האישי`,
+        } ו${noNuts ? 'שוקולד מריר' : goalMode === 'bulk' ? 'חמאת בוטנים' : 'שקדים'}`,
+    whyItFits: !noFish
+      ? `אופן הכנה: אופים את הבטטה בתנור/מיקרוגל עד ריכוך, מסננים את הטונה מהמים ומגישים יחד עם ${
+          noSesame ? 'פרוסות אבוקדו' : 'כף טחינה מדוללת במעט מים ולימון'
+        }.`
+      : 'אופן הכנה: טוחנים את אבקת החלבון עם מים קרים או קרח בבלנדר יחד עם הפרי והתוספת עד לקבלת מרקם אחיד.',
     items: opt3Items,
     totals: sumMacros(opt3Items.map((i) => i.macros)),
   });
@@ -690,19 +688,24 @@ export const POST = withTelemetryHandler('/api/ai/recommend-meal', async (reques
 - פחמימות: ~${safeTargets.carbs} גרם
 - שומן: ~${safeTargets.fat} גרם
 
-פרופיל המטרה, שאלון ההתאמה, העדפות המתאמן, הנחיות המאמן וזיכרון הלמידה (חובה לציית להם ב-100%, ואין להציע מאכלים משמינים בכמות גדולה בזמן חיטוב — במקומם יש להציע חלופה בריאה דומה עתירת חלבון או כמות קטנה ומדודה!):
+פרופיל המטרה, שאלון ההתאמה, העדפות המתאמן, הנחיות המאמן וזיכרון הלמידה (חובה לציית להם בבחירת המרכיבים ב-100%, מבלי להזכיר אותם בטקסט התשובה למשתמש!):
 ${contextLines.join('\n') || 'ללא מגבלות מיוחדות'}
+
+כללי ניסוח מחייבים לפירוט הסופי (title, whyItFits ו-items):
+1. השדה whyItFits מיועד אך ורק להסבר פרקטי של אופן ההכנה וההגשה ("אופן הכנה: ...") — תכליתי וקצר.
+2. חל איסור מוחלט להכניס לטקסט המוחזר (title, whyItFits או items[].name) משפטים על העדפות/מגבלות/מאמן/שאלון כגון: "אהוב על המתאמן", "ללא מוצרי חלב אסורים/נוספים", "משתלב בהעדפת...", "מתאים לחיטוב/מסה", "לפי השאלון", "בהתאם להנחיות".
+3. המערך items חייב לכלול את כל המרכיבים הנדרשים להכנת המנה עם מידות ומשקלים מדויקים.
 
 החזר JSON בלבד במבנה הבא עם 3 אופציות ישראליות מעשיות ומדויקות:
 {
   "options": [
     {
       "id": "opt-1",
-      "title": "שם הארוחה המוצעת",
-      "whyItFits": "הסבר קצר של משפט אחד למה זה מתאים למטרה (חיטוב/מסה), ליעד המאקרו ולשאלון/הנחיות המאמן",
+      "title": "שם המנה המעשי בלבד",
+      "whyItFits": "אופן הכנה: משפט קצר ומעשי המסביר איך מכינים ומגישים את המנה (ללא אזכור העדפות, שאלון, חיטוב או איסורים)",
       "items": [
         {
-          "name": "שם המוצר בעברית",
+          "name": "שם המוצר נטו בעברית",
           "unitLabel": "יחידת מידה ומשקל, למשל: 2 פרוסות (50 גרם)",
           "quantity": 1,
           "grams": 50,
@@ -757,8 +760,8 @@ ${contextLines.join('\n') || 'ללא מגבלות מיוחדות'}
               id: String(opt.id || `opt-${i + 1}`),
               title: sanitizeText(opt.title, 120) || `אופציה ${i + 1}`,
               whyItFits:
-                sanitizeText(opt.whyItFits, 180) ||
-                'מותאם ליתרת המאקרו ולהעדפות שלך',
+                sanitizeText(opt.whyItFits, 220) ||
+                'אופן הכנה: משלבים ומגישים את כל המרכיבים לפי הכמויות המצוינות.',
               items,
               totals: sumMacros(items.map((x) => x.macros)),
               aiEngine: usedModel,

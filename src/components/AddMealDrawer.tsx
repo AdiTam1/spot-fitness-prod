@@ -191,6 +191,7 @@ interface AddMealDrawerProps {
   traineeId?: string;
   traineeName?: string;
   learnedPreferences?: string[];
+  showLearnedPreferences?: boolean;
   onPreferenceLearned?: (prefs: string[]) => void;
   savedMeals?: SavedMealPreset[];
   customServingTools?: TraineeServingTool[];
@@ -279,6 +280,7 @@ export function AddMealDrawer({
   traineeId,
   traineeName,
   learnedPreferences = [],
+  showLearnedPreferences = false,
   onPreferenceLearned,
   savedMeals = [],
   mealSlotOptions = [],
@@ -421,7 +423,7 @@ export function AddMealDrawer({
   const [canManualExpandLive, setCanManualExpandLive] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchRetryNonce, setSearchRetryNonce] = useState(0);
-  const [activeResultIndex, setActiveResultIndex] = useState<number>(0);
+  const [activeResultIndex, setActiveResultIndex] = useState<number>(-1);
   const [mohCount, setMohCount] = useState(0);
   const [scraperCount, setScraperCount] = useState(0);
   const [totalAvailable, setTotalAvailable] = useState(ISRAELI_FOOD_CATALOG.length);
@@ -625,7 +627,7 @@ export function AddMealDrawer({
         setHasRemoteSynced(false);
         setSearchError(null);
         setCanManualExpandLive(false);
-        setActiveResultIndex(0);
+        setActiveResultIndex(-1);
         setSelectedFood(null);
         setCameraChooserOpen(false);
         setMealTime(existingEntry?.mealTime || mealSlot.timeHint || '');
@@ -1014,7 +1016,7 @@ export function AddMealDrawer({
       : sourceGroup;
 
   useEffect(() => {
-    setActiveResultIndex(0);
+    setActiveResultIndex(-1);
   }, [searchQuery, sourceGroup, effectiveRetailSubSite, selectedBrand]);
 
   useEffect(() => {
@@ -3253,13 +3255,8 @@ export function AddMealDrawer({
                       e.preventDefault();
                       setActiveResultIndex((prev) => Math.max(0, prev - 1));
                     } else if (e.key === 'Enter') {
-                      if ((activeTab === 'catalog' || trimmedQuery.length > 0) && searchResults[activeResultIndex]) {
-                        e.preventDefault();
-                        void handleSelectCatalogFood(searchResults[activeResultIndex]);
-                      } else {
-                        e.preventDefault();
-                        e.currentTarget.blur();
-                      }
+                      e.preventDefault();
+                      e.currentTarget.blur();
                     } else if (e.key === 'Escape' && searchQuery) {
                       e.preventDefault();
                       setSearchQuery('');
@@ -4326,9 +4323,24 @@ export function AddMealDrawer({
                           >
                             <Plus size={20} strokeWidth={2.2} />
                           </button>
-                          <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <span style={{ fontSize: 15, fontWeight: 600 }}>{option.title}</span>
-                            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{option.whyItFits}</span>
+                          <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            <span style={{ fontSize: 15, fontWeight: 700 }}>{option.title}</span>
+                            {option.items.length > 0 && (
+                              <span style={{ fontSize: 12.5, color: 'var(--text)', lineHeight: 1.4 }}>
+                                <b>מרכיבים:</b>{' '}
+                                {option.items
+                                  .map(
+                                    (it) =>
+                                      `${it.name} (${it.unitLabel || `${Math.round(it.grams)} גרם`})`
+                                  )
+                                  .join(' · ')}
+                              </span>
+                            )}
+                            {option.whyItFits && (
+                              <span style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.4 }}>
+                                {option.whyItFits}
+                              </span>
+                            )}
                             <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
                               <bdi dir="ltr" className="num-mono ltr-num">{option.totals.calories}</bdi> קק״ל · ח׳{' '}
                               <bdi dir="ltr" className="ltr-num">{option.totals.protein}</bdi> · פ׳{' '}
@@ -4364,28 +4376,30 @@ export function AddMealDrawer({
                   </button>
                 </section>
 
-                {/* Learned preferences + silent-learning feedback */}
+                {/* Learned preferences (shown only when coach explicitly enabled) + silent-learning feedback */}
                 <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <span style={{ fontSize: 13, color: 'var(--text-2)' }}>העדפות שנלמדו בחשבון שלך</span>
-                  {learnedPreferences.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {learnedPreferences.map((pref) => (
-                        <span
-                          key={pref}
-                          style={{
-                            minHeight: 36,
-                            padding: '0 14px',
-                            borderRadius: 999,
-                            border: '1px solid var(--line-2)',
-                            fontSize: 14,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                          }}
-                        >
-                          {pref}
-                        </span>
-                      ))}
-                    </div>
+                  {showLearnedPreferences && learnedPreferences.length > 0 && (
+                    <>
+                      <span style={{ fontSize: 13, color: 'var(--text-2)' }}>העדפות שנלמדו בחשבון שלך</span>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {learnedPreferences.map((pref) => (
+                          <span
+                            key={pref}
+                            style={{
+                              minHeight: 36,
+                              padding: '0 14px',
+                              borderRadius: 999,
+                              border: '1px solid var(--line-2)',
+                              fontSize: 14,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                            }}
+                          >
+                            {pref}
+                          </span>
+                        ))}
+                      </div>
+                    </>
                   )}
                   <span style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.45 }}>
                     משהו בהצעות לא מתאים? רשום העדפה או הגבלה כדי שנזכור אותה בהצעות הבאות.
@@ -7402,7 +7416,7 @@ export function AddMealDrawer({
               <ItemTimePill
                 value={customItemTime}
                 fallbackTime={mealTime || mealSlot.timeHint || '12:00'}
-                placeholderLabel="לפי שעת הארוחה"
+                placeholderLabel={mealTime || mealSlot.timeHint || '12:00'}
                 ariaLabel="שעה ייעודית למנה"
                 clearAriaLabel="אפס שעה למנה"
                 height={34}
