@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   let embeddingsRemaining = 0;
   const semanticOn = await getSemanticSearchEnabledFast().catch(() => false);
   if (semanticOn) {
-    const embedRes = await backfillFoodCatalogEmbeddingsBatch(150).catch(() => null);
+    const embedRes = await backfillFoodCatalogEmbeddingsBatch(100).catch(() => null);
     if (embedRes?.ok) {
       embeddingsAdded = embedRes.embedded;
       embeddingsRemaining = embedRes.remainingEstimate;

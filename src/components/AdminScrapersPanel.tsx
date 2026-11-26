@@ -71,7 +71,10 @@ export function AdminScrapersPanel({
     embeddedCount: number;
     totalCount: number;
     remaining: number;
+    waitSecondsLeft?: number;
+    statusNote?: string;
   } | null>(null);
+  const [lastEmbedError, setLastEmbedError] = useState<string | null>(null);
   const embedCancelRef = useRef(false);
   const [lastMetaBackfillSummary, setLastMetaBackfillSummary] = useState<{
     scanned: number;
@@ -314,9 +317,11 @@ export function AdminScrapersPanel({
 
   const handleBackfillEmbeddings = async () => {
     setBusyAction('backfill_embeddings');
+    setLastEmbedError(null);
     embedCancelRef.current = false;
     let addedTotal = 0;
     let batchNum = 0;
+    let rateLimitWaits = 0;
     const initialEmbedded = Number(report?.sqlCatalogStats?.embeddedCount || 0);
     const initialTotal = Number(report?.sqlCatalogStats?.totalCount || 0);
     setEmbedProgress({
@@ -327,22 +332,54 @@ export function AdminScrapersPanel({
       remaining: Math.max(0, initialTotal - initialEmbedded),
     });
 
-    try {
-      for (let i = 0; i < 250; i++) {
-        batchNum = i + 1;
-        const data = await callScraperApi({
-          action: 'backfill_embeddings',
-          pages: 250,
-        });
-        if (data.report) onReportUpdate(data.report);
+    const sleepWithCancelCheck = async (seconds: number, note: string): Promise<boolean> => {
+      for (let s = seconds; s > 0; s--) {
+        if (embedCancelRef.current) return false;
+        setEmbedProgress((prev) =>
+          prev
+            ? {
+                ...prev,
+                waitSecondsLeft: s,
+                statusNote: note,
+              }
+            : null
+        );
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      if (embedCancelRef.current) return false;
+      setEmbedProgress((prev) =>
+        prev ? { ...prev, waitSecondsLeft: undefined, statusNote: undefined } : null
+      );
+      return true;
+    };
 
-        if (!data.ok) {
-          onNotify(data.error || 'אינדוקס Embeddings נכשל', true);
+    try {
+      for (let i = 0; i < 600; i++) {
+        if (embedCancelRef.current) {
+          onNotify(
+            `האינדוקס נעצר ידנית לאחר ${addedTotal.toLocaleString(
+              'he-IL'
+            )} Embeddings (ההתקדמות נשמרה ב-DB).`
+          );
           break;
         }
 
+        batchNum += 1;
+        const data = await callScraperApi({
+          action: 'backfill_embeddings',
+          pages: 50,
+        });
+        if (data.report) onReportUpdate(data.report);
+
         const embeddedNow = Number(data.embedded || 0);
-        const remaining = Number(data.remainingEstimate || 0);
+        const remaining = Number(
+          data.remainingEstimate ??
+            Math.max(
+              0,
+              Number(data.report?.sqlCatalogStats?.totalCount || initialTotal) -
+                Number(data.report?.sqlCatalogStats?.embeddedCount || initialEmbedded)
+            )
+        );
         addedTotal += embeddedNow;
 
         const nextStats = data.report?.sqlCatalogStats;
@@ -359,7 +396,18 @@ export function AdminScrapersPanel({
           remaining,
         });
 
-        if (remaining === 0) {
+        // 1. שגיאה אמיתית שאינה מגבלת דקה חולפת (למשל מפתח שגוי או מכסה יומית מלאה)
+        if (!data.ok && (!data.rateLimited || data.isDailyQuota)) {
+          const exactErr = data.isDailyQuota
+            ? `מכסת Gemini היומית מוצתה להיום (${data.error || '429 PerDay'}). האינדוקס ימשיך אוטומטית בלילה ב-Cron או מחר. (${addedTotal} נשמרו כעת)`
+            : data.error || 'אינדוקס Embeddings נכשל';
+          setLastEmbedError(exactErr);
+          onNotify(exactErr, true);
+          break;
+        }
+
+        // 2. סיום מלא של כל הטבלה
+        if (remaining === 0 && (data.ok || embeddedCount >= totalCount)) {
           if (addedTotal === 0) {
             onNotify(
               `כל ${embeddedCount.toLocaleString('he-IL')} המוצרים בטבלה כבר מאונדקסים עם Embeddings סמנטיים!`
@@ -374,15 +422,41 @@ export function AdminScrapersPanel({
           break;
         }
 
-        if (embeddedNow === 0) {
-          onNotify(
-            `האינדוקס נעצר לאחר ${addedTotal.toLocaleString('he-IL')} עדכונים — נותרו כ-${remaining.toLocaleString(
-              'he-IL'
-            )} מוצרים (בדוק מכסות Gemini).`,
-            true
+        // 3. מגבלת קצב רגעית של Google החינמי (429/timeout): ממתינים אוטומטית בספירה לאחור וממשיכים בלי לקרוס
+        if (data.rateLimited && !data.isDailyQuota) {
+          rateLimitWaits += 1;
+          if (rateLimitWaits > 12) {
+            const msg = `Google החזיר שוב ושוב הגבלת קצב (${data.error || '429'}). מה שכבר אונדקס (${addedTotal}) נשמר ב-DB — תוכל להמשיך שוב בעוד דקה.`;
+            setLastEmbedError(msg);
+            onNotify(msg, true);
+            break;
+          }
+          const waitSec = Math.max(8, Math.min(75, Number(data.retryAfterSec) || 22));
+          const shouldContinue = await sleepWithCancelCheck(
+            waitSec,
+            `מגבלת קצב זמנית ב-Google החינמי (${data.errorStatus || 429}) — ממתין אוטומטית וממשיך...`
           );
+          if (!shouldContinue) {
+            onNotify(
+              `האינדוקס נעצר ידנית לאחר ${addedTotal.toLocaleString(
+                'he-IL'
+              )} Embeddings (התקדמות נשמרה ב-DB, נותרו כ-${remaining.toLocaleString('he-IL')}).`
+            );
+            break;
+          }
+          continue;
+        }
+
+        if (embeddedNow === 0) {
+          const msg =
+            data.error ||
+            `האינדוקס נעצר לאחר ${addedTotal.toLocaleString('he-IL')} עדכונים — נותרו כ-${remaining.toLocaleString('he-IL')} מוצרים.`;
+          setLastEmbedError(msg);
+          onNotify(msg, true);
           break;
         }
+
+        rateLimitWaits = 0;
 
         if (embedCancelRef.current) {
           onNotify(
@@ -393,13 +467,24 @@ export function AdminScrapersPanel({
           break;
         }
 
-        await new Promise((r) => setTimeout(r, 400));
+        // הפוגה עדינה של ~2 שניות בין אצוות של 50 כדי שלא לחצות TPM/RPM בחינם
+        const keepGoing = await sleepWithCancelCheck(
+          2,
+          'קצב עדין למניעת חסימת Google החינמי...'
+        );
+        if (!keepGoing) {
+          onNotify(
+            `האינדוקס נעצר ידנית לאחר ${addedTotal.toLocaleString(
+              'he-IL'
+            )} Embeddings (התקדמות נשמרה ב-DB, נותרו כ-${remaining.toLocaleString('he-IL')}).`
+          );
+          break;
+        }
       }
     } catch (err) {
-      onNotify(
-        err instanceof Error ? err.message : 'אינדוקס Embeddings נכשל',
-        true
-      );
+      const msg = err instanceof Error ? err.message : 'אינדוקס Embeddings נכשל';
+      setLastEmbedError(msg);
+      onNotify(msg, true);
     } finally {
       setBusyAction(null);
       setEmbedProgress(null);
@@ -952,7 +1037,7 @@ export function AdminScrapersPanel({
                 }}
               >
                 <span>
-                  אצווה #{embedProgress.batchNum} · נוספו{' '}
+                  אצווה #{embedProgress.batchNum} (50/סבב) · נוספו{' '}
                   {embedProgress.addedTotal.toLocaleString('he-IL')} · כיסוי:{' '}
                   {embedProgress.embeddedCount.toLocaleString('he-IL')} /{' '}
                   {Math.max(embedProgress.totalCount, embedProgress.embeddedCount).toLocaleString('he-IL')} (
@@ -1006,11 +1091,38 @@ export function AdminScrapersPanel({
                           )
                         : 15
                     }%`,
-                    background: 'var(--accent)',
+                    background: embedProgress.waitSecondsLeft
+                      ? 'var(--warn-text)'
+                      : 'var(--accent)',
                     transition: 'width 240ms ease',
                   }}
                 />
               </div>
+              {embedProgress.statusNote && (
+                <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                  {embedProgress.statusNote}
+                  {typeof embedProgress.waitSecondsLeft === 'number'
+                    ? ` (${embedProgress.waitSecondsLeft} שנ׳)`
+                    : ''}
+                </div>
+              )}
+            </div>
+          )}
+
+          {lastEmbedError && busyAction !== 'backfill_embeddings' && (
+            <div
+              style={{
+                marginTop: 8,
+                padding: '8px 12px',
+                borderRadius: 10,
+                background: 'var(--surface-2)',
+                border: '1px solid var(--line-2)',
+                fontSize: 12,
+                color: 'var(--danger-text)',
+                lineHeight: 1.45,
+              }}
+            >
+              <strong>פירוט מ-Gemini:</strong> {lastEmbedError}
             </div>
           )}
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>

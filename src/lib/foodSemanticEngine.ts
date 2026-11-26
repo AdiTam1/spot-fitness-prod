@@ -15,16 +15,43 @@ export const GEMINI_EMBEDDING_MODEL = 'gemini-embedding-001';
 export const FOOD_EMBEDDING_DIMS = 768;
 
 const EMBED_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-const QUERY_EMBED_TIMEOUT_MS = 5500;
-const BATCH_EMBED_TIMEOUT_MS = 15000;
+const QUERY_EMBED_TIMEOUT_MS = 10000;
+const BATCH_EMBED_TIMEOUT_MS = 25000;
 const QUERY_RAM_CACHE_MAX = 300;
 const QUERY_RAM_CACHE_TTL_MS = 30 * 60 * 1000;
 const REWRITE_CACHE_MAX = 200;
 const REWRITE_CACHE_TTL_MS = 30 * 60 * 1000;
 
+export type EmbedErrorKind =
+  | 'missing_key'
+  | 'cooldown'
+  | 'auth'
+  | 'not_found'
+  | 'bad_request'
+  | 'daily_quota'
+  | 'rate_limit'
+  | 'overload_5xx'
+  | 'timeout'
+  | 'empty_response'
+  | 'network';
+
+export interface EmbedBatchDetailedResult {
+  vectors: Array<number[] | null>;
+  succeededCount: number;
+  errorStatus?: number;
+  errorKind?: EmbedErrorKind;
+  errorDetail?: string;
+  retryAfterSec?: number;
+  isDailyQuota?: boolean;
+}
+
 declare global {
   // eslint-disable-next-line no-var
   var __spotEmbedCooldownUntil: number | undefined;
+  // eslint-disable-next-line no-var
+  var __spotEmbedCooldownMeta:
+    | { kind: EmbedErrorKind; detail: string; status?: number }
+    | undefined;
   // eslint-disable-next-line no-var
   var __spotQueryEmbedRamCache:
     | Map<string, { vec: number[]; expiresAt: number }>
@@ -69,17 +96,109 @@ function isEmbedInCooldown(): boolean {
   );
 }
 
-function markEmbedCooldownFromStatus(status: number, bodyText: string): void {
-  const low = bodyText.toLowerCase();
-  if (status === 401 || status === 403) {
-    globalThis.__spotEmbedCooldownUntil = Date.now() + 5 * 60_000;
-  } else if (status === 429) {
-    const isDaily =
-      low.includes('perday') || low.includes('daily') || low.includes('requestsperday');
-    globalThis.__spotEmbedCooldownUntil = Date.now() + (isDaily ? 4 * 60_000 : 45_000);
-  } else if (status >= 500) {
-    globalThis.__spotEmbedCooldownUntil = Date.now() + 20_000;
+function parseGoogleApiErrorPayload(
+  status: number,
+  bodyText: string,
+  retryAfterHeader?: string | null
+): {
+  kind: EmbedErrorKind;
+  detail: string;
+  retryAfterSec: number;
+  isDailyQuota: boolean;
+} {
+  let cleanMsg = bodyText.trim();
+  try {
+    const parsed = JSON.parse(bodyText) as { error?: { message?: string; status?: string } };
+    if (parsed?.error?.message) {
+      cleanMsg = parsed.error.message;
+    }
+  } catch {
+    // ignore non-JSON body
   }
+  const low = `${cleanMsg} ${bodyText}`.toLowerCase();
+
+  let retryAfterSec = 0;
+  const retryHeaderNum = Number(retryAfterHeader || '');
+  if (Number.isFinite(retryHeaderNum) && retryHeaderNum > 0) {
+    retryAfterSec = Math.ceil(retryHeaderNum);
+  }
+  const inlineRetry = cleanMsg.match(/retry\s+in\s+([0-9]+(?:\.[0-9]+)?)\s*s/i);
+  if (inlineRetry?.[1]) {
+    retryAfterSec = Math.max(retryAfterSec, Math.ceil(Number(inlineRetry[1])) + 1);
+  }
+
+  if (status === 401 || status === 403 || low.includes('api key not valid') || low.includes('permission_denied')) {
+    return {
+      kind: 'auth',
+      detail: cleanMsg.slice(0, 180) || 'Unauthorized / Invalid GEMINI_API_KEY',
+      retryAfterSec: 0,
+      isDailyQuota: false,
+    };
+  }
+  if (status === 404) {
+    return {
+      kind: 'not_found',
+      detail: cleanMsg.slice(0, 180) || 'Embedding model not found',
+      retryAfterSec: 0,
+      isDailyQuota: false,
+    };
+  }
+  if (status === 400) {
+    return {
+      kind: 'bad_request',
+      detail: cleanMsg.slice(0, 180) || 'Invalid embedding request payload',
+      retryAfterSec: 0,
+      isDailyQuota: false,
+    };
+  }
+  if (status === 429 || low.includes('resource_exhausted') || low.includes('quota')) {
+    const mentionsMinute =
+      low.includes('perminute') || low.includes('per_minute') || low.includes('requestsperminute');
+    const isDaily =
+      !mentionsMinute &&
+      (low.includes('perday') || low.includes('per_day') || low.includes('requestsperday'));
+    return {
+      kind: isDaily ? 'daily_quota' : 'rate_limit',
+      detail: cleanMsg.slice(0, 200) || (isDaily ? 'Daily quota exhausted' : 'Rate limit reached (429)'),
+      retryAfterSec: retryAfterSec > 0 ? Math.min(75, retryAfterSec) : isDaily ? 180 : 22,
+      isDailyQuota: isDaily,
+    };
+  }
+  if (status >= 500) {
+    return {
+      kind: 'overload_5xx',
+      detail: cleanMsg.slice(0, 180) || `Google Server ${status}`,
+      retryAfterSec: 12,
+      isDailyQuota: false,
+    };
+  }
+  return {
+    kind: 'network',
+    detail: cleanMsg.slice(0, 180) || `HTTP ${status}`,
+    retryAfterSec: 10,
+    isDailyQuota: false,
+  };
+}
+
+function markEmbedCooldownFromStatus(
+  status: number,
+  bodyText: string,
+  retryAfterHeader?: string | null
+): ReturnType<typeof parseGoogleApiErrorPayload> {
+  const info = parseGoogleApiErrorPayload(status, bodyText, retryAfterHeader);
+  const cooldownSec =
+    info.kind === 'auth'
+      ? 180
+      : info.kind === 'daily_quota'
+        ? 120
+        : Math.max(10, Math.min(45, info.retryAfterSec || 20));
+  globalThis.__spotEmbedCooldownUntil = Date.now() + cooldownSec * 1000;
+  globalThis.__spotEmbedCooldownMeta = {
+    kind: info.kind,
+    detail: info.detail,
+    status,
+  };
+  return info;
 }
 
 export function normalizeL2Vector(raw: number[]): number[] {
@@ -195,7 +314,11 @@ export async function embedSingleSearchQuery(query: string): Promise<number[] | 
 
     if (!res.ok) {
       const errTxt = await res.text().catch(() => '');
-      markEmbedCooldownFromStatus(res.status, errTxt);
+      markEmbedCooldownFromStatus(
+        res.status,
+        errTxt,
+        res.headers.get('retry-after')
+      );
       return null;
     }
 
@@ -223,22 +346,58 @@ export async function embedSingleSearchQuery(query: string): Promise<number[] | 
 }
 
 /**
- * מייצר Embeddings בקבוצות (batchEmbedContents) לאינדוקס אסינכרוני של פריטי הקטלוג.
+ * מייצר Embeddings בקבוצות (batchEmbedContents) ומחזיר אבחון מפורט במקרה של מגבלת קצב / שגיאה מ-Google.
  */
-export async function embedFoodDocumentsBatch(
-  docs: Array<{ text: string; taskType?: 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY' }>
-): Promise<Array<number[] | null>> {
-  if (docs.length === 0) return [];
-  const apiKey = getGeminiEmbeddingApiKey();
-  if (!apiKey || isEmbedInCooldown()) {
-    return docs.map(() => null);
+export async function embedFoodDocumentsBatchDetailed(
+  docs: Array<{ text: string; taskType?: 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY' }>,
+  options?: { bypassCooldown?: boolean; chunkSize?: number }
+): Promise<EmbedBatchDetailedResult> {
+  const vectors: Array<number[] | null> = new Array(docs.length).fill(null);
+  if (docs.length === 0) {
+    return { vectors, succeededCount: 0 };
   }
 
-  const output: Array<number[] | null> = new Array(docs.length).fill(null);
-  const chunkSize = 50;
+  const apiKey = getGeminiEmbeddingApiKey();
+  if (!apiKey) {
+    return {
+      vectors,
+      succeededCount: 0,
+      errorKind: 'missing_key',
+      errorDetail: 'משתנה הסביבה GEMINI_API_KEY אינו מוגדר בשרת',
+    };
+  }
+
+  if (options?.bypassCooldown) {
+    globalThis.__spotEmbedCooldownUntil = undefined;
+  } else if (isEmbedInCooldown()) {
+    const leftSec = Math.max(
+      1,
+      Math.ceil(((globalThis.__spotEmbedCooldownUntil || Date.now()) - Date.now()) / 1000)
+    );
+    const meta = globalThis.__spotEmbedCooldownMeta;
+    return {
+      vectors,
+      succeededCount: 0,
+      errorKind: 'cooldown',
+      errorStatus: meta?.status || 429,
+      errorDetail: meta?.detail || `המתנת קירור זמנית (${leftSec} שניות)`,
+      retryAfterSec: leftSec,
+      isDailyQuota: meta?.kind === 'daily_quota',
+    };
+  }
+
+  const chunkSize = Math.min(80, Math.max(10, options?.chunkSize || 50));
+  let succeededCount = 0;
+  let errorStatus: number | undefined;
+  let errorKind: EmbedErrorKind | undefined;
+  let errorDetail: string | undefined;
+  let retryAfterSec: number | undefined;
+  let isDailyQuota = false;
 
   for (let start = 0; start < docs.length; start += chunkSize) {
-    if (isEmbedInCooldown()) break;
+    if (start > 0) {
+      await new Promise((r) => setTimeout(r, 900));
+    }
     const chunk = docs.slice(start, start + chunkSize);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), BATCH_EMBED_TIMEOUT_MS);
@@ -268,7 +427,16 @@ export async function embedFoodDocumentsBatch(
 
       if (!res.ok) {
         const errTxt = await res.text().catch(() => '');
-        markEmbedCooldownFromStatus(res.status, errTxt);
+        const info = markEmbedCooldownFromStatus(
+          res.status,
+          errTxt,
+          res.headers.get('retry-after')
+        );
+        errorStatus = res.status;
+        errorKind = info.kind;
+        errorDetail = info.detail;
+        retryAfterSec = info.retryAfterSec;
+        isDailyQuota = info.isDailyQuota;
         break;
       }
 
@@ -276,20 +444,56 @@ export async function embedFoodDocumentsBatch(
         embeddings?: Array<{ values?: number[] }>;
       };
       const embeddings = Array.isArray(json?.embeddings) ? json.embeddings : [];
+      let chunkFilled = 0;
       for (let i = 0; i < chunk.length; i++) {
         const vals = embeddings[i]?.values;
         if (Array.isArray(vals) && vals.length === FOOD_EMBEDDING_DIMS) {
-          output[start + i] = normalizeL2Vector(vals);
+          vectors[start + i] = normalizeL2Vector(vals);
+          succeededCount += 1;
+          chunkFilled += 1;
         }
       }
-    } catch {
+      if (chunkFilled === 0) {
+        errorKind = 'empty_response';
+        errorDetail = 'Gemini החזיר מערך embeddings ריק או לא תואם 768 ממדים';
+        break;
+      }
+    } catch (err) {
+      const isAbort =
+        err instanceof Error &&
+        (err.name === 'AbortError' || err.message.toLowerCase().includes('abort'));
+      errorKind = isAbort ? 'timeout' : 'network';
+      errorDetail = isAbort
+        ? `חריגת זמן מול Google (${Math.round(BATCH_EMBED_TIMEOUT_MS / 1000)} שניות)`
+        : err instanceof Error
+          ? err.message
+          : 'שגיאת רשת מול Gemini';
+      retryAfterSec = 8;
       break;
     } finally {
       clearTimeout(timer);
     }
   }
 
-  return output;
+  return {
+    vectors,
+    succeededCount,
+    errorStatus,
+    errorKind,
+    errorDetail,
+    retryAfterSec,
+    isDailyQuota,
+  };
+}
+
+/**
+ * גרסה תואמת-לאחור שמחזירה רק את מערך הווקטורים.
+ */
+export async function embedFoodDocumentsBatch(
+  docs: Array<{ text: string; taskType?: 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY' }>
+): Promise<Array<number[] | null>> {
+  const res = await embedFoodDocumentsBatchDetailed(docs);
+  return res.vectors;
 }
 
 /**

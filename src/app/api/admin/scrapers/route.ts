@@ -228,8 +228,10 @@ export const POST = withTelemetryHandler('/api/admin/scrapers', async (request, 
         });
       }
       case 'backfill_embeddings': {
-        const batchSize = Math.min(400, Math.max(20, Number(body.pages) || 200));
-        const res = await backfillFoodCatalogEmbeddingsBatch(batchSize);
+        const batchSize = Math.min(250, Math.max(10, Number(body.pages) || 50));
+        const res = await backfillFoodCatalogEmbeddingsBatch(batchSize, {
+          bypassCooldown: !secretAuthed,
+        });
         const { report } = await getScraperState(true);
         return NextResponse.json({
           ...res,

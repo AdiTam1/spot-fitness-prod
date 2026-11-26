@@ -41,7 +41,7 @@ import {
 } from '@/lib/foodBrands';
 import {
   buildFoodEmbeddingDocumentText,
-  embedFoodDocumentsBatch,
+  embedFoodDocumentsBatchDetailed,
   embedSingleSearchQuery,
   FOOD_EMBEDDING_DIMS,
   formatVectorLiteral,
@@ -2607,12 +2607,21 @@ export async function getFoodCatalogSemanticStatsSql(): Promise<{
  * מאנדקס מוצרים שעדיין חסר להם vector embedding (עדיפות לפופולריים ולחדשים ביותר),
  * באמצעות gemini-embedding-001 (halfvec 768) בלי לדרוס מאקרו, מותגים או pick_count.
  */
-export async function backfillFoodCatalogEmbeddingsBatch(maxRows = 200): Promise<{
+export async function backfillFoodCatalogEmbeddingsBatch(
+  maxRows = 50,
+  options?: { bypassCooldown?: boolean }
+): Promise<{
   ok: boolean;
   semanticReady: boolean;
   processed: number;
   embedded: number;
   remainingEstimate: number;
+  rateLimited?: boolean;
+  isDailyQuota?: boolean;
+  retryAfterSec?: number;
+  errorStatus?: number;
+  errorKind?: string;
+  errorDetail?: string;
   error?: string;
 }> {
   if (!supabase) {
@@ -2626,7 +2635,7 @@ export async function backfillFoodCatalogEmbeddingsBatch(maxRows = 200): Promise
     };
   }
 
-  const batchCap = Math.min(400, Math.max(10, Math.round(maxRows)));
+  const batchCap = Math.min(250, Math.max(10, Math.round(maxRows)));
   try {
     const { data, error, count } = await supabase
       .from('food_catalog_items')
@@ -2668,31 +2677,48 @@ export async function backfillFoodCatalogEmbeddingsBatch(maxRows = 200): Promise
       .map((r) => mapSqlRowToFoodCatalogItem(r))
       .filter((x): x is FoodCatalogItem => Boolean(x));
 
-    const vectors = await embedFoodDocumentsBatch(
+    const embedRes = await embedFoodDocumentsBatchDetailed(
       mapped.map((item) => ({
         text: buildFoodEmbeddingDocumentText(item),
         taskType: 'RETRIEVAL_DOCUMENT',
-      }))
+      })),
+      {
+        bypassCooldown: Boolean(options?.bypassCooldown),
+        chunkSize: 50,
+      }
     );
 
     const idsToSave: string[] = [];
     const vecsToSave: string[] = [];
     for (let i = 0; i < mapped.length; i++) {
-      const vec = vectors[i];
+      const vec = embedRes.vectors[i];
       if (!vec || vec.length !== FOOD_EMBEDDING_DIMS) continue;
       idsToSave.push(mapped[i].id);
       vecsToSave.push(formatVectorLiteral(vec));
     }
 
+    const hitRetryableLimit =
+      embedRes.errorKind === 'rate_limit' ||
+      embedRes.errorKind === 'cooldown' ||
+      embedRes.errorKind === 'overload_5xx' ||
+      embedRes.errorKind === 'timeout';
+
     if (idsToSave.length === 0) {
+      const statusTag = embedRes.errorStatus ? `[HTTP ${embedRes.errorStatus}] ` : '';
+      const rawDetail = embedRes.errorDetail || 'שגיאה לא מפורטת מ-Gemini';
       return {
         ok: false,
         semanticReady: true,
         processed: mapped.length,
         embedded: 0,
         remainingEstimate: totalMissing,
-        error:
-          'לא הופקו Embeddings מ-Gemini (בדוק מפתח GEMINI_API_KEY או מכסות זמניות)',
+        rateLimited: hitRetryableLimit,
+        isDailyQuota: Boolean(embedRes.isDailyQuota),
+        retryAfterSec: embedRes.retryAfterSec,
+        errorStatus: embedRes.errorStatus,
+        errorKind: embedRes.errorKind,
+        errorDetail: embedRes.errorDetail,
+        error: `${statusTag}${rawDetail}`,
       };
     }
 
@@ -2725,6 +2751,16 @@ export async function backfillFoodCatalogEmbeddingsBatch(maxRows = 200): Promise
       processed: mapped.length,
       embedded: saved,
       remainingEstimate: Math.max(0, totalMissing - saved),
+      ...(hitRetryableLimit
+        ? {
+            rateLimited: true,
+            isDailyQuota: Boolean(embedRes.isDailyQuota),
+            retryAfterSec: embedRes.retryAfterSec,
+            errorStatus: embedRes.errorStatus,
+            errorKind: embedRes.errorKind,
+            errorDetail: embedRes.errorDetail,
+          }
+        : {}),
     };
   } catch (err) {
     return {
