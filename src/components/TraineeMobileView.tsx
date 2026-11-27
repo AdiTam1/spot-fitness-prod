@@ -218,6 +218,7 @@ interface TraineeMobileViewProps {
     contextParams?: AiContextParams;
   }) => Promise<{ jobId: string }>;
   onAcknowledgeAiJob?: (jobId: string, traineeId?: string) => void | Promise<void>;
+  onCancelAiJob?: (jobId: string, traineeId?: string) => void | Promise<void>;
   onMarkCoachMealEditsRead?: (params: {
     mode: 'alert-visit' | 'banner' | 'badges';
     alertId?: string;
@@ -340,6 +341,7 @@ export function TraineeMobileView({
   backgroundAiJobs = [],
   onStartBackgroundAiAnalysis,
   onAcknowledgeAiJob,
+  onCancelAiJob,
   onMarkCoachMealEditsRead,
   onRestoreCoachDeletedItem,
   onRollbackMealHistory,
@@ -3540,6 +3542,7 @@ export function TraineeMobileView({
         backgroundAiJobs={backgroundAiJobs}
         onStartBackgroundAiAnalysis={onStartBackgroundAiAnalysis}
         onAcknowledgeAiJob={onAcknowledgeAiJob}
+        onCancelAiJob={onCancelAiJob}
       />
 
       {/* מודאל עדכון שעת הזנת ארוחה */}

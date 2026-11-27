@@ -135,6 +135,7 @@ import {
 } from '@/lib/aiDraftStore';
 import {
   cloneFoodItemWithFreshIds,
+  extractSelectedItemsForPreset,
   filterUnacceptedSuggestedExtras,
   groupItemsAsCompositeDish,
   hasCompositeComponents,
@@ -274,6 +275,7 @@ interface AddMealDrawerProps {
     contextParams?: AiContextParams;
   }) => Promise<{ jobId: string }>;
   onAcknowledgeAiJob?: (jobId: string, traineeId?: string) => void | Promise<void>;
+  onCancelAiJob?: (jobId: string, traineeId?: string) => void | Promise<void>;
 }
 
 export function AddMealDrawer({
@@ -321,6 +323,7 @@ export function AddMealDrawer({
   backgroundAiJobs = [],
   onStartBackgroundAiAnalysis,
   onAcknowledgeAiJob,
+  onCancelAiJob,
 }: AddMealDrawerProps) {
   useSpotUnsavedEditing('add-meal-drawer', opened);
   const [activeTab, setActiveTab] = useState<string>(initialTab || 'hub');
@@ -450,6 +453,32 @@ export function AddMealDrawer({
   const [activeHeroPhotoIdx, setActiveHeroPhotoIdx] = useState(0);
   const heroSwipeTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const heroSwipedRecentlyRef = useRef(false);
+  const [saveSelectedPresetOpen, setSaveSelectedPresetOpen] = useState(false);
+  const [saveSelectedPresetTitle, setSaveSelectedPresetTitle] = useState('');
+  const [saveSelectedAsSingleDish, setSaveSelectedAsSingleDish] = useState(false);
+  const [savingSelectedPreset, setSavingSelectedPreset] = useState(false);
+  const [fsZoomScale, setFsZoomScale] = useState(1);
+  const [fsPanOffset, setFsPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [fsGestureActive, setFsGestureActive] = useState(false);
+  const fsStageRef = useRef<HTMLDivElement | null>(null);
+  const fsLastTapTsRef = useRef<number>(0);
+  const fsGestureRef = useRef<{
+    mode: 'none' | 'pinch' | 'pan' | 'swipe';
+    startDist: number;
+    startScale: number;
+    startX: number;
+    startY: number;
+    startPanX: number;
+    startPanY: number;
+  }>({
+    mode: 'none',
+    startDist: 0,
+    startScale: 1,
+    startX: 0,
+    startY: 0,
+    startPanX: 0,
+    startPanY: 0,
+  });
   const [mealTime, setMealTime] = useState<string>('');
   const [toolsInitialSection, setToolsInitialSection] = useState<'tools' | 'units'>('units');
   const [enrichingFood, setEnrichingFood] = useState(false);
@@ -483,6 +512,19 @@ export function AddMealDrawer({
   const recLockRef = useRef(false);
   const prefLockRef = useRef(false);
   const saveLockRef = useRef(false);
+  const activeSearchAbortRef = useRef<AbortController | null>(null);
+  const liveExpandAbortRef = useRef<AbortController | null>(null);
+  const searchAbortedByUserRef = useRef(false);
+  const fgAiAbortRef = useRef<AbortController | null>(null);
+  const aiRecAbortRef = useRef<AbortController | null>(null);
+  const fgAdjustAbortRef = useRef<AbortController | null>(null);
+  const enrichAbortRef = useRef<AbortController | null>(null);
+  const pendingBgAdjustDraftRef = useRef<{
+    prompt: string;
+    targetIds?: string[];
+    wasSelectionMode: boolean;
+    selectedIdsSnapshot: string[];
+  } | null>(null);
 
   const navigateTab = (nextTab: string, options?: { replace?: boolean }) => {
     const resolvedTab = nextTab === 'favorites' ? 'catalog' : nextTab;
@@ -649,6 +691,10 @@ export function AddMealDrawer({
         setMealItemsPhotoPickerOpen(false);
         setHeroLightboxOpen(false);
         setActiveHeroPhotoIdx(0);
+        setFsZoomScale(1);
+        setFsPanOffset({ x: 0, y: 0 });
+        setSaveSelectedPresetOpen(false);
+        pendingBgAdjustDraftRef.current = null;
         setMealTime(existingEntry?.mealTime || mealSlot.timeHint || '');
         setInlineUnitOpen(false);
         setInlineUnitName('');
@@ -1114,6 +1160,9 @@ export function AddMealDrawer({
     setCanManualExpandLive(false);
 
     const controller = new AbortController();
+    activeSearchAbortRef.current?.abort();
+    activeSearchAbortRef.current = controller;
+    searchAbortedByUserRef.current = false;
     let skeletonTimer: ReturnType<typeof setTimeout> | null = null;
     let dbTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
     let liveTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1239,6 +1288,7 @@ export function AddMealDrawer({
           setLiveExpanding(true);
           const liveStartedAt = Date.now();
           const liveController = new AbortController();
+          liveExpandAbortRef.current = liveController;
           const onParentAbortLive = () => liveController.abort();
           controller.signal.addEventListener('abort', onParentAbortLive, { once: true });
           liveTimeoutTimer = setTimeout(() => {
@@ -1325,6 +1375,9 @@ export function AddMealDrawer({
           } finally {
             if (liveTimeoutTimer) clearTimeout(liveTimeoutTimer);
             controller.signal.removeEventListener('abort', onParentAbortLive);
+            if (liveExpandAbortRef.current === liveController) {
+              liveExpandAbortRef.current = null;
+            }
             if (!controller.signal.aborted) setLiveExpanding(false);
           }
         } else {
@@ -1380,9 +1433,23 @@ export function AddMealDrawer({
       if (dbTimeoutTimer) clearTimeout(dbTimeoutTimer);
       if (liveTimeoutTimer) clearTimeout(liveTimeoutTimer);
       controller.abort();
+      if (activeSearchAbortRef.current === controller) {
+        activeSearchAbortRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, sourceGroup, effectiveRetailSubSite, selectedBrand, semanticSearchActive, activeTab, opened, searchRetryNonce]);
+
+  const handleCancelFoodSearch = () => {
+    searchAbortedByUserRef.current = true;
+    activeSearchAbortRef.current?.abort();
+    activeSearchAbortRef.current = null;
+    liveExpandAbortRef.current?.abort();
+    liveExpandAbortRef.current = null;
+    setSearchLoading(false);
+    setLiveExpanding(false);
+    setShowSkeletons(false);
+  };
 
   const runManualLiveExpand = async () => {
     const qTrim = searchQuery.trim();
@@ -1391,6 +1458,7 @@ export function AddMealDrawer({
     setCanManualExpandLive(false);
     const liveStartedAt = Date.now();
     const liveController = new AbortController();
+    liveExpandAbortRef.current = liveController;
     let liveTimedOut = false;
     const timeoutId = setTimeout(() => {
       liveTimedOut = true;
@@ -1488,6 +1556,9 @@ export function AddMealDrawer({
       });
     } finally {
       clearTimeout(timeoutId);
+      if (liveExpandAbortRef.current === liveController) {
+        liveExpandAbortRef.current = null;
+      }
       setLiveExpanding(false);
     }
   };
@@ -1576,11 +1647,15 @@ export function AddMealDrawer({
       Boolean(food.sourceUrl) &&
       (!food.barcode || !food.units.some((u) => Math.round(u.grams) !== 100));
     if (needsEnrich) {
+      enrichAbortRef.current?.abort();
+      const enrichCtrl = new AbortController();
+      enrichAbortRef.current = enrichCtrl;
       setEnrichingFood(true);
       try {
         const res = await fetch('/api/food/enrich', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: enrichCtrl.signal,
           body: JSON.stringify({ item: food }),
         });
         if (res.ok) {
@@ -2148,10 +2223,14 @@ export function AddMealDrawer({
             failedAt: new Date().toISOString(),
           }
         : null;
+    fgAiAbortRef.current?.abort();
+    const fgCtrl = new AbortController();
+    fgAiAbortRef.current = fgCtrl;
     try {
       const res = await fetch('/api/ai/analyze-meal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: fgCtrl.signal,
         body: JSON.stringify({
           imageDataUrl: mode === 'photo' ? activeImages[0]?.dataUrl || undefined : undefined,
           imageDataUrls:
@@ -2166,6 +2245,7 @@ export function AddMealDrawer({
           customApiKey: geminiApiKey,
         }),
       });
+      if (fgCtrl.signal.aborted) return;
       if (await handlePossibleAuthRejection(res)) return;
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -2210,9 +2290,13 @@ export function AddMealDrawer({
         });
       }
     } catch {
+      if (fgCtrl.signal.aborted) return;
       if (fgDraft) void saveFailedAiDraft({ ...fgDraft, errorMsg: 'שגיאה בפענוח ה-AI' });
       setAiSummary({ msg: 'שגיאה בפענוח ה-AI', isError: true });
     } finally {
+      if (fgAiAbortRef.current === fgCtrl) {
+        fgAiAbortRef.current = null;
+      }
       aiLockRef.current = false;
       setAiLoading(false);
       setAddingOptionIdx(null);
@@ -2286,10 +2370,14 @@ export function AddMealDrawer({
     setAiRecLoading(true);
     setLearnedFeedbackBanner(null);
     setAiSummary(null);
+    aiRecAbortRef.current?.abort();
+    const recCtrl = new AbortController();
+    aiRecAbortRef.current = recCtrl;
     try {
       const res = await fetch('/api/ai/recommend-meal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: recCtrl.signal,
         body: JSON.stringify({
           action: 'recommend',
           traineeId,
@@ -2298,6 +2386,7 @@ export function AddMealDrawer({
           customApiKey: geminiApiKey,
         }),
       });
+      if (recCtrl.signal.aborted) return;
       if (await handlePossibleAuthRejection(res)) return;
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -2320,12 +2409,24 @@ export function AddMealDrawer({
         setAiSummary({ msg: 'לא התקבלו הצעות – נסה שוב', isError: true });
       }
     } catch {
+      if (recCtrl.signal.aborted) return;
       setAiRecDebug(null);
       setAiSummary({ msg: 'שגיאה בקבלת המלצות ארוחה מ-AI', isError: true });
     } finally {
+      if (aiRecAbortRef.current === recCtrl) {
+        aiRecAbortRef.current = null;
+      }
       recLockRef.current = false;
       setAiRecLoading(false);
     }
+  };
+
+  const handleCancelAiRecommend = () => {
+    aiRecAbortRef.current?.abort();
+    aiRecAbortRef.current = null;
+    recLockRef.current = false;
+    setAiRecLoading(false);
+    setAiSummary({ msg: 'קבלת ההצעות בוטלה — ההגדרות והטקסט נשמרו.' });
   };
 
   const handleLearnPreference = async () => {
@@ -2890,6 +2991,12 @@ export function AddMealDrawer({
     // הרצת תיקון ברקע (תומך ביציאה מהחלונית / יציאה מהאפליקצייה + פוש + סנכרון חוזר אוטומטי!)
     if (onStartBackgroundAiAnalysis && traineeId && selectedDate && mealSlot) {
       const baseSnapshot = [...items];
+      pendingBgAdjustDraftRef.current = {
+        prompt: cleanPrompt,
+        targetIds: scopedIds,
+        wasSelectionMode: selectionMode,
+        selectedIdsSnapshot: Array.from(selectedIds),
+      };
       setPreCorrectionItems(baseSnapshot);
       pendingAdjustReplaceRef.current = true;
       setCorrectionOpen(false);
@@ -2929,11 +3036,15 @@ export function AddMealDrawer({
           }
         : null;
 
+    fgAdjustAbortRef.current?.abort();
+    const adjCtrl = new AbortController();
+    fgAdjustAbortRef.current = adjCtrl;
     setCorrectionLoading(true);
     try {
       const res = await fetch('/api/ai/analyze-meal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: adjCtrl.signal,
         body: JSON.stringify({
           mode: 'adjust-meal',
           baseItems: items,
@@ -2948,6 +3059,7 @@ export function AddMealDrawer({
           imageDataUrls: allMealPhotos.length > 0 ? allMealPhotos : undefined,
         }),
       });
+      if (adjCtrl.signal.aborted) return;
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !Array.isArray(data.items) || (data.items.length === 0 && !scopedIds)) {
         const errMsg =
@@ -3003,6 +3115,7 @@ export function AddMealDrawer({
       setCorrectionOpen(false);
       setCorrectionText('');
     } catch {
+      if (adjCtrl.signal.aborted) return;
       if (adjustDraft) {
         void saveFailedAiDraft({
           ...adjustDraft,
@@ -3011,7 +3124,51 @@ export function AddMealDrawer({
       }
       setCorrectionError('שגיאת תקשורת בעת שליחת התיקון — בדוק חיבור ונסה שוב.');
     } finally {
+      if (fgAdjustAbortRef.current === adjCtrl) {
+        fgAdjustAbortRef.current = null;
+      }
       setCorrectionLoading(false);
+    }
+  };
+
+  const handleCancelActiveAi = () => {
+    if (isSlotBgProcessing && slotBgProcessingJob) {
+      const job = slotBgProcessingJob;
+      void onCancelAiJob?.(job.id, traineeId);
+      if (job.mode === 'adjust') {
+        pendingAdjustReplaceRef.current = false;
+        const backup = pendingBgAdjustDraftRef.current;
+        const promptToRestore = backup?.prompt || job.retryPayload?.adjustmentPrompt || '';
+        const selectedToRestore =
+          backup?.selectedIdsSnapshot || job.retryPayload?.selectedTargetIds || [];
+        if (promptToRestore) setCorrectionText(promptToRestore);
+        if (backup?.wasSelectionMode || selectedToRestore.length > 0) {
+          setSelectionMode(true);
+          setSelectedIds(new Set(selectedToRestore));
+        }
+        setCorrectionOpen(true);
+        pendingBgAdjustDraftRef.current = null;
+      }
+      setAiSummary({ msg: 'הבקשה בוטלה לבקשתך — כל הנתונים שהזנת נשמרו.' });
+      return;
+    }
+
+    if (aiLoading) {
+      fgAiAbortRef.current?.abort();
+      fgAiAbortRef.current = null;
+      aiLockRef.current = false;
+      setAiLoading(false);
+      setAddingOptionIdx(null);
+      setAiSummary({ msg: 'הבקשה בוטלה לבקשתך — כל הנתונים שהזנת נשמרו.' });
+      return;
+    }
+
+    if (correctionLoading) {
+      fgAdjustAbortRef.current?.abort();
+      fgAdjustAbortRef.current = null;
+      setCorrectionLoading(false);
+      setCorrectionError(null);
+      setAiSummary({ msg: 'הבקשה בוטלה לבקשתך — הנחיית התיקון והבחירות נשמרו.' });
     }
   };
 
@@ -3159,21 +3316,37 @@ export function AddMealDrawer({
               ? 'מעדכן את רכיבי הארוחה לפי בקשתך — התיקון ממשיך בשרת.'
               : 'ניתוח AI מתקדם עשוי לקחת 1–3 דקות — אפשר לסגור חלונית ולהמשיך רגיל.'}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn-surface"
-            style={{
-              alignSelf: 'flex-start',
-              padding: '6px 12px',
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: 'pointer',
-              color: 'var(--accent)',
-            }}
-          >
-            אפשר לצאת בינתיים — סגור חלונית ←
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={handleCancelActiveAi}
+              className="btn-surface"
+              style={{
+                padding: '6px 12px',
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+                color: 'var(--danger-text)',
+                borderColor: 'rgba(239, 68, 68, 0.35)',
+              }}
+            >
+              עצור / בטל בקשה
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn-surface"
+              style={{
+                padding: '6px 12px',
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+                color: 'var(--accent)',
+              }}
+            >
+              אפשר לצאת בינתיים — סגור חלונית ←
+            </button>
+          </div>
         </div>
       );
     }
@@ -3607,14 +3780,18 @@ export function AddMealDrawer({
         }}
       >
         <span style={{ fontSize: 17, fontWeight: 700 }}>{title}</span>
-        {/* בסדר RTL: האלמנט הראשון (הוסף עוד פריטים) הוא תמיד הימני ביותר */}
+        {/* בסדר RTL: האלמנט הראשון (הוסף עוד פריטים) הוא תמיד הימני ביותר ובשורה אחת עם גלילה אופקית */}
         <div
+          data-h-scroll
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'flex-start',
             gap: 6,
-            flexWrap: 'wrap',
+            flexWrap: 'nowrap',
+            overflowX: 'auto',
+            paddingBottom: 2,
+            WebkitOverflowScrolling: 'touch',
           }}
         >
           <button
@@ -3634,6 +3811,7 @@ export function AddMealDrawer({
               fontFamily: 'inherit',
               cursor: 'pointer',
               whiteSpace: 'nowrap',
+              flexShrink: 0,
             }}
           >
             + הוסף עוד פריטים
@@ -3653,6 +3831,7 @@ export function AddMealDrawer({
               alignItems: 'center',
               gap: 5,
               whiteSpace: 'nowrap',
+              flexShrink: 0,
               borderColor: mealItemsPhotoPickerOpen ? 'var(--accent)' : undefined,
               color: mealItemsPhotoPickerOpen ? 'var(--accent)' : 'var(--text)',
             }}
@@ -3684,6 +3863,8 @@ export function AddMealDrawer({
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 5,
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
                 cursor: 'pointer',
                 borderColor: selectionMode ? 'var(--accent)' : undefined,
                 color: selectionMode ? 'var(--accent)' : 'var(--text)',
@@ -3710,10 +3891,12 @@ export function AddMealDrawer({
               }}
               className="glass"
               style={{
-                padding: '8px 10px',
+                padding: '7px 10px',
                 borderRadius: 999,
                 fontSize: 12.5,
                 fontWeight: 700,
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
                 cursor: 'pointer',
               }}
             >
@@ -3728,9 +3911,9 @@ export function AddMealDrawer({
               navigateTab('meal-history');
             }}
             style={{
-              padding: '8px 12px',
+              padding: '7px 11px',
               borderRadius: 999,
-              fontSize: 13,
+              fontSize: 12.5,
               fontWeight: 700,
               fontFamily: 'inherit',
               cursor: 'pointer',
@@ -3738,6 +3921,7 @@ export function AddMealDrawer({
               alignItems: 'center',
               gap: 5,
               whiteSpace: 'nowrap',
+              flexShrink: 0,
               color: 'var(--text)',
             }}
           >
@@ -5009,27 +5193,50 @@ export function AddMealDrawer({
                     </div>
                   )}
 
-                  <button
-                    type="button"
-                    disabled={aiRecLoading}
-                    onClick={fetchAiRecommendations}
-                    className="glass"
-                    style={{
-                      height: 50,
-                      borderRadius: 999,
-                      fontFamily: 'inherit',
-                      fontSize: 15,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                    }}
-                  >
-                    {aiRecLoading ? <Loader2 size={16} className="spot-spinner" /> : <Sparkles size={16} />}
-                    {aiRecLoading ? 'בונה 3 הצעות מותאמות…' : aiRecommendations.length > 0 ? 'הצע 3 אחרות' : 'הצע לי 3 ארוחות ליתרה'}
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button
+                      type="button"
+                      disabled={aiRecLoading}
+                      onClick={fetchAiRecommendations}
+                      className="glass"
+                      style={{
+                        flex: 1,
+                        height: 50,
+                        borderRadius: 999,
+                        fontFamily: 'inherit',
+                        fontSize: 15,
+                        fontWeight: 600,
+                        cursor: aiRecLoading ? 'wait' : 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                      }}
+                    >
+                      {aiRecLoading ? <Loader2 size={16} className="spot-spinner" /> : <Sparkles size={16} />}
+                      {aiRecLoading ? 'בונה 3 הצעות מותאמות…' : aiRecommendations.length > 0 ? 'הצע 3 אחרות' : 'הצע לי 3 ארוחות ליתרה'}
+                    </button>
+                    {aiRecLoading && (
+                      <button
+                        type="button"
+                        onClick={handleCancelAiRecommend}
+                        className="glass"
+                        style={{
+                          height: 50,
+                          padding: '0 16px',
+                          borderRadius: 999,
+                          fontSize: 13.5,
+                          fontWeight: 700,
+                          color: 'var(--danger-text)',
+                          borderColor: 'rgba(239, 68, 68, 0.35)',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                      >
+                        עצור
+                      </button>
+                    )}
+                  </div>
                 </section>
 
                 {/* Learned preferences (shown only when coach explicitly enabled) + silent-learning feedback */}
@@ -5355,6 +5562,25 @@ export function AddMealDrawer({
                       : searchLoading
                       ? 'מחפש במהירות במאגר ה-DB...'
                       : `${searchResults.length} תוצאות${totalAvailable > searchResults.length ? ` (מתוך ${totalAvailable.toLocaleString('he-IL')}+)` : ''}`}
+                    {(searchLoading || liveExpanding) && (
+                      <button
+                        type="button"
+                        onClick={handleCancelFoodSearch}
+                        style={{
+                          border: '1px solid rgba(239, 68, 68, 0.35)',
+                          background: 'rgba(239, 68, 68, 0.1)',
+                          color: 'var(--danger-text)',
+                          borderRadius: 999,
+                          padding: '2px 9px',
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                          fontFamily: 'inherit',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        בטל חיפוש
+                      </button>
+                    )}
                     {usedSemanticRrf && !searchLoading && (
                       <span
                         style={{
@@ -6425,7 +6651,7 @@ export function AddMealDrawer({
                 />
 
                 {/* Pinned analyse action (design: "נתח את הצלחת") */}
-                <div className="wizard-nav" style={{ marginTop: 0, background: 'linear-gradient(to top, var(--bg) 70%, transparent)' }}>
+                <div className="wizard-nav" style={{ marginTop: 0, background: 'linear-gradient(to top, var(--bg) 70%, transparent)', display: 'flex', gap: 8 }}>
                   <button
                     type="button"
                     disabled={
@@ -6456,6 +6682,26 @@ export function AddMealDrawer({
                         : 'נתח ארוחה / תווית'}
                     </span>
                   </button>
+                  {(isSlotBgProcessing || aiLoading) && (
+                    <button
+                      type="button"
+                      onClick={handleCancelActiveAi}
+                      className="glass"
+                      style={{
+                        height: 56,
+                        padding: '0 16px',
+                        borderRadius: 999,
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: 'var(--danger-text)',
+                        borderColor: 'rgba(239, 68, 68, 0.38)',
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                    >
+                      עצור
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -6567,6 +6813,26 @@ export function AddMealDrawer({
                         : 'פרק משפט לקלוריות ומאקרו'}
                     </span>
                   </button>
+                  {(isSlotBgProcessing || aiLoading) && (
+                    <button
+                      type="button"
+                      onClick={handleCancelActiveAi}
+                      className="glass"
+                      style={{
+                        height: 56,
+                        padding: '0 15px',
+                        borderRadius: 999,
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: 'var(--danger-text)',
+                        borderColor: 'rgba(239, 68, 68, 0.38)',
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                    >
+                      עצור
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="glass glass-tint"
@@ -7208,7 +7474,7 @@ export function AddMealDrawer({
                   </div>
                 )}
 
-                {items.length > 0 && onSavedMealAction && (
+                {!selectionMode && items.length > 0 && onSavedMealAction && (
                   <div
                     style={{
                       background: 'var(--bg-surface-2)',
@@ -7309,14 +7575,14 @@ export function AddMealDrawer({
             }}
           >
             {selectionMode ? (
-              <>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, width: '100%', alignItems: 'center' }}>
                 <button
                   type="button"
                   disabled={selectedIds.size === 0}
                   onClick={handleDeleteSelected}
                   className="glass"
                   style={{
-                    height: 52,
+                    height: 50,
                     padding: '0 14px',
                     borderRadius: 999,
                     fontSize: 13.5,
@@ -7331,6 +7597,41 @@ export function AddMealDrawer({
                   <Trash2 size={15} />
                   <span>מחק ({selectedIds.size})</span>
                 </button>
+                {onSavedMealAction && (
+                  <button
+                    type="button"
+                    disabled={selectedIds.size === 0}
+                    onClick={() => {
+                      const extracted = extractSelectedItemsForPreset(items, selectedIds);
+                      if (extracted.length === 0) return;
+                      setSaveSelectedPresetTitle(
+                        extracted
+                          .slice(0, 2)
+                          .map((x) => x.name)
+                          .join(' + ')
+                      );
+                      setSaveSelectedAsSingleDish(false);
+                      setSaveSelectedPresetOpen(true);
+                    }}
+                    className="glass"
+                    style={{
+                      height: 50,
+                      padding: '0 14px',
+                      borderRadius: 999,
+                      fontSize: 13.5,
+                      fontWeight: 700,
+                      color: selectedIds.size > 0 ? 'var(--accent)' : 'var(--text-3)',
+                      borderColor: selectedIds.size > 0 ? 'var(--accent)' : undefined,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      cursor: selectedIds.size > 0 ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    <Bookmark size={15} />
+                    <span>שמור ארוחה</span>
+                  </button>
+                )}
                 {items.filter((it) => selectedIds.has(it.id)).length >= 2 && (
                   <button
                     type="button"
@@ -7346,7 +7647,7 @@ export function AddMealDrawer({
                     }}
                     className="glass"
                     style={{
-                      height: 52,
+                      height: 50,
                       padding: '0 14px',
                       borderRadius: 999,
                       fontSize: 13.5,
@@ -7367,9 +7668,10 @@ export function AddMealDrawer({
                   onClick={() => setCorrectionOpen(true)}
                   className="btn-volt"
                   style={{
-                    flex: 1,
-                    height: 52,
-                    fontSize: 14.5,
+                    flex: '1 1 160px',
+                    height: 50,
+                    padding: '0 14px',
+                    fontSize: 14,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -7380,7 +7682,7 @@ export function AddMealDrawer({
                   <Wand2 size={16} />
                   <span>תקן נבחרים ב-AI ({selectedIds.size})</span>
                 </button>
-              </>
+              </div>
             ) : (
               <>
                 <button
@@ -7525,6 +7827,8 @@ export function AddMealDrawer({
       <Modal
         opened={Boolean(selectedFood)}
         onClose={() => {
+          enrichAbortRef.current?.abort();
+          setEnrichingFood(false);
           setInlineUnitOpen(false);
           setSelectedFood(null);
         }}
@@ -7542,6 +7846,8 @@ export function AddMealDrawer({
                 type="button"
                 aria-label="סגור חלון בחירת כמות"
                 onClick={() => {
+                  enrichAbortRef.current?.abort();
+                  setEnrichingFood(false);
                   setInlineUnitOpen(false);
                   setSelectedFood(null);
                 }}
@@ -7612,9 +7918,28 @@ export function AddMealDrawer({
                     </span>
                   )}
                   {enrichingFood && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--accent-orange-bright)', fontSize: 12 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--accent-orange-bright)', fontSize: 12 }}>
                       <Loader2 size={10} className="spot-spinner" />
                       <span>מושך מידות אריזה וברקוד...</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          enrichAbortRef.current?.abort();
+                          setEnrichingFood(false);
+                        }}
+                        style={{
+                          border: 0,
+                          background: 'transparent',
+                          color: 'var(--danger-text)',
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                          textDecoration: 'underline',
+                          cursor: 'pointer',
+                          padding: 0,
+                        }}
+                      >
+                        עצור
+                      </button>
                     </span>
                   )}
                 </div>
@@ -7954,11 +8279,12 @@ export function AddMealDrawer({
       <Modal
         opened={correctionOpen}
         onClose={() => {
-          if (!correctionLoading) {
-            stopCorrectionVoice(false);
-            setCorrectionOpen(false);
-            setCorrectionError(null);
+          if (correctionLoading) {
+            handleCancelActiveAi();
           }
+          stopCorrectionVoice(false);
+          setCorrectionOpen(false);
+          setCorrectionError(null);
         }}
         title={
           selectionMode && selectedIds.size > 0
@@ -8003,49 +8329,71 @@ export function AddMealDrawer({
               </button>
             ))}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>
               הנחיית תיקון:
             </span>
-            <button
-              type="button"
-              onClick={toggleCorrectionVoice}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '5px 11px',
-                borderRadius: 999,
-                border: '1px solid var(--line-2)',
-                background:
-                  correctionVoiceState === 'listening'
-                    ? 'rgba(239, 68, 68, 0.14)'
-                    : 'var(--card)',
-                color:
-                  correctionVoiceState === 'listening' ? '#ef4444' : 'var(--text)',
-                fontSize: 12,
-                fontWeight: 700,
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-              }}
-            >
-              {correctionVoiceState === 'listening' ? (
-                <>
-                  <MicOff size={13} />
-                  <span>עצור הקלטה</span>
-                </>
-              ) : correctionVoiceState === 'transcribing' ? (
-                <>
-                  <Loader2 size={13} className="animate-spin" />
-                  <span>מתמלל...</span>
-                </>
-              ) : (
-                <>
-                  <Mic size={13} />
-                  <span>דבר תיקון</span>
-                </>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {correctionVoiceState !== 'idle' && (
+                <button
+                  type="button"
+                  onClick={() => stopCorrectionVoice(false)}
+                  style={{
+                    padding: '5px 10px',
+                    borderRadius: 999,
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    color: 'var(--danger-text)',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    fontFamily: 'inherit',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ביטול
+                </button>
               )}
-            </button>
+              <button
+                type="button"
+                disabled={correctionVoiceState === 'transcribing'}
+                onClick={toggleCorrectionVoice}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '5px 11px',
+                  borderRadius: 999,
+                  border: '1px solid var(--line-2)',
+                  background:
+                    correctionVoiceState === 'listening'
+                      ? 'rgba(239, 68, 68, 0.14)'
+                      : 'var(--card)',
+                  color:
+                    correctionVoiceState === 'listening' ? '#ef4444' : 'var(--text)',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  fontFamily: 'inherit',
+                  cursor: correctionVoiceState === 'transcribing' ? 'wait' : 'pointer',
+                }}
+              >
+                {correctionVoiceState === 'listening' ? (
+                  <>
+                    <MicOff size={13} />
+                    <span>עצור הקלטה</span>
+                  </>
+                ) : correctionVoiceState === 'transcribing' ? (
+                  <>
+                    <Loader2 size={13} className="animate-spin" />
+                    <span>מתמלל...</span>
+                  </>
+                ) : (
+                  <>
+                    <Mic size={13} />
+                    <span>דבר תיקון</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
           <Textarea
             autosize
@@ -8072,35 +8420,58 @@ export function AddMealDrawer({
               {correctionError}
             </div>
           )}
-          <button
-            type="button"
-            className="btn-volt"
-            disabled={!correctionText.trim() || correctionLoading || items.length === 0}
-            onClick={handleRunAiCorrection}
-            style={{
-              height: 52,
-              fontSize: 16,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              cursor:
-                !correctionText.trim() || correctionLoading ? 'not-allowed' : 'pointer',
-              opacity: !correctionText.trim() || correctionLoading ? 0.65 : 1,
-            }}
-          >
-            {correctionLoading ? (
-              <>
-                <Loader2 size={17} className="animate-spin" />
-                <span>מתקן ארוחה מול AI...</span>
-              </>
-            ) : (
-              <>
-                <Check size={16} />
-                <span>שלח תיקון ל-AI</span>
-              </>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              type="button"
+              className="btn-volt"
+              disabled={!correctionText.trim() || correctionLoading || items.length === 0}
+              onClick={handleRunAiCorrection}
+              style={{
+                flex: 1,
+                height: 52,
+                fontSize: 16,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                cursor:
+                  !correctionText.trim() || correctionLoading ? 'not-allowed' : 'pointer',
+                opacity: !correctionText.trim() || correctionLoading ? 0.65 : 1,
+              }}
+            >
+              {correctionLoading ? (
+                <>
+                  <Loader2 size={17} className="animate-spin" />
+                  <span>מתקן ארוחה מול AI...</span>
+                </>
+              ) : (
+                <>
+                  <Check size={16} />
+                  <span>שלח תיקון ל-AI</span>
+                </>
+              )}
+            </button>
+            {correctionLoading && (
+              <button
+                type="button"
+                onClick={handleCancelActiveAi}
+                className="glass"
+                style={{
+                  height: 52,
+                  padding: '0 15px',
+                  borderRadius: 999,
+                  fontSize: 13.5,
+                  fontWeight: 700,
+                  color: 'var(--danger-text)',
+                  borderColor: 'rgba(239, 68, 68, 0.38)',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                עצור
+              </button>
             )}
-          </button>
+          </div>
         </div>
       </Modal>
 
@@ -8265,10 +8636,14 @@ export function AddMealDrawer({
         }}
       />
 
-      {/* צפייה במסך מלא בתמונות הארוחה עם החלקה ימינה/שמאלה */}
+      {/* צפייה במסך מלא בתמונות הארוחה עם צביטה להגדלה/הקטנה, גרירה והחלקה */}
       <Modal
         opened={heroLightboxOpen && allMealPhotos.length > 0}
-        onClose={() => setHeroLightboxOpen(false)}
+        onClose={() => {
+          setHeroLightboxOpen(false);
+          setFsZoomScale(1);
+          setFsPanOffset({ x: 0, y: 0 });
+        }}
         fullScreen
         withCloseButton={false}
         zIndex={310}
@@ -8284,25 +8659,183 @@ export function AddMealDrawer({
             alignItems: 'center',
             justifyContent: 'space-between',
             flexShrink: 0,
+            gap: 8,
           }}
         >
           <GlassButton
             label="סגור צפייה במסך מלא"
             size={44}
-            onClick={() => setHeroLightboxOpen(false)}
+            onClick={() => {
+              setHeroLightboxOpen(false);
+              setFsZoomScale(1);
+              setFsPanOffset({ x: 0, y: 0 });
+            }}
           >
             <X size={20} strokeWidth={2.3} />
           </GlassButton>
           <span className="num-mono ltr-num" style={{ fontSize: 14, fontWeight: 700 }}>
             {safeHeroPhotoIdx + 1} / {allMealPhotos.length}
           </span>
-          <div style={{ width: 44 }} aria-hidden />
+          {fsZoomScale > 1.05 ? (
+            <button
+              type="button"
+              onClick={() => {
+                setFsZoomScale(1);
+                setFsPanOffset({ x: 0, y: 0 });
+              }}
+              className="glass"
+              style={{
+                height: 36,
+                padding: '0 12px',
+                borderRadius: 999,
+                fontSize: 12.5,
+                fontWeight: 700,
+                color: '#fff',
+                background: 'rgba(255,255,255,0.12)',
+                cursor: 'pointer',
+              }}
+            >
+              ×{fsZoomScale.toFixed(1)} · איפוס
+            </button>
+          ) : (
+            <div style={{ width: 44 }} aria-hidden />
+          )}
         </div>
 
         <div
+          ref={fsStageRef}
           dir="ltr"
-          onTouchStart={handlePhotoTouchStart}
-          onTouchEnd={handlePhotoTouchEnd}
+          onWheel={(e) => {
+            if (!e.ctrlKey && Math.abs(e.deltaY) < 4) return;
+            const factor = e.deltaY < 0 ? 1.15 : 0.87;
+            const next = Math.max(1, Math.min(4, Math.round(fsZoomScale * factor * 100) / 100));
+            setFsZoomScale(next);
+            if (next <= 1.04) {
+              setFsZoomScale(1);
+              setFsPanOffset({ x: 0, y: 0 });
+            } else {
+              const st = fsStageRef.current;
+              const mx = st ? ((next - 1) * st.clientWidth) / 2 : 0;
+              const my = st ? ((next - 1) * st.clientHeight) / 2 : 0;
+              setFsPanOffset((p) => ({
+                x: Math.max(-mx, Math.min(mx, p.x)),
+                y: Math.max(-my, Math.min(my, p.y)),
+              }));
+            }
+          }}
+          onTouchStart={(e) => {
+            if (e.touches.length === 2) {
+              const t1 = e.touches[0];
+              const t2 = e.touches[1];
+              const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+              fsGestureRef.current = {
+                mode: 'pinch',
+                startDist: Math.max(1, dist),
+                startScale: fsZoomScale,
+                startX: (t1.clientX + t2.clientX) / 2,
+                startY: (t1.clientY + t2.clientY) / 2,
+                startPanX: fsPanOffset.x,
+                startPanY: fsPanOffset.y,
+              };
+              setFsGestureActive(true);
+              return;
+            }
+            if (e.touches.length === 1) {
+              const t = e.touches[0];
+              const now = Date.now();
+              if (now - fsLastTapTsRef.current < 280) {
+                fsLastTapTsRef.current = 0;
+                if (fsZoomScale > 1.05) {
+                  setFsZoomScale(1);
+                  setFsPanOffset({ x: 0, y: 0 });
+                } else {
+                  setFsZoomScale(2.4);
+                  setFsPanOffset({ x: 0, y: 0 });
+                }
+                fsGestureRef.current.mode = 'none';
+                return;
+              }
+              fsLastTapTsRef.current = now;
+              if (fsZoomScale > 1.05) {
+                fsGestureRef.current = {
+                  mode: 'pan',
+                  startDist: 1,
+                  startScale: fsZoomScale,
+                  startX: t.clientX,
+                  startY: t.clientY,
+                  startPanX: fsPanOffset.x,
+                  startPanY: fsPanOffset.y,
+                };
+                setFsGestureActive(true);
+              } else {
+                fsGestureRef.current = {
+                  mode: 'swipe',
+                  startDist: 1,
+                  startScale: 1,
+                  startX: t.clientX,
+                  startY: t.clientY,
+                  startPanX: 0,
+                  startPanY: 0,
+                };
+              }
+            }
+          }}
+          onTouchMove={(e) => {
+            const g = fsGestureRef.current;
+            const st = fsStageRef.current;
+            if (e.touches.length === 2 && g.mode === 'pinch') {
+              const t1 = e.touches[0];
+              const t2 = e.touches[1];
+              const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+              const nextScale = Math.max(
+                1,
+                Math.min(4, g.startScale * (dist / Math.max(1, g.startDist)))
+              );
+              setFsZoomScale(nextScale);
+              if (nextScale <= 1.02) {
+                setFsPanOffset({ x: 0, y: 0 });
+              } else if (st) {
+                const mx = ((nextScale - 1) * st.clientWidth) / 2;
+                const my = ((nextScale - 1) * st.clientHeight) / 2;
+                const midX = (t1.clientX + t2.clientX) / 2;
+                const midY = (t1.clientY + t2.clientY) / 2;
+                setFsPanOffset({
+                  x: Math.max(-mx, Math.min(mx, g.startPanX + (midX - g.startX))),
+                  y: Math.max(-my, Math.min(my, g.startPanY + (midY - g.startY))),
+                });
+              }
+              return;
+            }
+            if (e.touches.length === 1 && g.mode === 'pan') {
+              const t = e.touches[0];
+              const mx = st ? ((fsZoomScale - 1) * st.clientWidth) / 2 : 0;
+              const my = st ? ((fsZoomScale - 1) * st.clientHeight) / 2 : 0;
+              setFsPanOffset({
+                x: Math.max(-mx, Math.min(mx, g.startPanX + (t.clientX - g.startX))),
+                y: Math.max(-my, Math.min(my, g.startPanY + (t.clientY - g.startY))),
+              });
+            }
+          }}
+          onTouchEnd={(e) => {
+            const g = fsGestureRef.current;
+            setFsGestureActive(false);
+            if (g.mode === 'swipe' && fsZoomScale <= 1.05 && allMealPhotos.length > 1) {
+              const t = e.changedTouches[0];
+              if (t) {
+                const dx = t.clientX - g.startX;
+                const dy = t.clientY - g.startY;
+                if (Math.abs(dx) >= 34 && Math.abs(dx) > Math.abs(dy) * 1.1) {
+                  setFsZoomScale(1);
+                  setFsPanOffset({ x: 0, y: 0 });
+                  stepHeroPhoto(dx < 0 ? 1 : -1);
+                }
+              }
+            } else if (fsZoomScale < 1.05) {
+              setFsZoomScale(1);
+              setFsPanOffset({ x: 0, y: 0 });
+            }
+            fsGestureRef.current.mode = 'none';
+          }}
           style={{
             position: 'relative',
             flex: 1,
@@ -8310,7 +8843,7 @@ export function AddMealDrawer({
             overflow: 'hidden',
             display: 'flex',
             alignItems: 'center',
-            touchAction: 'pan-y',
+            touchAction: 'none',
             userSelect: 'none',
           }}
         >
@@ -8320,44 +8853,58 @@ export function AddMealDrawer({
               width: '100%',
               height: '100%',
               transform: `translateX(-${safeHeroPhotoIdx * 100}%)`,
-              transition: 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)',
+              transition: fsGestureActive ? 'none' : 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)',
             }}
           >
-            {allMealPhotos.map((photoUrl, idx) => (
-              <div
-                key={`${photoUrl.slice(0, 32)}-fs-${idx}`}
-                style={{
-                  flex: '0 0 100%',
-                  width: '100%',
-                  height: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '8px 12px',
-                }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={photoUrl}
-                  alt={`תמונת ארוחה ${idx + 1} מתוך ${allMealPhotos.length}`}
+            {allMealPhotos.map((photoUrl, idx) => {
+              const isActiveSlide = idx === safeHeroPhotoIdx;
+              return (
+                <div
+                  key={`${photoUrl.slice(0, 32)}-fs-${idx}`}
                   style={{
-                    maxWidth: '100%',
-                    maxHeight: '100%',
-                    objectFit: 'contain',
-                    borderRadius: 12,
+                    flex: '0 0 100%',
+                    width: '100%',
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '8px 12px',
+                    overflow: 'hidden',
                   }}
-                />
-              </div>
-            ))}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photoUrl}
+                    alt={`תמונת ארוחה ${idx + 1} מתוך ${allMealPhotos.length}`}
+                    draggable={false}
+                    style={{
+                      maxWidth: '100%',
+                      maxHeight: '100%',
+                      objectFit: 'contain',
+                      borderRadius: 12,
+                      transform: isActiveSlide
+                        ? `translate3d(${fsPanOffset.x}px, ${fsPanOffset.y}px, 0) scale(${fsZoomScale})`
+                        : undefined,
+                      transformOrigin: 'center center',
+                      transition: fsGestureActive ? 'none' : 'transform 160ms ease-out',
+                    }}
+                  />
+                </div>
+              );
+            })}
           </div>
 
-          {allMealPhotos.length > 1 && (
+          {allMealPhotos.length > 1 && fsZoomScale <= 1.05 && (
             <>
               <button
                 type="button"
                 aria-label="תמונה קודמת"
                 disabled={safeHeroPhotoIdx <= 0}
-                onClick={() => stepHeroPhoto(-1)}
+                onClick={() => {
+                  setFsZoomScale(1);
+                  setFsPanOffset({ x: 0, y: 0 });
+                  stepHeroPhoto(-1);
+                }}
                 className="glass"
                 style={{
                   position: 'absolute',
@@ -8380,7 +8927,11 @@ export function AddMealDrawer({
                 type="button"
                 aria-label="תמונה הבאה"
                 disabled={safeHeroPhotoIdx >= allMealPhotos.length - 1}
-                onClick={() => stepHeroPhoto(1)}
+                onClick={() => {
+                  setFsZoomScale(1);
+                  setFsPanOffset({ x: 0, y: 0 });
+                  stepHeroPhoto(1);
+                }}
                 className="glass"
                 style={{
                   position: 'absolute',
@@ -8403,18 +8954,23 @@ export function AddMealDrawer({
           )}
         </div>
 
-        {allMealPhotos.length > 1 && (
-          <div
-            dir="ltr"
-            style={{
-              padding: '10px 16px calc(var(--sa-bottom, 0px) + 16px)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 10,
-              flexShrink: 0,
-            }}
-          >
+        <div
+          dir="ltr"
+          style={{
+            padding: '10px 16px calc(var(--sa-bottom, 0px) + 16px)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 10,
+            flexShrink: 0,
+          }}
+        >
+          {fsZoomScale <= 1.05 && (
+            <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.6)' }}>
+              צבוט באצבעות או הקש פעמיים להגדלה
+            </span>
+          )}
+          {allMealPhotos.length > 1 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflowX: 'auto', maxWidth: '100%' }}>
               {allMealPhotos.map((photoUrl, idx) => {
                 const active = idx === safeHeroPhotoIdx;
@@ -8423,7 +8979,11 @@ export function AddMealDrawer({
                     key={`thumb-${idx}`}
                     type="button"
                     aria-label={`בחר תמונה ${idx + 1}`}
-                    onClick={() => setActiveHeroPhotoIdx(idx)}
+                    onClick={() => {
+                      setFsZoomScale(1);
+                      setFsPanOffset({ x: 0, y: 0 });
+                      setActiveHeroPhotoIdx(idx);
+                    }}
                     style={{
                       width: 46,
                       height: 46,
@@ -8447,8 +9007,125 @@ export function AddMealDrawer({
                 );
               })}
             </div>
-          </div>
-        )}
+          )}
+        </div>
+      </Modal>
+
+      {/* שמירת פריטים/מנות נבחרים ממצב בחירה לתוך "ארוחות שמורות" */}
+      <Modal
+        opened={saveSelectedPresetOpen}
+        onClose={() => !savingSelectedPreset && setSaveSelectedPresetOpen(false)}
+        title="שמירה בארוחות שמורות"
+        centered
+        size="sm"
+        zIndex={275}
+        styles={{ content: { borderRadius: 24, maxWidth: 'calc(100vw - 24px)' } }}
+      >
+        {(() => {
+          const pickedItems = extractSelectedItemsForPreset(items, selectedIds);
+          const pickedTotals = sumMacros(pickedItems.map((i) => i.macros));
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontSize: 12.5, color: 'var(--text-2)' }}>
+                נבחרו <bdi className="ltr-num">{pickedItems.length}</bdi> פריטים לשמירה ·{' '}
+                <bdi className="ltr-num">{pickedTotals.calories}</bdi> קק״ל
+              </div>
+              <TextInput
+                size="sm"
+                label="שם למנה / ארוחה השמורה"
+                placeholder="למשל: שניצל ואורז / ארוחת בוקר קבועה"
+                value={saveSelectedPresetTitle}
+                onChange={(e) => setSaveSelectedPresetTitle(e.currentTarget.value)}
+              />
+              {pickedItems.length > 1 && (
+                <Switch
+                  size="xs"
+                  color="teal"
+                  checked={saveSelectedAsSingleDish}
+                  onChange={(e) => setSaveSelectedAsSingleDish(e.currentTarget.checked)}
+                  label={
+                    <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>
+                      שמור כמנה אחת מקופלת (המכילה את כל המרכיבים שנבחרו)
+                    </span>
+                  }
+                />
+              )}
+              <button
+                type="button"
+                disabled={
+                  savingSelectedPreset ||
+                  !saveSelectedPresetTitle.trim() ||
+                  pickedItems.length === 0 ||
+                  !onSavedMealAction
+                }
+                onClick={async () => {
+                  if (!mealSlot || !onSavedMealAction || pickedItems.length === 0) return;
+                  const cleanTitle = saveSelectedPresetTitle.trim();
+                  if (!cleanTitle) return;
+                  setSavingSelectedPreset(true);
+                  try {
+                    const presetItemsToSave = saveSelectedAsSingleDish
+                      ? [groupItemsAsCompositeDish(pickedItems, cleanTitle)]
+                      : pickedItems;
+                    const aiItem = pickedItems.find(
+                      (it) => it.aiEngine || it.isAiFallback !== undefined
+                    );
+                    const res = await onSavedMealAction({
+                      op: 'upsert',
+                      preset: {
+                        title: cleanTitle,
+                        mealSlotId: mealSlot.id,
+                        presetKind:
+                          saveSelectedAsSingleDish ||
+                          (pickedItems.length === 1 && hasCompositeComponents(pickedItems[0]))
+                            ? 'dish'
+                            : 'meal',
+                        items: presetItemsToSave,
+                        photoDataUrls: allMealPhotos.length > 0 ? allMealPhotos : undefined,
+                        photoDataUrl: allMealPhotos[0],
+                        contextParams,
+                        aiEngine: aiItem?.aiEngine,
+                        isAiFallback: aiItem?.isAiFallback,
+                        fallbackReason: aiItem?.fallbackReason,
+                        useCount: 1,
+                      },
+                    });
+                    if (!res?.error) {
+                      notifications.show({
+                        color: 'teal',
+                        title: 'נשמר בארוחות שמורות ✨',
+                        message: `"${cleanTitle}" זמינה כעת לשימוש חוזר.`,
+                      });
+                      setSaveSelectedPresetOpen(false);
+                      setSelectionMode(false);
+                      setSelectedIds(new Set());
+                    }
+                  } finally {
+                    setSavingSelectedPreset(false);
+                  }
+                }}
+                className="btn-volt"
+                style={{
+                  height: 48,
+                  fontSize: 15,
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  cursor: savingSelectedPreset ? 'wait' : 'pointer',
+                }}
+              >
+                {savingSelectedPreset ? (
+                  <Loader2 size={16} className="spot-spinner" />
+                ) : (
+                  <Bookmark size={16} />
+                )}
+                <span>{savingSelectedPreset ? 'שומר...' : 'שמור בארוחות שמורות'}</span>
+              </button>
+            </div>
+          );
+        })()}
       </Modal>
     </>
   );

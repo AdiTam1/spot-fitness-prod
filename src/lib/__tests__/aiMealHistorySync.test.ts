@@ -32,6 +32,10 @@ import {
   serializeSyncTimestampRows,
   trimTraineeLogsToWindow,
 } from '../traineeSanitize';
+import {
+  extractSelectedItemsForPreset,
+  scaleCompositeDishByFactor,
+} from '../compositeDishes';
 import type {
   AiConversationTraceRecord,
   LoggedFoodItem,
@@ -798,5 +802,37 @@ describe('filterUnacceptedSuggestedExtras', () => {
       afterDismiss.map((x) => x.id),
       ['extra-salad']
     );
+  });
+});
+
+describe('scaleCompositeDishByFactor & extractSelectedItemsForPreset', () => {
+  it('scales single flat items proportionally and extracts whole or partial selections cleanly', () => {
+    const singleChicken = makeFood('chicken-1', 'שניצל מאמא עוף', 100, 220, 18);
+    const scaled = scaleCompositeDishByFactor(singleChicken, 1.5);
+    assert.equal(scaled.grams, 150);
+    assert.equal(scaled.macros.calories, 330);
+    assert.equal(scaled.macros.protein, 27);
+
+    const compositeMeal: LoggedFoodItem = {
+      ...makeFood('dish-1', 'חזה עוף ברוטב', 200, 300, 40),
+      components: [
+        makeFood('comp-1', 'חזה עוף', 150, 220, 38),
+        makeFood('comp-2', 'רוטב צהוב', 50, 80, 2),
+      ],
+    };
+
+    const pickedAll = extractSelectedItemsForPreset([compositeMeal, singleChicken], new Set(['dish-1']));
+    assert.equal(pickedAll.length, 1);
+    assert.equal(pickedAll[0].name, 'חזה עוף ברוטב');
+    assert.equal(pickedAll[0].components?.length, 2);
+    assert.notEqual(pickedAll[0].id, 'dish-1');
+
+    const pickedSubOnly = extractSelectedItemsForPreset(
+      [compositeMeal, singleChicken],
+      new Set(['comp-1', 'chicken-1'])
+    );
+    assert.equal(pickedSubOnly.length, 2);
+    assert.equal(pickedSubOnly[0].name, 'חזה עוף');
+    assert.equal(pickedSubOnly[1].name, 'שניצל מאמא עוף');
   });
 });

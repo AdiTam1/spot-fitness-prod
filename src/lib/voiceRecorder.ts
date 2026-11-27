@@ -84,6 +84,7 @@ function startMediaRecorderFlow(opts: StartVoiceCaptureOptions): VoiceCaptureCon
   let activeRecorder: MediaRecorder | null = null;
   let activeStream: MediaStream | null = null;
   let autoStopTimer: ReturnType<typeof setTimeout> | null = null;
+  let transcribeAbortCtrl: AbortController | null = null;
 
   const cleanupStream = () => {
     if (autoStopTimer) {
@@ -153,16 +154,20 @@ function startMediaRecorderFlow(opts: StartVoiceCaptureOptions): VoiceCaptureCon
             reader.onerror = () => reject(new Error('שגיאה בקריאת הקלטה'));
             reader.readAsDataURL(blob);
           });
+          if (cancelled) return;
 
+          transcribeAbortCtrl = new AbortController();
           const res = await fetch('/api/ai/analyze-meal', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: transcribeAbortCtrl.signal,
             body: JSON.stringify({
               mode: 'transcribe-audio',
               audioDataUrl: dataUrl,
               customApiKey: opts.customApiKey,
             }),
           });
+          if (cancelled) return;
           if (res.status === 401 || res.status === 403) {
             const { handlePossibleAuthRejection } = await import(
               '@/lib/webVersionGuard'
@@ -173,6 +178,7 @@ function startMediaRecorderFlow(opts: StartVoiceCaptureOptions): VoiceCaptureCon
             transcript?: string;
             error?: string;
           };
+          if (cancelled) return;
 
           if (!res.ok) {
             opts.onError(data.error || 'שגיאה בתמלול ההקלטה');
@@ -185,8 +191,11 @@ function startMediaRecorderFlow(opts: StartVoiceCaptureOptions): VoiceCaptureCon
           }
           opts.onTranscript(cleanTranscript, true);
         } catch {
-          opts.onError('שגיאה בשליחת ההקלטה לתמלול.');
+          if (!cancelled) {
+            opts.onError('שגיאה בשליחת ההקלטה לתמלול.');
+          }
         } finally {
+          transcribeAbortCtrl = null;
           opts.onStateChange('idle');
         }
       };
@@ -237,6 +246,14 @@ function startMediaRecorderFlow(opts: StartVoiceCaptureOptions): VoiceCaptureCon
     },
     cancel: () => {
       cancelled = true;
+      if (transcribeAbortCtrl) {
+        try {
+          transcribeAbortCtrl.abort();
+        } catch {
+          // ignore
+        }
+        transcribeAbortCtrl = null;
+      }
       if (activeRecorder && activeRecorder.state === 'recording') {
         try {
           activeRecorder.stop();
@@ -279,11 +296,13 @@ export function startUnifiedVoiceCapture(
     recognition.lang = 'he-IL';
     recognition.interimResults = true;
     let stoppedManually = false;
+    let wasCancelled = false;
     let gotFinal = false;
 
     opts.onStateChange('listening');
 
     recognition.onresult = (event) => {
+      if (wasCancelled) return;
       let combined = '';
       let isFinal = false;
       for (let i = 0; i < event.results.length; i++) {
@@ -300,6 +319,7 @@ export function startUnifiedVoiceCapture(
 
     recognition.onerror = (ev) => {
       opts.onStateChange('idle');
+      if (wasCancelled) return;
       const code = ev?.error || '';
       if (code === 'aborted' && stoppedManually) return;
       if (code === 'not-allowed' || code === 'service-not-allowed') {
@@ -331,6 +351,7 @@ export function startUnifiedVoiceCapture(
       },
       cancel: () => {
         stoppedManually = true;
+        wasCancelled = true;
         try {
           recognition.abort ? recognition.abort() : recognition.stop();
         } catch {

@@ -2354,7 +2354,6 @@ export default function HomePage() {
         if (abortController.signal.aborted) return;
         const data = res ? await res.json().catch(() => ({})) : {};
         if (data?.cancelled) {
-          void clearFailedAiDraft(payload.traineeId, payload.date, payload.mealSlotId, draftMode);
           setLocalBgJobs((prev) => prev.filter((j) => j.id !== jobId));
           return;
         }
@@ -4059,6 +4058,7 @@ export default function HomePage() {
             backgroundAiJobs={mergeTraineeBgJobs(loggedInTraineeProfile)}
             onStartBackgroundAiAnalysis={handleStartBackgroundAiAnalysis}
             onAcknowledgeAiJob={handleAcknowledgeAiJob}
+            onCancelAiJob={handleCancelAiJob}
             onMarkCoachMealEditsRead={handleMarkCoachMealEditsRead}
             onRestoreCoachDeletedItem={handleRestoreCoachDeletedItem}
             onRollbackMealHistory={handleRollbackMealHistory}
@@ -4117,6 +4117,7 @@ export default function HomePage() {
             backgroundAiJobs={mergeTraineeBgJobs(loggedInTraineeProfile)}
             onStartBackgroundAiAnalysis={handleStartBackgroundAiAnalysis}
             onAcknowledgeAiJob={handleAcknowledgeAiJob}
+            onCancelAiJob={handleCancelAiJob}
             onMarkCoachMealEditsRead={handleMarkCoachMealEditsRead}
             onRestoreCoachDeletedItem={handleRestoreCoachDeletedItem}
             onRollbackMealHistory={handleRollbackMealHistory}

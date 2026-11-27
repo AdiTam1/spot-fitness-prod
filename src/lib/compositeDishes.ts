@@ -1,4 +1,4 @@
-import { calculateMacrosForGrams, sumMacros } from '@/data/israeliFoodCatalog';
+import { calculateMacrosForGrams, sumMacros } from '../data/israeliFoodCatalog';
 import {
   FoodInputConfidence,
   LoggedFoodItem,
@@ -259,6 +259,42 @@ export function removeSelectedFromItems(
     next.push(item);
   }
   return next;
+}
+
+/**
+ * מחלץ עותק נקי של הפריטים/מנות/מרכיבים שנבחרו לצורך שמירה בארוחות שמורות.
+ */
+export function extractSelectedItemsForPreset(
+  items: LoggedFoodItem[],
+  selectedIds: Set<string>
+): LoggedFoodItem[] {
+  const picked: LoggedFoodItem[] = [];
+  for (const item of items) {
+    if (selectedIds.has(item.id)) {
+      picked.push(cloneFoodItemWithFreshIds(item, 'preset'));
+      continue;
+    }
+    if (hasCompositeComponents(item)) {
+      const pickedComps = item.components!.filter((c) => selectedIds.has(c.id));
+      if (pickedComps.length > 0) {
+        if (pickedComps.length === item.components!.length) {
+          picked.push(cloneFoodItemWithFreshIds(item, 'preset'));
+        } else if (pickedComps.length === 1) {
+          picked.push(cloneFoodItemWithFreshIds(pickedComps[0], 'preset'));
+        } else {
+          picked.push(
+            recalculateParentDish({
+              ...cloneFoodItemWithFreshIds(item, 'preset'),
+              components: pickedComps.map((c) =>
+                cloneFoodItemWithFreshIds(stripNestedComponents(c), 'preset')
+              ),
+            })
+          );
+        }
+      }
+    }
+  }
+  return picked;
 }
 
 export interface ScopedSelectionPayload {
