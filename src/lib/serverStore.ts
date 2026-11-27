@@ -15,6 +15,7 @@ import {
   CoachPushSubscriptionSettings,
   CustomFoodItem,
   NutritionTemplate,
+  PendingAiMealJob,
   QuickContextChip,
   TraineeFcmTokenEntry,
   TraineeGroup,
@@ -39,6 +40,13 @@ export {
 };
 export type { OlderLogsInfo };
 import {
+  AiTargetAuthorizationResult,
+  canCoachAccessTraineeTarget,
+  evaluateTraineeAiTargetAuthorization,
+  TraineeAccessLookupResult,
+} from '@/lib/traineeAccess';
+export type { AiTargetAuthorizationResult };
+import {
   checkTraineeEmailExistsInSupabase,
   deleteCoachFromSupabase,
   deleteGroupFromSupabase,
@@ -59,7 +67,9 @@ import {
   loadSingleTraineeFromSupabase,
   loadSingleTraineeWithVersionFromSupabase,
   loadStateFromSupabase,
+  loadTraineeAccessStateFromSupabase,
   loadTraineeLiveAuthState,
+  loadTraineePendingAiJobsFromSupabase,
   loadTraineeSyncBundleFromSupabase,
   saveAppReleasePolicyToSupabase,
   saveCoachCustomFoodsToSupabase,
@@ -588,6 +598,52 @@ export async function getSingleTraineeFromServer(
     : null;
 }
 
+/**
+ * בדיקת הרשאה קלת-משקל ומהירה עבור משימות AI ברקע:
+ * - עבור מתאמן: אימות זהות ישיר מול ה-Session הפעיל (0ms, ללא SELECT * כבד).
+ * - עבור מאמן/אדמין: שליפת עמודות גישה בלבד, והבחנה ברורה בין 403 (חוסר הרשאה) ל-503 (כשל/עומס DB).
+ */
+export async function authorizeTraineeAiTargetOnServer(
+  sessionUser: AuthSessionUser,
+  targetTraineeId: string
+): Promise<AiTargetAuthorizationResult> {
+  if (sessionUser.role === 'trainee') {
+    return evaluateTraineeAiTargetAuthorization(sessionUser, targetTraineeId);
+  }
+
+  let lookup: TraineeAccessLookupResult;
+  if (isSupabaseConfigured) {
+    lookup = await loadTraineeAccessStateFromSupabase(targetTraineeId);
+  } else {
+    const state = await getServerDbState();
+    const found = state.trainees.find((t) => t.id === targetTraineeId);
+    lookup = found
+      ? {
+          found: true,
+          target: {
+            id: found.id,
+            status: found.status,
+            primaryCoachId: found.primaryCoachId,
+            sharedCoachIds: found.sharedCoachIds,
+          },
+        }
+      : { found: false };
+  }
+
+  return evaluateTraineeAiTargetAuthorization(sessionUser, targetTraineeId, lookup);
+}
+
+export async function getTraineePendingAiJobsOnServer(
+  traineeId: string
+): Promise<PendingAiMealJob[] | null> {
+  if (isSupabaseConfigured) {
+    return await loadTraineePendingAiJobsFromSupabase(traineeId);
+  }
+  const state = await getServerDbState();
+  const found = state.trainees.find((t) => t.id === traineeId);
+  return found?.pendingAiJobs || [];
+}
+
 export async function getSingleCoachFromServer(
   coachId: string
 ): Promise<CoachProfile | null> {
@@ -958,21 +1014,7 @@ export function canCoachAccessTrainee(
   session: AuthSessionUser,
   trainee: TraineeProfile
 ): boolean {
-  if (session.role === 'admin') return true;
-  if (session.role === 'coach') {
-    // מתאמנים בסטטוס pending שנרשמו ללא קוד מאמן שייכים ל-coach-admin וגלויים רק למנהל הראשי!
-    if (
-      trainee.status === 'pending' &&
-      trainee.primaryCoachId === 'coach-admin'
-    ) {
-      return false;
-    }
-    return (
-      trainee.primaryCoachId === session.id ||
-      (trainee.sharedCoachIds || []).includes(session.id)
-    );
-  }
-  return false;
+  return canCoachAccessTraineeTarget(session, trainee);
 }
 
 export function canCoachViewTemplate(

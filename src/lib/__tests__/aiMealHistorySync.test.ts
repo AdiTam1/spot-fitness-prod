@@ -36,8 +36,11 @@ import {
   extractSelectedItemsForPreset,
   scaleCompositeDishByFactor,
 } from '../compositeDishes';
+import { evaluateTraineeAiTargetAuthorization } from '../traineeAccess';
+import { classifyAiFailureReason } from '../telemetry/aiTelemetry';
 import type {
   AiConversationTraceRecord,
+  AuthSessionUser,
   LoggedFoodItem,
   LoggedMealEntry,
   PendingAiMealJob,
@@ -834,5 +837,95 @@ describe('scaleCompositeDishByFactor & extractSelectedItemsForPreset', () => {
     assert.equal(pickedSubOnly.length, 2);
     assert.equal(pickedSubOnly[0].name, 'חזה עוף');
     assert.equal(pickedSubOnly[1].name, 'שניצל מאמא עוף');
+  });
+});
+
+describe('evaluateTraineeAiTargetAuthorization & DB error classification', () => {
+  const traineeSession: AuthSessionUser = {
+    id: 'tr-1',
+    email: 'tr1@spot.local',
+    name: 'מתאמן 1',
+    role: 'trainee',
+    status: 'active',
+    sv: 1,
+  };
+  const coachSession: AuthSessionUser = {
+    id: 'coach-2',
+    email: 'coach2@spot.local',
+    name: 'מאמן 2',
+    role: 'coach',
+    status: 'active',
+    sv: 1,
+  };
+  const adminSession: AuthSessionUser = {
+    id: 'coach-admin',
+    email: 'admin@spot.local',
+    name: 'מנהל ראשי',
+    role: 'admin',
+    status: 'active',
+    sv: 1,
+  };
+
+  it('authorizes trainee self-sync immediately without requiring a DB lookup', () => {
+    const allowed = evaluateTraineeAiTargetAuthorization(traineeSession, 'tr-1');
+    assert.equal(allowed.ok, true);
+    if (allowed.ok) {
+      assert.equal(allowed.skippedDbCheck, true);
+    }
+
+    const crossTrainee = evaluateTraineeAiTargetAuthorization(traineeSession, 'tr-2');
+    assert.equal(crossTrainee.ok, false);
+    if (!crossTrainee.ok) {
+      assert.equal(crossTrainee.status, 403);
+      assert.equal(crossTrainee.reasonCode, 'AUTH_OR_PERMISSION');
+    }
+  });
+
+  it('returns 503 AUTH_DB_UNAVAILABLE (never 403) when Supabase lookup fails or times out', () => {
+    const dbDown = evaluateTraineeAiTargetAuthorization(coachSession, 'tr-1', {
+      found: false,
+      dbUnavailable: true,
+      dbError: 'statement timeout (57014)',
+    });
+    assert.equal(dbDown.ok, false);
+    if (!dbDown.ok) {
+      assert.equal(dbDown.status, 503);
+      assert.equal(dbDown.reasonCode, 'AUTH_DB_UNAVAILABLE');
+      assert.equal(classifyAiFailureReason(dbDown.error, dbDown.status).reasonCode, 'AUTH_DB_UNAVAILABLE');
+    }
+
+    const missingLookup = evaluateTraineeAiTargetAuthorization(coachSession, 'tr-1');
+    assert.equal(missingLookup.ok, false);
+    if (!missingLookup.ok) {
+      assert.equal(missingLookup.status, 503);
+      assert.equal(missingLookup.reasonCode, 'AUTH_DB_UNAVAILABLE');
+    }
+  });
+
+  it('enforces coach/admin access strictly when lightweight DB lookup succeeds', () => {
+    const notFound = evaluateTraineeAiTargetAuthorization(coachSession, 'tr-missing', {
+      found: false,
+    });
+    assert.equal(notFound.ok, false);
+    if (!notFound.ok) assert.equal(notFound.status, 403);
+
+    const otherCoachTrainee = evaluateTraineeAiTargetAuthorization(coachSession, 'tr-1', {
+      found: true,
+      target: { id: 'tr-1', status: 'active', primaryCoachId: 'coach-other', sharedCoachIds: [] },
+    });
+    assert.equal(otherCoachTrainee.ok, false);
+    if (!otherCoachTrainee.ok) assert.equal(otherCoachTrainee.status, 403);
+
+    const sharedTrainee = evaluateTraineeAiTargetAuthorization(coachSession, 'tr-1', {
+      found: true,
+      target: { id: 'tr-1', status: 'active', primaryCoachId: 'coach-other', sharedCoachIds: ['coach-2'] },
+    });
+    assert.equal(sharedTrainee.ok, true);
+
+    const adminAllowed = evaluateTraineeAiTargetAuthorization(adminSession, 'tr-1', {
+      found: true,
+      target: { id: 'tr-1', status: 'pending', primaryCoachId: 'coach-admin', sharedCoachIds: [] },
+    });
+    assert.equal(adminAllowed.ok, true);
   });
 });

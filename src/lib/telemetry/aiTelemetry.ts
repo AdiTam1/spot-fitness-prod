@@ -22,6 +22,16 @@ export function classifyAiFailureReason(
       labelHe: 'עומס זמני בשרתי Google (503)',
     };
   }
+  if (
+    statusCode !== 401 &&
+    statusCode !== 403 &&
+    /supabase|מסד ה?נתונים|auth_db_unavailable|db_unavailable|statement timeout|57014/.test(msg)
+  ) {
+    return {
+      reasonCode: 'AUTH_DB_UNAVAILABLE',
+      labelHe: 'שגיאת גישה / עומס מול מסד הנתונים (Supabase)',
+    };
+  }
   if (/gemini_api_key|לא הוגדר מפתח|missing.*key|api key|401|403|auth/.test(msg)) {
     if (statusCode === 401 || statusCode === 403 || /\b401\b|\b403\b|הרשאה|אימות|csrf/.test(msg)) {
       return {

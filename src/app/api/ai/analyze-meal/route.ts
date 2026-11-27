@@ -44,8 +44,10 @@ import {
 import { authenticateActiveSession } from '@/lib/liveAuth';
 import { normalizeHhMmTime } from '@/lib/numericInput';
 import {
+  authorizeTraineeAiTargetOnServer,
   canCoachAccessTrainee,
   getSingleTraineeFromServer,
+  getTraineePendingAiJobsOnServer,
   updateTraineeAtomic,
 } from '@/lib/serverStore';
 import {
@@ -919,17 +921,16 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
       backgroundJob?.date &&
       backgroundJob?.mealSlotId
     ) {
-      const targetTrainee = await getSingleTraineeFromServer(backgroundJob.traineeId);
-      const isAllowedTarget =
-        targetTrainee &&
-        (sessionUser.role === 'trainee'
-          ? targetTrainee.id === sessionUser.id
-          : canCoachAccessTrainee(sessionUser, targetTrainee));
+      const targetAuth = await authorizeTraineeAiTargetOnServer(
+        sessionUser,
+        backgroundJob.traineeId
+      );
 
-      if (!isAllowedTarget) {
+      if (!targetAuth.ok) {
+        ctx.setErrorCode(targetAuth.reasonCode, targetAuth.error);
         return NextResponse.json(
-          { error: 'אין הרשאה לסנכרן משימת AI למתאמן זה' },
-          { status: 403 }
+          { error: targetAuth.error },
+          { status: targetAuth.status }
         );
       }
 
@@ -1014,10 +1015,10 @@ export const POST = withTelemetryHandler('/api/ai/analyze-meal', async (request,
     const checkBgJobCancelled = async (): Promise<boolean> => {
       if (!authorizedBgJob || isDryRun) return false;
       try {
-        const latest = await getSingleTraineeFromServer(
+        const jobs = await getTraineePendingAiJobsOnServer(
           authorizedBgJob.targetTraineeId
         );
-        const match = latest?.pendingAiJobs?.find(
+        const match = jobs?.find(
           (j) => j.id === authorizedBgJob!.id
         );
         return Boolean(match && match.acknowledged);

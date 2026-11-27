@@ -146,4 +146,27 @@ describe('Architecture guards: prevent Supabase 57014 full-table scans & egress 
     assert.ok(code.includes('&windowDays=14'));
     assert.ok(code.includes("currentUser?.role === 'trainee' ? 30000 : 60000"));
   });
+
+  it('analyze-meal uses lightweight backgroundJob auth and cancellation checks instead of SELECT *', () => {
+    const routeCode = stripComments(readRepoFile('src/app/api/ai/analyze-meal/route.ts'));
+    assert.ok(
+      routeCode.includes('authorizeTraineeAiTargetOnServer('),
+      'analyze-meal must authorize backgroundJob targets via authorizeTraineeAiTargetOnServer()'
+    );
+    assert.ok(
+      routeCode.includes('getTraineePendingAiJobsOnServer('),
+      'analyze-meal checkBgJobCancelled must read pending jobs via getTraineePendingAiJobsOnServer()'
+    );
+    assert.equal(
+      /getSingleTraineeFromServer\(\s*backgroundJob\.traineeId\s*\)/.test(routeCode),
+      false,
+      'analyze-meal backgroundJob auth must not load full SELECT * trainee row'
+    );
+
+    const sbCode = stripComments(readRepoFile('src/lib/supabase.ts'));
+    assert.ok(
+      sbCode.includes('loadTraineeAccessStateFromSupabase'),
+      'expected lightweight trainee access loader in src/lib/supabase.ts'
+    );
+  });
 });

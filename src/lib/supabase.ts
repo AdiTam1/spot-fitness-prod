@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { serializeSyncTimestampRows } from '@/lib/traineeSanitize';
+import type { TraineeAccessLookupResult } from '@/lib/traineeAccess';
 import {
   AccountStatus,
   AppReleasePolicy,
@@ -981,7 +982,19 @@ export async function loadTraineeLiveAuthState(
     }
 
     // Fallback אם עמודת session_version טרם הורצה ב-SQL Editor
-    const full = await loadSingleTraineeFromSupabase(traineeId);
+    const fullRes = await loadSingleTraineeOutcomeFromSupabase(traineeId);
+    if (fullRes.dbUnavailable) {
+      return {
+        id: traineeId,
+        role: 'trainee',
+        name: '',
+        status: 'active',
+        sessionVersion: 1,
+        dbUnavailable: true,
+        dbError: fullRes.dbError || 'DB error',
+      };
+    }
+    const full = fullRes.trainee;
     if (!full) return null;
     return {
       id: full.id,
@@ -1112,17 +1125,165 @@ export async function loadAppReleasePolicyFromSupabase(): Promise<AppReleasePoli
   }
 }
 
+export async function loadSingleTraineeOutcomeFromSupabase(
+  traineeId: string
+): Promise<{
+  trainee: TraineeProfile | null;
+  dbUnavailable?: boolean;
+  dbError?: string;
+}> {
+  if (!supabase) return { trainee: null };
+  try {
+    const { data, error } = await supabase
+      .from('trainees')
+      .select('*')
+      .eq('id', traineeId)
+      .maybeSingle();
+    if (error) {
+      const diag =
+        diagnoseSupabaseError(error.message || error.code || 'DB error') ||
+        error.message;
+      console.warn(
+        `[loadSingleTraineeFromSupabase] DB error for ${traineeId}: ${formatSupabaseError('trainees', error)}`
+      );
+      return {
+        trainee: null,
+        dbUnavailable: true,
+        dbError: diag,
+      };
+    }
+    if (!data) return { trainee: null };
+    return { trainee: mapRowToTrainee(data) };
+  } catch (err) {
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    const diag = diagnoseSupabaseError(rawMsg) || rawMsg;
+    console.warn(`[loadSingleTraineeFromSupabase] Exception for ${traineeId}: ${diag}`);
+    return {
+      trainee: null,
+      dbUnavailable: true,
+      dbError: diag,
+    };
+  }
+}
+
+export async function loadTraineeAccessStateFromSupabase(
+  traineeId: string
+): Promise<TraineeAccessLookupResult> {
+  if (!supabase) {
+    return {
+      found: false,
+      dbUnavailable: true,
+      dbError: 'Supabase client unavailable',
+    };
+  }
+  try {
+    const fastRes = await supabase
+      .from('trainees')
+      .select('id, status, primary_coach_id, shared_coach_ids')
+      .eq('id', traineeId)
+      .maybeSingle();
+
+    if (!fastRes.error) {
+      if (!fastRes.data) {
+        return { found: false, dbUnavailable: false };
+      }
+      return {
+        found: true,
+        target: {
+          id: String(fastRes.data.id),
+          status: (fastRes.data.status as AccountStatus) || 'active',
+          primaryCoachId: String(fastRes.data.primary_coach_id || 'coach-admin'),
+          sharedCoachIds: Array.isArray(fastRes.data.shared_coach_ids)
+            ? (fastRes.data.shared_coach_ids as string[])
+            : [],
+        },
+      };
+    }
+
+    if (!isMissingColumnOrSchemaError(fastRes.error)) {
+      const diag =
+        diagnoseSupabaseError(
+          fastRes.error.message || fastRes.error.code || 'DB error'
+        ) || fastRes.error.message;
+      console.warn(
+        `[loadTraineeAccessStateFromSupabase] DB error for ${traineeId}: ${formatSupabaseError('trainees', fastRes.error)}`
+      );
+      return {
+        found: false,
+        dbUnavailable: true,
+        dbError: diag,
+      };
+    }
+
+    const fallbackRes = await loadSingleTraineeOutcomeFromSupabase(traineeId);
+    if (fallbackRes.dbUnavailable) {
+      return {
+        found: false,
+        dbUnavailable: true,
+        dbError: fallbackRes.dbError,
+      };
+    }
+    if (!fallbackRes.trainee) {
+      return { found: false, dbUnavailable: false };
+    }
+    return {
+      found: true,
+      target: {
+        id: fallbackRes.trainee.id,
+        status: fallbackRes.trainee.status,
+        primaryCoachId: fallbackRes.trainee.primaryCoachId,
+        sharedCoachIds: fallbackRes.trainee.sharedCoachIds,
+      },
+    };
+  } catch (err) {
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    const diag = diagnoseSupabaseError(rawMsg) || rawMsg;
+    console.warn(`[loadTraineeAccessStateFromSupabase] Exception for ${traineeId}: ${diag}`);
+    return {
+      found: false,
+      dbUnavailable: true,
+      dbError: diag,
+    };
+  }
+}
+
+export async function loadTraineePendingAiJobsFromSupabase(
+  traineeId: string
+): Promise<PendingAiMealJob[] | null> {
+  if (!supabase) return null;
+  try {
+    const fastRes = await supabase
+      .from('trainees')
+      .select('pending_ai_jobs')
+      .eq('id', traineeId)
+      .maybeSingle();
+
+    if (!fastRes.error) {
+      if (!fastRes.data) return [];
+      return Array.isArray(fastRes.data.pending_ai_jobs)
+        ? (fastRes.data.pending_ai_jobs as PendingAiMealJob[])
+        : [];
+    }
+
+    if (isMissingColumnOrSchemaError(fastRes.error)) {
+      const full = await loadSingleTraineeFromSupabase(traineeId);
+      return full?.pendingAiJobs || [];
+    }
+
+    console.warn(
+      `[loadTraineePendingAiJobsFromSupabase] DB error for ${traineeId}: ${formatSupabaseError('trainees', fastRes.error)}`
+    );
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function loadSingleTraineeFromSupabase(
   traineeId: string
 ): Promise<TraineeProfile | null> {
-  if (!supabase) return null;
-  const { data, error } = await supabase
-    .from('trainees')
-    .select('*')
-    .eq('id', traineeId)
-    .single();
-  if (error || !data) return null;
-  return mapRowToTrainee(data);
+  const res = await loadSingleTraineeOutcomeFromSupabase(traineeId);
+  return res.trainee;
 }
 
 export async function loadSingleTraineeWithVersionFromSupabase(
@@ -1133,8 +1294,14 @@ export async function loadSingleTraineeWithVersionFromSupabase(
     .from('trainees')
     .select('*')
     .eq('id', traineeId)
-    .single();
-  if (error || !data) return null;
+    .maybeSingle();
+  if (error) {
+    console.warn(
+      `[loadSingleTraineeWithVersionFromSupabase] DB error for ${traineeId}: ${formatSupabaseError('trainees', error)}`
+    );
+    return null;
+  }
+  if (!data) return null;
   return {
     trainee: mapRowToTrainee(data),
     updatedAt: typeof data.updated_at === 'string' ? data.updated_at : null,
