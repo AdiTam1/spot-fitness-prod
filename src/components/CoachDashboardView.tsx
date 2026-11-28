@@ -236,6 +236,7 @@ interface CoachDashboardViewProps {
   onUpdateAppPolicy?: (policy: AppReleasePolicy) => Promise<{ error?: string }> | void;
   onApkReleasePublished?: (policy: AppReleasePolicy) => void;
   onPreviewTraineeMobile: (traineeId: string) => void;
+  onInspectTraineeDetails?: (traineeId: string) => Promise<void> | void;
   globalQuickChips?: QuickContextChip[];
   myCoachCustomFoods?: CustomFoodItem[];
   globalCustomFoods?: CustomFoodItem[];
@@ -335,6 +336,7 @@ export function CoachDashboardView({
   onUpdateAppPolicy,
   onApkReleasePublished,
   onPreviewTraineeMobile,
+  onInspectTraineeDetails,
   globalQuickChips = [],
   myCoachCustomFoods = [],
   globalCustomFoods = [],
@@ -540,6 +542,11 @@ export function CoachDashboardView({
 
   const selectedTrainee: TraineeProfile | undefined =
     trainees.find((t) => t.id === selectedTraineeId) || trainees[0];
+
+  useEffect(() => {
+    if (activeSection !== 'inspector' || !selectedTrainee?.id) return;
+    onInspectTraineeDetails?.(selectedTrainee.id);
+  }, [activeSection, selectedTrainee?.id, onInspectTraineeDetails]);
   const [editingDayType, setEditingDayType] = useState<DayType>('workout');
   const [feedbackDrafts, setFeedbackDrafts] = useState<Record<string, string>>(
     {}

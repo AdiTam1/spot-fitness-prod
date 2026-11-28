@@ -168,5 +168,17 @@ describe('Architecture guards: prevent Supabase 57014 full-table scans & egress 
       sbCode.includes('loadTraineeAccessStateFromSupabase'),
       'expected lightweight trainee access loader in src/lib/supabase.ts'
     );
+
+    const dataRouteCode = stripComments(readRepoFile('src/app/api/data/route.ts'));
+    assert.ok(
+      dataRouteCode.includes('checkedRosterStamp'),
+      '/api/data must reuse checkedRosterStamp instead of calling getRosterSyncStampOnServer twice'
+    );
+
+    const sanitizeCode = stripComments(readRepoFile('src/lib/traineeSanitize.ts'));
+    assert.ok(
+      sanitizeCode.includes('mergeHydratedTraineeFieldsForRoster'),
+      'expected mergeHydratedTraineeFieldsForRoster in src/lib/traineeSanitize.ts'
+    );
   });
 });

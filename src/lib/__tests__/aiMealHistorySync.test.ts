@@ -28,6 +28,7 @@ import {
 } from '../telemetry/diagnosticsSummary';
 import { shouldPersistApiLogToDb } from '../telemetry/filterRules';
 import {
+  mergeHydratedTraineeFieldsForRoster,
   sanitizeTraineeForRosterList,
   serializeSyncTimestampRows,
   trimTraineeLogsToWindow,
@@ -552,6 +553,7 @@ describe('sanitizeTraineeForRosterList payload trimming', () => {
   it('strips heavy meal photos, history, and job retry blobs without mutating source or losing dashboard metrics', () => {
     const bigPhoto = 'data:image/jpeg;base64,' + 'Z'.repeat(50_000);
     const savedThumb = 'data:image/jpeg;base64,SAVED_THUMB';
+    const remotePhotoUrl = 'https://cdn.example.com/saved-meal.webp';
     const source: TraineeProfile = {
       id: 't-roster-1',
       email: 'roster@example.com',
@@ -580,6 +582,21 @@ describe('sanitizeTraineeForRosterList payload trimming', () => {
           totalCarbs: 5,
           totalFat: 2,
           photoDataUrls: [savedThumb, bigPhoto],
+          isFavorite: false,
+          isPinned: false,
+          useCount: 1,
+          createdAt: '2026-11-26T10:00:00.000Z',
+          updatedAt: '2026-11-26T10:00:00.000Z',
+        },
+        {
+          id: 'sm-remote',
+          title: 'ארוחה שמורה עם URL חיצוני',
+          items: [makeFood('i2', 'שיבולת שועל', 60, 220, 8)],
+          totalCalories: 220,
+          totalProtein: 8,
+          totalCarbs: 38,
+          totalFat: 4,
+          photoDataUrl: remotePhotoUrl,
           isFavorite: false,
           isPinned: false,
           useCount: 1,
@@ -666,9 +683,21 @@ describe('sanitizeTraineeForRosterList payload trimming', () => {
     assert.equal(slim.pendingAiJobs?.[0].photoDataUrls, undefined);
     assert.equal(slim.pendingAiJobs?.[0].retryPayload, undefined);
 
-    // שמירה על תמונה יחידה של SavedMeal עבור CoachSavedMealsPanel
-    assert.equal(slim.savedMeals?.[0].photoDataUrl, savedThumb);
+    // השמטת תמונות Base64 מ-savedMeals ברוסטר (משוחזר נקודתית כשנכנסים למתאמן) תוך שמירת קישורי HTTPS קצרים
+    assert.equal(slim.savedMeals?.[0].photoDataUrl, undefined);
     assert.equal(slim.savedMeals?.[0].photoDataUrls, undefined);
+    assert.equal(slim.savedMeals?.[1].photoDataUrl, remotePhotoUrl);
+
+    // שמירה על תמונות hydrated כש-updatedAt תואם ברענון רקע
+    const hydrated = {
+      ...source,
+      savedMeals: [
+        { ...source.savedMeals![0], photoDataUrl: savedThumb },
+        source.savedMeals![1],
+      ],
+    };
+    const mergedRoster = mergeHydratedTraineeFieldsForRoster([slim], [hydrated]);
+    assert.equal(mergedRoster[0].savedMeals?.[0].photoDataUrl, savedThumb);
 
     // אובייקט המקור לא נפגע במוטציה
     assert.equal(source.logs['2026-11-26'].meals.m1.photoDataUrl, bigPhoto);

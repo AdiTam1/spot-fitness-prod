@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Modal } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { mergeHydratedTraineeFieldsForRoster } from '@/lib/traineeSanitize';
 import {
   Crown,
   LogOut,
@@ -239,6 +240,8 @@ export default function HomePage() {
   const lastSyncUserKeyRef = useRef<string | null>(null);
   const traineeFullHistoryLoadedRef = useRef<boolean>(false);
   const previewLoadingTraineeIdRef = useRef<string | null>(null);
+  const hydratedTraineeSyncRef = useRef<Map<string, string>>(new Map());
+  const hydratingTraineeIdsRef = useRef<Set<string>>(new Set());
   const lastHeartbeatAtRef = useRef<number>(0);
   const lastSlowDataDiagAtRef = useRef<number>(0);
   const lastDataFetchDiagRef = useRef<{
@@ -530,7 +533,9 @@ export default function HomePage() {
             return;
           }
           if (Array.isArray(remoteData.trainees)) {
-            setTrainees(remoteData.trainees);
+            setTrainees((prev) =>
+              mergeHydratedTraineeFieldsForRoster(remoteData.trainees, prev)
+            );
           }
           if (Array.isArray(remoteData.templates)) {
             setTemplates(remoteData.templates);
@@ -645,36 +650,73 @@ export default function HomePage() {
     }
   }, [fetchAuthorizedData]);
 
-  const enterCoachPreview = useCallback(async (id: string) => {
-    coachPreviewTraineeIdRef.current = id;
-    setCoachPreviewTraineeId(id);
-    previewLoadingTraineeIdRef.current = id;
-    try {
-      const res = await fetch(
-        `/api/data?traineeId=${encodeURIComponent(id)}&t=${Date.now()}`,
-        {
-          cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+  const fetchAndMergeSingleTrainee = useCallback(
+    async (id: string, opts?: { checkPreviewMatch?: boolean }) => {
+      if (!id || hydratingTraineeIdsRef.current.has(id)) return;
+      hydratingTraineeIdsRef.current.add(id);
+      try {
+        const res = await fetch(
+          `/api/data?traineeId=${encodeURIComponent(id)}&t=${Date.now()}`,
+          {
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+          }
+        );
+        if (!res.ok) return;
+        const data = (await res.json().catch(() => null)) as {
+          trainee?: TraineeProfile;
+        } | null;
+        if (!data?.trainee) return;
+        if (opts?.checkPreviewMatch && coachPreviewTraineeIdRef.current !== id) {
+          return;
         }
-      );
-      if (!res.ok) return;
-      const data = (await res.json().catch(() => null)) as {
-        trainee?: TraineeProfile;
-      } | null;
-      if (!data?.trainee) return;
-      if (coachPreviewTraineeIdRef.current !== id) return;
-      const fullTrainee = data.trainee;
-      setTrainees((prev) =>
-        prev.map((t) => (t.id === fullTrainee.id ? fullTrainee : t))
-      );
-    } catch {
-      // במקרה כשל רגעי הרוסטר כבר מוצג למאמן
-    } finally {
-      if (previewLoadingTraineeIdRef.current === id) {
-        previewLoadingTraineeIdRef.current = null;
+        const fullTrainee = data.trainee;
+        hydratedTraineeSyncRef.current.set(
+          id,
+          lastSyncVersionRef.current || '__loaded__'
+        );
+        setTrainees((prev) =>
+          prev.map((t) => (t.id === fullTrainee.id ? fullTrainee : t))
+        );
+      } catch {
+        // במקרה כשל רגעי הרוסטר כבר מוצג למאמן
+      } finally {
+        hydratingTraineeIdsRef.current.delete(id);
       }
-    }
-  }, []);
+    },
+    []
+  );
+
+  const ensureTraineeDetailsLoaded = useCallback(
+    async (id: string) => {
+      if (!id) return;
+      const syncTag = lastSyncVersionRef.current || '__loaded__';
+      if (hydratedTraineeSyncRef.current.get(id) === syncTag) return;
+      const currentMatch = traineesRef.current.find((t) => t.id === id);
+      if (!currentMatch || (currentMatch.savedMeals || []).length === 0) {
+        hydratedTraineeSyncRef.current.set(id, syncTag);
+        return;
+      }
+      await fetchAndMergeSingleTrainee(id);
+    },
+    [fetchAndMergeSingleTrainee]
+  );
+
+  const enterCoachPreview = useCallback(
+    async (id: string) => {
+      coachPreviewTraineeIdRef.current = id;
+      setCoachPreviewTraineeId(id);
+      previewLoadingTraineeIdRef.current = id;
+      try {
+        await fetchAndMergeSingleTrainee(id, { checkPreviewMatch: true });
+      } finally {
+        if (previewLoadingTraineeIdRef.current === id) {
+          previewLoadingTraineeIdRef.current = null;
+        }
+      }
+    },
+    [fetchAndMergeSingleTrainee]
+  );
 
   const runHeartbeatAndVersionCheck = useCallback(async () => {
     if (typeof window === 'undefined' || !window.navigator.onLine) return;
@@ -4206,6 +4248,7 @@ export default function HomePage() {
             onUpdateAppPolicy={handleUpdateAppPolicy}
             onApkReleasePublished={(policy) => setAppReleasePolicy(policy)}
             onPreviewTraineeMobile={(id) => void enterCoachPreview(id)}
+            onInspectTraineeDetails={ensureTraineeDetailsLoaded}
           />
         )}
       </main>

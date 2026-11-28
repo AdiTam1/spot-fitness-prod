@@ -999,15 +999,16 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
     searchParams.get('previewTraineeId') || '',
     80
   );
+  let checkedRosterStamp: string | null | undefined;
   if (since) {
-    const stamp = await getRosterSyncStampOnServer(previewTraineeId);
-    if (stamp && stamp === since) {
+    checkedRosterStamp = await getRosterSyncStampOnServer(previewTraineeId);
+    if (checkedRosterStamp && checkedRosterStamp === since) {
       ctx.setActionName(
         session.role === 'coach' ? 'coach_sync_not_modified' : 'admin_sync_not_modified'
       );
       ctx.setAiUsage({ diag: { authMs, payloadKB: 0, notModified: true } });
       return NextResponse.json(
-        { notModified: true, syncVersion: stamp },
+        { notModified: true, syncVersion: checkedRosterStamp },
         {
           headers: {
             'Cache-Control': 'no-store, max-age=0',
@@ -1020,7 +1021,9 @@ export const GET = withTelemetryHandler('/api/data', async (request, ctx) => {
 
   const loadStartMs = Date.now();
   const [preRosterStamp, state] = await Promise.all([
-    getRosterSyncStampOnServer(previewTraineeId),
+    checkedRosterStamp !== undefined
+      ? Promise.resolve(checkedRosterStamp)
+      : getRosterSyncStampOnServer(previewTraineeId),
     getServerDbState(),
   ]);
   const loadMs = Date.now() - loadStartMs;

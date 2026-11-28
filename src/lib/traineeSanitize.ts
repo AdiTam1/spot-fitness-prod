@@ -75,10 +75,13 @@ export function sanitizeTraineeForRosterList(
   const slimSavedMeals = Array.isArray(base.savedMeals)
     ? base.savedMeals.map((preset) => {
         if (!preset || typeof preset !== 'object') return preset;
-        const { photoDataUrls, ...restPreset } = preset;
-        const singleThumb = restPreset.photoDataUrl || photoDataUrls?.[0];
-        return singleThumb
-          ? { ...restPreset, photoDataUrl: singleThumb }
+        const { photoDataUrl, photoDataUrls, ...restPreset } = preset;
+        // השמטת תמונות Base64 כבדות מרשימת הרוסטר (נשלפות לפי דרישה בכניסה למתאמן) תוך שמירת קישורי HTTPS קצרים
+        const singleRemoteUrl = [photoDataUrl, ...(photoDataUrls || [])].find(
+          (u) => typeof u === 'string' && /^https?:\/\//i.test(u.trim())
+        );
+        return singleRemoteUrl
+          ? { ...restPreset, photoDataUrl: singleRemoteUrl }
           : restPreset;
       })
     : base.savedMeals;
@@ -101,6 +104,48 @@ export function sanitizeTraineeForRosterList(
     savedMeals: slimSavedMeals,
     pendingAiJobs: slimPendingJobs,
   };
+}
+
+/**
+ * משמר תמונות savedMeals שכבר נטענו נקודתית עבור מתאמן בודד כאשר פולינג רקע מחזיר רשימת רוסטר רזה,
+ * רק כל עוד אותו פריט (id + updatedAt) לא השתנה בשרת.
+ */
+export function mergeHydratedTraineeFieldsForRoster(
+  rosterTrainees: TraineeProfile[],
+  prevTrainees: TraineeProfile[]
+): TraineeProfile[] {
+  if (!Array.isArray(prevTrainees) || prevTrainees.length === 0) {
+    return rosterTrainees;
+  }
+  const prevById = new Map(prevTrainees.map((t) => [t.id, t]));
+  return rosterTrainees.map((incoming) => {
+    const prev = prevById.get(incoming.id);
+    if (!prev || !Array.isArray(incoming.savedMeals) || !Array.isArray(prev.savedMeals)) {
+      return incoming;
+    }
+    const prevMealById = new Map(prev.savedMeals.map((m) => [m.id, m]));
+    let anyRestored = false;
+    const mergedSavedMeals = incoming.savedMeals.map((meal) => {
+      if (meal.photoDataUrl || (meal.photoDataUrls && meal.photoDataUrls.length > 0)) {
+        return meal;
+      }
+      const prevMeal = prevMealById.get(meal.id);
+      if (
+        prevMeal &&
+        prevMeal.updatedAt === meal.updatedAt &&
+        (prevMeal.photoDataUrl || (prevMeal.photoDataUrls && prevMeal.photoDataUrls.length > 0))
+      ) {
+        anyRestored = true;
+        return {
+          ...meal,
+          ...(prevMeal.photoDataUrl ? { photoDataUrl: prevMeal.photoDataUrl } : {}),
+          ...(prevMeal.photoDataUrls ? { photoDataUrls: prevMeal.photoDataUrls } : {}),
+        };
+      }
+      return meal;
+    });
+    return anyRestored ? { ...incoming, savedMeals: mergedSavedMeals } : incoming;
+  });
 }
 
 /**
