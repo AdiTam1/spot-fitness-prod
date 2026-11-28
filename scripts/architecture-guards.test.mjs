@@ -180,5 +180,19 @@ describe('Architecture guards: prevent Supabase 57014 full-table scans & egress 
       sanitizeCode.includes('mergeHydratedTraineeFieldsForRoster'),
       'expected mergeHydratedTraineeFieldsForRoster in src/lib/traineeSanitize.ts'
     );
+    assert.ok(
+      sanitizeCode.includes('buildTraineeUpdateDeltaPayload'),
+      'expected buildTraineeUpdateDeltaPayload in src/lib/traineeSanitize.ts'
+    );
+
+    const pageCode = stripComments(readRepoFile('src/app/page.tsx'));
+    assert.ok(
+      pageCode.includes('buildTraineeUpdateDeltaPayload('),
+      'HomePage must send delta trainee updates instead of full 5MB profiles'
+    );
+    assert.ok(
+      pageCode.includes('trainee_save_failed'),
+      'HomePage must emit rich trainee_save_failed telemetry on mutation errors'
+    );
   });
 });

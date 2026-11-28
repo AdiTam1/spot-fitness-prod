@@ -3,7 +3,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Modal } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { mergeHydratedTraineeFieldsForRoster } from '@/lib/traineeSanitize';
+import {
+  buildTraineeUpdateDeltaPayload,
+  mergeHydratedTraineeFieldsForRoster,
+} from '@/lib/traineeSanitize';
 import {
   Crown,
   LogOut,
@@ -1473,7 +1476,25 @@ export default function HomePage() {
     [currentUser]
   );
 
-  const postDataAction = async (payload: Record<string, unknown>) => {
+  interface TraineeSaveDiagContext {
+    operation: string;
+    operationLabel?: string;
+    date?: string;
+    mealSlotId?: string;
+    mealSlotName?: string;
+    itemsCount?: number;
+    itemNamesPreview?: string;
+    calories?: number;
+    photoCount?: number;
+  }
+
+  const postDataActionDetailed = async (payload: Record<string, unknown>): Promise<{
+    res: Response | null;
+    payloadKB: number;
+    durationMs: number;
+    timedOut: boolean;
+    networkError: boolean;
+  }> => {
     const opToken = Symbol('postDataAction');
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 20_000);
@@ -1482,11 +1503,14 @@ export default function HomePage() {
     mutationEpochRef.current += 1;
     setSyncingCount(activePostOpsRef.current.size);
     setSyncError(null);
+    const bodyStr = JSON.stringify(payload);
+    const payloadKB = Math.round(bodyStr.length / 1024);
+    const startedAt = Date.now();
     try {
       const res = await fetch('/api/data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: bodyStr,
         signal: controller.signal,
       });
       if (res.status === 401 || res.status === 403) {
@@ -1513,16 +1537,29 @@ export default function HomePage() {
           );
         }
       }
-      return res;
+      return {
+        res,
+        payloadKB,
+        durationMs: Math.max(0, Date.now() - startedAt),
+        timedOut: false,
+        networkError: false,
+      };
     } catch {
+      const timedOut = controller.signal.aborted;
       if (currentUserRef.current) {
         setSyncError(
-          controller.signal.aborted
+          timedOut
             ? 'בקשת השמירה ארכה זמן רב מדי – נסה שוב'
             : 'אין תקשורת עם השרת – השינויים האחרונים לא נשמרו'
         );
       }
-      return null;
+      return {
+        res: null,
+        payloadKB,
+        durationMs: Math.max(0, Date.now() - startedAt),
+        timedOut,
+        networkError: !timedOut,
+      };
     } finally {
       clearTimeout(timeoutId);
       activePostOpsRef.current.delete(opToken);
@@ -1532,42 +1569,133 @@ export default function HomePage() {
     }
   };
 
+  const postDataAction = async (payload: Record<string, unknown>) => {
+    const out = await postDataActionDetailed(payload);
+    return out.res;
+  };
+
+  const parseApiErrorDetails = async (
+    res: Response | null,
+    fallbackMsg: string,
+    timedOut = false
+  ): Promise<{ message: string; httpStatus: number; rawSnippet?: string }> => {
+    if (!res) {
+      return {
+        message: timedOut
+          ? 'בקשת השמירה ארכה זמן רב מדי (Timeout) – נסה שוב'
+          : 'שגיאת רשת – בדוק את החיבור לאינטרנט ונסה שוב',
+        httpStatus: 0,
+      };
+    }
+    const rawText = await res.text().catch(() => '');
+    try {
+      const json = rawText ? (JSON.parse(rawText) as { error?: unknown }) : null;
+      if (json && typeof json.error === 'string' && json.error) {
+        return {
+          message: json.error,
+          httpStatus: res.status,
+          rawSnippet: rawText.slice(0, 200),
+        };
+      }
+    } catch {
+      // non-JSON response (e.g. Vercel 413 Request Entity Too Large)
+    }
+    if (res.status === 413) {
+      return {
+        message: 'נפח הנתונים לשמירה חרג ממגבלת השרת (413) — הארוחה לא נשמרה',
+        httpStatus: 413,
+        rawSnippet: rawText.slice(0, 200),
+      };
+    }
+    const statusHint = res.status >= 400 ? ` (HTTP ${res.status})` : '';
+    return {
+      message: `${fallbackMsg}${statusHint}`,
+      httpStatus: res.status,
+      rawSnippet: rawText ? rawText.slice(0, 200) : undefined,
+    };
+  };
+
   const extractApiError = async (
     res: Response | null,
     fallbackMsg: string
   ): Promise<string> => {
-    if (!res) return 'שגיאת רשת – בדוק את החיבור לאינטרנט ונסה שוב';
-    try {
-      const json = await res.json();
-      if (json && typeof json.error === 'string' && json.error) {
-        return json.error;
-      }
-    } catch {
-      // ignore
-    }
-    return fallbackMsg;
+    const parsed = await parseApiErrorDetails(res, fallbackMsg);
+    return parsed.message;
   };
 
-  const syncTraineeLogUpdate = async (updatedProfile: TraineeProfile) => {
+  const syncTraineeLogUpdate = async (
+    updatedProfile: TraineeProfile,
+    prevProfile?: TraineeProfile,
+    contextMeta?: TraineeSaveDiagContext
+  ) => {
     const action =
       currentUser?.role === 'trainee'
         ? 'trainee-self-update'
         : 'coach-update-trainee-log';
-    const res = await postDataAction({
-      action,
-      trainee: updatedProfile,
-    });
+    const deltaTrainee = buildTraineeUpdateDeltaPayload(prevProfile, updatedProfile);
+    const { res, payloadKB, durationMs, timedOut, networkError } =
+      await postDataActionDetailed({
+        action,
+        trainee: deltaTrainee,
+      });
     if (!res || !res.ok) {
-      const msg = await extractApiError(res, 'שגיאה בשמירת הנתונים בשרת');
-      setSyncError(msg);
-      await fetchAuthorizedData();
-      throw new Error(msg);
+      const errInfo = await parseApiErrorDetails(
+        res,
+        'שגיאה בשמירת הנתונים בשרת',
+        timedOut
+      );
+      if (prevProfile) {
+        const reverted = traineesRef.current.map((t) =>
+          t.id === prevProfile.id ? prevProfile : t
+        );
+        traineesRef.current = reverted;
+        setTrainees(reverted);
+      }
+      lastSyncVersionRef.current = null;
+      setSyncError(errInfo.message);
+      notifications.show({
+        title: 'השמירה נכשלה — הנתונים לא נשמרו',
+        message: errInfo.message,
+        color: 'red',
+        autoClose: 8000,
+      });
+      trackClientEvent('client_error', 'trainee_save_failed', {
+        screen:
+          currentUserRef.current?.role === 'trainee'
+            ? 'trainee_app'
+            : 'coach_dashboard',
+        flushNow: true,
+        details: {
+          action,
+          targetTraineeId: updatedProfile.id,
+          operation: contextMeta?.operation || 'update_trainee',
+          operationLabel: contextMeta?.operationLabel,
+          date: contextMeta?.date,
+          mealSlotId: contextMeta?.mealSlotId,
+          mealSlotName: contextMeta?.mealSlotName,
+          itemsCount: contextMeta?.itemsCount,
+          itemNamesPreview: contextMeta?.itemNamesPreview,
+          calories: contextMeta?.calories,
+          photoCount: contextMeta?.photoCount,
+          httpStatus: errInfo.httpStatus,
+          timedOut,
+          networkError,
+          payloadKB,
+          durationMs,
+          message: errInfo.message,
+          serverResponseSnippet: errInfo.rawSnippet,
+          ...getClientRuntimeContext(),
+        },
+      });
+      void fetchAuthorizedData({ force: true });
+      throw new Error(errInfo.message);
     }
   };
 
   const commitTraineeMutation = async (
     traineeId: string,
-    mutate: (t: TraineeProfile) => TraineeProfile
+    mutate: (t: TraineeProfile) => TraineeProfile,
+    contextMeta?: TraineeSaveDiagContext
   ) => {
     const target = traineesRef.current.find((t) => t.id === traineeId);
     if (!target) return;
@@ -1577,7 +1705,7 @@ export default function HomePage() {
     );
     traineesRef.current = nextList;
     setTrainees(nextList);
-    await syncTraineeLogUpdate(updatedTrainee);
+    await syncTraineeLogUpdate(updatedTrainee, target, contextMeta);
   };
 
   const handleLoginSuccess = async (user: AuthSessionUser) => {
@@ -1996,13 +2124,46 @@ export default function HomePage() {
       question?: string;
     }
   ): Promise<{ error?: string }> => {
-    const res = await postDataAction({
-      action: 'trainee-manage-saved-meals',
-      traineeId,
-      ...payload,
-    });
+    const { res, payloadKB, durationMs, timedOut, networkError } =
+      await postDataActionDetailed({
+        action: 'trainee-manage-saved-meals',
+        traineeId,
+        ...payload,
+      });
     if (!res || !res.ok) {
-      return { error: await extractApiError(res, 'שגיאה בשמירת הארוחה בספרייה') };
+      const errInfo = await parseApiErrorDetails(
+        res,
+        'שגיאה בשמירת הארוחה בספרייה',
+        timedOut
+      );
+      trackClientEvent('client_error', 'saved_meal_upsert_failed', {
+        screen:
+          currentUserRef.current?.role === 'trainee'
+            ? 'trainee_app'
+            : 'coach_dashboard',
+        flushNow: true,
+        details: {
+          action: 'trainee-manage-saved-meals',
+          op: payload.op,
+          operationLabel: `ספריית ארוחות (${payload.op})`,
+          targetTraineeId: traineeId,
+          mealSlotId: payload.preset?.mealSlotId,
+          itemsCount: payload.preset?.items?.length,
+          itemNamesPreview: payload.preset?.title,
+          photoCount:
+            payload.preset?.photoDataUrls?.length ||
+            (payload.preset?.photoDataUrl ? 1 : 0),
+          httpStatus: errInfo.httpStatus,
+          timedOut,
+          networkError,
+          payloadKB,
+          durationMs,
+          message: errInfo.message,
+          serverResponseSnippet: errInfo.rawSnippet,
+          ...getClientRuntimeContext(),
+        },
+      });
+      return { error: errInfo.message };
     }
     const json = await res.json();
     if (Array.isArray(json.savedMeals)) {
@@ -2732,6 +2893,24 @@ export default function HomePage() {
       }
     }
 
+    const saveMealSlotName =
+      currentTarget?.workoutTemplate?.meals?.find((m) => m.id === mealSlotId)?.name ||
+      currentTarget?.restTemplate?.meals?.find((m) => m.id === mealSlotId)?.name ||
+      mealSlotId;
+    const saveItemNamesPreview = items
+      .slice(0, 6)
+      .map((i) => `${i.name} (${Math.round(i.macros.calories)}קק״ל)`)
+      .join(', ');
+    const saveCaloriesTotal = Math.round(
+      items.reduce((sum, i) => sum + (Number(i.macros?.calories) || 0), 0)
+    );
+    const savePhotoCount =
+      photoDataUrls && photoDataUrls.length > 0
+        ? photoDataUrls.length
+        : photoDataUrl
+        ? 1
+        : 0;
+
     await commitTraineeMutation(traineeId, (t) => {
       const currentLog = t.logs[date] || {
         date,
@@ -2825,6 +3004,16 @@ export default function HomePage() {
           },
         },
       };
+    }, {
+      operation: 'save_meal',
+      operationLabel: 'שמירת ארוחה',
+      date,
+      mealSlotId,
+      mealSlotName: saveMealSlotName,
+      itemsCount: items.length,
+      itemNamesPreview: saveItemNamesPreview,
+      calories: saveCaloriesTotal,
+      photoCount: savePhotoCount,
     });
   };
 
@@ -2939,6 +3128,11 @@ export default function HomePage() {
           },
         },
       };
+    }, {
+      operation: 'update_meal_time',
+      operationLabel: 'עדכון שעת ארוחה',
+      date,
+      mealSlotId,
     });
   };
 
@@ -3000,7 +3194,12 @@ export default function HomePage() {
           },
         },
       };
-    });
+    }, {
+      operation: 'update_item_time',
+      operationLabel: 'עדכון שעת פריט',
+      date,
+      mealSlotId,
+    }).catch(() => {});
   };
 
   const handleUpdateDayType = async (
@@ -3028,7 +3227,11 @@ export default function HomePage() {
           },
         },
       };
-    });
+    }, {
+      operation: 'update_day_type',
+      operationLabel: 'שינוי סוג יום',
+      date,
+    }).catch(() => {});
   };
 
   const handleUpdateWater = async (
@@ -3056,7 +3259,11 @@ export default function HomePage() {
           },
         },
       };
-    });
+    }, {
+      operation: 'update_water',
+      operationLabel: 'עדכון כוסות מים',
+      date,
+    }).catch(() => {});
   };
 
   const handleUpdateWeight = async (
@@ -3069,7 +3276,11 @@ export default function HomePage() {
       ...t,
       currentWeight: weightKg,
       weightHistory: [...t.weightHistory, { date, weight: weightKg }],
-    }));
+    }), {
+      operation: 'update_weight',
+      operationLabel: 'עדכון משקל',
+      date,
+    });
   };
 
   const handleToggleFavorite = async (traineeId: string, foodId: string) => {
@@ -3082,7 +3293,10 @@ export default function HomePage() {
           ? t.favoriteFoodIds.filter((id) => id !== foodId)
           : [...t.favoriteFoodIds, foodId],
       };
-    });
+    }, {
+      operation: 'toggle_favorite',
+      operationLabel: 'עדכון מועדפים',
+    }).catch(() => {});
   };
 
   const handleSaveTemplate = async (

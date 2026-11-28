@@ -28,6 +28,7 @@ import {
 } from '../telemetry/diagnosticsSummary';
 import { shouldPersistApiLogToDb } from '../telemetry/filterRules';
 import {
+  buildTraineeUpdateDeltaPayload,
   mergeHydratedTraineeFieldsForRoster,
   sanitizeTraineeForRosterList,
   serializeSyncTimestampRows,
@@ -956,5 +957,135 @@ describe('evaluateTraineeAiTargetAuthorization & DB error classification', () =>
       target: { id: 'tr-1', status: 'pending', primaryCoachId: 'coach-admin', sharedCoachIds: [] },
     });
     assert.equal(adminAllowed.ok, true);
+  });
+});
+
+describe('buildTraineeUpdateDeltaPayload & save failure diagnostics', () => {
+  it('sends only changed logs dates and changed fields while omitting heavy unchanged history', () => {
+    const oldDay = {
+      date: '2026-11-20',
+      dayType: 'workout' as const,
+      waterCups: 6,
+      waterGoal: 10,
+      meals: {
+        m1: {
+          mealSlotId: 'm1',
+          items: [makeFood('old-1', 'תפוח', 150, 80, 0)],
+          photoDataUrl: 'data:image/jpeg;base64,' + 'A'.repeat(20_000),
+          updatedAt: '09:00',
+        },
+      },
+    };
+    const todayOld = {
+      date: '2026-11-28',
+      dayType: 'workout' as const,
+      waterCups: 4,
+      waterGoal: 10,
+      meals: {},
+    };
+    const prev: TraineeProfile = {
+      id: 't-delta-1',
+      email: 'd@example.com',
+      name: 'עדי',
+      avatar: 'ע',
+      phone: '050-1111111',
+      status: 'active',
+      goal: 'שמירה',
+      currentWeight: 70,
+      targetWeight: 70,
+      tolerancePercent: 10,
+      primaryCoachId: 'coach-admin',
+      sharedCoachIds: [],
+      workoutTemplate: { id: 'w1', name: 'A', description: '', dayType: 'workout', tolerancePercent: 10, meals: [] },
+      restTemplate: { id: 'r1', name: 'B', description: '', dayType: 'rest', tolerancePercent: 10, meals: [] },
+      favoriteFoodIds: ['f1'],
+      weightHistory: [{ date: '2026-11-20', weight: 70 }],
+      savedMeals: [
+        {
+          id: 'sm-1',
+          title: 'ארוחה שמורה',
+          items: [],
+          totalCalories: 100,
+          totalProtein: 10,
+          totalCarbs: 10,
+          totalFat: 2,
+          photoDataUrl: 'data:image/jpeg;base64,' + 'B'.repeat(20_000),
+          isFavorite: false,
+          isPinned: false,
+          useCount: 1,
+          createdAt: '2026-11-20T09:00:00Z',
+          updatedAt: '2026-11-20T09:00:00Z',
+        },
+      ],
+      logs: {
+        '2026-11-20': oldDay,
+        '2026-11-28': todayOld,
+      },
+    };
+    const next: TraineeProfile = {
+      ...prev,
+      logs: {
+        ...prev.logs,
+        '2026-11-28': {
+          ...todayOld,
+          meals: {
+            lunch: {
+              mealSlotId: 'lunch',
+              items: [makeFood('new-1', 'חזה עוף', 150, 240, 45)],
+              updatedAt: '12:15',
+            },
+          },
+        },
+      },
+    };
+
+    const delta = buildTraineeUpdateDeltaPayload(prev, next);
+    assert.equal(delta.id, 't-delta-1');
+    assert.deepEqual(Object.keys(delta.logs || {}), ['2026-11-28']);
+    assert.equal(delta.savedMeals, undefined);
+    assert.equal(delta.weightHistory, undefined);
+    assert.equal(delta.favoriteFoodIds, undefined);
+  });
+
+  it('includes detailed HTTP status, payloadKB, meal slot, and food preview in save failure telemetry summary', () => {
+    const summary = buildUserDiagnosticsSummary({
+      actorFilter: 'coach-admin',
+      traineeHealth: null,
+      apiRows: [],
+      auditRows: [],
+      clientRows: [
+        {
+          id: 9001,
+          created_at: '2026-11-28T10:08:20.000Z',
+          session_id: 'sess-1',
+          user_id: 'coach-admin',
+          role: 'admin',
+          platform: 'pwa-ios',
+          event_type: 'client_error',
+          event_name: 'trainee_save_failed',
+          screen: 'coach_dashboard',
+          details: {
+            operation: 'save_meal',
+            operationLabel: 'שמירת ארוחה',
+            date: '2026-11-28',
+            mealSlotId: 'lunch',
+            mealSlotName: 'ארוחת צהריים',
+            itemsCount: 2,
+            itemNamesPreview: 'חזה עוף (240קק״ל), אורז לבן (190קק״ל)',
+            httpStatus: 413,
+            payloadKB: 5919,
+            message: 'נפח הנתונים לשמירה חרג ממגבלת השרת (413)',
+          },
+        },
+      ],
+    });
+
+    assert.ok(summary.autoFindings.some((f) => f.severity === 'high' && f.title.includes('כשלים בשמירת נתונים')));
+    assert.equal(summary.timeline[0].severity, 'error');
+    assert.ok(summary.timeline[0].title.includes('שמירת ארוחה'));
+    assert.ok(summary.timeline[0].subtitle.includes('HTTP 413'));
+    assert.ok(summary.timeline[0].subtitle.includes('5919 KB'));
+    assert.ok(summary.timeline[0].subtitle.includes('ארוחת צהריים'));
+    assert.ok(summary.timeline[0].subtitle.includes('חזה עוף'));
   });
 });

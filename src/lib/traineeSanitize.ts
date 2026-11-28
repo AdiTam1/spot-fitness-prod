@@ -110,6 +110,85 @@ export function sanitizeTraineeForRosterList(
  * משמר תמונות savedMeals שכבר נטענו נקודתית עבור מתאמן בודד כאשר פולינג רקע מחזיר רשימת רוסטר רזה,
  * רק כל עוד אותו פריט (id + updatedAt) לא השתנה בשרת.
  */
+export interface TraineeUpdateDeltaPayload {
+  id: string;
+  name?: string;
+  goal?: string;
+  currentWeight?: number;
+  targetWeight?: number;
+  logs?: TraineeProfile['logs'];
+  weightHistory?: TraineeProfile['weightHistory'];
+  measurementsHistory?: TraineeProfile['measurementsHistory'];
+  weeklyCheckIns?: TraineeProfile['weeklyCheckIns'];
+  onboarding?: TraineeProfile['onboarding'];
+  favoriteFoodIds?: TraineeProfile['favoriteFoodIds'];
+  mealCardShortcuts?: TraineeProfile['mealCardShortcuts'];
+  savedMeals?: TraineeProfile['savedMeals'];
+  customServingTools?: TraineeProfile['customServingTools'];
+  customFoodUnits?: TraineeProfile['customFoodUnits'];
+  recentContextChips?: TraineeProfile['recentContextChips'];
+  recentLabelProducts?: TraineeProfile['recentLabelProducts'];
+}
+
+/**
+ * בונה Payload רזה לשמירת עדכון מתאמן (שולח רק ימי logs שהשתנו ושדות שהשתנו בפועל)
+ * כדי למנוע חריגת מגבלת 4.5MB ב-Vercel (HTTP 413) כשליומן היסטוריה ארוכה או תמונות ישנות.
+ */
+export function buildTraineeUpdateDeltaPayload(
+  prev: TraineeProfile | undefined,
+  next: TraineeProfile
+): TraineeUpdateDeltaPayload {
+  if (!prev) {
+    return next;
+  }
+
+  const delta: TraineeUpdateDeltaPayload = {
+    id: next.id,
+    name: next.name,
+    goal: next.goal,
+    currentWeight: next.currentWeight,
+    targetWeight: next.targetWeight,
+  };
+
+  const prevLogs = prev.logs || {};
+  const nextLogs = next.logs || {};
+  const changedLogs: TraineeProfile['logs'] = {};
+  let hasChangedLogs = false;
+  for (const [dateKey, dayVal] of Object.entries(nextLogs)) {
+    if (prevLogs[dateKey] !== dayVal) {
+      changedLogs[dateKey] = dayVal;
+      hasChangedLogs = true;
+    }
+  }
+  if (hasChangedLogs) {
+    delta.logs = changedLogs;
+  }
+
+  if (next.weightHistory !== prev.weightHistory) delta.weightHistory = next.weightHistory;
+  if (next.measurementsHistory !== prev.measurementsHistory) {
+    delta.measurementsHistory = next.measurementsHistory;
+  }
+  if (next.weeklyCheckIns !== prev.weeklyCheckIns) delta.weeklyCheckIns = next.weeklyCheckIns;
+  if (next.onboarding !== prev.onboarding) delta.onboarding = next.onboarding;
+  if (next.favoriteFoodIds !== prev.favoriteFoodIds) delta.favoriteFoodIds = next.favoriteFoodIds;
+  if (next.mealCardShortcuts !== prev.mealCardShortcuts) {
+    delta.mealCardShortcuts = next.mealCardShortcuts;
+  }
+  if (next.savedMeals !== prev.savedMeals) delta.savedMeals = next.savedMeals;
+  if (next.customServingTools !== prev.customServingTools) {
+    delta.customServingTools = next.customServingTools;
+  }
+  if (next.customFoodUnits !== prev.customFoodUnits) delta.customFoodUnits = next.customFoodUnits;
+  if (next.recentContextChips !== prev.recentContextChips) {
+    delta.recentContextChips = next.recentContextChips;
+  }
+  if (next.recentLabelProducts !== prev.recentLabelProducts) {
+    delta.recentLabelProducts = next.recentLabelProducts;
+  }
+
+  return delta;
+}
+
 export function mergeHydratedTraineeFieldsForRoster(
   rosterTrainees: TraineeProfile[],
   prevTrainees: TraineeProfile[]

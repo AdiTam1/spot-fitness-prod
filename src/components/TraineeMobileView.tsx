@@ -3621,6 +3621,8 @@ export function TraineeMobileView({
                   draftMealTime
                 );
                 setTimeEditSlot(null);
+              } catch {
+                // הודעת שגיאה מוצגת דרך התראה ובאנר השמירה
               } finally {
                 setSavingMealTime(false);
               }

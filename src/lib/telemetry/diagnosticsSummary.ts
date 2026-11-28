@@ -195,6 +195,7 @@ export function buildUserDiagnosticsSummary(params: {
   const searchLiveMs: number[] = [];
   let searchSlowCount = 0;
   let searchErrorOrTimeoutCount = 0;
+  let saveFailureCount = 0;
 
   const timeline: DiagnosticTimelineItem[] = [];
 
@@ -295,6 +296,42 @@ export function buildUserDiagnosticsSummary(params: {
           ? `כשל/טיימאוט בחיפוש (${String(d.mode || 'db')})`
           : `חיפוש איטי (${String(d.mode || 'db')} · ${cMs}ms)`,
         subtitle: `client=${cMs}ms · server=${sMs || '?'}ms · status=${String(d.status ?? '?')} · timedOut=${String(Boolean(d.timedOut))}`,
+        details: d,
+      });
+    } else if (
+      ev.event_name === 'trainee_save_failed' ||
+      ev.event_name === 'saved_meal_upsert_failed'
+    ) {
+      saveFailureCount += 1;
+      const opLabel = String(d.operationLabel || d.operation || 'שמירה');
+      const statusLabel = d.httpStatus !== undefined ? `HTTP ${String(d.httpStatus)}` : 'network';
+      const kbLabel = d.payloadKB !== undefined ? `${String(d.payloadKB)} KB` : '';
+      const slotPart = d.mealSlotName || d.mealSlotId ? `ארוחה: ${String(d.mealSlotName || d.mealSlotId)}` : '';
+      const datePart = d.date ? `תאריך: ${String(d.date)}` : '';
+      const itemsPart = d.itemsCount !== undefined ? `${String(d.itemsCount)} פריטים` : '';
+      const subParts = [
+        statusLabel,
+        kbLabel,
+        datePart,
+        slotPart,
+        itemsPart,
+        d.itemNamesPreview ? `(${String(d.itemNamesPreview)})` : '',
+        d.message ? String(d.message) : '',
+      ].filter(Boolean);
+      timeline.push({
+        id: `cli-${ev.id}`,
+        createdAt: ev.created_at,
+        source: 'client',
+        severity: 'error',
+        actorId: actor,
+        platform: ev.platform,
+        appVersionCode: ev.app_version_code,
+        durationMs: asNum(d.durationMs) || undefined,
+        title:
+          ev.event_name === 'saved_meal_upsert_failed'
+            ? `כשל בשמירה לספריית ארוחות (${opLabel})`
+            : `כשל בשמירת נתונים (${opLabel})`,
+        subtitle: subParts.join(' · '),
         details: d,
       });
     } else if (ev.event_type === 'client_error') {
@@ -439,6 +476,14 @@ export function buildUserDiagnosticsSummary(params: {
       severity: searchErrorOrTimeoutCount > 0 ? 'high' : 'medium',
       title: `עיכובים / שגיאות בחיפוש מזון (${searchSlowCount} איטיים · ${searchErrorOrTimeoutCount} שגיאות/טיימאוט)`,
       description: `ממוצע לקוח ${avgRounded(searchClientMs)}ms · SQL ${avgRounded(searchSqlMs)}ms · Live ${avgRounded(searchLiveMs)}ms.`,
+    });
+  }
+  if (saveFailureCount > 0) {
+    autoFindings.push({
+      severity: 'high',
+      title: `כשלים בשמירת נתונים / ארוחות מהמכשיר (${saveFailureCount})`,
+      description:
+        'בדוק בציר הזמן את סטטוס ה-HTTP (למשל 413 חריגת גודל / timeout / חוסר רשת), נפח הבקשה והפריטים שהמשתמש ניסה לשמור.',
     });
   }
   if (autoFindings.length === 0) {

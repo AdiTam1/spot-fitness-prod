@@ -381,6 +381,7 @@ export function AddMealDrawer({
   const [voiceState, setVoiceState] = useState<VoiceCaptureState>('idle');
   const [dismissedFailedJobId, setDismissedFailedJobId] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [saveErrorMsg, setSaveErrorMsg] = useState<string | null>(null);
   const [aiSummary, setAiSummary] = useState<{
     msg: string;
     isError?: boolean;
@@ -710,6 +711,7 @@ export function AddMealDrawer({
         itemScaleBaseRef.current = {};
         setDismissedFailedJobId(null);
         setAiSummary(null);
+        setSaveErrorMsg(null);
         setSavedMealsInitialFilter('all');
         pendingAdjustReplaceRef.current = false;
         if (initialTab === 'barcode') {
@@ -2857,6 +2859,7 @@ export function AddMealDrawer({
 
     saveLockRef.current = true;
     setSavingMeal(true);
+    setSaveErrorMsg(null);
     try {
       const primaryPhoto = allMealPhotos[0] || photoDataUrl;
       const effectivePhotoNote = photoNote.trim()
@@ -2889,7 +2892,7 @@ export function AddMealDrawer({
         const presetItemsToSave = savePresetAsSingleDish
           ? [groupItemsAsCompositeDish(finalItems, autoTitle)]
           : finalItems;
-        await onSavedMealAction({
+        const presetRes = await onSavedMealAction({
           op: 'upsert',
           preset: {
             title: autoTitle,
@@ -2905,12 +2908,22 @@ export function AddMealDrawer({
             useCount: 1,
           },
         });
+        if (presetRes?.error) {
+          throw new Error(presetRes.error);
+        }
       }
       setSuggestedExtras([]);
       setPreCorrectionItems(null);
       setItemFieldDrafts({});
       itemScaleBaseRef.current = {};
       onClose();
+    } catch (err) {
+      const msg =
+        err instanceof Error && err.message
+          ? err.message
+          : 'שגיאה בשמירת הארוחה בשרת — השינויים לא נשמרו';
+      setSaveErrorMsg(msg);
+      setAiSummary({ msg, isError: true });
     } finally {
       saveLockRef.current = false;
       setSavingMeal(false);
@@ -2933,15 +2946,23 @@ export function AddMealDrawer({
       : [];
     setSuggestedExtras(nextExtras);
     if (existingEntry && mealSlot && !hasMealChanges) {
-      void onSaveMeal(
-        mealSlot.id,
-        existingEntry.items || [],
-        existingEntry.photoDataUrl,
-        existingEntry.photoNote,
-        existingEntry.photoDataUrls,
-        existingEntry.mealTime,
-        nextExtras
-      );
+      Promise.resolve(
+        onSaveMeal(
+          mealSlot.id,
+          existingEntry.items || [],
+          existingEntry.photoDataUrl,
+          existingEntry.photoNote,
+          existingEntry.photoDataUrls,
+          existingEntry.mealTime,
+          nextExtras
+        )
+      ).catch((err) => {
+        const msg =
+          err instanceof Error && err.message
+            ? err.message
+            : 'שגיאה בעדכון רכיבי ההצעה בשרת';
+        setSaveErrorMsg(msg);
+      });
     }
   };
 
@@ -7562,6 +7583,47 @@ export function AddMealDrawer({
             )}
           </div>
         </div>
+
+        {saveErrorMsg && (
+          <div
+            role="alert"
+            style={{
+              flexShrink: 0,
+              margin: '6px 16px 2px',
+              padding: '10px 14px',
+              borderRadius: 14,
+              background: 'rgba(239, 68, 68, 0.16)',
+              border: '1px solid rgba(239, 68, 68, 0.45)',
+              color: 'var(--danger-text)',
+              fontSize: 13,
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+            }}
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+              <span>{saveErrorMsg}</span>
+            </span>
+            <button
+              type="button"
+              aria-label="סגור הודעת שגיאה"
+              onClick={() => setSaveErrorMsg(null)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--danger-text)',
+                cursor: 'pointer',
+                fontWeight: 800,
+                padding: '2px 6px',
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {activeTab === 'meal-items' && (
           <div

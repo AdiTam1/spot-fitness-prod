@@ -2771,13 +2771,18 @@ async function handleDataPost(
               : t.goal,
           logs: coachEditedLogs,
           coachMealAlerts: [...newAlerts, ...dedupedPrevAlerts].slice(0, 15),
-          currentWeight: traineeInput.currentWeight,
-          targetWeight: traineeInput.targetWeight || t.targetWeight,
-          weightHistory: traineeInput.weightHistory,
-          measurementsHistory:
-            traineeInput.measurementsHistory || t.measurementsHistory,
+          currentWeight: traineeInput.currentWeight ?? t.currentWeight,
+          targetWeight: traineeInput.targetWeight ?? t.targetWeight,
+          weightHistory: Array.isArray(traineeInput.weightHistory)
+            ? traineeInput.weightHistory
+            : t.weightHistory,
+          measurementsHistory: Array.isArray(traineeInput.measurementsHistory)
+            ? traineeInput.measurementsHistory
+            : t.measurementsHistory,
           onboarding: traineeInput.onboarding || t.onboarding,
-          favoriteFoodIds: traineeInput.favoriteFoodIds,
+          favoriteFoodIds: Array.isArray(traineeInput.favoriteFoodIds)
+            ? traineeInput.favoriteFoodIds
+            : t.favoriteFoodIds,
           mealCardShortcuts:
             traineeInput.mealCardShortcuts !== undefined
               ? sanitizeMealShortcuts(traineeInput.mealCardShortcuts)
